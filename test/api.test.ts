@@ -5,12 +5,16 @@
  * Mocks Gemini and Lex to test route logic in isolation.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import type { GeminiEngine } from "../src/server/gemini.js";
 import type { MemoryService, Frame } from "../src/server/memory.js";
 import { buildSection, buildFleetData, type FleetData } from "../src/server/fleet-data.js";
+import { createSettingsStore, type SettingsStore } from "../src/server/settings.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 
 // Mock hasCredentials since it checks the filesystem
 vi.mock("../src/server/sheets.js", () => ({
@@ -69,6 +73,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
   return {
     geminiEngine: null,
     memoryService: null,
+    settingsStore: null,
     fleetData: null,
     rosterError: null,
     startupComplete: false,
@@ -458,5 +463,124 @@ describe("edge cases", () => {
 
     await request(app).get("/api/recall?q=test");
     expect(memory.recall).toHaveBeenCalledWith("test", 10);
+  });
+});
+
+// ─── Settings API ───────────────────────────────────────────────
+
+describe("settings API", () => {
+  let settingsDir: string;
+  let settingsStore: SettingsStore;
+
+  beforeEach(() => {
+    settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-api-settings-"));
+    settingsStore = createSettingsStore(path.join(settingsDir, "settings.db"));
+  });
+
+  afterEach(() => {
+    settingsStore.close();
+    fs.rmSync(settingsDir, { recursive: true, force: true });
+  });
+
+  describe("GET /api/settings", () => {
+    it("returns 503 when settings store is not available", async () => {
+      const app = createApp(makeState());
+      const res = await request(app).get("/api/settings");
+      expect(res.status).toBe(503);
+    });
+
+    it("returns all settings with categories", async () => {
+      const app = createApp(makeState({ settingsStore }));
+      const res = await request(app).get("/api/settings");
+      expect(res.status).toBe(200);
+      expect(res.body.categories).toContain("sheets");
+      expect(res.body.categories).toContain("display");
+      expect(res.body.settings.length).toBeGreaterThan(0);
+    });
+
+    it("filters by category", async () => {
+      const app = createApp(makeState({ settingsStore }));
+      const res = await request(app).get("/api/settings?category=display");
+      expect(res.status).toBe(200);
+      expect(res.body.category).toBe("display");
+      for (const s of res.body.settings) {
+        expect(s.category).toBe("display");
+      }
+    });
+
+    it("returns 400 for unknown category", async () => {
+      const app = createApp(makeState({ settingsStore }));
+      const res = await request(app).get("/api/settings?category=fake");
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("PATCH /api/settings", () => {
+    it("returns 503 when store not available", async () => {
+      const app = createApp(makeState());
+      const res = await request(app).patch("/api/settings").send({ "display.admiralName": "Guff" });
+      expect(res.status).toBe(503);
+    });
+
+    it("updates a setting", async () => {
+      const app = createApp(makeState({ settingsStore }));
+      const res = await request(app)
+        .patch("/api/settings")
+        .send({ "display.admiralName": "Guff" });
+      expect(res.status).toBe(200);
+      expect(res.body.results[0]).toEqual({ key: "display.admiralName", status: "updated" });
+      expect(settingsStore.get("display.admiralName")).toBe("Guff");
+    });
+
+    it("reports errors for invalid keys", async () => {
+      const app = createApp(makeState({ settingsStore }));
+      const res = await request(app)
+        .patch("/api/settings")
+        .send({ "fake.key": "value" });
+      expect(res.status).toBe(200);
+      expect(res.body.results[0].status).toBe("error");
+    });
+
+    it("returns 400 for non-object body", async () => {
+      const app = createApp(makeState({ settingsStore }));
+      // Send a JSON number — parsed by express.json() as a non-object
+      const res = await request(app)
+        .patch("/api/settings")
+        .set("Content-Type", "application/json")
+        .send("42");
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for array body", async () => {
+      const app = createApp(makeState({ settingsStore }));
+      const res = await request(app)
+        .patch("/api/settings")
+        .send([1, 2, 3]);
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("DELETE /api/settings/:key", () => {
+    it("returns 503 when store not available", async () => {
+      const app = createApp(makeState());
+      const res = await request(app).delete("/api/settings/display.admiralName");
+      expect(res.status).toBe(503);
+    });
+
+    it("resets a user-set value", async () => {
+      settingsStore.set("display.admiralName", "Guff");
+      const app = createApp(makeState({ settingsStore }));
+      const res = await request(app).delete("/api/settings/display.admiralName");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("reset");
+      expect(res.body.resolvedValue).toBe("Admiral"); // default
+    });
+
+    it("handles non-existent key gracefully", async () => {
+      const app = createApp(makeState({ settingsStore }));
+      const res = await request(app).delete("/api/settings/display.admiralName");
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("not_found");
+    });
   });
 });

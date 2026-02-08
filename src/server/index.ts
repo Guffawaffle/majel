@@ -5,11 +5,14 @@
  * Named in honor of Majel Barrett-Roddenberry (1932–2008)
  *
  * Endpoints:
- *   GET  /api/health   — Status check
- *   GET  /api/roster   — Fetch/refresh roster from Sheets
- *   POST /api/chat     — Send message, get Gemini response
- *   GET  /api/history  — Conversation history from Lex
- *   GET  /api/recall   — Search Lex memory (query param: q)
+ *   GET  /api/health       — Status check
+ *   GET  /api/roster       — Fetch/refresh roster from Sheets
+ *   POST /api/chat         — Send message, get Gemini response
+ *   GET  /api/history      — Conversation history from Lex
+ *   GET  /api/recall       — Search Lex memory (query param: q)
+ *   GET  /api/settings      — All settings with resolved values
+ *   PATCH /api/settings     — Update one or more settings
+ *   DELETE /api/settings/:key — Reset a setting to default
  *
  * Static files served from src/client/ (dev) or dist/client/ (prod).
  */
@@ -32,6 +35,11 @@ import {
   hasFleetData,
   fleetDataSummary,
 } from "./fleet-data.js";
+import {
+  createSettingsStore,
+  getCategories,
+  type SettingsStore,
+} from "./settings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +55,7 @@ const TAB_MAPPING_ENV = process.env.MAJEL_TAB_MAPPING;
 export interface AppState {
   geminiEngine: GeminiEngine | null;
   memoryService: MemoryService | null;
+  settingsStore: SettingsStore | null;
   fleetData: FleetData | null;
   rosterError: string | null;
   startupComplete: boolean;
@@ -55,6 +64,7 @@ export interface AppState {
 const state: AppState = {
   geminiEngine: null,
   memoryService: null,
+  settingsStore: null,
   fleetData: null,
   rosterError: null,
   startupComplete: false,
@@ -222,6 +232,77 @@ export function createApp(appState: AppState = state): express.Express {
     }
   });
 
+  // ─── Settings API ──────────────────────────────────────────
+
+  app.get("/api/settings", (req, res) => {
+    if (!appState.settingsStore) {
+      return res.status(503).json({ error: "Settings store not available" });
+    }
+
+    const category = req.query.category as string | undefined;
+    const categories = getCategories();
+
+    if (category) {
+      if (!categories.includes(category)) {
+        return res.status(400).json({
+          error: `Unknown category: ${category}. Valid: ${categories.join(", ")}`,
+        });
+      }
+      return res.json({
+        category,
+        settings: appState.settingsStore.getByCategory(category),
+      });
+    }
+
+    res.json({
+      categories,
+      settings: appState.settingsStore.getAll(),
+    });
+  });
+
+  app.patch("/api/settings", (req, res) => {
+    if (!appState.settingsStore) {
+      return res.status(503).json({ error: "Settings store not available" });
+    }
+
+    const updates = req.body;
+    if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
+      return res
+        .status(400)
+        .json({ error: "Request body must be an object of { key: value } pairs" });
+    }
+
+    const results: Array<{ key: string; status: string; error?: string }> = [];
+    for (const [key, value] of Object.entries(updates)) {
+      try {
+        appState.settingsStore.set(key, String(value));
+        results.push({ key, status: "updated" });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({ key, status: "error", error: message });
+      }
+    }
+
+    res.json({ results });
+  });
+
+  app.delete("/api/settings/:key(*)", (req, res) => {
+    if (!appState.settingsStore) {
+      return res.status(503).json({ error: "Settings store not available" });
+    }
+
+    const key = req.params.key;
+    const deleted = appState.settingsStore.delete(key);
+
+    if (deleted) {
+      // Return the new resolved value (env or default)
+      const newValue = appState.settingsStore.get(key);
+      res.json({ key, status: "reset", resolvedValue: newValue });
+    } else {
+      res.json({ key, status: "not_found", message: "No user override existed" });
+    }
+  });
+
   // ─── SPA Fallback ───────────────────────────────────────────
   app.get("*", (_req, res) => {
     res.sendFile(path.join(clientDir, "index.html"));
@@ -234,7 +315,15 @@ export function createApp(appState: AppState = state): express.Express {
 async function boot(): Promise<void> {
   console.log("⚡ Majel initializing...");
 
-  // 1. Initialize Lex memory (always — it's local)
+  // 1. Initialize settings store (always — it's local SQLite)
+  try {
+    state.settingsStore = createSettingsStore();
+    console.log("✅ Settings store online");
+  } catch (err) {
+    console.error("⚠️  Settings store init failed:", err);
+  }
+
+  // 2. Initialize Lex memory (always — it's local)
   try {
     state.memoryService = createMemoryService();
     console.log("✅ Lex memory service online");
@@ -242,10 +331,17 @@ async function boot(): Promise<void> {
     console.error("⚠️  Lex memory init failed:", err);
   }
 
-  // 2. Initialize Gemini (doesn't need roster yet)
-  if (GEMINI_API_KEY) {
+  // Resolve config: settings store → env → defaults
+  const resolvedApiKey = GEMINI_API_KEY;
+  const resolvedSpreadsheetId =
+    state.settingsStore?.get("sheets.spreadsheetId") || SPREADSHEET_ID;
+  const resolvedTabMapping =
+    state.settingsStore?.get("sheets.tabMapping") || TAB_MAPPING_ENV;
+
+  // 3. Initialize Gemini (doesn't need fleet data yet)
+  if (resolvedApiKey) {
     const csv = "No roster data loaded yet.";
-    state.geminiEngine = createGeminiEngine(GEMINI_API_KEY, csv);
+    state.geminiEngine = createGeminiEngine(resolvedApiKey, csv);
     console.log("✅ Gemini engine online (model: gemini-2.5-flash-lite)");
   } else {
     console.warn("⚠️  GEMINI_API_KEY not set — chat disabled");
@@ -260,16 +356,16 @@ async function boot(): Promise<void> {
     console.log("   Awaiting input, Admiral.\n");
   });
 
-  // 4. Load fleet data AFTER server is up (OAuth may be interactive)
-  if (SPREADSHEET_ID && hasCredentials()) {
+  // 5. Load fleet data AFTER server is up (OAuth may be interactive)
+  if (resolvedSpreadsheetId && hasCredentials()) {
     try {
       console.log("   Connecting to Starfleet Database (Google Sheets)...");
       console.log(
         "   ⏳ If OAuth is needed, a URL will appear below. You have 3 minutes.\n"
       );
-      const tabMapping = parseTabMapping(TAB_MAPPING_ENV);
+      const tabMapping = parseTabMapping(resolvedTabMapping);
       const config: MultiTabConfig = {
-        spreadsheetId: SPREADSHEET_ID,
+        spreadsheetId: resolvedSpreadsheetId,
         tabMapping,
       };
       state.fleetData = await fetchFleetData(config);
@@ -279,9 +375,9 @@ async function boot(): Promise<void> {
       );
 
       // Re-create Gemini engine with fleet data
-      if (GEMINI_API_KEY) {
+      if (resolvedApiKey) {
         state.geminiEngine = createGeminiEngine(
-          GEMINI_API_KEY,
+          resolvedApiKey,
           state.fleetData
         );
         console.log("✅ Gemini engine refreshed with fleet data");
@@ -292,7 +388,7 @@ async function boot(): Promise<void> {
       console.warn("   Fleet data can be loaded later via GET /api/roster");
     }
   } else {
-    if (!SPREADSHEET_ID) {
+    if (!resolvedSpreadsheetId) {
       console.warn("⚠️  MAJEL_SPREADSHEET_ID not set — roster disabled");
     }
     if (!hasCredentials()) {
@@ -306,6 +402,9 @@ async function boot(): Promise<void> {
 // ─── Graceful Shutdown ──────────────────────────────────────────
 async function shutdown(): Promise<void> {
   console.log("\n   Majel offline. Live long and prosper. 🖖");
+  if (state.settingsStore) {
+    state.settingsStore.close();
+  }
   if (state.memoryService) {
     await state.memoryService.close();
   }
