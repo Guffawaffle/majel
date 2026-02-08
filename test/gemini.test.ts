@@ -33,11 +33,11 @@ describe("buildSystemPrompt", () => {
     });
   });
 
-  describe("capabilities layer (never restricted)", () => {
-    it("declares full training knowledge access", () => {
+  describe("capabilities layer", () => {
+    it("declares training knowledge coverage", () => {
       const prompt = buildSystemPrompt(null);
-      expect(prompt).toContain("FULL ACCESS");
       expect(prompt).toContain("training knowledge");
+      expect(prompt).toContain("CAPABILITIES:");
     });
 
     it("explicitly lists STFC-relevant capabilities", () => {
@@ -54,9 +54,32 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("Google Sheets");
     });
 
-    it("instructs model not to pretend it lacks capabilities", () => {
+    it("includes comprehensive epistemic framework", () => {
       const prompt = buildSystemPrompt(null);
-      expect(prompt).toContain("Do not pretend to lack capabilities");
+      expect(prompt).toContain("EPISTEMIC FRAMEWORK");
+      expect(prompt).toContain("SOURCE ATTRIBUTION");
+      expect(prompt).toContain("CONFIDENCE SIGNALING");
+      expect(prompt).toContain("NEVER FABRICATE");
+    });
+
+    it("signals uncertainty is expected behavior", () => {
+      const prompt = buildSystemPrompt(null);
+      expect(prompt).toContain("I don't have that information");
+      expect(prompt).toContain("CORRECTIONS ARE WELCOME");
+    });
+
+    it("requires source attribution for all response types", () => {
+      const prompt = buildSystemPrompt(null);
+      expect(prompt).toContain("FLEET DATA");
+      expect(prompt).toContain("TRAINING KNOWLEDGE");
+      expect(prompt).toContain("INFERENCE");
+      expect(prompt).toContain("UNKNOWN");
+    });
+
+    it("flags game meta as potentially outdated", () => {
+      const prompt = buildSystemPrompt(null);
+      expect(prompt).toContain("live game");
+      expect(prompt).toContain("outdated");
     });
 
     it("does NOT contain restrictive anti-patterns", () => {
@@ -69,6 +92,14 @@ describe("buildSystemPrompt", () => {
       expect(prompt).not.toContain("cannot discuss");
       expect(prompt).not.toMatch(/access is limited/i);
       expect(prompt).not.toMatch(/I am unable/i);
+    });
+
+    it("does NOT contain overconfidence anti-patterns", () => {
+      const prompt = buildSystemPrompt(null);
+      // These phrases encourage confabulation by telling the model
+      // to never show uncertainty.
+      expect(prompt).not.toContain("utterly competent");
+      expect(prompt).not.toContain("don't hedge");
     });
   });
 
@@ -92,15 +123,15 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("Cite exact stats");
     });
 
-    it("instructs to combine roster with game knowledge", () => {
+    it("instructs to combine roster with training knowledge", () => {
       const prompt = buildSystemPrompt(csv);
-      expect(prompt).toContain("Combine roster data WITH your game knowledge");
+      expect(prompt).toContain("Combine roster data WITH your training knowledge");
     });
 
-    it("instructs to handle missing officers gracefully", () => {
+    it("instructs to handle missing officers gracefully with attribution", () => {
       const prompt = buildSystemPrompt(csv);
       expect(prompt).toContain("NOT in the roster");
-      expect(prompt).toContain("game knowledge");
+      expect(prompt).toContain("training knowledge");
     });
   });
 
@@ -122,10 +153,10 @@ describe("buildSystemPrompt", () => {
       expect(prompt).not.toContain("BEGIN ROSTER DATA");
     });
 
-    it("still has full capabilities declared", () => {
+    it("still has capabilities declared", () => {
       const prompt = buildSystemPrompt(null);
       expect(prompt).toContain("CAPABILITIES:");
-      expect(prompt).toContain("FULL ACCESS");
+      expect(prompt).toContain("training knowledge");
     });
 
     it("suggests connecting fleet data via UI", () => {
@@ -200,11 +231,11 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("Cross-reference between sections");
     });
 
-    it("still declares full capabilities", () => {
+    it("still declares capabilities and identity", () => {
       const data = buildFleetData("sheet-1", [officerSection]);
       const prompt = buildSystemPrompt(data);
       expect(prompt).toContain("CAPABILITIES:");
-      expect(prompt).toContain("FULL ACCESS");
+      expect(prompt).toContain("training knowledge");
       expect(prompt).toContain("You are Majel");
     });
 

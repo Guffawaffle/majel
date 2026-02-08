@@ -25,6 +25,7 @@ import {
   buildSection,
   buildFleetData,
 } from "./fleet-data.js";
+import { debug } from "./debug.js";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"];
 const TOKEN_PATH = path.resolve("token.json");
@@ -272,7 +273,9 @@ export async function fetchFleetData(config: MultiTabConfig): Promise<FleetData>
   const sheets = google.sheets({ version: "v4", auth });
 
   // Discover available tabs
+  debug.sheets("fetchFleetData:start", { spreadsheetId: config.spreadsheetId, mappingKeys: Object.keys(config.tabMapping) });
   const availableTabs = await discoverTabs(sheets, config.spreadsheetId);
+  debug.sheets("discoverTabs", { found: availableTabs });
   console.log(`   📋 Found tabs: ${availableTabs.join(", ")}`);
 
   // Match tabs to mapping (case-insensitive)
@@ -307,7 +310,13 @@ export async function fetchFleetData(config: MultiTabConfig): Promise<FleetData>
     })
   );
 
-  return buildFleetData(config.spreadsheetId, sections);
+  const fleet = buildFleetData(config.spreadsheetId, sections);
+  debug.sheets("fetchFleetData:done", {
+    sectionsLoaded: sections.length,
+    totalChars: fleet.totalChars,
+    sectionSummary: sections.map(s => ({ label: s.label, type: s.type, rows: s.rowCount })),
+  });
+  return fleet;
 }
 
 /**

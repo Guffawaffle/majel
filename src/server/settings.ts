@@ -18,6 +18,7 @@
 import Database from "better-sqlite3";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { debug } from "./debug.js";
 
 // ─── Schema ─────────────────────────────────────────────────────
 
@@ -273,10 +274,12 @@ export function createSettingsStore(dbPath?: string): SettingsStore {
       }
 
       stmtSet.run(key, value);
+      debug.settings("set", { key, value: def.sensitive ? "[REDACTED]" : value });
     },
 
     delete(key: string): boolean {
       const result = stmtDel.run(key);
+      debug.settings("delete", { key, deleted: result.changes > 0 });
       return result.changes > 0;
     },
 

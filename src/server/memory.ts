@@ -15,6 +15,7 @@
 import { createFrameStore } from "@smartergpt/lex/store";
 import { createFrame } from "@smartergpt/lex/types";
 import type { Frame } from "@smartergpt/lex/types";
+import { debug } from "./debug.js";
 
 // Re-export Frame type for consumers
 export type { Frame };
@@ -67,20 +68,30 @@ export function createMemoryService(dbPath?: string): MemoryService {
       });
 
       await store.saveFrame(frame);
+      debug.lex("remember", {
+        frameId: frame.id,
+        branch: frame.branch,
+        keywords,
+        refPoint,
+        summaryLen: frame.summary_caption.length,
+      });
       return frame;
     },
 
     async recall(query: string, limit = 10): Promise<Frame[]> {
       const results = await store.searchFrames({ query, limit });
+      debug.lex("recall", { query, limit, resultsFound: results.length });
       return results;
     },
 
     async timeline(limit = 20): Promise<Frame[]> {
       const result = await store.listFrames({ limit });
+      debug.lex("timeline", { limit, framesReturned: result.frames.length });
       return result.frames;
     },
 
     async close(): Promise<void> {
+      debug.lex("close", { status: "shutting down" });
       await store.close();
     },
   };
