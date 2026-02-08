@@ -177,7 +177,7 @@ export function errorHandler(err: Error & { status?: number; statusCode?: number
 
   const message = err.message || "Internal server error";
   let statusCode = err.status || err.statusCode || 500;
-  let code = ErrorCode.INTERNAL_ERROR;
+  let code: ErrorCodeValue = ErrorCode.INTERNAL_ERROR;
 
   // Handle express.json payload too large error
   if (err.message && err.message.includes("entity too large")) {
