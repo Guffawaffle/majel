@@ -1,11 +1,15 @@
 /**
- * sheets.ts — Google Sheets OAuth + Roster Fetch
+ * sheets.ts — Google Sheets OAuth + Multi-Tab Fleet Data Fetch
  *
  * Majel — STFC Fleet Intelligence System
  * Named in honor of Majel Barrett-Roddenberry (1932–2008)
  *
- * Ports the OAuth desktop flow and CSV fetch from majel.py.
- * Uses token.json caching — first run opens a browser for consent.
+ * Supports multiple tabs with classification:
+ * - Fetches all configured tabs from a single spreadsheet
+ * - Each tab is classified by type (officers, ships, custom)
+ * - Returns structured FleetData, not raw CSV
+ *
+ * OAuth uses Desktop app loopback flow with dynamic port.
  */
 
 import { google } from "googleapis";
@@ -14,14 +18,57 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as http from "node:http";
 import { URL } from "node:url";
+import {
+  type TabMapping,
+  type FleetData,
+  DEFAULT_TAB_MAPPING,
+  buildSection,
+  buildFleetData,
+} from "./fleet-data.js";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"];
 const TOKEN_PATH = path.resolve("token.json");
 const CREDENTIALS_PATH = path.resolve("credentials.json");
 
+// ─── Re-export for backward compat ──────────────────────────────
+
+/** @deprecated Use FleetData-based APIs instead */
 export interface SheetsConfig {
   spreadsheetId: string;
   range: string;
+}
+
+// ─── Multi-Tab Configuration ────────────────────────────────────
+
+export interface MultiTabConfig {
+  spreadsheetId: string;
+  /** Maps tab names → fleet data types. If empty, auto-discovers all tabs. */
+  tabMapping: TabMapping;
+}
+
+/**
+ * Parse tab mapping from environment variable.
+ * Format: "TabName:type,TabName2:type2" e.g. "Officers:officers,Ships:ships"
+ * Returns DEFAULT_TAB_MAPPING if not set or empty.
+ */
+export function parseTabMapping(envValue: string | undefined): TabMapping {
+  if (!envValue || envValue.trim() === "") {
+    return { ...DEFAULT_TAB_MAPPING };
+  }
+
+  const mapping: TabMapping = {};
+  for (const pair of envValue.split(",")) {
+    const [tabName, type] = pair.split(":").map((s) => s.trim());
+    if (tabName && type) {
+      const validTypes = ["officers", "ships", "custom"] as const;
+      const tabType = validTypes.includes(type as (typeof validTypes)[number])
+        ? (type as (typeof validTypes)[number])
+        : "custom";
+      mapping[tabName] = tabType;
+    }
+  }
+
+  return Object.keys(mapping).length > 0 ? mapping : { ...DEFAULT_TAB_MAPPING };
 }
 
 /**
@@ -144,7 +191,7 @@ function runLocalOAuthFlow(oauth2Client: OAuth2Client): Promise<OAuth2Client> {
 
 /**
  * Fetch the roster spreadsheet and return as CSV string.
- * Mirrors Python `fetch_roster_context()`.
+ * @deprecated Use fetchFleetData() instead.
  */
 export async function fetchRoster(config: SheetsConfig): Promise<string> {
   const auth = await getOAuth2Client();
@@ -174,6 +221,93 @@ export async function fetchRoster(config: SheetsConfig): Promise<string> {
         .join(",")
     )
     .join("\n");
+}
+
+// ─── Multi-Tab Data Fetching ────────────────────────────────────
+
+/**
+ * Discover all tab names in a spreadsheet.
+ */
+async function discoverTabs(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string
+): Promise<string[]> {
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties.title",
+  });
+
+  return (
+    meta.data.sheets?.map((s) => s.properties?.title ?? "").filter(Boolean) ?? []
+  );
+}
+
+/**
+ * Fetch a single tab's data as a 2D array.
+ */
+async function fetchTab(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+  tabName: string
+): Promise<string[][]> {
+  const result = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `'${tabName}'`,
+  });
+
+  return (result.data.values as string[][]) ?? [];
+}
+
+/**
+ * Fetch all configured tabs and return structured FleetData.
+ *
+ * Process:
+ * 1. Discover all tabs in the spreadsheet
+ * 2. Match tabs against the configured mapping
+ * 3. Fetch data for each matched tab
+ * 4. Build structured FleetData with typed sections
+ */
+export async function fetchFleetData(config: MultiTabConfig): Promise<FleetData> {
+  const auth = await getOAuth2Client();
+  const sheets = google.sheets({ version: "v4", auth });
+
+  // Discover available tabs
+  const availableTabs = await discoverTabs(sheets, config.spreadsheetId);
+  console.log(`   📋 Found tabs: ${availableTabs.join(", ")}`);
+
+  // Match tabs to mapping (case-insensitive)
+  const matchedTabs: Array<{ tabName: string; type: TabMapping[string] }> = [];
+
+  for (const available of availableTabs) {
+    const mappingKey = Object.keys(config.tabMapping).find(
+      (key) => key === available || key.toLowerCase() === available.toLowerCase()
+    );
+
+    if (mappingKey) {
+      matchedTabs.push({ tabName: available, type: config.tabMapping[mappingKey] });
+    }
+  }
+
+  if (matchedTabs.length === 0) {
+    console.warn(
+      `   ⚠️  No tabs matched the mapping. Available: [${availableTabs.join(", ")}], ` +
+        `Configured: [${Object.keys(config.tabMapping).join(", ")}]`
+    );
+  }
+
+  // Fetch each matched tab in parallel
+  const sections = await Promise.all(
+    matchedTabs.map(async ({ tabName, type }) => {
+      const rows = await fetchTab(sheets, config.spreadsheetId, tabName);
+      const section = buildSection(type, tabName, tabName, rows);
+      console.log(
+        `   ✅ ${tabName} (${type}): ${section.rowCount} rows, ${section.csv.length} chars`
+      );
+      return section;
+    })
+  );
+
+  return buildFleetData(config.spreadsheetId, sections);
 }
 
 /**

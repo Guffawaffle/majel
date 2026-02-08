@@ -90,7 +90,7 @@ export function createMemoryService(dbPath?: string): MemoryService {
  * Extract meaningful keywords from a question.
  * Strips common stop words, keeps names and nouns.
  */
-function extractKeywords(text: string): string[] {
+export function extractKeywords(text: string): string[] {
   const stopWords = new Set([
     "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
     "have", "has", "had", "do", "does", "did", "will", "would", "could",
