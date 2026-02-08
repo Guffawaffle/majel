@@ -1,0 +1,29 @@
+{
+  "name": "majel",
+  "version": "0.2.0",
+  "description": "STFC Fleet Intelligence System — Named in honor of Majel Barrett-Roddenberry (1932–2008)",
+  "type": "module",
+  "main": "dist/server/index.js",
+  "scripts": {
+    "build": "tsc && cp -r src/client dist/client",
+    "start": "node --import dotenv/config dist/server/index.js",
+    "dev": "tsx watch --import dotenv/config src/server/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["stfc", "fleet", "gemini", "lex"],
+  "author": "Admiral Guff",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "@smartergpt/lex": "^2.2.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "googleapis": "^140.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/node": "^20.19.33",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

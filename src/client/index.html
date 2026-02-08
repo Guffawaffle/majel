@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Majel — STFC Fleet Intelligence</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header>
+      <h1>🖖 Majel</h1>
+      <p class="subtitle">STFC Fleet Intelligence System</p>
+      <div id="status-bar">
+        <span id="status-indicator" class="status-dot offline"></span>
+        <span id="status-text">Connecting...</span>
+        <span id="roster-status" class="roster-badge"></span>
+      </div>
+    </header>
+
+    <!-- Setup Guide (shown when not configured, hidden when ready) -->
+    <div id="setup-guide" class="hidden">
+      <h2>⚙️ Setup Required</h2>
+      <p>Majel needs a couple things configured before she can help you, Admiral.</p>
+
+      <div class="setup-section" id="setup-gemini">
+        <h3>1. Gemini API Key <span class="required-badge">Required</span></h3>
+        <p>This is the AI engine. Takes about 60 seconds:</p>
+        <ol>
+          <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio → API Keys</a></li>
+          <li>Click <strong>"Create API key"</strong> (free tier works fine)</li>
+          <li>Copy the key</li>
+          <li>Open <code>/srv/majel/.env</code> in your editor and paste it:</li>
+        </ol>
+        <pre>GEMINI_API_KEY=AIzaSy...your-key-here</pre>
+        <p class="hint">💡 No Google Cloud project needed — AI Studio generates the key directly.</p>
+      </div>
+
+      <div class="setup-section" id="setup-sheets">
+        <h3>2. Google Sheets <span class="optional-badge">Optional</span></h3>
+        <p>Connect your STFC roster spreadsheet for data queries. Skip this for now if you just want to test chat.</p>
+        <details>
+          <summary>Show setup steps</summary>
+          <ol>
+            <li>Go to <a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noopener">Google Cloud Console → APIs</a></li>
+            <li>Select your project, click <strong>"+ ENABLE APIS AND SERVICES"</strong>, search <strong>"Google Sheets API"</strong>, enable it</li>
+            <li>Go to <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">OAuth consent screen</a> → External → fill in app name ("Majel"), your email, add <code>spreadsheets.readonly</code> scope, add yourself as test user</li>
+            <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a> → <strong>"+ CREATE CREDENTIALS"</strong> → <strong>"OAuth client ID"</strong> → type: <strong>Desktop app</strong></li>
+            <li>Click <strong>"DOWNLOAD JSON"</strong> → save as <code>credentials.json</code> in <code>/srv/majel/</code></li>
+            <li>Get your spreadsheet ID from the URL:<br/>
+              <code>https://docs.google.com/spreadsheets/d/<strong>[THIS-ID]</strong>/edit</code></li>
+            <li>Add to <code>.env</code>:</li>
+          </ol>
+          <pre>MAJEL_SPREADSHEET_ID=your-spreadsheet-id
+MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
+          <p class="hint">📄 Full walkthrough with screenshots: see <a href="https://github.com" target="_blank">docs/SETUP.md</a> in the project root.</p>
+        </details>
+      </div>
+
+      <div class="setup-section" id="setup-restart">
+        <h3>3. Restart &amp; Go</h3>
+        <p>After editing <code>.env</code>, restart the server:</p>
+        <pre>npm run dev</pre>
+        <p class="hint">This page will auto-detect when setup is complete.</p>
+      </div>
+    </div>
+
+    <!-- Chat Area (shown when configured) -->
+    <main id="chat-area">
+      <div id="messages">
+        <!-- Messages injected here -->
+      </div>
+    </main>
+
+    <!-- Input -->
+    <footer>
+      <form id="chat-form">
+        <input
+          type="text"
+          id="chat-input"
+          placeholder="Ask Majel about your roster..."
+          autocomplete="off"
+          autofocus
+        />
+        <button type="submit" id="send-btn">Send</button>
+      </form>
+      <div class="footer-links">
+        <button id="history-btn" class="link-btn" title="View Lex conversation history">History</button>
+        <button id="recall-btn" class="link-btn" title="Search Lex memory">Recall</button>
+        <button id="refresh-roster-btn" class="link-btn" title="Reload roster from Sheets">Refresh Roster</button>
+      </div>
+    </footer>
+
+    <!-- Recall Modal -->
+    <dialog id="recall-dialog">
+      <h3>🔍 Lex Memory Recall</h3>
+      <form id="recall-form" method="dialog">
+        <input type="text" id="recall-input" placeholder="Search past conversations..." autocomplete="off" />
+        <button type="submit">Search</button>
+      </form>
+      <div id="recall-results"></div>
+      <button class="close-btn" id="recall-close">Close</button>
+    </dialog>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

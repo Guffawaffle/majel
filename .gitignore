@@ -1,0 +1,22 @@
+# Majel project ignores
+
+# Secrets
+token.json
+credentials.json
+.env
+
+# Python (legacy)
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+
+# Node.js
+node_modules/
+dist/
+
+# Lex (workspace-isolated DB)
+.smartergpt/
+
+# IDE
+.vscode/
