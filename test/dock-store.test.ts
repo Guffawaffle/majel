@@ -770,6 +770,209 @@ describe("DockStore — Officer Conflicts", () => {
   });
 });
 
+// ─── Tags & Discovery ──────────────────────────────────────────
+
+describe("DockStore — Preset Tags", () => {
+  let dockStore: DockStore;
+  let fleetStore: FleetStore;
+
+  beforeEach(() => {
+    fleetStore = createFleetStore(TEST_DB);
+    dockStore = createDockStore(TEST_DB);
+    fleetStore.createShip({
+      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
+      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createShip({
+      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
+      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
+  });
+
+  afterEach(() => {
+    dockStore.close();
+    fleetStore.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("sets and retrieves tags for a preset", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    const tags = dockStore.setPresetTags(preset.id, ["meta", "federation-synergy", "event"]);
+    expect(tags).toEqual(["event", "federation-synergy", "meta"]); // sorted
+  });
+
+  it("normalizes tags to lowercase and trims whitespace", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    const tags = dockStore.setPresetTags(preset.id, [" Meta ", "BUDGET", "  tos  "]);
+    expect(tags).toEqual(["budget", "meta", "tos"]);
+  });
+
+  it("replaces tags on subsequent calls (full replace)", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    dockStore.setPresetTags(preset.id, ["meta", "event"]);
+    const tags = dockStore.setPresetTags(preset.id, ["budget"]);
+    expect(tags).toEqual(["budget"]);
+  });
+
+  it("clears tags with empty array", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    dockStore.setPresetTags(preset.id, ["meta"]);
+    const tags = dockStore.setPresetTags(preset.id, []);
+    expect(tags).toEqual([]);
+  });
+
+  it("throws for non-existent preset", () => {
+    expect(() => dockStore.setPresetTags(999, ["meta"])).toThrow("Preset 999 not found");
+  });
+
+  it("ignores empty/whitespace-only tags", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    const tags = dockStore.setPresetTags(preset.id, ["meta", "", "  ", "budget"]);
+    expect(tags).toEqual(["budget", "meta"]);
+  });
+
+  it("deduplicates tags", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    const tags = dockStore.setPresetTags(preset.id, ["meta", "Meta", "META"]);
+    expect(tags).toEqual(["meta"]);
+  });
+
+  it("includes tags in resolved preset", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    dockStore.setPresetTags(preset.id, ["meta", "event"]);
+    const resolved = dockStore.getPreset(preset.id);
+    expect(resolved!.tags).toEqual(["event", "meta"]);
+  });
+
+  it("returns empty tags array for preset with no tags", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    expect(preset.tags).toEqual([]);
+  });
+
+  it("cascades tag deletion when preset is deleted", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+    dockStore.setPresetTags(preset.id, ["meta", "event"]);
+    dockStore.deletePreset(preset.id);
+    expect(dockStore.listAllTags()).toEqual([]);
+  });
+
+  it("lists all unique tags across presets", () => {
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    const p2 = dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    dockStore.setPresetTags(p1.id, ["meta", "event"]);
+    dockStore.setPresetTags(p2.id, ["meta", "budget"]);
+    expect(dockStore.listAllTags()).toEqual(["budget", "event", "meta"]);
+  });
+
+  it("filters presets by tag", () => {
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    const p2 = dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    dockStore.setPresetTags(p1.id, ["meta"]);
+    dockStore.setPresetTags(p2.id, ["budget"]);
+    const metaPresets = dockStore.listPresets({ tag: "meta" });
+    expect(metaPresets.length).toBe(1);
+    expect(metaPresets[0].presetName).toBe("A");
+  });
+
+  it("filters presets by officerId", () => {
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    const p2 = dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    dockStore.setPresetMembers(p1.id, [{ officerId: "kirk", roleType: "bridge" }]);
+    dockStore.setPresetMembers(p2.id, [{ officerId: "spock", roleType: "bridge" }]);
+    const kirkPresets = dockStore.listPresets({ officerId: "kirk" });
+    expect(kirkPresets.length).toBe(1);
+    expect(kirkPresets[0].presetName).toBe("A");
+  });
+
+  it("counts tags in diagnostics", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    dockStore.setPresetTags(preset.id, ["meta", "event"]);
+    expect(dockStore.counts().tags).toBe(2);
+  });
+});
+
+describe("DockStore — Find Presets For Dock", () => {
+  let dockStore: DockStore;
+  let fleetStore: FleetStore;
+
+  beforeEach(() => {
+    fleetStore = createFleetStore(TEST_DB);
+    dockStore = createDockStore(TEST_DB);
+    fleetStore.createShip({
+      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
+      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createShip({
+      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
+      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+  });
+
+  afterEach(() => {
+    dockStore.close();
+    fleetStore.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("finds presets matching a dock's ships and intents", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.setDockIntents(1, ["grinding"]);
+    dockStore.addDockShip(1, "kumari");
+
+    // This preset matches: kumari is in dock 1, grinding is an intent of dock 1
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Match" });
+    // This preset doesn't match: botany-bay is NOT in dock 1
+    const p2 = dockStore.createPreset({ shipId: "botany-bay", intentKey: "grinding", presetName: "No Match" });
+    // This preset doesn't match: mining-gas is NOT an intent of dock 1
+    const p3 = dockStore.createPreset({ shipId: "kumari", intentKey: "mining-gas", presetName: "Wrong Intent" });
+
+    const found = dockStore.findPresetsForDock(1);
+    expect(found.length).toBe(1);
+    expect(found[0].presetName).toBe("Match");
+  });
+
+  it("returns empty for dock with no ships", () => {
+    dockStore.upsertDock(2, { label: "Empty" });
+    dockStore.setDockIntents(2, ["grinding"]);
+    dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    expect(dockStore.findPresetsForDock(2)).toEqual([]);
+  });
+
+  it("returns empty for dock with no intents", () => {
+    dockStore.upsertDock(3, { label: "No Intents" });
+    dockStore.addDockShip(3, "kumari");
+    dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    expect(dockStore.findPresetsForDock(3)).toEqual([]);
+  });
+
+  it("finds multiple matching presets for multi-intent dock", () => {
+    dockStore.upsertDock(1, { label: "Mining Hub" });
+    dockStore.setDockIntents(1, ["mining-gas", "mining-crystal"]);
+    dockStore.addDockShip(1, "botany-bay");
+
+    dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "Gas Crew" });
+    dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-crystal", presetName: "Crystal Crew" });
+    dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-ore", presetName: "Ore Crew" });
+
+    const found = dockStore.findPresetsForDock(1);
+    expect(found.length).toBe(2);
+    expect(found.map((p) => p.presetName).sort()).toEqual(["Crystal Crew", "Gas Crew"]);
+  });
+
+  it("includes tags in found presets", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.setDockIntents(1, ["grinding"]);
+    dockStore.addDockShip(1, "kumari");
+    const p = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    dockStore.setPresetTags(p.id, ["meta"]);
+    const found = dockStore.findPresetsForDock(1);
+    expect(found[0].tags).toEqual(["meta"]);
+  });
+});
+
 // ─── Dock Briefing Builder ──────────────────────────────────────
 
 describe("DockStore — Dock Briefing", () => {
@@ -843,6 +1046,22 @@ describe("DockStore — Dock Briefing", () => {
     expect(briefing.crewLines.length).toBe(1);
     expect(briefing.crewLines[0]).toContain("Kirk(cpt)");
     expect(briefing.crewLines[0]).toContain("Spock");
+  });
+
+  it("includes tags in crew lines when preset has tags", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.setDockIntents(1, ["grinding"]);
+    dockStore.addDockShip(1, "kumari");
+    dockStore.updateDockShip(1, "kumari", { isActive: true });
+
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Main Crew" });
+    dockStore.setPresetMembers(preset.id, [
+      { officerId: "kirk", roleType: "bridge", slot: "captain" },
+    ]);
+    dockStore.setPresetTags(preset.id, ["meta", "federation"]);
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.crewLines[0]).toContain("[federation, meta]");
   });
 
   it("shows model-suggest fallback when no preset crew", () => {
@@ -1313,6 +1532,99 @@ describe("Dock API Routes", () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty("conflicts");
       expect(res.body).toHaveProperty("count");
+    });
+  });
+
+  // ── Tags & Discovery Endpoints ──────────────────────────
+
+  describe("PUT /api/fleet/presets/:id/tags", () => {
+    it("sets tags on a preset", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+      const res = await request(app)
+        .put(`/api/fleet/presets/${preset.id}/tags`)
+        .send({ tags: ["meta", "event"] });
+      expect(res.status).toBe(200);
+      expect(res.body.tags).toEqual(["event", "meta"]);
+      expect(res.body.count).toBe(2);
+    });
+
+    it("rejects non-array tags", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+      const res = await request(app)
+        .put(`/api/fleet/presets/${preset.id}/tags`)
+        .send({ tags: "meta" });
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for non-existent preset", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const res = await request(app)
+        .put("/api/fleet/presets/999/tags")
+        .send({ tags: ["meta"] });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("GET /api/fleet/tags", () => {
+    it("lists all unique tags", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+      dockStore.setPresetTags(p1.id, ["meta", "event"]);
+      const res = await request(app).get("/api/fleet/tags");
+      expect(res.status).toBe(200);
+      expect(res.body.tags).toEqual(["event", "meta"]);
+      expect(res.body.count).toBe(2);
+    });
+  });
+
+  describe("GET /api/fleet/presets?tag=", () => {
+    it("filters presets by tag", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+      dockStore.setPresetTags(p1.id, ["meta"]);
+      dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "B" });
+      const res = await request(app).get("/api/fleet/presets?tag=meta");
+      expect(res.status).toBe(200);
+      expect(res.body.count).toBe(1);
+      expect(res.body.presets[0].presetName).toBe("A");
+    });
+  });
+
+  describe("GET /api/fleet/presets?officerId=", () => {
+    it("filters presets by officer", async () => {
+      fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+      dockStore.setPresetMembers(p1.id, [{ officerId: "kirk", roleType: "bridge" }]);
+      dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "B" });
+      const res = await request(app).get("/api/fleet/presets?officerId=kirk");
+      expect(res.status).toBe(200);
+      expect(res.body.count).toBe(1);
+      expect(res.body.presets[0].presetName).toBe("A");
+    });
+  });
+
+  describe("GET /api/fleet/docks/:num/presets", () => {
+    it("finds presets relevant to a dock", async () => {
+      const app = createApp(makeState({ dockStore }));
+      dockStore.upsertDock(1, { label: "Grinder" });
+      dockStore.setDockIntents(1, ["grinding"]);
+      dockStore.addDockShip(1, "kumari");
+      dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Match" });
+      dockStore.createPreset({ shipId: "kumari", intentKey: "mining-gas", presetName: "No Match" });
+      const res = await request(app).get("/api/fleet/docks/1/presets");
+      expect(res.status).toBe(200);
+      expect(res.body.dockNumber).toBe(1);
+      expect(res.body.count).toBe(1);
+      expect(res.body.presets[0].presetName).toBe("Match");
+    });
+
+    it("returns 400 for invalid dock number", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const res = await request(app).get("/api/fleet/docks/99/presets");
+      expect(res.status).toBe(400);
     });
   });
 });

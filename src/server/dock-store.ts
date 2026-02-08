@@ -102,6 +102,7 @@ export interface CrewPresetMember {
 
 export interface CrewPresetWithMembers extends CrewPreset {
   members: CrewPresetMember[];
+  tags: string[];
 }
 
 export interface OfficerConflict {
@@ -161,18 +162,23 @@ export interface DockStore {
   // ── Crew Presets ──────────────────────────────────────
   createPreset(fields: { shipId: string; intentKey: string; presetName: string; isDefault?: boolean }): CrewPresetWithMembers;
   getPreset(id: number): CrewPresetWithMembers | null;
-  listPresets(filters?: { shipId?: string; intentKey?: string }): CrewPresetWithMembers[];
+  listPresets(filters?: { shipId?: string; intentKey?: string; tag?: string; officerId?: string }): CrewPresetWithMembers[];
   updatePreset(id: number, fields: { presetName?: string; isDefault?: boolean }): CrewPresetWithMembers | null;
   deletePreset(id: number): boolean;
   setPresetMembers(presetId: number, members: Array<{ officerId: string; roleType: "bridge" | "below_deck"; slot?: string }>): CrewPresetMember[];
   getOfficerConflicts(): OfficerConflict[];
+
+  // ── Tags & Discovery ──────────────────────────────────
+  setPresetTags(presetId: number, tags: string[]): string[];
+  listAllTags(): string[];
+  findPresetsForDock(dockNumber: number): CrewPresetWithMembers[];
 
   // ── Briefing ──────────────────────────────────────────
   buildBriefing(): DockBriefing;
 
   // ── Diagnostics ───────────────────────────────────────
   getDbPath(): string;
-  counts(): { intents: number; docks: number; dockShips: number; presets: number; presetMembers: number };
+  counts(): { intents: number; docks: number; dockShips: number; presets: number; presetMembers: number; tags: number };
   close(): void;
 }
 
@@ -325,15 +331,24 @@ export function createDockStore(dbPath?: string): DockStore {
     CREATE INDEX IF NOT EXISTS idx_crew_preset_members_officer ON crew_preset_members(officer_id);
     CREATE INDEX IF NOT EXISTS idx_crew_preset_members_preset ON crew_preset_members(preset_id);
 
+    -- Freeform tags for preset discoverability (ADR-010 Phase 2b)
+    CREATE TABLE IF NOT EXISTS preset_tags (
+      preset_id INTEGER NOT NULL REFERENCES crew_presets(id) ON DELETE CASCADE,
+      tag TEXT NOT NULL,
+      PRIMARY KEY (preset_id, tag)
+    );
+    CREATE INDEX IF NOT EXISTS idx_preset_tags_tag ON preset_tags(tag);
+
     -- Ensure schema_version table exists (may already be created by fleet-store)
     CREATE TABLE IF NOT EXISTS schema_version (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
     );
 
-    -- Update schema_version for dock-store tables (v2 = Phase 1, v3 = Phase 2 crew presets)
+    -- Update schema_version for dock-store tables (v2 = Phase 1, v3 = Phase 2, v4 = tags & discovery)
     INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (2, datetime('now'));
     INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (3, datetime('now'));
+    INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (4, datetime('now'));
   `);
 
   // ── Seed intents ────────────────────────────────────────
@@ -575,12 +590,63 @@ export function createDockStore(dbPath?: string): DockStore {
        ORDER BY o.name ASC, s.name ASC`,
     ),
 
+    // Tags
+    getPresetTags: db.prepare(
+      `SELECT tag FROM preset_tags WHERE preset_id = ? ORDER BY tag ASC`,
+    ),
+    clearPresetTags: db.prepare(
+      `DELETE FROM preset_tags WHERE preset_id = ?`,
+    ),
+    insertPresetTag: db.prepare(
+      `INSERT OR IGNORE INTO preset_tags (preset_id, tag) VALUES (?, ?)`,
+    ),
+    listAllTags: db.prepare(
+      `SELECT DISTINCT tag FROM preset_tags ORDER BY tag ASC`,
+    ),
+    listPresetsByTag: db.prepare(
+      `SELECT cp.id, cp.ship_id AS shipId, cp.intent_key AS intentKey,
+              cp.preset_name AS presetName, cp.is_default AS isDefault,
+              cp.created_at AS createdAt, cp.updated_at AS updatedAt,
+              s.name AS shipName, ic.label AS intentLabel
+       FROM crew_presets cp
+       JOIN ships s ON cp.ship_id = s.id
+       JOIN intent_catalog ic ON cp.intent_key = ic.key
+       JOIN preset_tags pt ON cp.id = pt.preset_id
+       WHERE pt.tag = ?
+       ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
+    ),
+    listPresetsByOfficer: db.prepare(
+      `SELECT DISTINCT cp.id, cp.ship_id AS shipId, cp.intent_key AS intentKey,
+              cp.preset_name AS presetName, cp.is_default AS isDefault,
+              cp.created_at AS createdAt, cp.updated_at AS updatedAt,
+              s.name AS shipName, ic.label AS intentLabel
+       FROM crew_presets cp
+       JOIN ships s ON cp.ship_id = s.id
+       JOIN intent_catalog ic ON cp.intent_key = ic.key
+       JOIN crew_preset_members cpm ON cp.id = cpm.preset_id
+       WHERE cpm.officer_id = ?
+       ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
+    ),
+    findPresetsForDock: db.prepare(
+      `SELECT DISTINCT cp.id, cp.ship_id AS shipId, cp.intent_key AS intentKey,
+              cp.preset_name AS presetName, cp.is_default AS isDefault,
+              cp.created_at AS createdAt, cp.updated_at AS updatedAt,
+              s.name AS shipName, ic.label AS intentLabel
+       FROM crew_presets cp
+       JOIN ships s ON cp.ship_id = s.id
+       JOIN intent_catalog ic ON cp.intent_key = ic.key
+       WHERE cp.ship_id IN (SELECT ship_id FROM dock_ships WHERE dock_number = ?)
+         AND cp.intent_key IN (SELECT intent_key FROM dock_intents WHERE dock_number = ?)
+       ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
+    ),
+
     // Counts
     countIntents: db.prepare(`SELECT COUNT(*) AS count FROM intent_catalog`),
     countDocks: db.prepare(`SELECT COUNT(*) AS count FROM drydock_loadouts`),
     countDockShips: db.prepare(`SELECT COUNT(*) AS count FROM dock_ships`),
     countPresets: db.prepare(`SELECT COUNT(*) AS count FROM crew_presets`),
     countPresetMembers: db.prepare(`SELECT COUNT(*) AS count FROM crew_preset_members`),
+    countTags: db.prepare(`SELECT COUNT(*) AS count FROM preset_tags`),
   };
 
   // ── Intent Methods ──────────────────────────────────────
@@ -770,7 +836,8 @@ export function createDockStore(dbPath?: string): DockStore {
     if (!row) return null;
     const preset = { ...row, isDefault: Boolean(row.isDefault) };
     const members = stmts.getPresetMembers.all(preset.id) as CrewPresetMember[];
-    return { ...preset, members };
+    const tags = (stmts.getPresetTags.all(preset.id) as Array<{ tag: string }>).map((r) => r.tag);
+    return { ...preset, members, tags };
   }
 
   function createPreset(fields: { shipId: string; intentKey: string; presetName: string; isDefault?: boolean }): CrewPresetWithMembers {
@@ -807,9 +874,14 @@ export function createDockStore(dbPath?: string): DockStore {
     return resolvePreset(stmts.getPreset.get(id) as CrewPreset | undefined);
   }
 
-  function listPresets(filters?: { shipId?: string; intentKey?: string }): CrewPresetWithMembers[] {
+  function listPresets(filters?: { shipId?: string; intentKey?: string; tag?: string; officerId?: string }): CrewPresetWithMembers[] {
     let rows: CrewPreset[];
-    if (filters?.shipId && filters?.intentKey) {
+    // Tag and officer filters use dedicated queries (can't combine with ship/intent in one prepared stmt)
+    if (filters?.tag) {
+      rows = stmts.listPresetsByTag.all(filters.tag) as CrewPreset[];
+    } else if (filters?.officerId) {
+      rows = stmts.listPresetsByOfficer.all(filters.officerId) as CrewPreset[];
+    } else if (filters?.shipId && filters?.intentKey) {
       rows = stmts.listPresetsByShipAndIntent.all(filters.shipId, filters.intentKey) as CrewPreset[];
     } else if (filters?.shipId) {
       rows = stmts.listPresetsByShip.all(filters.shipId) as CrewPreset[];
@@ -915,6 +987,35 @@ export function createDockStore(dbPath?: string): DockStore {
     return Array.from(byOfficer.values());
   }
 
+  // ── Tags & Discovery ────────────────────────────────────
+
+  const setPresetTagsTx = db.transaction((presetId: number, tags: string[]) => {
+    const preset = stmts.getPreset.get(presetId) as CrewPreset | undefined;
+    if (!preset) throw new Error(`Preset ${presetId} not found`);
+
+    stmts.clearPresetTags.run(presetId);
+    for (const tag of tags) {
+      const normalized = tag.trim().toLowerCase();
+      if (normalized) {
+        stmts.insertPresetTag.run(presetId, normalized);
+      }
+    }
+  });
+
+  function setPresetTags(presetId: number, tags: string[]): string[] {
+    setPresetTagsTx(presetId, tags);
+    return (stmts.getPresetTags.all(presetId) as Array<{ tag: string }>).map((r) => r.tag);
+  }
+
+  function listAllTags(): string[] {
+    return (stmts.listAllTags.all() as Array<{ tag: string }>).map((r) => r.tag);
+  }
+
+  function findPresetsForDock(dockNumber: number): CrewPresetWithMembers[] {
+    const rows = stmts.findPresetsForDock.all(dockNumber, dockNumber) as CrewPreset[];
+    return rows.map((r) => resolvePreset(r)!);
+  }
+
   // ── Dock Briefing Builder (ADR-010 §3) ──────────────────
 
   function buildBriefing(): DockBriefing {
@@ -965,7 +1066,8 @@ export function createDockStore(dbPath?: string): DockStore {
           .join(" · ");
         const presetCount = relevantPresets.length;
         const suffix = presetCount > 1 ? ` — ${presetCount} presets` : "";
-        crewLines.push(`  D${dock.dockNumber} ${activeShip.shipName}: ${crewStr || "(no bridge crew)"}${suffix}`);
+        const tagStr = best.tags.length > 0 ? ` [${best.tags.join(", ")}]` : "";
+        crewLines.push(`  D${dock.dockNumber} ${activeShip.shipName}: ${crewStr || "(no bridge crew)"}${suffix}${tagStr}`);
       } else {
         crewLines.push(`  D${dock.dockNumber} ${activeShip.shipName}: (no crew preset — model will suggest)`);
       }
@@ -1078,6 +1180,9 @@ export function createDockStore(dbPath?: string): DockStore {
     deletePreset,
     setPresetMembers,
     getOfficerConflicts,
+    setPresetTags,
+    listAllTags,
+    findPresetsForDock,
     buildBriefing,
     getDbPath: () => resolvedPath,
     counts: () => ({
@@ -1086,6 +1191,7 @@ export function createDockStore(dbPath?: string): DockStore {
       dockShips: (stmts.countDockShips.get() as { count: number }).count,
       presets: (stmts.countPresets.get() as { count: number }).count,
       presetMembers: (stmts.countPresetMembers.get() as { count: number }).count,
+      tags: (stmts.countTags.get() as { count: number }).count,
     }),
     close: () => db.close(),
   };

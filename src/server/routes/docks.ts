@@ -226,8 +226,11 @@ export function createDockRoutes(appState: AppState): Router {
     }
     const shipId = req.query.shipId as string | undefined;
     const intentKey = req.query.intentKey as string | undefined;
+    const tag = req.query.tag as string | undefined;
+    const officerId = req.query.officerId as string | undefined;
+    const hasFilters = shipId || intentKey || tag || officerId;
     const presets = appState.dockStore.listPresets(
-      (shipId || intentKey) ? { shipId, intentKey } : undefined,
+      hasFilters ? { shipId, intentKey, tag, officerId } : undefined,
     );
     res.json({ presets, count: presets.length });
   });
@@ -319,6 +322,49 @@ export function createDockRoutes(appState: AppState): Router {
       const message = err instanceof Error ? err.message : String(err);
       res.status(400).json({ error: message });
     }
+  });
+
+  // ─── Tags & Discovery ─────────────────────────────────────
+
+  router.get("/api/fleet/tags", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const tags = appState.dockStore.listAllTags();
+    res.json({ tags, count: tags.length });
+  });
+
+  router.put("/api/fleet/presets/:id/tags", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid preset ID" });
+    }
+    const { tags } = req.body;
+    if (!Array.isArray(tags)) {
+      return res.status(400).json({ error: "Body must contain 'tags' array" });
+    }
+    try {
+      const result = appState.dockStore.setPresetTags(id, tags);
+      res.json({ presetId: id, tags: result, count: result.length });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  router.get("/api/fleet/docks/:num/presets", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const num = parseInt(req.params.num, 10);
+    if (isNaN(num) || num < 1 || num > 8) {
+      return res.status(400).json({ error: "Dock number must be between 1 and 8" });
+    }
+    const presets = appState.dockStore.findPresetsForDock(num);
+    res.json({ dockNumber: num, presets, count: presets.length });
   });
 
 
