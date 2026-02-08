@@ -186,6 +186,8 @@ export function createFleetStore(dbPath?: string): FleetStore {
       updated_at TEXT NOT NULL
     );
 
+    -- crew_assignments: reserved for future live-state tracking (ADR-007 Phase C).
+    -- Active development uses crew_presets (ADR-010). Do not build new features against this table.
     CREATE TABLE IF NOT EXISTS crew_assignments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ship_id TEXT NOT NULL REFERENCES ships(id) ON DELETE CASCADE,
@@ -196,6 +198,14 @@ export function createFleetStore(dbPath?: string): FleetStore {
       created_at TEXT NOT NULL,
       UNIQUE(ship_id, officer_id, role_type, active_for_role)
     );
+
+    CREATE TABLE IF NOT EXISTS schema_version (
+      version INTEGER PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
+
+    -- Seed schema_version if empty (v1 = initial fleet schema)
+    INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (1, datetime('now'));
 
     CREATE TABLE IF NOT EXISTS assignment_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

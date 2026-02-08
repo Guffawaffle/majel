@@ -11,6 +11,7 @@ import type { FleetData } from "./fleet-data.js";
 import type { SettingsStore } from "./settings.js";
 import type { SessionStore } from "./sessions.js";
 import type { FleetStore } from "./fleet-store.js";
+import type { DockStore } from "./dock-store.js";
 
 // ─── App State ──────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ export interface AppState {
   settingsStore: SettingsStore | null;
   sessionStore: SessionStore | null;
   fleetStore: FleetStore | null;
+  dockStore: DockStore | null;
   fleetData: FleetData | null;
   rosterError: string | null;
   startupComplete: boolean;

@@ -39,6 +39,7 @@ import { createMemoryService } from "./memory.js";
 import { createSettingsStore } from "./settings.js";
 import { createSessionStore } from "./sessions.js";
 import { createFleetStore } from "./fleet-store.js";
+import { createDockStore } from "./dock-store.js";
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
@@ -56,6 +57,7 @@ import { createChatRoutes } from "./routes/chat.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { createFleetRoutes } from "./routes/fleet.js";
+import { createDockRoutes } from "./routes/docks.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -76,6 +78,7 @@ const state: AppState = {
   settingsStore: null,
   sessionStore: null,
   fleetStore: null,
+  dockStore: null,
   fleetData: null,
   rosterError: null,
   startupComplete: false,
@@ -112,6 +115,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createSettingsRoutes(appState));
   app.use(createSessionRoutes(appState));
   app.use(createFleetRoutes(appState));
+  app.use(createDockRoutes(appState));
 
   // ─── SPA Fallback ─────────────────────────────────────────
   app.get("*", (_req, res) => {
@@ -156,6 +160,15 @@ async function boot(): Promise<void> {
     log.boot.info({ ships: counts.ships, officers: counts.officers }, "fleet store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "fleet store init failed");
+  }
+
+  // 2d. Initialize dock store (always — shares fleet.db)
+  try {
+    state.dockStore = createDockStore();
+    const dockCounts = state.dockStore.counts();
+    log.boot.info({ intents: dockCounts.intents, docks: dockCounts.docks }, "dock store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "dock store init failed");
   }
 
   // Resolve config: settings store → env → defaults
@@ -237,6 +250,9 @@ async function shutdown(): Promise<void> {
   }
   if (state.fleetStore) {
     state.fleetStore.close();
+  }
+  if (state.dockStore) {
+    state.dockStore.close();
   }
   if (state.memoryService) {
     await state.memoryService.close();

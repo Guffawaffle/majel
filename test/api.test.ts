@@ -85,6 +85,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     settingsStore: null,
     sessionStore: null,
     fleetStore: null,
+    dockStore: null,
     fleetData: null,
     rosterError: null,
     startupComplete: false,

@@ -32,6 +32,7 @@ export function createCoreRoutes(appState: AppState): Router {
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
       fleetStore: appState.fleetStore ? { active: true, ...appState.fleetStore.counts() } : { active: false },
+      dockStore: appState.dockStore ? { active: true, ...appState.dockStore.counts() } : { active: false },
       credentials: hasCredentials(),
     });
   });
@@ -73,6 +74,17 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "GET", path: "/api/fleet/log", description: "Fleet activity log", params: { query: { shipId: "string?", officerId: "string?", action: "string?", limit: "number?" } } },
         { method: "POST", path: "/api/fleet/import", description: "Import fleet data from Sheets into fleet store" },
         { method: "GET", path: "/api/fleet/counts", description: "Fleet store entity counts" },
+        { method: "GET", path: "/api/fleet/intents", description: "List intent catalog (builtin + custom)", params: { query: { category: "string (optional)" } } },
+        { method: "POST", path: "/api/fleet/intents", description: "Create a custom intent", params: { body: { key: "string", label: "string", category: "string", description: "string?", icon: "string?" } } },
+        { method: "DELETE", path: "/api/fleet/intents/:key", description: "Delete a custom intent (builtin = error)" },
+        { method: "GET", path: "/api/fleet/docks", description: "List all dock loadouts with intents + ships" },
+        { method: "GET", path: "/api/fleet/docks/:num", description: "Get a single dock with full context" },
+        { method: "PUT", path: "/api/fleet/docks/:num", description: "Create or update a dock loadout", params: { body: { label: "string?", notes: "string?", priority: "number?" } } },
+        { method: "DELETE", path: "/api/fleet/docks/:num", description: "Clear a dock's loadout" },
+        { method: "PUT", path: "/api/fleet/docks/:num/intents", description: "Set dock's intents (full replace)", params: { body: { intents: "string[] (intent keys)" } } },
+        { method: "POST", path: "/api/fleet/docks/:num/ships", description: "Add ship to dock rotation", params: { body: { shipId: "string", notes: "string?" } } },
+        { method: "DELETE", path: "/api/fleet/docks/:num/ships/:shipId", description: "Remove ship from dock" },
+        { method: "PATCH", path: "/api/fleet/docks/:num/ships/:shipId", description: "Update dock ship (set active, reorder)", params: { body: { isActive: "boolean?", sortOrder: "number?", notes: "string?" } } },
       ],
     });
   });
@@ -143,6 +155,14 @@ export function createCoreRoutes(appState: AppState): Router {
           status: "active",
           ...appState.fleetStore.counts(),
           dbPath: appState.fleetStore.getDbPath(),
+        };
+      })(),
+      dockStore: (() => {
+        if (!appState.dockStore) return { status: "not configured" };
+        return {
+          status: "active",
+          ...appState.dockStore.counts(),
+          dbPath: appState.dockStore.getDbPath(),
         };
       })(),
       sheets: {
