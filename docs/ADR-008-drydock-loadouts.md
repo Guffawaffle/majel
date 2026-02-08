@@ -15,7 +15,7 @@ In STFC, drydocks aren't just parking spots — each one typically serves a **pu
 - Dock 3: "Gas/crystal/ore mining — rotate survey ships by node type"
 - Dock 4: "Tri/dilithium/parasteel mining — dedicated refinery ship"
 
-This is the **drydock loadout** concept: each dock has an **intent** (what it does), a **rotation** of ships that serve that intent, and each ship has **crew configurations** that change based on what the dock is doing.
+This is the **drydock loadout** concept: each dock has **intents** (what it does), a **rotation** of ships that serve those intents, and each ship has **crew configurations** that change based on what the dock is doing.
 
 ### Why This Matters for the Model
 
@@ -34,67 +34,142 @@ This is the largest UI lift Majel has attempted. The current UI is:
 - Fleet config panel (right-side slide-out with number inputs)
 
 This feature requires:
-- A **visual drydock board** — N docks rendered as slots/cards
-- **Drag-and-drop** or select-based ship assignment
-- **Intent selectors** with standardized + custom categories
-- **Crew configuration** per ship per intent
-- **Multi-ship rotation** display per dock
-- Real-time model context injection of the full loadout state
+- A **visual drydock board** that replaces the chat area when opened
+- **Multi-select intent assignment** per dock from a reference data table
+- **Ship rotation management** with user-toggled "active" state
+- **Crew presets** — Majel's free equivalent of STFC's paid preset slots
+- **BASIC vs ADVANCED** progressive disclosure
+- Real-time model context injection of loadout state with calculated summaries
+
+## Decisions (from Q&A)
+
+Decisions locked in after initial design review:
+
+### D1: Multi-intent = Multi-select from Reference Table
+**Decision:** Docks support **multiple intents** via multi-select. The available intents come from a **reference data table** (`intent_catalog`) seeded with publicly available STFC activity types. Users can add custom intents.
+
+**Rationale:** "Dock 3 does gas/crystal/ore" is natural — the dock just has three intents checked. No need for intent hierarchy; flat multi-select with categories for grouping in the UI.
+
+### D2: Crew Conflicts — Warn but Allow
+**Decision:** Officers **can** appear in presets across multiple docks. UI shows a yellow conflict badge. Model is told about conflicts so it can flag them when advising.
+
+**Rationale:** Presets are aspirational — they're "what I'd LIKE to crew." In-game you can only crew one ship at a time per officer, but planning across docks requires the same officer to appear in multiple configurations. The warning helps the Admiral remember they can't literally run both simultaneously.
+
+### D3: UI Location — Left Nav Tool, Replaces Chat Area
+**Decision:** The left sidebar gets a new **drydock icon/tool**. Clicking it replaces the main chat content area with the drydock board. Clicking the chat icon returns to chat. Think of it as **view switching**, not a new route.
+
+**Rationale:** The drydock board needs full width. It's too complex for a slide-out panel. But it's part of the same app, not a separate page — view switching keeps context close.
+
+### D4: Active Ship = User-Managed Toggle
+**Decision:** The "active" ship in each dock is a **user toggle**, not auto-detected. An **Active Ships slide-out** provides a quick overview:
+
+```
+⚓ ACTIVE SHIPS
+  Dock 1: Kumari [★]
+  Dock 2: ☐ Franklin  ☑ ECS Horizon
+  Dock 3: ☑ Botany Bay  ☐ North Star
+  Dock 4: ☐ (none assigned)
+```
+
+**Rationale:** Auto-detection from Sheets is fragile and adds coupling. The user knows what's in their dock right now. The slide-out gives a quick "cockpit view" without opening the full board.
+
+### D5: Model Context — Calculated Summaries + Conflict Report
+**Decision:** The model gets a **calculated summary** in the prompt, not raw table dumps. Prefer derived intelligence over raw data.
+
+**Rationale:** "Calculated data > model-made-up data." The model should receive pre-computed facts it can cite directly, not raw rows it might miscount or hallucinate about.
+
+### D6: Crew Presets — Separate Feature, Aligned with Docks
+**Decision:** Crew presets are a **Majel feature** (free, unlimited) distinct from STFC's paid in-game preset slots. Presets are scoped to a **ship + intent combination**. The existing `crew_assignments` table stays for now as "live state"; presets are saved configurations.
+
+**Decision:** Introduce **BASIC vs ADVANCED** mode concept:
+- **BASIC:** Pick intents for docks, assign ships, see suggested crews (model training knowledge)
+- **ADVANCED:** Build custom crew presets per ship per intent, manage officer conflicts, fine-tune rotation priority
+
+This is Majel's first progressive disclosure pattern and should be reusable across future features.
 
 ## Design
 
-### 1. Intent Taxonomy
+### 1. Intent Catalog — Reference Data Table
 
-Intents should be **standardized but extensible**. A curated set covers 90% of use cases; custom intents handle the rest.
+The intent taxonomy lives in a **seeded SQLite table**, not hardcoded constants. This makes it queryable, extensible, and gives the model a formal vocabulary.
 
-#### Standard Intents
+#### Schema
 
-| Intent Key | Label | Description |
-|-----------|-------|-------------|
-| `mining-gas` | Gas Mining | Collecting raw gas resources |
-| `mining-crystal` | Crystal Mining | Collecting raw crystal resources |
-| `mining-ore` | Ore Mining | Collecting raw ore resources |
-| `mining-tri` | Tritanium Mining | Refined resource mining |
-| `mining-dil` | Dilithium Mining | Refined resource mining |
-| `mining-para` | Parasteel Mining | Refined resource mining |
-| `mining-lat` | Latinum Mining | Special resource mining |
-| `mining-iso` | Isogen Mining | Special/event resources |
-| `grinding` | Hostile Grinding | Killing NPCs for XP/loot |
-| `armada` | Armada | Multi-player boss battles |
-| `pvp` | PvP/Raiding | Player vs player combat |
-| `base-defense` | Base Defense | Stationed for station protection |
-| `events` | Events | Rotating event-specific duties |
-| `exploration` | Exploration | Away missions, dark space, etc. |
-| `cargo-run` | Cargo Run | Hauling between stations |
-| `custom` | Custom | User-defined intent |
+```sql
+CREATE TABLE intent_catalog (
+  key TEXT PRIMARY KEY,          -- e.g. "mining-gas"
+  label TEXT NOT NULL,           -- "Gas Mining"
+  category TEXT NOT NULL,        -- grouping: "mining", "combat", "utility", "custom"
+  description TEXT,              -- "Collecting raw gas from nodes"
+  icon TEXT,                     -- emoji or icon hint: "⛽"
+  is_builtin INTEGER NOT NULL DEFAULT 1, -- 0 = user-created
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+```
 
-#### Extensibility
+#### Seed Data
 
-- Standard intents ship with the app and are versioned
-- Users can create custom intents with a key/label/description
-- The model receives both standard and custom intent definitions so it can reason about them
-- Future: community-contributed intent packs?
+| Key | Label | Category | Icon |
+|-----|-------|----------|------|
+| `mining-gas` | Gas Mining | mining | ⛽ |
+| `mining-crystal` | Crystal Mining | mining | 💎 |
+| `mining-ore` | Ore Mining | mining | ⛏️ |
+| `mining-tri` | Tritanium Mining | mining | 🔩 |
+| `mining-dil` | Dilithium Mining | mining | 🔮 |
+| `mining-para` | Parasteel Mining | mining | 🛡️ |
+| `mining-lat` | Latinum Mining | mining | 💰 |
+| `mining-iso` | Isogen Mining | mining | ☢️ |
+| `mining-data` | Data Mining | mining | 📊 |
+| `grinding` | Hostile Grinding | combat | ⚔️ |
+| `grinding-swarm` | Swarm Grinding | combat | 🐝 |
+| `grinding-eclipse` | Eclipse Grinding | combat | 🌑 |
+| `armada` | Armada | combat | 🎯 |
+| `armada-solo` | Solo Armada | combat | 🎯 |
+| `pvp` | PvP/Raiding | combat | 💀 |
+| `base-defense` | Base Defense | combat | 🏰 |
+| `exploration` | Exploration | utility | 🔭 |
+| `cargo-run` | Cargo Run | utility | 📦 |
+| `events` | Events | utility | 🎪 |
+| `voyages` | Voyages | utility | 🚀 |
+| `away-team` | Away Team | utility | 🖖 |
 
-### 2. Data Model
+#### Extensibility Rules
+
+- Built-in intents (`is_builtin = 1`) cannot be deleted, only hidden
+- Users create custom intents (`is_builtin = 0`) with any key/label
+- The model receives the full catalog so it can suggest appropriate intents
+- Future: community-maintained intent packs imported via JSON
+
+### 2. Data Model — Full Schema
 
 #### New Tables
 
 ```sql
+-- Reference catalog of available intents (seeded + user-extensible)
+CREATE TABLE intent_catalog ( ... );  -- see above
+
 -- What each drydock is configured to do
 CREATE TABLE drydock_loadouts (
   dock_number INTEGER PRIMARY KEY,     -- 1-8, corresponds to drydock A-H
   label TEXT,                          -- user nickname: "My Grinder", "Mining 1"
-  intent TEXT NOT NULL DEFAULT 'custom', -- FK to intent taxonomy
-  intent_detail TEXT,                  -- freeform: "dilithium fields in Rator"
+  notes TEXT,                          -- freeform notes about this dock
   priority INTEGER NOT NULL DEFAULT 0, -- higher = more important dock
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
--- Ships assigned to a dock (supports rotation — multiple per dock)
+-- Multi-select: which intents are assigned to which dock
+CREATE TABLE dock_intents (
+  dock_number INTEGER NOT NULL REFERENCES drydock_loadouts(dock_number) ON DELETE CASCADE,
+  intent_key TEXT NOT NULL REFERENCES intent_catalog(key),
+  PRIMARY KEY (dock_number, intent_key)
+);
+
+-- Ships assigned to a dock rotation (multiple per dock, one active)
 CREATE TABLE dock_ships (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  dock_number INTEGER NOT NULL REFERENCES drydock_loadouts(dock_number),
+  dock_number INTEGER NOT NULL REFERENCES drydock_loadouts(dock_number) ON DELETE CASCADE,
   ship_id TEXT NOT NULL REFERENCES ships(id),
   is_active INTEGER NOT NULL DEFAULT 0,  -- 1 = currently the one in the dock
   sort_order INTEGER NOT NULL DEFAULT 0, -- display order in rotation
@@ -103,16 +178,16 @@ CREATE TABLE dock_ships (
   UNIQUE(dock_number, ship_id)
 );
 
--- Crew preset per ship per intent context
+-- Saved crew configuration for a ship + intent combo
 CREATE TABLE crew_presets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ship_id TEXT NOT NULL REFERENCES ships(id),
-  intent TEXT NOT NULL,                  -- what this crew config is for
-  preset_name TEXT NOT NULL,             -- "mining crew", "armada crew"
+  intent_key TEXT NOT NULL REFERENCES intent_catalog(key),
+  preset_name TEXT NOT NULL,             -- "gas mining crew", "armada A crew"
   is_default INTEGER NOT NULL DEFAULT 0, -- auto-select when dock matches intent
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE(ship_id, intent, preset_name)
+  UNIQUE(ship_id, intent_key, preset_name)
 );
 
 -- Officers in a crew preset
@@ -124,15 +199,6 @@ CREATE TABLE crew_preset_members (
   slot TEXT,                             -- 'captain', 'officer_1', 'belowdeck_1'
   UNIQUE(preset_id, officer_id)
 );
-
--- Custom intents defined by the user
-CREATE TABLE custom_intents (
-  key TEXT PRIMARY KEY,                  -- e.g. "swarm-hunting"
-  label TEXT NOT NULL,
-  description TEXT,
-  icon TEXT,                             -- emoji or icon class
-  created_at TEXT NOT NULL
-);
 ```
 
 #### Relationship Diagram
@@ -140,250 +206,351 @@ CREATE TABLE custom_intents (
 ```
 drydock_loadouts (1-8 docks)
     │
-    ├── dock_ships (N ships per dock, one active)
+    ├── dock_intents ──▶ intent_catalog (multi-select N:M)
+    │
+    ├── dock_ships (N ships per dock, one is_active)
     │       │
     │       └── ships (existing table)
-    │               │
-    │               └── crew_presets (N presets per ship × intent)
-    │                       │
-    │                       └── crew_preset_members (N officers per preset)
-    │                               │
-    │                               └── officers (existing table)
     │
-    └── intent taxonomy (standard + custom_intents table)
+    └── (via ships) crew_presets (N presets per ship × intent)
+                        │
+                        └── crew_preset_members (N officers per preset)
+                                │
+                                └── officers (existing table)
 ```
 
-### 3. Model Context Injection
+#### Interaction with Existing Tables
 
-The drydock loadout state gets injected into the system prompt alongside fleet config:
+- `ships` and `officers` tables are **unchanged** — they remain the roster
+- `crew_assignments` table is **kept** as "live state" (what's crewed right now)
+- `crew_presets` are "saved configurations" — templates you can apply
+- Future tool-use "apply preset" action will copy a preset into `crew_assignments`
 
-```
-DRYDOCK LOADOUTS (from Admiral's configuration):
+### 3. Model Context — Calculated Intelligence
 
-DOCK 1 "Main Grinder" [grinding] Priority: HIGH
-  ▸ Active: Kumari (Common, Battleship)
-    Crew: Kirk (cpt), Spock, McCoy
-  ▸ Rotation: (none — dedicated ship)
+#### Design Principle: Calculated Data > Raw Data
 
-DOCK 2 "Hostile Swapper" [grinding] Priority: MEDIUM
-  ▸ Active: U.S.S. Franklin (Rare, Survey → used for hostiles)
-    Crew: Cadet Uhura (cpt), Cadet McCoy, T'Laan
-  ▸ Rotation: ECS Horizon (Common, Survey) — "use for lower level grinding"
+Instead of dumping tables into the prompt, we compute a **structured briefing** that the model can cite directly. This follows the epistemic framework (ADR-003): the model states facts from fleet data, doesn't infer from ambiguous raw rows.
 
-DOCK 3 "Raw Mining" [mining-gas, mining-crystal, mining-ore] Priority: MEDIUM
-  ▸ Active: Botany Bay (Uncommon, Survey)
-    Crew (mining-gas): Stonn (cpt), T'Pring, Helvia
-    Crew (mining-crystal): Stonn (cpt), Chen, Brenna
-  ▸ Rotation: North Star (Rare, Survey) — "better for protected cargo"
+#### Context Structure
 
-DOCK 4 "Refined Mining" [mining-tri, mining-dil, mining-para] Priority: LOW
-  ▸ Active: ECS Horizon (Common, Survey)
-    Crew (mining-dil): Joaquin (cpt), Khan, Carol
-  ▸ Rotation: (none)
-```
+The model receives three tiers of loadout intelligence:
 
-This gives the model:
-- What each dock **does** (intent)
-- What's **in** each dock right now (active ship)
-- What **could go** in each dock (rotation)
-- What **crew** to use for each combination
-- **Priority** for resource allocation decisions
-
-### 4. UI Experience — The Drydock Board
-
-This is the first graphical, interactive UI component beyond chat + config panels.
-
-#### Layout Concept
+**Tier 1 — Dock Status Summary (always in prompt, ~300-500 bytes)**
 
 ```
-┌──────────────────────────────────────────────────┐
-│ ⚓ DRYDOCK LOADOUTS                    [+ Add Dock] │
-├──────────────────────────────────────────────────┤
-│                                                  │
-│  ┌─── DOCK 1 ──────────┐  ┌─── DOCK 2 ──────────┐ │
-│  │ "Main Grinder"       │  │ "Hostile Swapper"    │ │
-│  │ Intent: ⚔️ Grinding   │  │ Intent: ⚔️ Grinding   │ │
-│  │                      │  │                      │ │
-│  │ ┌──────────────────┐ │  │ ┌──────────────────┐ │ │
-│  │ │ ★ Kumari         │ │  │ │ ★ Franklin       │ │ │
-│  │ │   Kirk·Spock·McCoy│ │  │ │   Uhura·McCoy·T'L│ │ │
-│  │ └──────────────────┘ │  │ ├──────────────────┤ │ │
-│  │                      │  │ │   ECS Horizon    │ │ │
-│  │                      │  │ │   (backup)       │ │ │
-│  │                      │  │ └──────────────────┘ │ │
-│  └──────────────────────┘  └──────────────────────┘ │
-│                                                  │
-│  ┌─── DOCK 3 ──────────┐  ┌─── DOCK 4 ──────────┐ │
-│  │ "Raw Mining"         │  │ "Refined Mining"     │ │
-│  │ Intent: ⛏ Mining      │  │ Intent: ⛏ Mining      │ │
-│  │ ...                  │  │ ...                  │ │
-│  └──────────────────────┘  └──────────────────────┘ │
-└──────────────────────────────────────────────────┘
+DRYDOCK STATUS (4 active docks):
+  D1 "Main Grinder" [grinding] → Kumari (active) | 1 ship in rotation
+  D2 "Hostile Swapper" [grinding] → Franklin (active) | 2 ships in rotation
+  D3 "Raw Mining" [mining-gas, mining-crystal, mining-ore] → Botany Bay (active) | 2 ships
+  D4 "Refined Mining" [mining-tri, mining-dil, mining-para] → ECS Horizon (active) | 1 ship
 ```
 
-#### Interaction Model
+**Tier 2 — Crew Assignment Summary (always in prompt, ~200-400 bytes)**
 
-1. **Dock cards** are arranged in a grid (2-wide on desktop, 1-wide on mobile)
-2. **Click dock card** → expands to show full rotation + crew details
-3. **Intent selector** → dropdown of standard intents + custom
-4. **Add ship to rotation** → search/select from ship inventory, drag to reorder
-5. **Star icon** on a ship → marks it as the active ship in the dock
-6. **Crew preset selector** → per ship, pick or create a crew preset for the dock's intent
-7. **Drag officers** into crew slots (bridge: 3 slots, below-deck: variable)
-8. **Dock label** → click to edit inline
-9. **Priority** → drag to reorder docks, or simple up/down arrows
+```
+ACTIVE CREW:
+  D1 Kumari: Kirk(cpt) · Spock · McCoy
+  D2 Franklin: Cadet Uhura(cpt) · Cadet McCoy · T'Laan
+  D3 Botany Bay: Stonn(cpt) · [varies by mining type — 2 presets]
+  D4 ECS Horizon: Joaquin(cpt) · Khan · Carol
 
-#### Progressive Complexity
+OFFICER CONFLICTS: Kirk [D1 grinding, D3 mining-ore preset], Spock [D1 grinding, D2 backup preset]
+```
 
-**Phase 1 (MVP):** Static dock cards with select dropdowns. No drag-and-drop.
-- Select intent from dropdown
-- Select ships from dropdown (add to rotation)
-- Select officers from dropdown (assign to crew)
-- Toggle active ship with radio button
-- Works, just not flashy
+**Tier 3 — Computed Insights (always in prompt, ~100-300 bytes)**
 
-**Phase 2:** Drag-and-drop ships between docks and into rotation slots.
-- HTML5 drag & drop or a lightweight library (Sortable.js is 10KB)
-- Visual feedback: ghost, hover targets, snap-to-slot
+```
+FLEET NOTES:
+- 2 of 4 docks assigned to grinding — consider diversifying if mining output is low
+- D3 has 2 crew presets (gas, crystal) but no ore preset — ore mining uses default crew
+- 3 officers have multi-dock conflicts (see OFFICER CONFLICTS above)
+- D4 has no rotation — single point of failure for refined mining
+```
 
-**Phase 3:** Full crew builder with drag-and-drop officer cards.
-- Officer pool panel (sidebar or bottom drawer)
-- Drag officers into bridge/below-deck slots
-- Conflict detection: "Kirk is already on Dock 1's Kumari"
-- Animated reassignment
+**Total prompt addition: ~600-1200 bytes** — well under the concern threshold.
 
-### 5. API Surface
+#### Why Not Tool-Calling for This?
+
+For data this small, prompt injection beats on-demand tool-calling because:
+- The model can **proactively reference** dock state without the user asking
+- "Based on your D3 mining setup..." flows naturally in conversation
+- Tool-calling adds latency and the model might forget to call the tool
+- We cap at 8 docks × ~150 bytes each = 1.2KB worst case
+
+Tool-calling becomes valuable later for **mutations** (ADR-007 Phase C), not reads.
+
+### 4. Crew Presets — Majel's Free Alternative to Paid Slots
+
+#### The Concept
+
+In STFC, saving crew configurations costs real money (preset slots). Majel offers **unlimited free crew presets** as a planning tool outside the game.
+
+A crew preset is: **"For this ship doing this intent, use these officers."**
+
+```
+Preset: "Botany Bay — Gas Mining Crew"
+  Ship: Botany Bay
+  Intent: mining-gas
+  Bridge: Stonn (captain), T'Pring, Helvia
+  Below-deck: (none configured)
+
+Preset: "Botany Bay — Crystal Mining Crew"
+  Ship: Botany Bay
+  Intent: mining-crystal
+  Bridge: Stonn (captain), Chen, Brenna
+  Below-deck: (none configured)
+```
+
+When Botany Bay is active in Dock 3 and Dock 3's intent includes `mining-gas`, Majel knows the correct crew and can remind the Admiral.
+
+#### BASIC vs ADVANCED Mode
+
+This introduces Majel's first **progressive disclosure** pattern:
+
+**BASIC mode (default):**
+- Pick intents for your docks
+- Assign ships to dock rotations
+- Toggle which ship is active
+- Majel **suggests crews** based on its training knowledge: "For gas mining with Botany Bay at your level, I'd recommend Stonn, T'Pring, and Helvia."
+- No preset management — the model IS the preset
+- Perfect for new/casual users who don't want to micromanage
+
+**ADVANCED mode (opt-in via setting):**
+- Everything in BASIC, plus:
+- Build and save custom crew presets per ship per intent
+- View officer conflict matrix
+- Fine-tune rotation priority and notes
+- Export/import presets
+- The model reads your presets instead of suggesting its own
+
+**Implementation:** A `system.uiMode` setting (`"basic"` | `"advanced"`) controls which UI elements render. The data layer supports both — in BASIC mode we just don't show the preset builder.
+
+**Model behavior changes by mode:**
+- BASIC: "For grinding with Kumari, I'd recommend Kirk, Spock, and McCoy based on their synergy bonuses."
+- ADVANCED: "Your grinding preset for Kumari has Kirk, Spock, and McCoy. That's a solid choice — Kirk's captain bonus stacks well with Spock's science officer ability."
+
+### 5. UI Experience — View Switching Architecture
+
+#### Navigation Model
+
+The left sidebar gains a **view switcher** — icons that control what's in the main content area:
+
+```
+┌───┬──────────────────────────────────────┐
+│ 💬│  CHAT (current view)                  │
+│   │  ... messages ...                    │
+│ ⚓│                                      │
+│   │                                      │
+│ ⚙│                                      │
+│   │  [Message Majel...]                  │
+└───┴──────────────────────────────────────┘
+
+Click ⚓:
+
+┌───┬──────────────────────────────────────┐
+│ 💬│  DRYDOCK LOADOUTS          [BASIC ▾] │
+│   │                                      │
+│ ⚓│  ┌─ DOCK 1 ──────┐ ┌─ DOCK 2 ─────┐ │
+│   │  │ Main Grinder   │ │ Hostile Swap  │ │
+│ ⚙│  │ ⚔️ grinding     │ │ ⚔️ grinding   │ │
+│   │  │ ★ Kumari       │ │ ★ Franklin    │ │
+│   │  │ Kirk·Spock·McCoy│ │ Uhura·McCoy  │ │
+│   │  └────────────────┘ └───────────────┘ │
+│   │  ┌─ DOCK 3 ──────┐ ┌─ DOCK 4 ─────┐ │
+│   │  │ Raw Mining     │ │ Refined Mining │ │
+│   │  │ ⛏️ gas,crys,ore │ │ ⛏️ tri,dil,para│ │
+│   │  │ ★ Botany Bay   │ │ ★ ECS Horizon │ │
+│   │  └────────────────┘ └───────────────┘ │
+└───┴──────────────────────────────────────┘
+```
+
+#### Active Ships Slide-Out
+
+A quick-access panel (similar to the fleet config panel on the right) showing just the active ship per dock with toggle:
+
+```
+⚓ ACTIVE SHIPS              [×]
+─────────────────────────────
+DOCK 1 — Main Grinder
+  ★ Kumari
+
+DOCK 2 — Hostile Swapper
+  ○ Franklin
+  ★ ECS Horizon        ← toggled active
+
+DOCK 3 — Raw Mining
+  ★ Botany Bay
+  ○ North Star
+
+DOCK 4 — Refined Mining
+  ★ ECS Horizon
+─────────────────────────────
+```
+
+This gives a quick "cockpit view" without leaving chat. Star = active, circle = in rotation but not active. Click to toggle.
+
+#### Dock Card — Expanded View (ADVANCED)
+
+Clicking a dock card expands it to full-width detail:
+
+```
+┌── DOCK 2: "Hostile Swapper" ─────────────────────── [Edit] [×] ──┐
+│                                                                   │
+│  INTENTS: [⚔️ grinding] [+ add intent]                            │
+│                                                                   │
+│  ROTATION:                                                        │
+│  ┌─────────────────────────────┐  ┌─────────────────────────────┐ │
+│  │ ★ U.S.S. Franklin          │  │   ECS Horizon               │ │
+│  │ Rare · Survey               │  │ Common · Survey              │ │
+│  │                             │  │                             │ │
+│  │ Crew (grinding):            │  │ Crew (grinding):            │ │
+│  │ 🎖 Cadet Uhura (cpt)        │  │ (no preset — Majel will     │ │
+│  │ 👤 Cadet McCoy              │  │  suggest when activated)    │ │
+│  │ 👤 T'Laan                   │  │                             │ │
+│  │                             │  │ "use for lower level"       │ │
+│  │ [Edit Crew] [Set Active]   │  │ [Add Crew] [Set Active]     │ │
+│  └─────────────────────────────┘  └─────────────────────────────┘ │
+│                                                                   │
+│  [+ Add Ship to Rotation]                                         │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### 6. API Surface
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/fleet/docks` | List all dock loadouts with ships + crew |
-| `GET` | `/api/fleet/docks/:num` | Single dock with full detail |
-| `PUT` | `/api/fleet/docks/:num` | Create or update a dock loadout |
+| **Intents** | | |
+| `GET` | `/api/fleet/intents` | List all intents (catalog: builtin + custom) |
+| `POST` | `/api/fleet/intents` | Create custom intent |
+| `DELETE` | `/api/fleet/intents/:key` | Delete custom intent (builtin = error) |
+| **Docks** | | |
+| `GET` | `/api/fleet/docks` | List all dock loadouts with ships + crew summary |
+| `GET` | `/api/fleet/docks/:num` | Single dock full detail |
+| `PUT` | `/api/fleet/docks/:num` | Create or update dock loadout (label, notes, priority) |
 | `DELETE` | `/api/fleet/docks/:num` | Clear a dock's loadout |
+| `PUT` | `/api/fleet/docks/:num/intents` | Set dock's intents (full replace, array of keys) |
 | `POST` | `/api/fleet/docks/:num/ships` | Add ship to dock rotation |
 | `DELETE` | `/api/fleet/docks/:num/ships/:shipId` | Remove ship from dock |
 | `PATCH` | `/api/fleet/docks/:num/ships/:shipId` | Update (set active, reorder, notes) |
-| `GET` | `/api/fleet/presets` | List all crew presets |
-| `POST` | `/api/fleet/presets` | Create a crew preset |
-| `PATCH` | `/api/fleet/presets/:id` | Update preset name, default status |
+| **Crew Presets** | | |
+| `GET` | `/api/fleet/presets` | List all crew presets (filterable by ship, intent) |
+| `GET` | `/api/fleet/presets/:id` | Single preset with members |
+| `POST` | `/api/fleet/presets` | Create a crew preset (ship + intent + name) |
+| `PATCH` | `/api/fleet/presets/:id` | Update preset (name, default status) |
 | `DELETE` | `/api/fleet/presets/:id` | Delete a crew preset |
-| `POST` | `/api/fleet/presets/:id/members` | Add officer to preset |
-| `DELETE` | `/api/fleet/presets/:id/members/:officerId` | Remove officer from preset |
-| `GET` | `/api/fleet/intents` | List all intents (standard + custom) |
-| `POST` | `/api/fleet/intents` | Create custom intent |
-| `DELETE` | `/api/fleet/intents/:key` | Delete custom intent |
+| `PUT` | `/api/fleet/presets/:id/members` | Set preset members (full replace, array of officers) |
+| **Computed** | | |
+| `GET` | `/api/fleet/docks/summary` | Computed briefing (what goes in the prompt) |
+| `GET` | `/api/fleet/docks/conflicts` | Officer conflict report |
 
-### 6. What the Model Gets (Prompt Context)
+### 7. Context Builder — `buildDockBriefing()`
 
-At engine creation, `buildSystemPrompt` receives a new `DrydockLoadout[]` alongside `FleetConfig` and `FleetData`. The model's instructions include:
+A new function computes the model's loadout context from the database:
 
+```typescript
+interface DockBriefing {
+  /** Tier 1: one-line per dock */
+  statusLines: string[];
+  /** Tier 2: active crew per dock + conflicts */
+  crewSummary: string[];
+  conflictReport: string[];
+  /** Tier 3: computed insights */
+  insights: string[];
+  /** Total character count for prompt budget tracking */
+  totalChars: number;
+}
+
+function buildDockBriefing(fleetStore: FleetStore): DockBriefing;
 ```
-You understand the Admiral's drydock rotation system:
-- Each dock has a PURPOSE (intent) — mining, grinding, armada, etc.
-- Each dock has a ROTATION of ships — one active, others on standby
-- Each ship has CREW PRESETS per intent — different crews for different jobs
-- When advising on crew or ship assignments, consider the dock's intent
-- When the Admiral asks "what should I do with dock 3?", you know dock 3's purpose
-- Cross-reference: if an officer is in a preset for dock 1 AND dock 3, flag the conflict
-```
 
-## Open Questions
+The insights are computed, not generated by the model:
+- "N of M docks assigned to [intent] — consider diversifying"
+- "Dock N has no crew preset for [intent] — will rely on model suggestion"
+- "N officers appear in presets for multiple docks"
+- "Dock N has no rotation — single point of failure"
 
-These need answers before execution begins:
-
-### Q1: Multi-intent docks
-The Admiral's example: "dock 3 is gas/crystal/ore mining." That's **three intents** on one dock. Options:
-- **A)** Docks have a single primary intent, with sub-categories (mining → gas/crystal/ore)
-- **B)** Docks support multiple intents, each with their own crew preset
-- **C)** Intents are hierarchical: `mining` is a parent, `mining-gas` is a child — dock has parent intent, presets are per child
-
-Recommendation: **Option C** — hierarchical intents. The dock's intent is `mining`, and crew presets are tagged `mining-gas`, `mining-crystal`, etc. This keeps the dock card simple (one intent badge) while supporting granular crew configs.
-
-### Q2: Crew conflict resolution
-If Kirk is in dock 1's crew preset AND dock 3's preset, what happens?
-- **A)** Allow it — presets are templates, not active assignments. Only one dock is actually crewed at a time in-game.
-- **B)** Warn but allow — show a conflict indicator in UI
-- **C)** Prevent — officer can only be in one preset at a time
-
-Recommendation: **Option B** — presets are aspirational (what you'd LIKE to crew), not literal (what's crewed right now). Warn in UI with a yellow badge: "Kirk also in Dock 1 preset." The model can flag this when advising.
-
-### Q3: Where does this UI live?
-- **A)** New full-page view (replace chat temporarily)
-- **B)** Slide-out panel from chat (like fleet config but bigger)
-- **C)** Split view — chat on left, docks on right
-- **D)** New tab/route (`/docks` or `/#docks`)
-
-This is a big enough UI that it probably needs **its own view** rather than being crammed into the chat page.
-
-### Q4: Active ship tracking
-Is the "active" ship in a dock just a user toggle, or should Majel try to detect it from Sheets data? (The drydock tabs in Sheets already show which ship is in each dock.)
-
-### Q5: How much data in the prompt?
-With 4-8 docks × 2-4 ships each × crew presets, the loadout context could be 2-5KB of text in the system prompt. At what point do we:
-- Summarize instead of enumerate?
-- Use tool-calling to query loadouts on demand instead of prompt injection?
-- Both? (Summary in prompt, detail via tool call)
-
-### Q6: Interaction with existing fleet store
-The current `fleet-store.ts` has `crew_assignments` tied to ships directly. Crew presets are a new parallel concept — a preset is a *saved configuration*, while an assignment is the *current state*. Do we:
-- **A)** Replace crew_assignments with the preset system entirely
-- **B)** Keep both — presets are templates, assignments are live state
-- **C)** Presets replace assignments for now (we don't have tool-use to apply them yet anyway)
-
-Recommendation: **Option C** for now. Crew presets replace the current crew_assignments table conceptually. When tool-use lands (Phase C of ADR-007), "applying a preset" becomes an assignment operation.
+These give the model **facts to cite** rather than **data to interpret**.
 
 ## Phasing
 
-### Phase 1 — Data Layer + Context Injection
-- Schema: `drydock_loadouts`, `dock_ships`, `crew_presets`, `crew_preset_members`, `custom_intents`
-- CRUD service functions
-- API endpoints
-- System prompt injection of loadout state
+### Phase 1 — Intent Catalog + Dock Data Layer
+- `intent_catalog` table with seed data
+- `drydock_loadouts`, `dock_intents`, `dock_ships` tables
+- CRUD service for docks and intents
+- API endpoints for docks + intents
+- Tests
+- **No UI, no presets yet**
+
+### Phase 2 — Crew Presets
+- `crew_presets`, `crew_preset_members` tables
+- Preset CRUD service
+- Conflict detection query
+- API endpoints for presets
+- `buildDockBriefing()` context builder
+- Inject briefing into system prompt
 - Tests
 
-### Phase 2 — MVP UI (Static)
-- Dock cards in grid layout
-- Dropdown-based intent selection
-- Dropdown-based ship assignment to rotation
-- Simple crew preset builder (select officers from list)
-- Active ship toggle
+### Phase 3 — MVP UI (BASIC mode)
+- Left sidebar view switcher (chat ↔ docks)
+- Dock card grid (intent badges, active ship, crew summary)
+- Dropdown-based intent multi-select
+- Dropdown-based ship assignment
+- Active ship toggle (radio)
+- Active Ships slide-out panel
+- Model suggests crews (no preset builder UI yet)
 - Mobile responsive
+- `system.uiMode` setting (default: basic)
 
-### Phase 3 — Interactive UI (Drag & Drop)
+### Phase 4 — ADVANCED Mode UI
+- Crew preset builder (select officers into slots)
+- Dock card expanded view with rotation detail
+- Officer conflict badges
+- Inline label editing
+- Priority reordering (up/down arrows)
+
+### Phase 5 — Interactive Polish (Drag & Drop)
 - Drag ships between docks
 - Drag officers into crew slots
-- Visual conflict warnings
-- Animations and transitions
 - Sortable rotation order
+- Animations and transitions
+- Possible: Sortable.js (10KB) or vanilla HTML5 DnD
 
-### Phase 4 — Model Integration
-- Model receives loadout context
-- Tool-use: model can suggest loadout changes
-- "Optimize my mining dock" → model proposes crew + ship swaps
+### Phase 6 — Model Tool Integration
+- Model receives loadout context (already done in Phase 2)
+- Function calling tools: suggest crew, optimize dock, swap ships
 - Confirmation flow before applying changes
+- Assignment log records model-initiated modifications
 
 ## Consequences
 
 ### Positive
 - Majel understands fleet **operations**, not just **inventory**
-- "What crew should I use for dock 3?" becomes answerable
-- First graphical UI — establishes patterns for future interactive features
-- Standardized intents create a shared vocabulary between user and model
+- "What crew should I use for dock 3?" becomes answerable with calculated data
+- First view-switching UI — establishes navigation patterns for future features
+- Crew presets give users unlimited free crew configs (vs STFC's paid slots)
+- BASIC/ADVANCED progressive disclosure is reusable across features
+- Calculated briefing keeps prompt lean and factual
 
 ### Negative
-- Largest feature scope yet — 6 new tables, ~20 API endpoints, full UI component
-- First drag-and-drop UI — new technical territory for the project
-- Crew presets overlap with existing crew_assignments — needs careful migration
+- Largest feature scope yet — 6 new tables, ~20 API endpoints, full UI
+- First view-switcher UI — new navigation paradigm to establish
+- Crew presets overlap conceptually with existing crew_assignments
+- BASIC/ADVANCED bifurcation adds conditional logic throughout
 
 ### Risks
-- UI complexity could outpace backend readiness
-- Prompt size growth with full loadout enumeration
-- Drag-and-drop cross-browser/mobile behavior is notoriously fiddly
-- Scope creep: loadouts could absorb resource tracking, mission planning, etc.
+- **UI complexity:** View switching is a bigger architectural shift than it sounds
+- **Prompt budget:** Even with summaries, 8 fully-loaded docks add ~1.2KB to every prompt
+- **Drag-and-drop (Phase 5):** Cross-browser/mobile DnD is notoriously fiddly
+- **Scope creep:** Loadouts could absorb resource tracking, mission planning, etc.
+- **Data freshness:** If the Admiral changes their dock in-game, Majel's record drifts until manually updated
 
 ## References
 
-- ADR-007 (Fleet Management — parent feature, Phase A done)
+- ADR-007 (Fleet Management — parent feature, Phases A/B)
 - ADR-001 (Architecture — SQLite-first, modular services)
-- ADR-003 (Epistemic Framework — model knows what it knows)
+- ADR-003 (Epistemic Framework — calculated data > model inference)
+- ADR-006 (Open Alpha — versioning, progressive disclosure precedent)
 - STFC Drydock mechanics: 8 docks (A-H), Ops 1-80, 1 active ship per dock
+- STFC Ship classes: Battleship, Explorer, Interceptor, Survey
+- STFC Crew system: bridge (3 slots) + below-deck (variable by ship)
