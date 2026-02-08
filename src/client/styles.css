@@ -1109,3 +1109,204 @@ dialog::backdrop {
     font-size: 0.88rem;
   }
 }
+
+/* ─── Fleet Config Panel (right edge) ────────────────────── */
+
+.fleet-config-tab {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 90;
+  width: 28px;
+  height: 48px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background var(--transition), color var(--transition), opacity var(--transition);
+  opacity: 0.6;
+}
+
+.fleet-config-tab:hover {
+  background: var(--bg-hover);
+  color: var(--accent-gold);
+  opacity: 1;
+}
+
+.fleet-config-tab.active {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fleet-config-panel {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%) translateX(100%);
+  z-index: 91;
+  width: 200px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+  transition: transform 0.25s ease;
+  overflow: hidden;
+}
+
+.fleet-config-panel.open {
+  transform: translateY(-50%) translateX(0);
+}
+
+.fleet-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fleet-config-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.fleet-config-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition), background var(--transition);
+}
+
+.fleet-config-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.fleet-config-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fleet-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fleet-config-field label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fc-number-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.fc-number-wrap button {
+  width: 30px;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition);
+  user-select: none;
+}
+
+.fc-number-wrap button:hover {
+  background: var(--bg-hover);
+  color: var(--accent-gold);
+}
+
+.fc-number-wrap button:active {
+  background: var(--accent-gold);
+  color: var(--bg-primary);
+}
+
+.fc-number {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--accent-gold);
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 4px 0;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.fc-number::-webkit-inner-spin-button,
+.fc-number::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.fc-number:focus {
+  background: rgba(240, 160, 48, 0.08);
+}
+
+/* saving flash */
+.fc-number.saving {
+  animation: fc-save-flash 0.3s ease;
+}
+
+@keyframes fc-save-flash {
+  0% { background: rgba(64, 208, 128, 0.2); }
+  100% { background: transparent; }
+}
+
+/* Mobile: hide tab, panel overlays */
+@media (max-width: 768px) {
+  .fleet-config-tab {
+    top: auto;
+    bottom: 100px;
+    transform: none;
+  }
+
+  .fleet-config-panel {
+    top: auto;
+    bottom: 80px;
+    transform: translateX(100%);
+    border-radius: var(--radius) 0 0 var(--radius);
+  }
+
+  .fleet-config-panel.open {
+    transform: translateX(0);
+  }
+}

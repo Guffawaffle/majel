@@ -155,6 +155,45 @@ MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
       </footer>
     </div>
 
+    <!-- Fleet Config Panel (right edge) -->
+    <div id="fleet-config-tab" class="fleet-config-tab" title="Fleet Config">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1l2 3h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+    </div>
+    <aside id="fleet-config-panel" class="fleet-config-panel hidden">
+      <div class="fleet-config-header">
+        <span class="fleet-config-title">Fleet Config</span>
+        <button id="fleet-config-close" class="fleet-config-close" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="fleet-config-body">
+        <div class="fleet-config-field">
+          <label for="fc-ops-level">Ops Level</label>
+          <div class="fc-number-wrap">
+            <button class="fc-decrement" data-target="fc-ops-level" aria-label="Decrease">−</button>
+            <input type="number" id="fc-ops-level" class="fc-number" min="1" max="80" value="1" data-key="fleet.opsLevel" />
+            <button class="fc-increment" data-target="fc-ops-level" aria-label="Increase">+</button>
+          </div>
+        </div>
+        <div class="fleet-config-field">
+          <label for="fc-drydocks">Drydocks</label>
+          <div class="fc-number-wrap">
+            <button class="fc-decrement" data-target="fc-drydocks" aria-label="Decrease">−</button>
+            <input type="number" id="fc-drydocks" class="fc-number" min="1" max="8" value="1" data-key="fleet.drydockCount" />
+            <button class="fc-increment" data-target="fc-drydocks" aria-label="Increase">+</button>
+          </div>
+        </div>
+        <div class="fleet-config-field">
+          <label for="fc-hangar">Hangar Slots</label>
+          <div class="fc-number-wrap">
+            <button class="fc-decrement" data-target="fc-hangar" aria-label="Decrease">−</button>
+            <input type="number" id="fc-hangar" class="fc-number" min="1" max="999" value="43" data-key="fleet.shipHangarSlots" />
+            <button class="fc-increment" data-target="fc-hangar" aria-label="Increase">+</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
     <!-- Recall Dialog -->
     <dialog id="recall-dialog">
       <div class="dialog-header">

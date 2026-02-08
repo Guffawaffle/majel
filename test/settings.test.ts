@@ -45,7 +45,7 @@ describe("SETTINGS_SCHEMA", () => {
   });
 
   it("has sensible categories", () => {
-    const validCats = ["sheets", "display", "model", "system"];
+    const validCats = ["sheets", "display", "model", "system", "fleet"];
     for (const def of SETTINGS_SCHEMA) {
       expect(validCats).toContain(def.category);
     }

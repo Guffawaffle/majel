@@ -800,6 +800,9 @@ let currentMode = "loading";
     // Load saved sessions into sidebar
     await refreshSessionList();
 
+    // Initialize fleet config panel
+    await initFleetConfig();
+
     // Poll health every 10s
     setInterval(async () => {
         const h = await checkHealth();
@@ -816,3 +819,130 @@ let currentMode = "loading";
         }
     }, 10000);
 })();
+
+// ─── Fleet Config Panel ─────────────────────────────────────
+
+const fleetConfigTab = $("#fleet-config-tab");
+const fleetConfigPanel = $("#fleet-config-panel");
+const fleetConfigClose = $("#fleet-config-close");
+
+function openFleetConfig() {
+    fleetConfigPanel.classList.remove("hidden");
+    // Trigger reflow then add open class for animation
+    void fleetConfigPanel.offsetHeight;
+    fleetConfigPanel.classList.add("open");
+    fleetConfigTab.classList.add("active");
+}
+
+function closeFleetConfig() {
+    fleetConfigPanel.classList.remove("open");
+    fleetConfigTab.classList.remove("active");
+    setTimeout(() => fleetConfigPanel.classList.add("hidden"), 260);
+}
+
+if (fleetConfigTab) {
+    fleetConfigTab.addEventListener("click", openFleetConfig);
+}
+if (fleetConfigClose) {
+    fleetConfigClose.addEventListener("click", closeFleetConfig);
+}
+
+// Close panel on outside click
+document.addEventListener("click", (e) => {
+    if (
+        fleetConfigPanel &&
+        !fleetConfigPanel.classList.contains("hidden") &&
+        !fleetConfigPanel.contains(e.target) &&
+        !fleetConfigTab.contains(e.target)
+    ) {
+        closeFleetConfig();
+    }
+});
+
+/**
+ * Save a fleet config value to the settings API.
+ */
+async function saveFleetSetting(key, value) {
+    try {
+        await fetch("/api/settings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ [key]: String(value) }),
+        });
+    } catch (err) {
+        console.error("Failed to save fleet setting:", key, err);
+    }
+}
+
+/**
+ * Load fleet settings from the API and populate the panel inputs.
+ */
+async function initFleetConfig() {
+    try {
+        const res = await fetch("/api/settings?category=fleet");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.settings) return;
+
+        for (const setting of data.settings) {
+            const input = document.querySelector(`.fc-number[data-key="${setting.key}"]`);
+            if (input) {
+                input.value = setting.value;
+            }
+        }
+    } catch {
+        // Settings not available yet — fields keep defaults
+    }
+
+    // Wire up all fleet config inputs
+    document.querySelectorAll(".fc-number").forEach((input) => {
+        const key = input.dataset.key;
+        const min = parseInt(input.min, 10);
+        const max = parseInt(input.max, 10);
+
+        // Save on change (blur or Enter)
+        input.addEventListener("change", () => {
+            let val = parseInt(input.value, 10);
+            if (isNaN(val)) val = min;
+            val = Math.max(min, Math.min(max, val));
+            input.value = val;
+            input.classList.add("saving");
+            setTimeout(() => input.classList.remove("saving"), 350);
+            saveFleetSetting(key, val);
+        });
+
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                input.blur();
+            }
+        });
+    });
+
+    // Wire up +/- buttons
+    document.querySelectorAll(".fc-increment").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const input = document.getElementById(btn.dataset.target);
+            if (!input) return;
+            const max = parseInt(input.max, 10);
+            let val = parseInt(input.value, 10) || 0;
+            if (val < max) {
+                input.value = val + 1;
+                input.dispatchEvent(new Event("change"));
+            }
+        });
+    });
+
+    document.querySelectorAll(".fc-decrement").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const input = document.getElementById(btn.dataset.target);
+            if (!input) return;
+            const min = parseInt(input.min, 10);
+            let val = parseInt(input.value, 10) || 0;
+            if (val > min) {
+                input.value = val - 1;
+                input.dispatchEvent(new Event("change"));
+            }
+        });
+    });
+}

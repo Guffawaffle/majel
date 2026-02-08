@@ -28,7 +28,7 @@ import { log } from "./logger.js";
  */
 export interface SettingDef {
   key: string;
-  category: "sheets" | "display" | "model" | "system";
+  category: "sheets" | "display" | "model" | "system" | "fleet";
   label: string;
   description: string;
   type: "string" | "number" | "boolean" | "json";
@@ -37,6 +37,10 @@ export interface SettingDef {
   envVar?: string;
   /** If true, the value is masked in API responses (e.g. future API keys). */
   sensitive?: boolean;
+  /** Validation constraint: minimum numeric value. */
+  min?: number;
+  /** Validation constraint: maximum numeric value. */
+  max?: number;
 }
 
 export const SETTINGS_SCHEMA: SettingDef[] = [
@@ -123,6 +127,38 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     type: "number",
     default: "3000",
     envVar: "MAJEL_PORT",
+  },
+
+  // ── Fleet ───────────────────────────────────────────────────
+  {
+    key: "fleet.opsLevel",
+    category: "fleet",
+    label: "Operations Level",
+    description: "Your current Starbase Operations level (1–80). Determines what content and ships are relevant.",
+    type: "number",
+    default: "1",
+    min: 1,
+    max: 80,
+  },
+  {
+    key: "fleet.drydockCount",
+    category: "fleet",
+    label: "Drydocks",
+    description: "Number of drydocks you have unlocked (1–8). Each drydock holds one active ship.",
+    type: "number",
+    default: "1",
+    min: 1,
+    max: 8,
+  },
+  {
+    key: "fleet.shipHangarSlots",
+    category: "fleet",
+    label: "Ship Hangar Slots",
+    description: "Total ship inventory capacity from your Ship Hangar building.",
+    type: "number",
+    default: "43",
+    min: 1,
+    max: 999,
   },
 ];
 
@@ -274,6 +310,12 @@ export function createSettingsStore(dbPath?: string): SettingsStore {
       const def = SCHEMA_MAP.get(key)!;
       if (def.type === "number" && isNaN(Number(value))) {
         throw new Error(`Setting ${key} must be a number, got: ${value}`);
+      }
+      if (def.type === "number" && def.min !== undefined && Number(value) < def.min) {
+        throw new Error(`Setting ${key} minimum is ${def.min}, got: ${value}`);
+      }
+      if (def.type === "number" && def.max !== undefined && Number(value) > def.max) {
+        throw new Error(`Setting ${key} maximum is ${def.max}, got: ${value}`);
       }
       if (def.type === "boolean" && !["true", "false", "1", "0"].includes(value)) {
         throw new Error(`Setting ${key} must be a boolean, got: ${value}`);
