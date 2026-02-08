@@ -46,3 +46,10 @@ export function readFleetConfig(store: SettingsStore | null): FleetConfig | null
     shipHangarSlots: store.getTyped("fleet.shipHangarSlots") as number,
   };
 }
+
+/** Build the dock briefing text for model context injection. Returns null if no docks configured. */
+export function readDockBriefing(dockStore: DockStore | null): string | null {
+  if (!dockStore) return null;
+  const briefing = dockStore.buildBriefing();
+  return briefing.totalChars > 0 ? briefing.text : null;
+}

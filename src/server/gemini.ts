@@ -66,6 +66,7 @@ const SAFETY_SETTINGS: SafetySetting[] = [
 export function buildSystemPrompt(
   fleetData: FleetData | string | null,
   fleetConfig?: FleetConfig | null,
+  dockBriefing?: string | null,
 ): string {
   // Normalize: if given a raw CSV string, treat as legacy single-section
   const hasData =
@@ -158,6 +159,18 @@ Use both training knowledge and fleet data freely, but ALWAYS distinguish betwee
 
 Use these values when the Admiral asks about their ops level, drydocks, or hangar capacity.
 Combine with training knowledge — e.g. "At Ops ${fleetConfig.opsLevel}, you have access to..." or "With ${fleetConfig.drydockCount} drydocks, you can run..."
+
+`;
+  }
+
+  // ── Layer 2c: Drydock Loadout Briefing (ADR-010 Phase 2) ───────
+  if (dockBriefing) {
+    prompt += `DRYDOCK LOADOUT INTELLIGENCE (computed from Admiral's dock configuration):
+This is computed data from the Admiral's drydock setup. Use it when discussing docks, ship assignments, crew configurations, or fleet operations.
+Cite dock facts directly: "Your D1 is set up for grinding with Kumari active" — this IS the configuration, not inference.
+When the Admiral asks about crews, check for preset data below before suggesting from training knowledge.
+
+${dockBriefing}
 
 `;
   }
@@ -274,12 +287,13 @@ export function createGeminiEngine(
   apiKey: string,
   fleetData: FleetData | string | null,
   fleetConfig?: FleetConfig | null,
+  dockBriefing?: string | null,
 ): GeminiEngine {
   const genAI = new GoogleGenerativeAI(apiKey);
 
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
-    systemInstruction: buildSystemPrompt(fleetData, fleetConfig),
+    systemInstruction: buildSystemPrompt(fleetData, fleetConfig, dockBriefing),
     safetySettings: SAFETY_SETTINGS,
   });
 
@@ -289,7 +303,8 @@ export function createGeminiEngine(
     model: MODEL_NAME,
     hasFleetData: typeof fleetData === "string" ? fleetData.length > 0 : hasFleetData(fleetData),
     hasFleetConfig: !!fleetConfig,
-    promptLen: buildSystemPrompt(fleetData, fleetConfig).length,
+    hasDockBriefing: !!dockBriefing,
+    promptLen: buildSystemPrompt(fleetData, fleetConfig, dockBriefing).length,
   }, "init");
 
   /** Get or create a session by ID */

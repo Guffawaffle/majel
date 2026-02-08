@@ -296,6 +296,53 @@ describe("buildSystemPrompt", () => {
       expect(prompt).not.toContain("FLEET CONFIGURATION");
     });
   });
+
+  describe("with dock briefing", () => {
+    const briefing = "DRYDOCK STATUS\n- Dock 1: USS Enterprise (Battleship) — Warp drive upgrade [active]\n\nCREW PRESETS\n- \"Alpha Crew\" for USS Enterprise: Kirk (Captain), Spock (Science)\n\nINSIGHTS\n- 1 dock active of 2 total";
+
+    it("includes dock briefing in prompt", () => {
+      const prompt = buildSystemPrompt(null, null, briefing);
+      expect(prompt).toContain("DRYDOCK LOADOUT INTELLIGENCE");
+      expect(prompt).toContain("DRYDOCK STATUS");
+      expect(prompt).toContain("USS Enterprise");
+    });
+
+    it("includes crew preset data", () => {
+      const prompt = buildSystemPrompt(null, null, briefing);
+      expect(prompt).toContain("Alpha Crew");
+      expect(prompt).toContain("Kirk (Captain)");
+    });
+
+    it("includes insights section", () => {
+      const prompt = buildSystemPrompt(null, null, briefing);
+      expect(prompt).toContain("INSIGHTS");
+      expect(prompt).toContain("1 dock active of 2 total");
+    });
+
+    it("omits dock briefing section when null", () => {
+      const prompt = buildSystemPrompt(null, null, null);
+      expect(prompt).not.toContain("DRYDOCK LOADOUT INTELLIGENCE");
+    });
+
+    it("omits dock briefing section when undefined", () => {
+      const prompt = buildSystemPrompt(null, null);
+      expect(prompt).not.toContain("DRYDOCK LOADOUT INTELLIGENCE");
+    });
+
+    it("works alongside fleet config and fleet data", () => {
+      const data = buildFleetData("sheet-1", [
+        buildSection("officers", "Officers", "Officers", [
+          ["Name", "Level"], ["Kirk", "50"],
+        ]),
+      ]);
+      const config = { opsLevel: 29, drydockCount: 4, shipHangarSlots: 43 };
+      const prompt = buildSystemPrompt(data, config, briefing);
+      expect(prompt).toContain("Operations Level: 29");
+      expect(prompt).toContain("Kirk,50");
+      expect(prompt).toContain("DRYDOCK LOADOUT INTELLIGENCE");
+      expect(prompt).toContain("USS Enterprise");
+    });
+  });
 });
 
 // ─── createGeminiEngine ─────────────────────────────────────────

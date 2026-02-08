@@ -11,6 +11,7 @@ import {
   SPREADSHEET_ID,
   TAB_MAPPING_ENV,
   readFleetConfig,
+  readDockBriefing,
 } from "../app-context.js";
 import { log } from "../logger.js";
 import { hasCredentials, fetchFleetData, parseTabMapping, type MultiTabConfig } from "../sheets.js";
@@ -85,6 +86,14 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "POST", path: "/api/fleet/docks/:num/ships", description: "Add ship to dock rotation", params: { body: { shipId: "string", notes: "string?" } } },
         { method: "DELETE", path: "/api/fleet/docks/:num/ships/:shipId", description: "Remove ship from dock" },
         { method: "PATCH", path: "/api/fleet/docks/:num/ships/:shipId", description: "Update dock ship (set active, reorder)", params: { body: { isActive: "boolean?", sortOrder: "number?", notes: "string?" } } },
+        { method: "GET", path: "/api/fleet/presets", description: "List crew presets (filterable)", params: { query: { shipId: "string?", intentKey: "string?" } } },
+        { method: "GET", path: "/api/fleet/presets/:id", description: "Get a single crew preset with members" },
+        { method: "POST", path: "/api/fleet/presets", description: "Create a crew preset", params: { body: { shipId: "string", intentKey: "string", presetName: "string", isDefault: "boolean?" } } },
+        { method: "PATCH", path: "/api/fleet/presets/:id", description: "Update preset (name, default)", params: { body: { presetName: "string?", isDefault: "boolean?" } } },
+        { method: "DELETE", path: "/api/fleet/presets/:id", description: "Delete a crew preset" },
+        { method: "PUT", path: "/api/fleet/presets/:id/members", description: "Set preset crew members (full replace)", params: { body: { members: "[{ officerId, roleType, slot? }]" } } },
+        { method: "GET", path: "/api/fleet/docks/summary", description: "Computed dock briefing (what goes in the prompt)" },
+        { method: "GET", path: "/api/fleet/docks/conflicts", description: "Officer conflict report across presets" },
       ],
     });
   });
@@ -196,6 +205,7 @@ export function createCoreRoutes(appState: AppState): Router {
           GEMINI_API_KEY,
           appState.fleetData,
           readFleetConfig(appState.settingsStore),
+          readDockBriefing(appState.dockStore),
         );
       }
 

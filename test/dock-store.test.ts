@@ -1,5 +1,5 @@
 /**
- * dock-store.test.ts — Drydock Loadout Data Layer Tests (ADR-010 Phase 1)
+ * dock-store.test.ts — Drydock Loadout Data Layer Tests (ADR-010 Phases 1 & 2)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -451,6 +451,466 @@ describe("DockStore — Diagnostics", () => {
   });
 });
 
+// ─── Crew Presets ───────────────────────────────────────────────
+
+describe("DockStore — Crew Presets", () => {
+  let dockStore: DockStore;
+  let fleetStore: FleetStore;
+
+  beforeEach(() => {
+    fleetStore = createFleetStore(TEST_DB);
+    dockStore = createDockStore(TEST_DB);
+    // Create test ships and officers
+    fleetStore.createShip({
+      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
+      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createShip({
+      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
+      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "mccoy", name: "McCoy", rarity: "Rare", level: 40, rank: "Lt Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "stonn", name: "Stonn", rarity: "Common", level: 30, rank: "Lieutenant", groupName: "TOS" });
+  });
+
+  afterEach(() => {
+    dockStore.close();
+    fleetStore.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("creates a crew preset", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Main Grind Crew" });
+    expect(preset.id).toBeGreaterThan(0);
+    expect(preset.shipId).toBe("kumari");
+    expect(preset.intentKey).toBe("grinding");
+    expect(preset.presetName).toBe("Main Grind Crew");
+    expect(preset.isDefault).toBe(false);
+    expect(preset.shipName).toBe("Kumari");
+    expect(preset.intentLabel).toBe("Hostile Grinding");
+    expect(preset.members).toEqual([]);
+  });
+
+  it("creates a default preset and clears others", () => {
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew A", isDefault: true });
+    const p2 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew B", isDefault: true });
+    // p2 should be default, p1 should have been cleared
+    expect(p2.isDefault).toBe(true);
+    const p1Refreshed = dockStore.getPreset(p1.id);
+    expect(p1Refreshed!.isDefault).toBe(false);
+  });
+
+  it("rejects preset for nonexistent ship", () => {
+    expect(() => dockStore.createPreset({ shipId: "nope", intentKey: "grinding", presetName: "x" }))
+      .toThrow(/not found in fleet roster/);
+  });
+
+  it("rejects preset for nonexistent intent", () => {
+    expect(() => dockStore.createPreset({ shipId: "kumari", intentKey: "nope", presetName: "x" }))
+      .toThrow(/not found in catalog/);
+  });
+
+  it("rejects duplicate preset name for same ship+intent", () => {
+    dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Same" });
+    expect(() => dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Same" }))
+      .toThrow(/already exists/);
+  });
+
+  it("allows same preset name for different ship or intent", () => {
+    dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Alpha" });
+    dockStore.createPreset({ shipId: "botany-bay", intentKey: "grinding", presetName: "Alpha" });
+    dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "Alpha" });
+    expect(dockStore.listPresets().length).toBe(3);
+  });
+
+  it("gets a preset by ID", () => {
+    const created = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Test" });
+    const preset = dockStore.getPreset(created.id);
+    expect(preset).not.toBeNull();
+    expect(preset!.presetName).toBe("Test");
+  });
+
+  it("returns null for nonexistent preset", () => {
+    expect(dockStore.getPreset(999)).toBeNull();
+  });
+
+  it("lists presets unfiltered", () => {
+    dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    const presets = dockStore.listPresets();
+    expect(presets.length).toBe(2);
+  });
+
+  it("filters presets by shipId", () => {
+    dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    const presets = dockStore.listPresets({ shipId: "kumari" });
+    expect(presets.length).toBe(1);
+    expect(presets[0].shipId).toBe("kumari");
+  });
+
+  it("filters presets by intentKey", () => {
+    dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    const presets = dockStore.listPresets({ intentKey: "grinding" });
+    expect(presets.length).toBe(1);
+    expect(presets[0].intentKey).toBe("grinding");
+  });
+
+  it("filters presets by both shipId and intentKey", () => {
+    dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "B" });
+    const presets = dockStore.listPresets({ shipId: "kumari", intentKey: "grinding" });
+    expect(presets.length).toBe(1);
+  });
+
+  it("updates a preset name", () => {
+    const created = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Old" });
+    const updated = dockStore.updatePreset(created.id, { presetName: "New" });
+    expect(updated!.presetName).toBe("New");
+  });
+
+  it("updates isDefault flag", () => {
+    const created = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    expect(created.isDefault).toBe(false);
+    const updated = dockStore.updatePreset(created.id, { isDefault: true });
+    expect(updated!.isDefault).toBe(true);
+  });
+
+  it("returns null when updating nonexistent preset", () => {
+    expect(dockStore.updatePreset(999, { presetName: "x" })).toBeNull();
+  });
+
+  it("deletes a preset", () => {
+    const created = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Del" });
+    expect(dockStore.deletePreset(created.id)).toBe(true);
+    expect(dockStore.getPreset(created.id)).toBeNull();
+  });
+
+  it("returns false when deleting nonexistent preset", () => {
+    expect(dockStore.deletePreset(999)).toBe(false);
+  });
+
+  it("requires missing fields", () => {
+    expect(() => dockStore.createPreset({ shipId: "", intentKey: "grinding", presetName: "x" }))
+      .toThrow(/requires/);
+  });
+});
+
+// ─── Crew Preset Members ────────────────────────────────────────
+
+describe("DockStore — Crew Preset Members", () => {
+  let dockStore: DockStore;
+  let fleetStore: FleetStore;
+
+  beforeEach(() => {
+    fleetStore = createFleetStore(TEST_DB);
+    dockStore = createDockStore(TEST_DB);
+    fleetStore.createShip({
+      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
+      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "mccoy", name: "McCoy", rarity: "Rare", level: 40, rank: "Lt Commander", groupName: "TOS" });
+  });
+
+  afterEach(() => {
+    dockStore.close();
+    fleetStore.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("sets preset members", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+    const members = dockStore.setPresetMembers(preset.id, [
+      { officerId: "kirk", roleType: "bridge", slot: "captain" },
+      { officerId: "spock", roleType: "bridge", slot: "officer_1" },
+      { officerId: "mccoy", roleType: "bridge", slot: "officer_2" },
+    ]);
+    expect(members.length).toBe(3);
+    expect(members[0].officerName).toBe("Kirk");
+    expect(members[0].roleType).toBe("bridge");
+    expect(members[0].slot).toBe("captain");
+  });
+
+  it("replaces members on repeated set", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+    dockStore.setPresetMembers(preset.id, [
+      { officerId: "kirk", roleType: "bridge", slot: "captain" },
+    ]);
+    const members = dockStore.setPresetMembers(preset.id, [
+      { officerId: "spock", roleType: "bridge", slot: "captain" },
+    ]);
+    expect(members.length).toBe(1);
+    expect(members[0].officerName).toBe("Spock");
+  });
+
+  it("members appear in preset via getPreset", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+    dockStore.setPresetMembers(preset.id, [
+      { officerId: "kirk", roleType: "bridge", slot: "captain" },
+      { officerId: "spock", roleType: "bridge", slot: "officer_1" },
+    ]);
+    const full = dockStore.getPreset(preset.id);
+    expect(full!.members.length).toBe(2);
+  });
+
+  it("rejects nonexistent preset", () => {
+    expect(() => dockStore.setPresetMembers(999, [{ officerId: "kirk", roleType: "bridge" }]))
+      .toThrow(/not found/);
+  });
+
+  it("rejects nonexistent officer", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+    expect(() => dockStore.setPresetMembers(preset.id, [{ officerId: "nope", roleType: "bridge" }]))
+      .toThrow(/not found in roster/);
+  });
+
+  it("rejects invalid roleType", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+    expect(() => dockStore.setPresetMembers(preset.id, [
+      { officerId: "kirk", roleType: "invalid" as "bridge" },
+    ])).toThrow(/Invalid roleType/);
+  });
+
+  it("clears members with empty array", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+    dockStore.setPresetMembers(preset.id, [{ officerId: "kirk", roleType: "bridge" }]);
+    const members = dockStore.setPresetMembers(preset.id, []);
+    expect(members.length).toBe(0);
+  });
+
+  it("deleting a preset cascades to members", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+    dockStore.setPresetMembers(preset.id, [{ officerId: "kirk", roleType: "bridge" }]);
+    dockStore.deletePreset(preset.id);
+    // Verify via counts
+    const counts = dockStore.counts();
+    expect(counts.presets).toBe(0);
+    expect(counts.presetMembers).toBe(0);
+  });
+});
+
+// ─── Officer Conflicts ──────────────────────────────────────────
+
+describe("DockStore — Officer Conflicts", () => {
+  let dockStore: DockStore;
+  let fleetStore: FleetStore;
+
+  beforeEach(() => {
+    fleetStore = createFleetStore(TEST_DB);
+    dockStore = createDockStore(TEST_DB);
+    fleetStore.createShip({
+      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
+      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createShip({
+      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
+      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
+  });
+
+  afterEach(() => {
+    dockStore.close();
+    fleetStore.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("returns empty when no conflicts", () => {
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    dockStore.setPresetMembers(p1.id, [{ officerId: "kirk", roleType: "bridge" }]);
+    const conflicts = dockStore.getOfficerConflicts();
+    expect(conflicts.length).toBe(0);
+  });
+
+  it("detects officer appearing in multiple presets", () => {
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    const p2 = dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    dockStore.setPresetMembers(p1.id, [{ officerId: "kirk", roleType: "bridge" }]);
+    dockStore.setPresetMembers(p2.id, [{ officerId: "kirk", roleType: "bridge" }]);
+    const conflicts = dockStore.getOfficerConflicts();
+    expect(conflicts.length).toBe(1);
+    expect(conflicts[0].officerId).toBe("kirk");
+    expect(conflicts[0].officerName).toBe("Kirk");
+    expect(conflicts[0].appearances.length).toBe(2);
+  });
+
+  it("does not flag officers in same preset as conflicts", () => {
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    dockStore.setPresetMembers(p1.id, [
+      { officerId: "kirk", roleType: "bridge" },
+      { officerId: "spock", roleType: "bridge" },
+    ]);
+    const conflicts = dockStore.getOfficerConflicts();
+    expect(conflicts.length).toBe(0);
+  });
+
+  it("resolves dock numbers for conflicting ships", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.addDockShip(1, "kumari");
+    dockStore.upsertDock(2, { label: "Mining" });
+    dockStore.addDockShip(2, "botany-bay");
+
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    const p2 = dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    dockStore.setPresetMembers(p1.id, [{ officerId: "kirk", roleType: "bridge" }]);
+    dockStore.setPresetMembers(p2.id, [{ officerId: "kirk", roleType: "bridge" }]);
+
+    const conflicts = dockStore.getOfficerConflicts();
+    expect(conflicts.length).toBe(1);
+    const kumariAppearance = conflicts[0].appearances.find((a) => a.shipId === "kumari");
+    expect(kumariAppearance!.dockNumbers).toContain(1);
+    const botanyAppearance = conflicts[0].appearances.find((a) => a.shipId === "botany-bay");
+    expect(botanyAppearance!.dockNumbers).toContain(2);
+  });
+});
+
+// ─── Dock Briefing Builder ──────────────────────────────────────
+
+describe("DockStore — Dock Briefing", () => {
+  let dockStore: DockStore;
+  let fleetStore: FleetStore;
+
+  beforeEach(() => {
+    fleetStore = createFleetStore(TEST_DB);
+    dockStore = createDockStore(TEST_DB);
+    fleetStore.createShip({
+      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
+      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createShip({
+      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
+      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
+    });
+    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
+    fleetStore.createOfficer({ id: "mccoy", name: "McCoy", rarity: "Rare", level: 40, rank: "Lt Commander", groupName: "TOS" });
+  });
+
+  afterEach(() => {
+    dockStore.close();
+    fleetStore.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("returns empty briefing when no docks exist", () => {
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.statusLines.length).toBe(0);
+    expect(briefing.text).toBe("");
+    expect(briefing.totalChars).toBe(0);
+  });
+
+  it("generates Tier 1 status lines", () => {
+    dockStore.upsertDock(1, { label: "Main Grinder" });
+    dockStore.setDockIntents(1, ["grinding"]);
+    dockStore.addDockShip(1, "kumari");
+    dockStore.updateDockShip(1, "kumari", { isActive: true });
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.statusLines.length).toBe(1);
+    expect(briefing.statusLines[0]).toContain("D1");
+    expect(briefing.statusLines[0]).toContain('"Main Grinder"');
+    expect(briefing.statusLines[0]).toContain("grinding");
+    expect(briefing.statusLines[0]).toContain("Kumari (active)");
+  });
+
+  it("shows (none active) when ships exist but none active", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.addDockShip(1, "kumari");
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.statusLines[0]).toContain("none active");
+  });
+
+  it("generates Tier 2 crew lines from presets", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.setDockIntents(1, ["grinding"]);
+    dockStore.addDockShip(1, "kumari");
+    dockStore.updateDockShip(1, "kumari", { isActive: true });
+
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Main Crew" });
+    dockStore.setPresetMembers(preset.id, [
+      { officerId: "kirk", roleType: "bridge", slot: "captain" },
+      { officerId: "spock", roleType: "bridge", slot: "officer_1" },
+    ]);
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.crewLines.length).toBe(1);
+    expect(briefing.crewLines[0]).toContain("Kirk(cpt)");
+    expect(briefing.crewLines[0]).toContain("Spock");
+  });
+
+  it("shows model-suggest fallback when no preset crew", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.setDockIntents(1, ["grinding"]);
+    dockStore.addDockShip(1, "kumari");
+    dockStore.updateDockShip(1, "kumari", { isActive: true });
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.crewLines[0]).toContain("model will suggest");
+  });
+
+  it("generates conflict lines", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.upsertDock(2, { label: "Mining" });
+    dockStore.addDockShip(1, "kumari");
+    dockStore.addDockShip(2, "botany-bay");
+
+    const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+    const p2 = dockStore.createPreset({ shipId: "botany-bay", intentKey: "mining-gas", presetName: "B" });
+    dockStore.setPresetMembers(p1.id, [{ officerId: "kirk", roleType: "bridge" }]);
+    dockStore.setPresetMembers(p2.id, [{ officerId: "kirk", roleType: "bridge" }]);
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.conflictLines.length).toBe(1);
+    expect(briefing.conflictLines[0]).toContain("Kirk");
+  });
+
+  it("generates insight for single-ship docks", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.addDockShip(1, "kumari");
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.insights.some((i) => i.includes("single point of failure"))).toBe(true);
+  });
+
+  it("generates insight for no-active-ship docks", () => {
+    dockStore.upsertDock(1, { label: "Grinder" });
+    dockStore.addDockShip(1, "kumari");
+    dockStore.addDockShip(1, "botany-bay");
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.insights.some((i) => i.includes("none marked active"))).toBe(true);
+  });
+
+  it("assembles text with all tiers", () => {
+    dockStore.upsertDock(1, { label: "Main Grinder" });
+    dockStore.setDockIntents(1, ["grinding"]);
+    dockStore.addDockShip(1, "kumari");
+    dockStore.updateDockShip(1, "kumari", { isActive: true });
+
+    const briefing = dockStore.buildBriefing();
+    expect(briefing.text).toContain("DRYDOCK STATUS");
+    expect(briefing.text).toContain("ACTIVE CREW");
+    expect(briefing.totalChars).toBeGreaterThan(0);
+  });
+
+  it("counts include presets and presetMembers", () => {
+    const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Test" });
+    dockStore.setPresetMembers(preset.id, [
+      { officerId: "kirk", roleType: "bridge" },
+    ]);
+    const counts = dockStore.counts();
+    expect(counts.presets).toBe(1);
+    expect(counts.presetMembers).toBe(1);
+  });
+});
+
 // ─── API Routes ─────────────────────────────────────────────────
 
 import request from "supertest";
@@ -711,6 +1171,148 @@ describe("Dock API Routes", () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app).delete("/api/fleet/docks/1/ships/kumari");
       expect(res.status).toBe(404);
+    });
+  });
+
+  // ── Crew Presets ────────────────────────────────────────
+
+  describe("POST /api/fleet/presets", () => {
+    it("creates a crew preset", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const res = await request(app)
+        .post("/api/fleet/presets")
+        .send({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
+      expect(res.status).toBe(201);
+      expect(res.body.shipId).toBe("kumari");
+      expect(res.body.presetName).toBe("Grind Crew");
+      expect(res.body.members).toEqual([]);
+    });
+
+    it("rejects missing fields", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const res = await request(app)
+        .post("/api/fleet/presets")
+        .send({ shipId: "kumari" });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("GET /api/fleet/presets", () => {
+    it("lists presets", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+      const res = await request(app).get("/api/fleet/presets");
+      expect(res.status).toBe(200);
+      expect(res.body.presets.length).toBe(1);
+      expect(res.body.count).toBe(1);
+    });
+
+    it("filters by shipId", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+      const res = await request(app).get("/api/fleet/presets?shipId=kumari");
+      expect(res.status).toBe(200);
+      expect(res.body.presets.length).toBe(1);
+    });
+  });
+
+  describe("GET /api/fleet/presets/:id", () => {
+    it("returns a preset with members", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
+      const res = await request(app).get(`/api/fleet/presets/${preset.id}`);
+      expect(res.status).toBe(200);
+      expect(res.body.presetName).toBe("A");
+      expect(res.body.members).toEqual([]);
+    });
+
+    it("returns 404 for nonexistent preset", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const res = await request(app).get("/api/fleet/presets/999");
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("PATCH /api/fleet/presets/:id", () => {
+    it("updates a preset", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Old" });
+      const res = await request(app)
+        .patch(`/api/fleet/presets/${preset.id}`)
+        .send({ presetName: "New" });
+      expect(res.status).toBe(200);
+      expect(res.body.presetName).toBe("New");
+    });
+
+    it("returns 404 for nonexistent preset", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const res = await request(app)
+        .patch("/api/fleet/presets/999")
+        .send({ presetName: "x" });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("DELETE /api/fleet/presets/:id", () => {
+    it("deletes a preset", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Del" });
+      const res = await request(app).delete(`/api/fleet/presets/${preset.id}`);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("deleted");
+    });
+
+    it("returns 404 for nonexistent preset", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const res = await request(app).delete("/api/fleet/presets/999");
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("PUT /api/fleet/presets/:id/members", () => {
+    it("sets preset members", async () => {
+      fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+      const res = await request(app)
+        .put(`/api/fleet/presets/${preset.id}/members`)
+        .send({ members: [{ officerId: "kirk", roleType: "bridge", slot: "captain" }] });
+      expect(res.status).toBe(200);
+      expect(res.body.members.length).toBe(1);
+      expect(res.body.members[0].officerName).toBe("Kirk");
+    });
+
+    it("rejects non-array members", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
+      const res = await request(app)
+        .put(`/api/fleet/presets/${preset.id}/members`)
+        .send({ members: "kirk" });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── Computed Endpoints ──────────────────────────────────
+
+  describe("GET /api/fleet/docks/summary", () => {
+    it("returns a dock briefing", async () => {
+      const app = createApp(makeState({ dockStore }));
+      dockStore.upsertDock(1, { label: "Grinder" });
+      const res = await request(app).get("/api/fleet/docks/summary");
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("statusLines");
+      expect(res.body).toHaveProperty("text");
+      expect(res.body).toHaveProperty("totalChars");
+    });
+  });
+
+  describe("GET /api/fleet/docks/conflicts", () => {
+    it("returns officer conflicts", async () => {
+      const app = createApp(makeState({ dockStore }));
+      const res = await request(app).get("/api/fleet/docks/conflicts");
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("conflicts");
+      expect(res.body).toHaveProperty("count");
     });
   });
 });

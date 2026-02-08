@@ -49,6 +49,7 @@ import {
   SPREADSHEET_ID,
   TAB_MAPPING_ENV,
   readFleetConfig,
+  readDockBriefing,
 } from "./app-context.js";
 
 // Route modules
@@ -185,6 +186,7 @@ async function boot(): Promise<void> {
       resolvedApiKey,
       csv,
       readFleetConfig(state.settingsStore),
+      readDockBriefing(state.dockStore),
     );
     log.boot.info({ model: "gemini-2.5-flash-lite" }, "gemini engine online");
   } else {
@@ -222,6 +224,7 @@ async function boot(): Promise<void> {
           resolvedApiKey,
           state.fleetData,
           readFleetConfig(state.settingsStore),
+          readDockBriefing(state.dockStore),
         );
         log.boot.info("gemini engine refreshed with fleet data");
       }

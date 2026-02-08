@@ -1,7 +1,8 @@
 /**
- * routes/docks.ts — Drydock loadout management routes (ADR-010 Phase 1).
+ * routes/docks.ts — Drydock loadout management routes (ADR-010 Phases 1 & 2).
  *
- * Intent catalog CRUD, dock loadout management, dock ship rotation.
+ * Intent catalog CRUD, dock loadout management, dock ship rotation,
+ * crew preset CRUD, conflict detection, and dock briefing.
  */
 
 import { Router } from "express";
@@ -66,6 +67,24 @@ export function createDockRoutes(appState: AppState): Router {
     }
     const docks = appState.dockStore.listDocks();
     res.json({ docks, count: docks.length });
+  });
+
+  // ─── Computed Endpoints (must be before :num to avoid param matching) ──
+
+  router.get("/api/fleet/docks/summary", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const briefing = appState.dockStore.buildBriefing();
+    res.json(briefing);
+  });
+
+  router.get("/api/fleet/docks/conflicts", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const conflicts = appState.dockStore.getOfficerConflicts();
+    res.json({ conflicts, count: conflicts.length });
   });
 
   router.get("/api/fleet/docks/:num", (req, res) => {
@@ -198,6 +217,110 @@ export function createDockRoutes(appState: AppState): Router {
       res.status(400).json({ error: message });
     }
   });
+
+  // ─── Crew Presets ───────────────────────────────────────
+
+  router.get("/api/fleet/presets", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const shipId = req.query.shipId as string | undefined;
+    const intentKey = req.query.intentKey as string | undefined;
+    const presets = appState.dockStore.listPresets(
+      (shipId || intentKey) ? { shipId, intentKey } : undefined,
+    );
+    res.json({ presets, count: presets.length });
+  });
+
+  router.get("/api/fleet/presets/:id", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid preset ID" });
+    }
+    const preset = appState.dockStore.getPreset(id);
+    if (!preset) {
+      return res.status(404).json({ error: "Preset not found" });
+    }
+    res.json(preset);
+  });
+
+  router.post("/api/fleet/presets", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const { shipId, intentKey, presetName, isDefault } = req.body;
+    if (!shipId || !intentKey || !presetName) {
+      return res.status(400).json({ error: "Missing required fields: shipId, intentKey, presetName" });
+    }
+    try {
+      const preset = appState.dockStore.createPreset({ shipId, intentKey, presetName, isDefault });
+      res.status(201).json(preset);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  router.patch("/api/fleet/presets/:id", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid preset ID" });
+    }
+    try {
+      const { presetName, isDefault } = req.body;
+      const updated = appState.dockStore.updatePreset(id, { presetName, isDefault });
+      if (!updated) {
+        return res.status(404).json({ error: "Preset not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  router.delete("/api/fleet/presets/:id", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid preset ID" });
+    }
+    const deleted = appState.dockStore.deletePreset(id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Preset not found" });
+    }
+    res.json({ id, status: "deleted" });
+  });
+
+  router.put("/api/fleet/presets/:id/members", (req, res) => {
+    if (!appState.dockStore) {
+      return res.status(503).json({ error: "Dock store not available" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid preset ID" });
+    }
+    const { members } = req.body;
+    if (!Array.isArray(members)) {
+      return res.status(400).json({ error: "Body must contain 'members' array" });
+    }
+    try {
+      const result = appState.dockStore.setPresetMembers(id, members);
+      res.json({ presetId: id, members: result, count: result.length });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
 
   return router;
 }

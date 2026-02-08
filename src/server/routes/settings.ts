@@ -4,7 +4,7 @@
 
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
-import { GEMINI_API_KEY, readFleetConfig } from "../app-context.js";
+import { GEMINI_API_KEY, readFleetConfig, readDockBriefing } from "../app-context.js";
 import { log } from "../logger.js";
 import { getCategories } from "../settings.js";
 import { createGeminiEngine } from "../gemini.js";
@@ -69,6 +69,7 @@ export function createSettingsRoutes(appState: AppState): Router {
         GEMINI_API_KEY,
         appState.fleetData,
         readFleetConfig(appState.settingsStore),
+        readDockBriefing(appState.dockStore),
       );
       log.boot.info("gemini engine refreshed with updated fleet config");
     }
