@@ -83,6 +83,8 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     geminiEngine: null,
     memoryService: null,
     settingsStore: null,
+    sessionStore: null,
+    fleetStore: null,
     fleetData: null,
     rosterError: null,
     startupComplete: false,

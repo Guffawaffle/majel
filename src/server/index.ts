@@ -49,6 +49,12 @@ import {
   createSessionStore,
   type SessionStore,
 } from "./sessions.js";
+import {
+  createFleetStore,
+  VALID_SHIP_STATUSES,
+  type FleetStore,
+  type ShipStatus,
+} from "./fleet-store.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,6 +72,7 @@ export interface AppState {
   memoryService: MemoryService | null;
   settingsStore: SettingsStore | null;
   sessionStore: SessionStore | null;
+  fleetStore: FleetStore | null;
   fleetData: FleetData | null;
   rosterError: string | null;
   startupComplete: boolean;
@@ -76,6 +83,7 @@ const state: AppState = {
   memoryService: null,
   settingsStore: null,
   sessionStore: null,
+  fleetStore: null,
   fleetData: null,
   rosterError: null,
   startupComplete: false,
@@ -120,6 +128,7 @@ export function createApp(appState: AppState = state): express.Express {
       gemini: appState.geminiEngine ? "connected" : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
+      fleetStore: appState.fleetStore ? { active: true, ...appState.fleetStore.counts() } : { active: false },
       credentials: hasCredentials(),
     });
   });
@@ -129,7 +138,7 @@ export function createApp(appState: AppState = state): express.Express {
   app.get("/api", (_req, res) => {
     res.json({
       name: "Majel",
-      version: "0.3.1",
+      version: "0.4.0",
       description: "STFC Fleet Intelligence System API",
       endpoints: [
         { method: "GET", path: "/api", description: "API discovery (this endpoint)" },
@@ -146,6 +155,21 @@ export function createApp(appState: AppState = state): express.Express {
         { method: "GET", path: "/api/sessions/:id", description: "Get a session with all messages" },
         { method: "PATCH", path: "/api/sessions/:id", description: "Update session title", params: { body: { title: "string" } } },
         { method: "DELETE", path: "/api/sessions/:id", description: "Delete a session" },
+        { method: "GET", path: "/api/fleet/ships", description: "List ships", params: { query: { status: "ShipStatus (optional)", role: "string (optional)" } } },
+        { method: "POST", path: "/api/fleet/ships", description: "Create a ship", params: { body: { id: "string", name: "string", tier: "number?", shipClass: "string?", status: "ShipStatus?", role: "string?", roleDetail: "string?", notes: "string?" } } },
+        { method: "GET", path: "/api/fleet/ships/:id", description: "Get a ship with crew" },
+        { method: "PATCH", path: "/api/fleet/ships/:id", description: "Update ship fields" },
+        { method: "DELETE", path: "/api/fleet/ships/:id", description: "Delete a ship" },
+        { method: "GET", path: "/api/fleet/officers", description: "List officers", params: { query: { groupName: "string (optional)", unassigned: "boolean (optional)" } } },
+        { method: "POST", path: "/api/fleet/officers", description: "Create an officer", params: { body: { id: "string", name: "string", rarity: "string?", level: "number?", rank: "string?", groupName: "string?" } } },
+        { method: "GET", path: "/api/fleet/officers/:id", description: "Get an officer with assignments" },
+        { method: "PATCH", path: "/api/fleet/officers/:id", description: "Update officer fields" },
+        { method: "DELETE", path: "/api/fleet/officers/:id", description: "Delete an officer" },
+        { method: "POST", path: "/api/fleet/ships/:id/crew", description: "Assign an officer to a ship", params: { body: { officerId: "string", roleType: "bridge|specialist", slot: "string?", activeForRole: "string?" } } },
+        { method: "DELETE", path: "/api/fleet/ships/:shipId/crew/:officerId", description: "Unassign an officer from a ship" },
+        { method: "GET", path: "/api/fleet/log", description: "Fleet activity log", params: { query: { shipId: "string?", officerId: "string?", action: "string?", limit: "number?" } } },
+        { method: "POST", path: "/api/fleet/import", description: "Import fleet data from Sheets into fleet store" },
+        { method: "GET", path: "/api/fleet/counts", description: "Fleet store entity counts" },
       ],
     });
   });
@@ -161,7 +185,7 @@ export function createApp(appState: AppState = state): express.Express {
 
     const diagnostic: Record<string, unknown> = {
       system: {
-        version: "0.3.1",
+        version: "0.4.0",
         uptime,
         uptimeSeconds: Math.round(uptimeSeconds),
         nodeVersion: process.version,
@@ -210,6 +234,14 @@ export function createApp(appState: AppState = state): express.Express {
             status: appState.rosterError ? "error" : "not loaded",
             error: appState.rosterError || undefined,
           },
+      fleetStore: (() => {
+        if (!appState.fleetStore) return { status: "not configured" };
+        return {
+          status: "active",
+          ...appState.fleetStore.counts(),
+          dbPath: appState.fleetStore.getDbPath(),
+        };
+      })(),
       sheets: {
         credentialsPresent: hasCredentials(),
       },
@@ -476,6 +508,236 @@ export function createApp(appState: AppState = state): express.Express {
     res.json({ id: req.params.id, status: "deleted" });
   });
 
+  // ─── Fleet API ────────────────────────────────────────────
+
+  // Ships CRUD
+  app.get("/api/fleet/ships", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const status = req.query.status as ShipStatus | undefined;
+    const role = req.query.role as string | undefined;
+    if (status && !VALID_SHIP_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Valid: ${VALID_SHIP_STATUSES.join(", ")}` });
+    }
+    const ships = appState.fleetStore.listShips({ status, role });
+    res.json({ ships, count: ships.length });
+  });
+
+  app.post("/api/fleet/ships", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const { id, name, tier, shipClass, status, role, roleDetail, notes } = req.body;
+    if (!id || !name) {
+      return res.status(400).json({ error: "Missing required fields: id, name" });
+    }
+    try {
+      const ship = appState.fleetStore.createShip({
+        id,
+        name,
+        tier: tier ?? null,
+        shipClass: shipClass ?? null,
+        status: status || "ready",
+        role: role ?? null,
+        roleDetail: roleDetail ?? null,
+        notes: notes ?? null,
+        importedFrom: null,
+      });
+      res.status(201).json(ship);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  app.get("/api/fleet/ships/:id", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const ship = appState.fleetStore.getShip(req.params.id);
+    if (!ship) {
+      return res.status(404).json({ error: "Ship not found" });
+    }
+    res.json(ship);
+  });
+
+  app.patch("/api/fleet/ships/:id", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    try {
+      const ship = appState.fleetStore.updateShip(req.params.id, req.body);
+      if (!ship) {
+        return res.status(404).json({ error: "Ship not found" });
+      }
+      res.json(ship);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  app.delete("/api/fleet/ships/:id", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const deleted = appState.fleetStore.deleteShip(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Ship not found" });
+    }
+    res.json({ id: req.params.id, status: "deleted" });
+  });
+
+  // Officers CRUD
+  app.get("/api/fleet/officers", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const groupName = req.query.groupName as string | undefined;
+    const unassigned = req.query.unassigned === "true";
+    const officers = appState.fleetStore.listOfficers({ groupName, unassigned });
+    res.json({ officers, count: officers.length });
+  });
+
+  app.post("/api/fleet/officers", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const { id, name, rarity, level, rank, groupName } = req.body;
+    if (!id || !name) {
+      return res.status(400).json({ error: "Missing required fields: id, name" });
+    }
+    try {
+      const officer = appState.fleetStore.createOfficer({
+        id,
+        name,
+        rarity: rarity ?? null,
+        level: level ?? null,
+        rank: rank ?? null,
+        groupName: groupName ?? null,
+        importedFrom: null,
+      });
+      res.status(201).json(officer);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  app.get("/api/fleet/officers/:id", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const officer = appState.fleetStore.getOfficer(req.params.id);
+    if (!officer) {
+      return res.status(404).json({ error: "Officer not found" });
+    }
+    res.json(officer);
+  });
+
+  app.patch("/api/fleet/officers/:id", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    try {
+      const officer = appState.fleetStore.updateOfficer(req.params.id, req.body);
+      if (!officer) {
+        return res.status(404).json({ error: "Officer not found" });
+      }
+      res.json(officer);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  app.delete("/api/fleet/officers/:id", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const deleted = appState.fleetStore.deleteOfficer(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Officer not found" });
+    }
+    res.json({ id: req.params.id, status: "deleted" });
+  });
+
+  // Crew Assignments
+  app.post("/api/fleet/ships/:id/crew", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const { officerId, roleType, slot, activeForRole } = req.body;
+    if (!officerId || !roleType) {
+      return res.status(400).json({ error: "Missing required fields: officerId, roleType" });
+    }
+    if (!["bridge", "specialist"].includes(roleType)) {
+      return res.status(400).json({ error: "roleType must be 'bridge' or 'specialist'" });
+    }
+    try {
+      const assignment = appState.fleetStore.assignCrew(req.params.id, officerId, roleType, slot, activeForRole);
+      res.status(201).json(assignment);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  app.delete("/api/fleet/ships/:shipId/crew/:officerId", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const removed = appState.fleetStore.unassignCrew(req.params.shipId, req.params.officerId);
+    if (!removed) {
+      return res.status(404).json({ error: "Assignment not found" });
+    }
+    res.json({ shipId: req.params.shipId, officerId: req.params.officerId, status: "unassigned" });
+  });
+
+  // Fleet Log
+  app.get("/api/fleet/log", (req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    const shipId = req.query.shipId as string | undefined;
+    const officerId = req.query.officerId as string | undefined;
+    const action = req.query.action as string | undefined;
+    const limit = parseInt((req.query.limit as string) || "50", 10);
+    const entries = appState.fleetStore.getLog({
+      shipId,
+      officerId,
+      action: action as import("./fleet-store.js").LogAction | undefined,
+      limit,
+    });
+    res.json({ entries, count: entries.length });
+  });
+
+  // Fleet Import
+  app.post("/api/fleet/import", (_req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    if (!appState.fleetData) {
+      return res.status(400).json({ error: "No fleet data loaded from Sheets. Hit /api/roster first." });
+    }
+    try {
+      const result = appState.fleetStore.importFromFleetData(appState.fleetData);
+      res.json({ status: "imported", ...result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // Fleet Counts
+  app.get("/api/fleet/counts", (_req, res) => {
+    if (!appState.fleetStore) {
+      return res.status(503).json({ error: "Fleet store not available" });
+    }
+    res.json(appState.fleetStore.counts());
+  });
+
   // ─── SPA Fallback ───────────────────────────────────────────
   app.get("*", (_req, res) => {
     res.sendFile(path.join(clientDir, "index.html"));
@@ -510,6 +772,15 @@ async function boot(): Promise<void> {
     log.boot.info({ sessions: state.sessionStore.count() }, "session store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
+  }
+
+  // 2c. Initialize fleet store (always — it's local SQLite)
+  try {
+    state.fleetStore = createFleetStore();
+    const counts = state.fleetStore.counts();
+    log.boot.info({ ships: counts.ships, officers: counts.officers }, "fleet store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "fleet store init failed");
   }
 
   // Resolve config: settings store → env → defaults
@@ -583,6 +854,9 @@ async function shutdown(): Promise<void> {
   }
   if (state.sessionStore) {
     state.sessionStore.close();
+  }
+  if (state.fleetStore) {
+    state.fleetStore.close();
   }
   if (state.memoryService) {
     await state.memoryService.close();
