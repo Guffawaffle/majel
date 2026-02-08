@@ -46,18 +46,27 @@ function makeMockMemory(frames: Frame[] = []): MemoryService {
     recall: vi.fn().mockResolvedValue(frames),
     timeline: vi.fn().mockResolvedValue(frames),
     close: vi.fn().mockResolvedValue(undefined),
+    getFrameCount: vi.fn().mockReturnValue(frames.length),
+    getDbPath: vi.fn().mockReturnValue("/tmp/test-memory.db"),
   };
 }
 
 function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
-  const history: Array<{ role: string; text: string }> = [];
+  const sessions = new Map<string, Array<{ role: string; text: string }>>();
+  const getSessionHistory = (sid: string) => {
+    if (!sessions.has(sid)) sessions.set(sid, []);
+    return sessions.get(sid)!;
+  };
   return {
-    chat: vi.fn().mockImplementation(async (msg: string) => {
+    chat: vi.fn().mockImplementation(async (msg: string, sessionId = "default") => {
+      const history = getSessionHistory(sessionId);
       history.push({ role: "user", text: msg });
       history.push({ role: "model", text: response });
       return response;
     }),
-    getHistory: vi.fn().mockImplementation(() => [...history]),
+    getHistory: vi.fn().mockImplementation((sessionId = "default") => [...getSessionHistory(sessionId)]),
+    getSessionCount: vi.fn().mockImplementation(() => sessions.size),
+    closeSession: vi.fn().mockImplementation((sessionId: string) => { sessions.delete(sessionId); }),
   };
 }
 
@@ -169,7 +178,7 @@ describe("POST /api/chat", () => {
       .send({ message: "Hello" });
     expect(res.status).toBe(200);
     expect(res.body.answer).toBe("Live long and prosper.");
-    expect(engine.chat).toHaveBeenCalledWith("Hello");
+    expect(engine.chat).toHaveBeenCalledWith("Hello", "default");
   });
 
   it("persists conversation to memory when available", async () => {
@@ -219,6 +228,55 @@ describe("POST /api/chat", () => {
     const res = await request(app).post("/api/chat").send({ message: "Hi" });
     expect(res.status).toBe(500);
     expect(res.body.error).toContain("API quota exceeded");
+  });
+
+  it("routes messages to the session specified by X-Session-Id header", async () => {
+    const engine = makeMockEngine("Session reply.");
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    await request(app)
+      .post("/api/chat")
+      .set("X-Session-Id", "tab-abc")
+      .send({ message: "Hello from tab A" });
+
+    expect(engine.chat).toHaveBeenCalledWith("Hello from tab A", "tab-abc");
+  });
+
+  it("uses 'default' session when no X-Session-Id header", async () => {
+    const engine = makeMockEngine("Default reply.");
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    await request(app)
+      .post("/api/chat")
+      .send({ message: "Hello" });
+
+    expect(engine.chat).toHaveBeenCalledWith("Hello", "default");
+  });
+
+  it("isolates history between different session IDs", async () => {
+    const engine = makeMockEngine("Response.");
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    await request(app)
+      .post("/api/chat")
+      .set("X-Session-Id", "session-1")
+      .send({ message: "Alpha" });
+
+    await request(app)
+      .post("/api/chat")
+      .set("X-Session-Id", "session-2")
+      .send({ message: "Beta" });
+
+    // Each session should have its own history
+    const hist1 = engine.getHistory("session-1");
+    const hist2 = engine.getHistory("session-2");
+    expect(hist1).toHaveLength(2); // user + model
+    expect(hist2).toHaveLength(2);
+    expect(hist1[0].text).toBe("Alpha");
+    expect(hist2[0].text).toBe("Beta");
   });
 });
 
@@ -291,6 +349,19 @@ describe("GET /api/history", () => {
 
     await request(app).get("/api/history?source=lex&limit=5");
     expect(memory.timeline).toHaveBeenCalledWith(5);
+  });
+
+  it("returns session history for a specific sessionId", async () => {
+    const engine = makeMockEngine();
+    await engine.chat("Tab A message", "tab-a");
+    await engine.chat("Tab B message", "tab-b");
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await request(app).get("/api/history?source=session&sessionId=tab-a");
+    expect(res.status).toBe(200);
+    expect(res.body.session).toHaveLength(2);
+    expect(res.body.session[0].text).toBe("Tab A message");
   });
 });
 
@@ -582,5 +653,129 @@ describe("settings API", () => {
       expect(res.status).toBe(200);
       expect(res.body.status).toBe("not_found");
     });
+  });
+});
+
+// ─── GET /api (Discovery) ───────────────────────────────────────
+
+describe("GET /api", () => {
+  it("returns API manifest with endpoints list", async () => {
+    const app = createApp(makeState());
+    const res = await request(app).get("/api");
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("Majel");
+    expect(res.body.version).toBeDefined();
+    expect(res.body.endpoints).toBeInstanceOf(Array);
+    expect(res.body.endpoints.length).toBeGreaterThan(5);
+  });
+
+  it("includes all major endpoints", async () => {
+    const app = createApp(makeState());
+    const res = await request(app).get("/api");
+    const paths = res.body.endpoints.map((e: { path: string }) => e.path);
+    expect(paths).toContain("/api/health");
+    expect(paths).toContain("/api/diagnostic");
+    expect(paths).toContain("/api/chat");
+    expect(paths).toContain("/api/recall");
+    expect(paths).toContain("/api/settings");
+  });
+
+  it("each endpoint has method, path, and description", async () => {
+    const app = createApp(makeState());
+    const res = await request(app).get("/api");
+    for (const endpoint of res.body.endpoints) {
+      expect(endpoint.method).toBeDefined();
+      expect(endpoint.path).toBeDefined();
+      expect(endpoint.description).toBeDefined();
+    }
+  });
+});
+
+// ─── GET /api/diagnostic ────────────────────────────────────────
+
+describe("GET /api/diagnostic", () => {
+  it("returns system info regardless of subsystem state", async () => {
+    const app = createApp(makeState());
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.status).toBe(200);
+    expect(res.body.system).toBeDefined();
+    expect(res.body.system.nodeVersion).toMatch(/^v\d+/);
+    expect(res.body.system.timestamp).toBeDefined();
+    expect(res.body.system.uptime).toBeDefined();
+  });
+
+  it("reports gemini as not configured when no engine", async () => {
+    const app = createApp(makeState());
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.gemini.status).toBe("not configured");
+  });
+
+  it("reports gemini status with session count when connected", async () => {
+    const engine = makeMockEngine();
+    await engine.chat("hello"); // creates a session in "default"
+    const app = createApp(makeState({ geminiEngine: engine }));
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.gemini.status).toBe("connected");
+    expect(res.body.gemini.model).toBe("gemini-2.5-flash-lite");
+    expect(res.body.gemini.activeSessions).toBe(1);
+  });
+
+  it("reports memory status with frame count when active", async () => {
+    const frames = [makeFrame(), makeFrame({ id: "frame-2" })];
+    const memory = makeMockMemory(frames);
+    const app = createApp(makeState({ memoryService: memory }));
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.memory.status).toBe("active");
+    expect(res.body.memory.frameCount).toBe(2);
+    expect(res.body.memory.dbPath).toBeDefined();
+  });
+
+  it("reports memory as not configured when no service", async () => {
+    const app = createApp(makeState());
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.memory.status).toBe("not configured");
+  });
+
+  it("reports settings status with override count when active", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-diag-"));
+    const store = createSettingsStore(path.join(tmpDir, "settings.db"));
+    store.set("display.admiralName", "TestAdmiral");
+    const app = createApp(makeState({ settingsStore: store }));
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.settings.status).toBe("active");
+    expect(res.body.settings.userOverrides).toBe(1);
+    expect(res.body.settings.dbPath).toBeDefined();
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it("reports fleet data when loaded", async () => {
+    const fleetData = makeFleetData();
+    const app = createApp(makeState({ fleetData }));
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.fleet.status).toBe("loaded");
+    expect(res.body.fleet.totalChars).toBeGreaterThan(0);
+    expect(res.body.fleet.sections).toHaveLength(1);
+    expect(res.body.fleet.spreadsheetId).toBe("test-spreadsheet");
+  });
+
+  it("reports fleet error when present", async () => {
+    const app = createApp(makeState({ rosterError: "OAuth token expired" }));
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.fleet.status).toBe("error");
+    expect(res.body.fleet.error).toBe("OAuth token expired");
+  });
+
+  it("reports fleet as not loaded when no data or error", async () => {
+    const app = createApp(makeState());
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.fleet.status).toBe("not loaded");
+  });
+
+  it("reports sheets credential status", async () => {
+    const app = createApp(makeState());
+    const res = await request(app).get("/api/diagnostic");
+    expect(res.body.sheets).toBeDefined();
+    expect(typeof res.body.sheets.credentialsPresent).toBe("boolean");
   });
 });

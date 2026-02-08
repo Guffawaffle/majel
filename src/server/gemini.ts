@@ -206,14 +206,37 @@ In the meantime, you can still discuss STFC strategy, crew compositions, and eve
 }
 
 export interface GeminiEngine {
-  /** Send a message and get the response text. */
-  chat(message: string): Promise<string>;
-  /** Get the full conversation history for this session. */
-  getHistory(): Array<{ role: string; text: string }>;
+  /** Send a message and get the response text. Optional sessionId for isolation. */
+  chat(message: string, sessionId?: string): Promise<string>;
+  /** Get the full conversation history. Optional sessionId (default: "default"). */
+  getHistory(sessionId?: string): Array<{ role: string; text: string }>;
+  /** Get the number of active sessions. */
+  getSessionCount(): number;
+  /** Close a specific session and free its resources. */
+  closeSession(sessionId: string): void;
+}
+
+/** Default session TTL: 30 minutes */
+const SESSION_TTL_MS = 30 * 60 * 1000;
+/** Max turns per session before oldest are dropped */
+const SESSION_MAX_TURNS = 50;
+/** Cleanup interval: every 5 minutes */
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+interface SessionState {
+  chatSession: ChatSession;
+  history: Array<{ role: string; text: string }>;
+  lastAccess: number;
 }
 
 /**
  * Create a Gemini chat engine with fleet data context baked in.
+ *
+ * Session isolation:
+ * - Each sessionId gets its own ChatSession with independent history
+ * - Default (no sessionId) uses "default" session for backward compat
+ * - Sessions expire after 30min of inactivity (configurable via SESSION_TTL_MS)
+ * - Each session capped at 50 turns (configurable via SESSION_MAX_TURNS)
  *
  * Configuration:
  * - Safety settings: all filters off (personal tool, not public product)
@@ -232,7 +255,7 @@ export function createGeminiEngine(
     safetySettings: SAFETY_SETTINGS,
   });
 
-  const chatSession: ChatSession = model.startChat({ history: [] });
+  const sessions = new Map<string, SessionState>();
 
   debug.gemini("init", {
     model: MODEL_NAME,
@@ -240,24 +263,80 @@ export function createGeminiEngine(
     promptLen: buildSystemPrompt(fleetData).length,
   });
 
-  // Track history locally for the API endpoint
-  const history: Array<{ role: string; text: string }> = [];
+  /** Get or create a session by ID */
+  function getSession(sessionId: string): SessionState {
+    let state = sessions.get(sessionId);
+    if (!state) {
+      state = {
+        chatSession: model.startChat({ history: [] }),
+        history: [],
+        lastAccess: Date.now(),
+      };
+      sessions.set(sessionId, state);
+      debug.gemini("session:create", { sessionId, totalSessions: sessions.size });
+    }
+    state.lastAccess = Date.now();
+    return state;
+  }
+
+  /** Remove expired sessions */
+  function cleanupSessions(): void {
+    const now = Date.now();
+    let cleaned = 0;
+    for (const [id, state] of sessions) {
+      if (id !== "default" && now - state.lastAccess > SESSION_TTL_MS) {
+        sessions.delete(id);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      debug.gemini("session:cleanup", { cleaned, remaining: sessions.size });
+    }
+  }
+
+  // Periodic cleanup (only in non-test environments)
+  const isTest = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+  const cleanupTimer = isTest ? null : setInterval(cleanupSessions, CLEANUP_INTERVAL_MS);
+  if (cleanupTimer) {
+    // Don't keep the process alive just for cleanup
+    cleanupTimer.unref();
+  }
 
   return {
-    async chat(message: string): Promise<string> {
-      debug.gemini("chat:send", { messageLen: message.length, historyLen: history.length });
-      history.push({ role: "user", text: message });
+    async chat(message: string, sessionId = "default"): Promise<string> {
+      const session = getSession(sessionId);
+      debug.gemini("chat:send", { sessionId, messageLen: message.length, historyLen: session.history.length });
 
-      const result = await chatSession.sendMessage(message);
+      session.history.push({ role: "user", text: message });
+
+      const result = await session.chatSession.sendMessage(message);
       const responseText = result.response.text();
 
-      history.push({ role: "model", text: responseText });
-      debug.gemini("chat:recv", { responseLen: responseText.length, historyLen: history.length });
+      session.history.push({ role: "model", text: responseText });
+
+      // Enforce turn limit: drop oldest pair if over max
+      while (session.history.length > SESSION_MAX_TURNS * 2) {
+        session.history.splice(0, 2);
+      }
+
+      debug.gemini("chat:recv", { sessionId, responseLen: responseText.length, historyLen: session.history.length });
       return responseText;
     },
 
-    getHistory(): Array<{ role: string; text: string }> {
-      return [...history];
+    getHistory(sessionId = "default"): Array<{ role: string; text: string }> {
+      const session = sessions.get(sessionId);
+      return session ? [...session.history] : [];
+    },
+
+    getSessionCount(): number {
+      return sessions.size;
+    },
+
+    closeSession(sessionId: string): void {
+      const deleted = sessions.delete(sessionId);
+      if (deleted) {
+        debug.gemini("session:close", { sessionId, remaining: sessions.size });
+      }
     },
   };
 }

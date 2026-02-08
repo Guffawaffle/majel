@@ -160,6 +160,12 @@ export interface SettingsStore {
 
   /** Close the database. */
   close(): void;
+
+  /** Count how many settings have user-level overrides. */
+  countUserOverrides(): number;
+
+  /** Get the database file path. */
+  getDbPath(): string;
 }
 
 export interface SettingEntry {
@@ -325,6 +331,15 @@ export function createSettingsStore(dbPath?: string): SettingsStore {
 
     close(): void {
       db.close();
+    },
+
+    countUserOverrides(): number {
+      const row = db.prepare("SELECT COUNT(*) as count FROM settings").get() as { count: number };
+      return row.count;
+    },
+
+    getDbPath(): string {
+      return resolvedPath;
     },
   };
 }

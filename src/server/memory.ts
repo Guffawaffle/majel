@@ -13,6 +13,7 @@
  */
 
 import { createFrameStore } from "@smartergpt/lex/store";
+import { getFrameCount } from "@smartergpt/lex/store";
 import { createFrame } from "@smartergpt/lex/types";
 import type { Frame } from "@smartergpt/lex/types";
 import { debug } from "./debug.js";
@@ -37,6 +38,12 @@ export interface MemoryService {
 
   /** Clean shutdown. */
   close(): Promise<void>;
+
+  /** Get total frame count. */
+  getFrameCount(): number;
+
+  /** Get the database file path. */
+  getDbPath(): string;
 }
 
 /**
@@ -93,6 +100,20 @@ export function createMemoryService(dbPath?: string): MemoryService {
     async close(): Promise<void> {
       debug.lex("close", { status: "shutting down" });
       await store.close();
+    },
+
+    getFrameCount(): number {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return getFrameCount((store as any)._db);
+      } catch {
+        return -1;
+      }
+    },
+
+    getDbPath(): string {
+      const wsRoot = process.env.LEX_WORKSPACE_ROOT || process.cwd();
+      return `${wsRoot}/.smartergpt/lex/memory.db`;
     },
   };
 }

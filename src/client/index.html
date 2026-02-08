@@ -31,6 +31,10 @@
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 0110.5-4M14 8a6 6 0 01-10.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 1v4h-4M4 15v-4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           Refresh roster
         </button>
+        <button id="diagnostic-btn" class="sidebar-link">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 13h12M4 9h2v4H4zM7 6h2v7H7zM10 3h2v10h-2z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Diagnostic
+        </button>
       </div>
       <div class="sidebar-footer">
         <div id="status-bar">
@@ -159,6 +163,19 @@ MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
         <button type="submit">Search</button>
       </form>
       <div id="recall-results"></div>
+    </dialog>
+
+    <!-- Diagnostic Dialog -->
+    <dialog id="diagnostic-dialog">
+      <div class="dialog-header">
+        <h3>📊 System Diagnostic</h3>
+        <button class="dialog-close" id="diagnostic-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div id="diagnostic-content" class="diagnostic-content">
+        <p class="diagnostic-loading">Querying subsystems...</p>
+      </div>
     </dialog>
 
     <!-- Sidebar overlay (mobile) -->

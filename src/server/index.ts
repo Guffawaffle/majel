@@ -6,6 +6,8 @@
  *
  * Endpoints:
  *   GET  /api/health       — Status check
+ *   GET  /api/diagnostic   — Deep subsystem status
+ *   GET  /api              — API discovery manifest
  *   GET  /api/roster       — Fetch/refresh roster from Sheets
  *   POST /api/chat         — Send message, get Gemini response
  *   GET  /api/history      — Conversation history from Lex
@@ -100,6 +102,88 @@ export function createApp(appState: AppState = state): express.Express {
     });
   });
 
+  // ─── API Discovery ───────────────────────────────────────────
+
+  app.get("/api", (_req, res) => {
+    res.json({
+      name: "Majel",
+      version: "0.3.0",
+      description: "STFC Fleet Intelligence System API",
+      endpoints: [
+        { method: "GET", path: "/api", description: "API discovery (this endpoint)" },
+        { method: "GET", path: "/api/health", description: "Fast health check — is the server up?" },
+        { method: "GET", path: "/api/diagnostic", description: "Deep subsystem status — memory, settings, fleet, Gemini" },
+        { method: "GET", path: "/api/roster", description: "Fetch/refresh fleet data from Google Sheets" },
+        { method: "POST", path: "/api/chat", description: "Send a message, get a Gemini response", params: { body: { message: "string (required)" }, headers: { "X-Session-Id": "string (optional, default: 'default')" } } },
+        { method: "GET", path: "/api/history", description: "Conversation history (session + Lex)", params: { query: { source: "session|lex|both", limit: "number", sessionId: "string (optional, default: 'default')" } } },
+        { method: "GET", path: "/api/recall", description: "Search Lex memory by meaning", params: { query: { q: "string (required)", limit: "number" } } },
+        { method: "GET", path: "/api/settings", description: "All settings with resolved values", params: { query: { category: "string (optional)" } } },
+        { method: "PATCH", path: "/api/settings", description: "Update one or more settings", params: { body: "{ key: value, ... }" } },
+        { method: "DELETE", path: "/api/settings/:key", description: "Reset a setting to its default" },
+      ],
+    });
+  });
+
+  // ─── Diagnostic ──────────────────────────────────────────────
+
+  app.get("/api/diagnostic", (_req, res) => {
+    const now = new Date();
+    const uptimeSeconds = process.uptime();
+    const hours = Math.floor(uptimeSeconds / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const uptime = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+    const diagnostic: Record<string, unknown> = {
+      system: {
+        version: "0.3.0",
+        uptime,
+        uptimeSeconds: Math.round(uptimeSeconds),
+        nodeVersion: process.version,
+        timestamp: now.toISOString(),
+        startupComplete: appState.startupComplete,
+      },
+      gemini: appState.geminiEngine
+        ? {
+            status: "connected",
+            model: "gemini-2.5-flash-lite",
+            activeSessions: appState.geminiEngine.getSessionCount(),
+          }
+        : { status: "not configured" },
+      memory: (() => {
+        if (!appState.memoryService) return { status: "not configured" };
+        return {
+          status: "active",
+          frameCount: appState.memoryService.getFrameCount(),
+          dbPath: appState.memoryService.getDbPath(),
+        };
+      })(),
+      settings: (() => {
+        if (!appState.settingsStore) return { status: "not configured" };
+        return {
+          status: "active",
+          userOverrides: appState.settingsStore.countUserOverrides(),
+          dbPath: appState.settingsStore.getDbPath(),
+        };
+      })(),
+      fleet: hasFleetData(appState.fleetData)
+        ? {
+            status: "loaded",
+            ...fleetDataSummary(appState.fleetData!),
+            fetchedAt: appState.fleetData!.fetchedAt,
+            spreadsheetId: appState.fleetData!.spreadsheetId,
+          }
+        : {
+            status: appState.rosterError ? "error" : "not loaded",
+            error: appState.rosterError || undefined,
+          },
+      sheets: {
+        credentialsPresent: hasCredentials(),
+      },
+    };
+
+    res.json(diagnostic);
+  });
+
   app.get("/api/roster", async (_req, res) => {
     if (!SPREADSHEET_ID) {
       return res
@@ -136,6 +220,7 @@ export function createApp(appState: AppState = state): express.Express {
 
   app.post("/api/chat", async (req, res) => {
     const { message } = req.body;
+    const sessionId = (req.headers["x-session-id"] as string) || "default";
 
     if (!message || typeof message !== "string") {
       return res
@@ -150,7 +235,7 @@ export function createApp(appState: AppState = state): express.Express {
     }
 
     try {
-      const answer = await appState.geminiEngine.chat(message);
+      const answer = await appState.geminiEngine.chat(message, sessionId);
 
       // Persist to Lex memory (fire-and-forget, don't block the response)
       if (appState.memoryService) {
@@ -179,7 +264,8 @@ export function createApp(appState: AppState = state): express.Express {
     } = {};
 
     if (source === "session" || source === "both") {
-      result.session = appState.geminiEngine?.getHistory() || [];
+      const sessionId = (req.query.sessionId as string) || "default";
+      result.session = appState.geminiEngine?.getHistory(sessionId) || [];
     }
 
     if (

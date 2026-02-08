@@ -1,6 +1,6 @@
 {
   "name": "majel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "STFC Fleet Intelligence System — Named in honor of Majel Barrett-Roddenberry (1932–2008)",
   "type": "module",
   "main": "dist/server/index.js",

@@ -284,12 +284,16 @@ describe("createGeminiEngine", () => {
     };
   });
 
-  it("creates an engine with chat and getHistory methods", () => {
+  it("creates an engine with chat, getHistory, getSessionCount, closeSession methods", () => {
     const engine = createGeminiEngine("fake-key", "some,csv,data");
     expect(engine).toHaveProperty("chat");
     expect(engine).toHaveProperty("getHistory");
+    expect(engine).toHaveProperty("getSessionCount");
+    expect(engine).toHaveProperty("closeSession");
     expect(typeof engine.chat).toBe("function");
     expect(typeof engine.getHistory).toBe("function");
+    expect(typeof engine.getSessionCount).toBe("function");
+    expect(typeof engine.closeSession).toBe("function");
   });
 
   it("returns an empty history initially", () => {
@@ -325,5 +329,48 @@ describe("createGeminiEngine", () => {
     const h1 = engine.getHistory();
     const h2 = engine.getHistory();
     expect(h1).not.toBe(h2);
+  });
+
+  it("starts with zero active sessions", () => {
+    const engine = createGeminiEngine("fake-key", "csv");
+    expect(engine.getSessionCount()).toBe(0);
+  });
+
+  it("creates separate sessions for different sessionIds", async () => {
+    const engine = createGeminiEngine("fake-key", "csv");
+    await engine.chat("Alpha", "session-a");
+    await engine.chat("Beta", "session-b");
+
+    expect(engine.getSessionCount()).toBe(2);
+    expect(engine.getHistory("session-a")).toHaveLength(2);
+    expect(engine.getHistory("session-b")).toHaveLength(2);
+    expect(engine.getHistory("session-a")[0].text).toBe("Alpha");
+    expect(engine.getHistory("session-b")[0].text).toBe("Beta");
+  });
+
+  it("isolates history between sessions", async () => {
+    const engine = createGeminiEngine("fake-key", "csv");
+    await engine.chat("Hello", "s1");
+    await engine.chat("World", "s2");
+
+    const h1 = engine.getHistory("s1");
+    const h2 = engine.getHistory("s2");
+    expect(h1.some((m) => m.text === "World")).toBe(false);
+    expect(h2.some((m) => m.text === "Hello")).toBe(false);
+  });
+
+  it("closeSession removes the session", async () => {
+    const engine = createGeminiEngine("fake-key", "csv");
+    await engine.chat("Test", "temp-session");
+    expect(engine.getSessionCount()).toBe(1);
+
+    engine.closeSession("temp-session");
+    expect(engine.getSessionCount()).toBe(0);
+    expect(engine.getHistory("temp-session")).toEqual([]);
+  });
+
+  it("getHistory returns empty array for unknown sessionId", () => {
+    const engine = createGeminiEngine("fake-key", "csv");
+    expect(engine.getHistory("nonexistent")).toEqual([]);
   });
 });

@@ -9,6 +9,10 @@
  * suggestion chips, scroll-to-bottom, sidebar nav.
  */
 
+// ─── Session ID ─────────────────────────────────────────────
+// Each browser tab gets a unique session ID for conversation isolation.
+const SESSION_ID = crypto.randomUUID();
+
 // ─── DOM elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
 const messagesEl = $("#messages");
@@ -22,6 +26,10 @@ const rosterBadge = $("#roster-status");
 const historyBtn = $("#history-btn");
 const recallBtn = $("#recall-btn");
 const refreshRosterBtn = $("#refresh-roster-btn");
+const diagnosticBtn = $("#diagnostic-btn");
+const diagnosticDialog = $("#diagnostic-dialog");
+const diagnosticClose = $("#diagnostic-close");
+const diagnosticContent = $("#diagnostic-content");
 const recallDialog = $("#recall-dialog");
 const recallForm = $("#recall-form");
 const recallInput = $("#recall-input");
@@ -384,7 +392,10 @@ async function sendChat(message) {
     try {
         const res = await fetch("/api/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "X-Session-Id": SESSION_ID,
+            },
             body: JSON.stringify({ message }),
         });
 
@@ -523,6 +534,81 @@ recallForm.addEventListener("submit", (e) => {
 recallClose.addEventListener("click", () => recallDialog.close());
 
 refreshRosterBtn.addEventListener("click", () => refreshRoster());
+
+// ─── Diagnostic ─────────────────────────────────────────────
+diagnosticBtn.addEventListener("click", async () => {
+    diagnosticContent.innerHTML = '<p class="diagnostic-loading">Querying subsystems...</p>';
+    diagnosticDialog.showModal();
+    sidebar.classList.remove("open");
+    sidebarOverlay.classList.add("hidden");
+    try {
+        const res = await fetch("/api/diagnostic");
+        const data = await res.json();
+        diagnosticContent.innerHTML = renderDiagnostic(data);
+    } catch {
+        diagnosticContent.innerHTML = '<p class="diagnostic-error">Failed to reach /api/diagnostic</p>';
+    }
+});
+
+diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
+
+function renderDiagnostic(d) {
+    const status = (s) => s === "connected" || s === "active" || s === "loaded"
+        ? `<span class="diag-ok">${s}</span>`
+        : `<span class="diag-warn">${s}</span>`;
+
+    let html = '<div class="diag-grid">';
+
+    // System
+    html += '<div class="diag-section">';
+    html += '<h4>System</h4>';
+    html += `<div class="diag-row"><span>Version</span><span>${d.system?.version || "?"}</span></div>`;
+    html += `<div class="diag-row"><span>Uptime</span><span>${d.system?.uptime || "?"}</span></div>`;
+    html += `<div class="diag-row"><span>Node</span><span>${d.system?.nodeVersion || "?"}</span></div>`;
+    html += `<div class="diag-row"><span>Timestamp</span><span>${d.system?.timestamp?.slice(0, 19).replace("T", " ") || "?"}</span></div>`;
+    html += '</div>';
+
+    // Gemini
+    html += '<div class="diag-section">';
+    html += '<h4>Gemini Engine</h4>';
+    html += `<div class="diag-row"><span>Status</span>${status(d.gemini?.status)}</div>`;
+    if (d.gemini?.model) html += `<div class="diag-row"><span>Model</span><span>${d.gemini.model}</span></div>`;
+    if (d.gemini?.sessionMessageCount !== undefined) html += `<div class="diag-row"><span>Session msgs</span><span>${d.gemini.sessionMessageCount}</span></div>`;
+    html += '</div>';
+
+    // Memory
+    html += '<div class="diag-section">';
+    html += '<h4>Lex Memory</h4>';
+    html += `<div class="diag-row"><span>Status</span>${status(d.memory?.status)}</div>`;
+    if (d.memory?.frameCount !== undefined) html += `<div class="diag-row"><span>Frames</span><span>${d.memory.frameCount}</span></div>`;
+    html += '</div>';
+
+    // Settings
+    html += '<div class="diag-section">';
+    html += '<h4>Settings Store</h4>';
+    html += `<div class="diag-row"><span>Status</span>${status(d.settings?.status)}</div>`;
+    if (d.settings?.userOverrides !== undefined) html += `<div class="diag-row"><span>Overrides</span><span>${d.settings.userOverrides}</span></div>`;
+    html += '</div>';
+
+    // Fleet
+    html += '<div class="diag-section">';
+    html += '<h4>Fleet Data</h4>';
+    html += `<div class="diag-row"><span>Status</span>${status(d.fleet?.status)}</div>`;
+    if (d.fleet?.totalChars) html += `<div class="diag-row"><span>Size</span><span>${d.fleet.totalChars.toLocaleString()} chars</span></div>`;
+    if (d.fleet?.sections) html += `<div class="diag-row"><span>Sections</span><span>${d.fleet.sections.length}</span></div>`;
+    if (d.fleet?.fetchedAt) html += `<div class="diag-row"><span>Fetched</span><span>${d.fleet.fetchedAt.slice(0, 19).replace("T", " ")}</span></div>`;
+    if (d.fleet?.error) html += `<div class="diag-row"><span>Error</span><span class="diag-warn">${d.fleet.error}</span></div>`;
+    html += '</div>';
+
+    // Sheets
+    html += '<div class="diag-section">';
+    html += '<h4>Google Sheets</h4>';
+    html += `<div class="diag-row"><span>Credentials</span><span>${d.sheets?.credentialsPresent ? "present" : "missing"}</span></div>`;
+    html += '</div>';
+
+    html += '</div>';
+    return html;
+}
 
 // ─── View switching ─────────────────────────────────────────
 function showSetup(health) {
