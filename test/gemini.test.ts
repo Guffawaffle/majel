@@ -246,6 +246,56 @@ describe("buildSystemPrompt", () => {
       expect(prompt).not.toContain("BEGIN OFFICERS");
     });
   });
+
+  describe("with fleet config", () => {
+    const config = { opsLevel: 29, drydockCount: 4, shipHangarSlots: 43 };
+
+    it("includes ops level in prompt", () => {
+      const prompt = buildSystemPrompt(null, config);
+      expect(prompt).toContain("Operations Level: 29");
+    });
+
+    it("includes drydock count in prompt", () => {
+      const prompt = buildSystemPrompt(null, config);
+      expect(prompt).toContain("Active Drydocks: 4");
+    });
+
+    it("includes hangar slots in prompt", () => {
+      const prompt = buildSystemPrompt(null, config);
+      expect(prompt).toContain("Ship Hangar Slots: 43");
+    });
+
+    it("interpolates ops level in guidance text", () => {
+      const prompt = buildSystemPrompt(null, config);
+      expect(prompt).toContain("At Ops 29");
+    });
+
+    it("interpolates drydock count in guidance text", () => {
+      const prompt = buildSystemPrompt(null, config);
+      expect(prompt).toContain("With 4 drydocks");
+    });
+
+    it("works alongside fleet data", () => {
+      const data = buildFleetData("sheet-1", [
+        buildSection("officers", "Officers", "Officers", [
+          ["Name", "Level"], ["Kirk", "50"],
+        ]),
+      ]);
+      const prompt = buildSystemPrompt(data, config);
+      expect(prompt).toContain("Operations Level: 29");
+      expect(prompt).toContain("Kirk,50");
+    });
+
+    it("omits fleet config section when null", () => {
+      const prompt = buildSystemPrompt(null, null);
+      expect(prompt).not.toContain("FLEET CONFIGURATION");
+    });
+
+    it("omits fleet config section when undefined", () => {
+      const prompt = buildSystemPrompt(null);
+      expect(prompt).not.toContain("FLEET CONFIGURATION");
+    });
+  });
 });
 
 // ─── createGeminiEngine ─────────────────────────────────────────

@@ -33,7 +33,7 @@ import {
   type SheetsConfig,
   type MultiTabConfig,
 } from "./sheets.js";
-import { createGeminiEngine, type GeminiEngine } from "./gemini.js";
+import { createGeminiEngine, type GeminiEngine, type FleetConfig } from "./gemini.js";
 import { createMemoryService, type MemoryService } from "./memory.js";
 import {
   type FleetData,
@@ -55,6 +55,16 @@ import {
   type FleetStore,
   type ShipStatus,
 } from "./fleet-store.js";
+
+/** Read fleet config from the settings store for model context injection. */
+function readFleetConfig(store: SettingsStore | null): FleetConfig | null {
+  if (!store) return null;
+  return {
+    opsLevel: store.getTyped("fleet.opsLevel") as number,
+    drydockCount: store.getTyped("fleet.drydockCount") as number,
+    shipHangarSlots: store.getTyped("fleet.shipHangarSlots") as number,
+  };
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -269,7 +279,8 @@ export function createApp(appState: AppState = state): express.Express {
       if (GEMINI_API_KEY) {
         appState.geminiEngine = createGeminiEngine(
           GEMINI_API_KEY,
-          appState.fleetData
+          appState.fleetData,
+          readFleetConfig(appState.settingsStore),
         );
       }
 
@@ -431,14 +442,26 @@ export function createApp(appState: AppState = state): express.Express {
     }
 
     const results: Array<{ key: string; status: string; error?: string }> = [];
+    let fleetConfigChanged = false;
     for (const [key, value] of Object.entries(updates)) {
       try {
         appState.settingsStore.set(key, String(value));
         results.push({ key, status: "updated" });
+        if (key.startsWith("fleet.")) fleetConfigChanged = true;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         results.push({ key, status: "error", error: message });
       }
+    }
+
+    // Rebuild Gemini engine with updated fleet config so the model sees the new values
+    if (fleetConfigChanged && GEMINI_API_KEY && appState.geminiEngine) {
+      appState.geminiEngine = createGeminiEngine(
+        GEMINI_API_KEY,
+        appState.fleetData,
+        readFleetConfig(appState.settingsStore),
+      );
+      log.boot.info("gemini engine refreshed with updated fleet config");
     }
 
     res.json({ results });
@@ -793,7 +816,11 @@ async function boot(): Promise<void> {
   // 3. Initialize Gemini (doesn't need fleet data yet)
   if (resolvedApiKey) {
     const csv = "No roster data loaded yet.";
-    state.geminiEngine = createGeminiEngine(resolvedApiKey, csv);
+    state.geminiEngine = createGeminiEngine(
+      resolvedApiKey,
+      csv,
+      readFleetConfig(state.settingsStore),
+    );
     log.boot.info({ model: "gemini-2.5-flash-lite" }, "gemini engine online");
   } else {
     log.boot.warn("GEMINI_API_KEY not set — chat disabled");
@@ -828,7 +855,8 @@ async function boot(): Promise<void> {
       if (resolvedApiKey) {
         state.geminiEngine = createGeminiEngine(
           resolvedApiKey,
-          state.fleetData
+          state.fleetData,
+          readFleetConfig(state.settingsStore),
         );
         log.boot.info("gemini engine refreshed with fleet data");
       }

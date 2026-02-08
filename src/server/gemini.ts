@@ -24,6 +24,17 @@ import { log } from "./logger.js";
 const MODEL_NAME = "gemini-2.5-flash-lite";
 
 /**
+ * Fleet configuration context for the system prompt.
+ * These values come from the settings store and tell the model
+ * about the Admiral's current game state.
+ */
+export interface FleetConfig {
+  opsLevel: number;
+  drydockCount: number;
+  shipHangarSlots: number;
+}
+
+/**
  * Safety settings — open the floodgates.
  *
  * Majel is a personal assistant, not a public product.
@@ -52,7 +63,10 @@ const SAFETY_SETTINGS: SafetySetting[] = [
  *
  * Accepts either structured FleetData or a raw CSV string for backward compat.
  */
-export function buildSystemPrompt(fleetData: FleetData | string | null): string {
+export function buildSystemPrompt(
+  fleetData: FleetData | string | null,
+  fleetConfig?: FleetConfig | null,
+): string {
   // Normalize: if given a raw CSV string, treat as legacy single-section
   const hasData =
     typeof fleetData === "string"
@@ -134,6 +148,19 @@ Use both training knowledge and fleet data freely, but ALWAYS distinguish betwee
 
 `;
 
+
+  // ── Layer 2b: Fleet Configuration ──────────────────────────────
+  if (fleetConfig) {
+    prompt += `FLEET CONFIGURATION (from Admiral's settings):
+- Operations Level: ${fleetConfig.opsLevel}
+- Active Drydocks: ${fleetConfig.drydockCount} (each holds one active ship)
+- Ship Hangar Slots: ${fleetConfig.shipHangarSlots} (total inventory capacity)
+
+Use these values when the Admiral asks about their ops level, drydocks, or hangar capacity.
+Combine with training knowledge — e.g. "At Ops ${fleetConfig.opsLevel}, you have access to..." or "With ${fleetConfig.drydockCount} drydocks, you can run..."
+
+`;
+  }
 
   // ── Layer 3: Context injection (fleet data) ────────────────────
   if (hasData) {
@@ -245,13 +272,14 @@ interface SessionState {
  */
 export function createGeminiEngine(
   apiKey: string,
-  fleetData: FleetData | string | null
+  fleetData: FleetData | string | null,
+  fleetConfig?: FleetConfig | null,
 ): GeminiEngine {
   const genAI = new GoogleGenerativeAI(apiKey);
 
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
-    systemInstruction: buildSystemPrompt(fleetData),
+    systemInstruction: buildSystemPrompt(fleetData, fleetConfig),
     safetySettings: SAFETY_SETTINGS,
   });
 
@@ -260,7 +288,8 @@ export function createGeminiEngine(
   log.gemini.debug({
     model: MODEL_NAME,
     hasFleetData: typeof fleetData === "string" ? fleetData.length > 0 : hasFleetData(fleetData),
-    promptLen: buildSystemPrompt(fleetData).length,
+    hasFleetConfig: !!fleetConfig,
+    promptLen: buildSystemPrompt(fleetData, fleetConfig).length,
   }, "init");
 
   /** Get or create a session by ID */
