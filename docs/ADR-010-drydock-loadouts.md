@@ -1,4 +1,4 @@
-# ADR-008: Drydock Loadouts — Intent-Based Ship & Crew Rotation Management
+# ADR-010: Drydock Loadouts — Intent-Based Ship & Crew Rotation Management
 
 **Status:** Proposed (planning only — not yet approved for execution)  
 **Date:** 2026-02-08  
@@ -554,3 +554,180 @@ These give the model **facts to cite** rather than **data to interpret**.
 - STFC Drydock mechanics: 8 docks (A-H), Ops 1-80, 1 active ship per dock
 - STFC Ship classes: Battleship, Explorer, Interceptor, Survey
 - STFC Crew system: bridge (3 slots) + below-deck (variable by ship)
+
+---
+
+## Pre-Flight Analysis — Footguns and Mesh Tensions
+
+*Added 2026-02-08 after ADR review with Lex. This section documents structural risks
+identified before execution begins. It's here so we never lose the "why" behind
+the decisions we make or defer during implementation.*
+
+### 1. ADR Numbering Collision
+
+**Found:** Two files claim ADR-008:
+- `ADR-008-image-interpretation.md` (Proposed — multimodal screenshots)
+- `ADR-008-drydock-loadouts.md` (this file)
+
+**Fix:** Renumber drydock loadouts to **ADR-010**. Image interpretation was written first and should keep 008. ADR-009 is structured logging (Accepted, already shipped).
+
+**Why it matters:** ADR numbers are referenced in code comments, commit messages, and cross-references. A collision means citations are ambiguous.
+
+### 2. index.ts is a 907-Line Monolith (ADR-005 Phase 2 Never Shipped)
+
+**Found:** `src/server/index.ts` contains 30 route handlers, boot logic, shutdown, AppState, middleware, and all fleet CRUD routes — in one file. ADR-005 Phase 2 planned a route split that was never executed.
+
+**Current state:**
+| File | Lines | Responsibility |
+|------|-------|----------------|
+| `index.ts` | 907 | Everything |
+| `fleet-store.ts` | 699 | Fleet data layer (well isolated) |
+| `settings.ts` | 402 | Settings store (well isolated) |
+| `gemini.ts` | 371 | Gemini engine (well isolated) |
+| `app.js` | 948 | Client JS (growing) |
+| `styles.css` | 1312 | All styles (single file) |
+
+**Footgun:** ADR-008 adds ~20 new API endpoints. If we bolt them onto index.ts, it hits 1200+ lines — a single file containing 50 route handlers. This is the exact problem ADR-005 identified at 427 lines and now it's doubled.
+
+**Decision:** Execute ADR-005 Phase 2 (route split) BEFORE adding dock endpoints. This is a prerequisite, not a nice-to-have. Extract fleet routes into `routes/fleet.ts`, dock routes go into `routes/docks.ts`. Boot and app factory stay in `index.ts`.
+
+**Cost of deferring:** Every future feature makes the split harder. The fleet routes already have 17 handlers that all close over `appState` — they'll only get more entangled.
+
+### 3. The crew_assignments vs crew_presets Overlap
+
+**Found:** `fleet-store.ts` has a `crew_assignments` table (ADR-007) with `role_type`, `slot`, and `active_for_role` columns. ADR-008 introduces `crew_presets` + `crew_preset_members` with nearly identical structure (`role_type`, `slot`).
+
+**The tension:**
+- `crew_assignments` = "what IS crewed right now" (live state)
+- `crew_presets` = "what I WANT to crew for this intent" (saved config)
+
+They model the same thing (officers on a ship) at different levels of commitment. But:
+- No officer is "actually" crewed right now — STFC is the source of truth for live state
+- `crew_assignments` has no first-class consumer yet (no UI, no model tool-use)
+- The ADR-007 `assignCrew` / `unassignCrew` API exists but nothing calls it from the frontend
+
+**Footgun:** If we build presets AND keep assignments, we'll have two parallel systems for putting officers on ships, with subtle differences, and the user (and model) have to understand which is which.
+
+**Decision:** Crew presets ARE the assignment system for now. The existing `crew_assignments` table stays in the schema (no destructive migration), but we don't build new features against it. Presets subsume its purpose. When tool-use lands (ADR-007 Phase C), "apply preset" copies a preset into live state — that's when `crew_assignments` gets its consumer.
+
+**Document this in code:** Add a schema comment: `-- crew_assignments: reserved for future live-state tracking (ADR-007 Phase C). Active development uses crew_presets (ADR-010).`
+
+### 4. AX Envelope Debt (ADR-004)
+
+**Found:** ADR-004 specifies a consistent response envelope (`{ ok, data, meta }` / `{ ok, error }`). Current fleet routes return raw objects — no envelope, no error codes, no request IDs.
+
+**Example (current):**
+```javascript
+// GET /api/fleet/ships
+res.json(ships);  // raw array, no envelope
+```
+
+**ADR-004 specifies:**
+```javascript
+res.json({ ok: true, data: ships, meta: { timestamp: ... } });
+```
+
+**Footgun:** If dock endpoints use the envelope but fleet endpoints don't, the API is internally inconsistent. The frontend has to handle both shapes. The model can't predict response format.
+
+**Decision:** This is not a blocker for ADR-008, but it IS debt that compounds. When we do the route split (footgun #2), we should add an envelope wrapper middleware. This is a one-time cost that benefits all routes.
+
+### 5. Single-File Client (app.js = 948 Lines)
+
+**Found:** All client JavaScript is in one `app.js` file. It handles chat, sessions, settings, fleet config panel, and DOM management. ADR-008 Phase 3 adds a full drydock board UI with view switching, dock cards, ship management, and crew builders.
+
+**Footgun:** Adding a drydock view to a 948-line file will push it past 1500+ lines. Client-side view switching (chat ↔ docks) in a single file means interleaved state management, growing initialization functions, and fragile event handler cleanup.
+
+**Decision:** Before or during Phase 3 (MVP UI), split the client:
+- `app.js` → thin shell: init, view router, shared utilities
+- `chat.js` → chat view logic
+- `docks.js` → drydock board logic
+- `fleet-config.js` → fleet config panel
+
+This mirrors the server-side route split. The HTML can load multiple `<script>` tags or we add a minimal bundler step.
+
+**Note:** This is a Phase 3 concern, not Phase 1. The data layer doesn't touch the client.
+
+### 6. fleet.db Schema Migration Story
+
+**Found:** The current `createFleetStore()` uses `CREATE TABLE IF NOT EXISTS` — it works for first run but has no migration mechanism. ADR-008 adds 5-6 new tables to the same database.
+
+**Footgun:** If we add new tables with the same `IF NOT EXISTS` pattern, it works initially. But if we later need to ALTER existing tables (add columns, change constraints), there's no migration runner. SQLite doesn't support `ALTER TABLE DROP COLUMN` (until 3.35.0, and not for all cases).
+
+**Decision:** For Phase 1, `IF NOT EXISTS` is fine — new tables won't conflict. But we should add a `schema_version` table and a basic migration check:
+```sql
+CREATE TABLE IF NOT EXISTS schema_version (
+  version INTEGER PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
+```
+This doesn't need a full migration framework — just a version number we check at boot and a set of upgrade functions. This is cheap insurance.
+
+### 7. Prompt Token Budget Pressure
+
+**Found:** Current system prompt structure:
+- Layer 1 (identity + epistemic): ~2,500 chars
+- Layer 2 (capabilities): ~1,000 chars
+- Layer 2b (fleet config): ~300 chars
+- Layer 3 (fleet data): variable, up to ~20KB for full roster
+
+ADR-008 adds a dock briefing (~600-1200 chars). Total prompt could reach 25KB+.
+
+**At Flash-Lite rates:** 25KB ≈ ~6,250 tokens. At $0.075/1M tokens input, that's ~$0.0005 per message. Even at 100 messages/day, that's $0.05/day. **Not a cost concern.**
+
+**But it IS a context concern.** Flash-Lite has a 1M token window, but model quality degrades with very long prompts — the "lost in the middle" problem. The roster data (up to 20KB of CSV) is the biggest contributor, not the dock briefing.
+
+**Decision:** The dock briefing's 3-tier summary design (already in the ADR) is the right approach. No action needed here — just confirming the design holds up under scrutiny.
+
+### 8. The 4+D Mesh — Understanding the Dimension Problem
+
+The Admiral called it: this is becoming 4+D. Let's name the dimensions:
+
+| Dimension | What | Example |
+|-----------|------|---------|
+| **Dock** | Physical slot (1-8) | "Dock 3" |
+| **Intent** | What the dock does (N:M) | "mining-gas, mining-crystal" |
+| **Ship** | What's in the dock (rotation) | "Botany Bay (active), North Star" |
+| **Crew** | Who operates the ship for an intent | "Stonn, T'Pring, Helvia" for gas mining |
+| **Time** | When (active now vs saved config) | "active" vs "preset" vs "historical" |
+
+A single query like "What's my best mining setup?" traverses ALL dimensions:
+1. Which docks have mining intents?
+2. What ships are in those docks?
+3. What crew presets exist for those ships + mining intents?
+4. Which of those is active right now?
+5. Are there officer conflicts with other docks?
+
+**Footgun:** If we're not careful about the query layer, the model context builder will need N+1 queries, or we'll denormalize prematurely, or the API will expose the dimension mesh poorly.
+
+**Decision:** The data service should expose **composed queries** — not just CRUD per table. Key composed queries:
+- `getDockWithFullContext(dockNum)` → dock + intents + ships + active crew presets
+- `getOfficerConflicts()` → officers appearing in presets across multiple docks
+- `getDockBriefing()` → the 3-tier computed summary for the model
+
+Phase 1 builds the tables. Phase 2 builds these composed queries alongside crew presets.
+
+### 9. BASIC Mode Could Be Hollow
+
+**Found:** BASIC mode says "Majel suggests crews based on training knowledge." But the model's crew suggestions are based on:
+- Training knowledge of STFC crew synergies (may be outdated)
+- The officer roster (from Sheets import)
+- The dock's intent
+
+**Footgun:** If BASIC mode doesn't build presets, the model has to suggest crews fresh every time. There's no persistence — ask the same question twice, possibly get different answers. The model might suggest officers the Admiral doesn't own.
+
+**Decision:** Even in BASIC mode, when the model suggests a crew, we should consider letting the user "pin" it (save as a preset behind the scenes). This bridges BASIC → ADVANCED naturally: "Majel suggested Kirk/Spock/McCoy for your grinder. Pin this crew? [Yes]" → silently creates a preset.
+
+This is a Phase 3-4 concern. But it's worth noting in the ADR so we don't design BASIC mode as purely ephemeral.
+
+### Summary: Execution Prerequisites
+
+Before ADR-008 Phase 1 execution:
+
+| # | Action | Priority | Blocks |
+|---|--------|----------|--------|
+| 1 | Renumber this ADR to 010 | Must | Everything (citation clarity) |
+| 2 | Route split (ADR-005 Phase 2) | Should | Phase 1 (prevents 1200-line index.ts) |
+| 3 | Schema version table | Should | Phase 1 (future migration safety) |
+| 4 | Document crew_assignments freeze | Must | Phase 2 (prevents parallel development) |
+
+Items 1 and 4 are cheap (minutes). Items 2 and 3 are moderate (hours) but prevent real pain later.
