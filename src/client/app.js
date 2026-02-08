@@ -10,8 +10,9 @@
  */
 
 // ─── Session ID ─────────────────────────────────────────────
-// Each browser tab gets a unique session ID for conversation isolation.
-const SESSION_ID = crypto.randomUUID();
+// Each new chat creates a fresh session.
+// Restored chats reuse the original session ID.
+let SESSION_ID = crypto.randomUUID();
 
 // ─── DOM elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -46,10 +47,13 @@ const sidebar = $("#sidebar");
 const sidebarToggle = $("#sidebar-toggle");
 const sidebarOverlay = $("#sidebar-overlay");
 const newChatBtn = $("#new-chat-btn");
+const sessionListEl = $("#session-list");
 
 // ─── State ──────────────────────────────────────────────────
 let isOnline = false;
 let hasMessages = false;
+let currentSessionId = SESSION_ID;
+let isRestoredSession = false;
 
 // ─── Markdown rendering (lightweight) ───────────────────────
 function renderMarkdown(text) {
@@ -319,12 +323,21 @@ if (sidebarOverlay) {
 
 // ─── New chat ───────────────────────────────────────────────
 newChatBtn.addEventListener("click", () => {
+    // Fresh session
+    SESSION_ID = crypto.randomUUID();
+    currentSessionId = SESSION_ID;
+    isRestoredSession = false;
+
     messagesEl.innerHTML = "";
     hasMessages = false;
     welcomeScreen.style.display = "";
     chatInput.value = "";
     chatInput.style.height = "auto";
     sendBtn.disabled = true;
+
+    // Update active state in session list
+    renderSessionList();
+
     // Close sidebar on mobile
     sidebar.classList.remove("open");
     sidebarOverlay.classList.add("hidden");
@@ -404,6 +417,8 @@ async function sendChat(message) {
 
         if (res.ok) {
             addMessage("model", data.answer);
+            // Refresh session list (server already saved the messages)
+            refreshSessionList();
         } else {
             addMessage("error", `Error: ${data.error}`);
         }
@@ -498,6 +513,128 @@ async function refreshRoster() {
     // Close sidebar on mobile
     sidebar.classList.remove("open");
     sidebarOverlay.classList.add("hidden");
+}
+
+// ─── Session Management ─────────────────────────────────────
+let cachedSessions = [];
+
+async function fetchSessions() {
+    try {
+        const res = await fetch("/api/sessions?limit=30");
+        const data = await res.json();
+        cachedSessions = data.sessions || [];
+    } catch {
+        cachedSessions = [];
+    }
+}
+
+function renderSessionList() {
+    if (!sessionListEl) return;
+
+    if (cachedSessions.length === 0) {
+        sessionListEl.innerHTML = '<div class="session-empty">No saved chats yet</div>';
+        return;
+    }
+
+    sessionListEl.innerHTML = cachedSessions.map((s) => {
+        const isActive = s.id === currentSessionId;
+        const preview = s.preview
+            ? s.preview.length > 40 ? s.preview.slice(0, 40) + "…" : s.preview
+            : "Empty session";
+        return `
+      <div class="session-item ${isActive ? "active" : ""}" data-session-id="${s.id}">
+        <div class="session-item-content">
+          <span class="session-item-title">${escapeHtml(s.title)}</span>
+          <span class="session-item-preview">${escapeHtml(preview)}</span>
+        </div>
+        <button class="session-delete" data-delete-id="${s.id}" title="Delete session">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>`;
+    }).join("");
+
+    // Attach click handlers
+    sessionListEl.querySelectorAll(".session-item").forEach((el) => {
+        el.addEventListener("click", (e) => {
+            // Don't restore if clicking delete button
+            if (e.target.closest(".session-delete")) return;
+            const id = el.dataset.sessionId;
+            if (id && id !== currentSessionId) {
+                restoreSession(id);
+            }
+        });
+    });
+
+    // Attach delete handlers
+    sessionListEl.querySelectorAll(".session-delete").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.deleteId;
+            if (!id) return;
+            try {
+                await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+                await fetchSessions();
+                renderSessionList();
+                // If we deleted the active session, start fresh
+                if (id === currentSessionId) {
+                    newChatBtn.click();
+                }
+            } catch {
+                // Silently fail
+            }
+        });
+    });
+}
+
+async function restoreSession(id) {
+    try {
+        const res = await fetch(`/api/sessions/${id}`);
+        if (!res.ok) return;
+        const session = await res.json();
+
+        // Update session tracking
+        SESSION_ID = id;
+        currentSessionId = id;
+        isRestoredSession = true;
+
+        // Clear current messages
+        messagesEl.innerHTML = "";
+        hasMessages = false;
+        welcomeScreen.style.display = "none";
+
+        // Replay messages
+        if (session.messages && session.messages.length > 0) {
+            hasMessages = true;
+            session.messages.forEach((msg) => {
+                addMessage(msg.role, msg.text, { skipSave: true });
+            });
+        }
+
+        // Update active state in sidebar
+        renderSessionList();
+
+        // Close sidebar on mobile
+        sidebar.classList.remove("open");
+        sidebarOverlay.classList.add("hidden");
+
+        chatInput.focus();
+    } catch (err) {
+        addMessage("error", `Failed to load session: ${err.message}`);
+    }
+}
+
+/** Refresh the session list from the server */
+async function refreshSessionList() {
+    await fetchSessions();
+    renderSessionList();
+}
+
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
 }
 
 // ─── Event handlers ─────────────────────────────────────────
@@ -659,6 +796,9 @@ let currentMode = "loading";
         currentMode = "chat";
         chatInput.focus();
     }
+
+    // Load saved sessions into sidebar
+    await refreshSessionList();
 
     // Poll health every 10s
     setInterval(async () => {

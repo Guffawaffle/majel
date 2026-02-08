@@ -45,6 +45,10 @@ import {
   getCategories,
   type SettingsStore,
 } from "./settings.js";
+import {
+  createSessionStore,
+  type SessionStore,
+} from "./sessions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,6 +65,7 @@ export interface AppState {
   geminiEngine: GeminiEngine | null;
   memoryService: MemoryService | null;
   settingsStore: SettingsStore | null;
+  sessionStore: SessionStore | null;
   fleetData: FleetData | null;
   rosterError: string | null;
   startupComplete: boolean;
@@ -70,6 +75,7 @@ const state: AppState = {
   geminiEngine: null,
   memoryService: null,
   settingsStore: null,
+  sessionStore: null,
   fleetData: null,
   rosterError: null,
   startupComplete: false,
@@ -113,6 +119,7 @@ export function createApp(appState: AppState = state): express.Express {
         : { loaded: false, error: appState.rosterError },
       gemini: appState.geminiEngine ? "connected" : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
+      sessions: appState.sessionStore ? "active" : "not configured",
       credentials: hasCredentials(),
     });
   });
@@ -122,7 +129,7 @@ export function createApp(appState: AppState = state): express.Express {
   app.get("/api", (_req, res) => {
     res.json({
       name: "Majel",
-      version: "0.3.0",
+      version: "0.3.1",
       description: "STFC Fleet Intelligence System API",
       endpoints: [
         { method: "GET", path: "/api", description: "API discovery (this endpoint)" },
@@ -135,6 +142,10 @@ export function createApp(appState: AppState = state): express.Express {
         { method: "GET", path: "/api/settings", description: "All settings with resolved values", params: { query: { category: "string (optional)" } } },
         { method: "PATCH", path: "/api/settings", description: "Update one or more settings", params: { body: "{ key: value, ... }" } },
         { method: "DELETE", path: "/api/settings/:key", description: "Reset a setting to its default" },
+        { method: "GET", path: "/api/sessions", description: "List saved chat sessions", params: { query: { limit: "number (default: 50)" } } },
+        { method: "GET", path: "/api/sessions/:id", description: "Get a session with all messages" },
+        { method: "PATCH", path: "/api/sessions/:id", description: "Update session title", params: { body: { title: "string" } } },
+        { method: "DELETE", path: "/api/sessions/:id", description: "Delete a session" },
       ],
     });
   });
@@ -150,7 +161,7 @@ export function createApp(appState: AppState = state): express.Express {
 
     const diagnostic: Record<string, unknown> = {
       system: {
-        version: "0.3.0",
+        version: "0.3.1",
         uptime,
         uptimeSeconds: Math.round(uptimeSeconds),
         nodeVersion: process.version,
@@ -178,6 +189,14 @@ export function createApp(appState: AppState = state): express.Express {
           status: "active",
           userOverrides: appState.settingsStore.countUserOverrides(),
           dbPath: appState.settingsStore.getDbPath(),
+        };
+      })(),
+      sessions: (() => {
+        if (!appState.sessionStore) return { status: "not configured" };
+        return {
+          status: "active",
+          count: appState.sessionStore.count(),
+          dbPath: appState.sessionStore.getDbPath(),
         };
       })(),
       fleet: hasFleetData(appState.fleetData)
@@ -259,6 +278,12 @@ export function createApp(appState: AppState = state): express.Express {
           .catch((err) => {
             log.lex.warn({ err: err instanceof Error ? err.message : String(err) }, "memory save failed");
           });
+      }
+
+      // Persist both messages to session store
+      if (appState.sessionStore) {
+        appState.sessionStore.addMessage(sessionId, "user", message);
+        appState.sessionStore.addMessage(sessionId, "model", answer);
       }
 
       res.json({ answer });
@@ -404,6 +429,53 @@ export function createApp(appState: AppState = state): express.Express {
     }
   });
 
+  // ─── Sessions API ──────────────────────────────────────────
+
+  app.get("/api/sessions", (req, res) => {
+    if (!appState.sessionStore) {
+      return res.status(503).json({ error: "Session store not available" });
+    }
+    const limit = parseInt((req.query.limit as string) || "50", 10);
+    res.json({ sessions: appState.sessionStore.list(limit) });
+  });
+
+  app.get("/api/sessions/:id", (req, res) => {
+    if (!appState.sessionStore) {
+      return res.status(503).json({ error: "Session store not available" });
+    }
+    const session = appState.sessionStore.get(req.params.id);
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+    res.json(session);
+  });
+
+  app.patch("/api/sessions/:id", (req, res) => {
+    if (!appState.sessionStore) {
+      return res.status(503).json({ error: "Session store not available" });
+    }
+    const { title } = req.body;
+    if (!title || typeof title !== "string") {
+      return res.status(400).json({ error: "Missing 'title' in request body" });
+    }
+    const updated = appState.sessionStore.updateTitle(req.params.id, title.trim());
+    if (!updated) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+    res.json({ id: req.params.id, title: title.trim(), status: "updated" });
+  });
+
+  app.delete("/api/sessions/:id", (req, res) => {
+    if (!appState.sessionStore) {
+      return res.status(503).json({ error: "Session store not available" });
+    }
+    const deleted = appState.sessionStore.delete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+    res.json({ id: req.params.id, status: "deleted" });
+  });
+
   // ─── SPA Fallback ───────────────────────────────────────────
   app.get("*", (_req, res) => {
     res.sendFile(path.join(clientDir, "index.html"));
@@ -430,6 +502,14 @@ async function boot(): Promise<void> {
     log.boot.info("lex memory service online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "lex memory init failed");
+  }
+
+  // 2b. Initialize session store (always — it's local SQLite)
+  try {
+    state.sessionStore = createSessionStore();
+    log.boot.info({ sessions: state.sessionStore.count() }, "session store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
   }
 
   // Resolve config: settings store → env → defaults
@@ -500,6 +580,9 @@ async function shutdown(): Promise<void> {
   log.boot.info("Majel offline. Live long and prosper.");
   if (state.settingsStore) {
     state.settingsStore.close();
+  }
+  if (state.sessionStore) {
+    state.sessionStore.close();
   }
   if (state.memoryService) {
     await state.memoryService.close();

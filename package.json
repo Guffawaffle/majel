@@ -13,7 +13,7 @@
     "dev:log": "tail -f logs/dev.log",
     "dev:stop": "npm run kill --silent; rm -f .dev.pid; echo 'Majel stopped'",
     "kill": "lsof -t -i:${MAJEL_PORT:-3000} | xargs -r kill -9 2>/dev/null; echo '🔪 Port ${MAJEL_PORT:-3000} cleared'",
-    "clean": "rm -rf dist coverage .smartergpt/lex/settings.db",
+    "clean": "rm -rf dist coverage .smartergpt/lex/settings.db .smartergpt/lex/chat.db .test-sessions.db",
     "rebuild": "npm run clean && npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

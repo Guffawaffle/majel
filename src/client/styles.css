@@ -199,6 +199,118 @@ html, body {
 .roster-badge.loaded { color: var(--accent-green); }
 .roster-badge.error { color: var(--accent-red); }
 
+/* ─── Sidebar Section Labels ─────────────────────────────── */
+
+.sidebar-section-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 8px 12px 4px;
+}
+
+/* ─── Session List ───────────────────────────────────────── */
+
+.session-section {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.session-list {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  text-align: left;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.session-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.session-item.active {
+  background: var(--bg-tertiary);
+  color: var(--accent-gold);
+  border-left: 2px solid var(--accent-gold);
+}
+
+.session-item-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.session-item-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.session-item-preview {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.session-item .session-delete {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+
+.session-item:hover .session-delete {
+  opacity: 1;
+}
+
+.session-delete:hover {
+  color: var(--accent-red) !important;
+  background: rgba(240, 96, 96, 0.1);
+}
+
+.session-empty {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  font-style: italic;
+}
+
 /* ─── Mobile Header ──────────────────────────────────────── */
 
 #mobile-header {
