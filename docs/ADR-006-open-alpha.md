@@ -89,7 +89,14 @@ We don't hand-hold past the setup guide. If someone can't `npm install`, this is
 | Mobile app | Web UI is responsive. Native app is overkill. |
 | Alliance/guild features | Multi-user problem. Shelved with auth. |
 | Custom model selection | Flash-Lite works. Model picker is settings UI work for v1.0. |
+### Planned Architectural Improvements (pre-1.0)
 
+These are accepted directions captured during alpha usage. They don't gate any release but will land when adjacent work makes them natural:
+
+| Improvement | Rationale |
+|-------------|----------|
+| **Client modularization** — `app.js` → thin wrapper + command/connector modules | `app.js` is growing monolithically. API calls, session management, UI rendering, and event wiring should separate into focused modules (e.g., `api.js`, `sessions.js`, `commands.js`). This also preps the path to SvelteKit by making responsibilities clear before the rewrite. |
+| **Feature gating** — runtime toggle system for capabilities | Alpha features need a way to be shipped behind flags (e.g., fleet management, image interpretation) so partially-built features don't break the core experience. Gates should be server-driven (settings store or env) and reflected in both API responses and UI. A simple `features` object in `/api/health` is the likely shape. |
 ### Versioning Strategy
 
 Semantic versioning with these expectations:
@@ -100,6 +107,7 @@ Semantic versioning with these expectations:
 | `0.3.0` | Hardened alpha (session isolation, route split, middleware) |
 | `0.4.0` | Fleet management data layer, crew assignments, enhanced Sheets import |
 | `0.5.0` | Model tool-use (Gemini function calling), fleet UI, multimodal chat (images) |
+| `0.5.x` | Client modularization (app.js → thin wrapper + command modules), feature gating |
 | `0.6.0` | Structured screenshot extraction, smart import pipeline |
 | `1.0.0` | SvelteKit rewrite, stable API contract, no breaking changes without major bump |
 

@@ -76,10 +76,12 @@ Need a deterministic, privacy-focused interface for querying Star Trek Fleet Com
 - No persistent chat history across sessions (yet)
 
 ### Future Options
-- Add chat history persistence (JSON file)
+- Add chat history persistence (JSON file) → **Done (v0.3.1, SQLite sessions)**
 - Add `/reload` command for hot-refresh
 - Service account mode for alliance sharing
 - Image import pipeline if manual sheet updates become burden
+- Client modularization: `app.js` → thin wrapper + command/connector modules
+- Feature gating: runtime feature flags via settings store / env vars
 
 ## References
 
