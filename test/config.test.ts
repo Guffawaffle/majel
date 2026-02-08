@@ -358,3 +358,37 @@ describe("resolveConfig: type safety", () => {
     expect(typeof config.port).toBe("number");
   });
 });
+
+// ─── No process.env Outside Config ─────────────────────────────
+
+describe("config isolation", () => {
+  it("no process.env reads outside config.ts and allowed files", async () => {
+    // This test uses grep to verify no unauthorized process.env usage
+    const { execSync } = await import("node:child_process");
+    
+    try {
+      // Search for process.env in src/ excluding allowed files
+      // Allowed: config.ts, logger.ts (bootstrap), gemini.ts (test detection), 
+      //          settings.ts (internal resolution), memory.ts (Lex API contract)
+      const result = execSync(
+        'grep -rn "process\\.env" --include="*.ts" src/ | ' +
+        'grep -v "src/server/config.ts" | ' +
+        'grep -v "src/server/logger.ts" | ' +
+        'grep -v "src/server/gemini.ts" | ' +
+        'grep -v "src/server/settings.ts" | ' +
+        'grep -v "src/server/memory.ts"',
+        { encoding: 'utf-8', cwd: path.resolve(__dirname, '..') }
+      );
+      
+      // If grep found matches, fail the test
+      expect.fail(`Found unauthorized process.env usage:\n${result}`);
+    } catch (err: any) {
+      // grep exits with code 1 when no matches found - this is what we want
+      if (err.status === 1) {
+        expect(true).toBe(true); // Pass - no unauthorized usage
+      } else {
+        throw err; // Actual error
+      }
+    }
+  });
+});
