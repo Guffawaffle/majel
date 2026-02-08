@@ -58,8 +58,9 @@ function renderMarkdown(text) {
     // Ordered lists (1. ...)
     html = html.replace(/^\d+\. (.+)$/gm, "<li>$1</li>");
     // Wrap consecutive <li> not inside <ul> in <ol>
+    // Use non-greedy quantifier and limit backtracking to prevent ReDoS
     html = html.replace(
-        /(?<!<\/ul>)((?:<li>.*<\/li>\n?)+)(?!<\/ul>)/g,
+        /(?<!<\/ul>)((?:<li>.*?<\/li>(?:\n|(?=<li>))?)+)(?!<\/ul>)/g,
         (match) => {
             // Only wrap if not already in a list
             if (match.includes("<ul>")) return match;
