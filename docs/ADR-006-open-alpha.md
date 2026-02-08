@@ -99,7 +99,8 @@ Semantic versioning with these expectations:
 | `0.x.y` | Alpha — breaking changes possible between minor versions |
 | `0.3.0` | Hardened alpha (session isolation, route split, middleware) |
 | `0.4.0` | Fleet management data layer, crew assignments, enhanced Sheets import |
-| `0.5.0` | Model tool-use (Gemini function calling), fleet UI |
+| `0.5.0` | Model tool-use (Gemini function calling), fleet UI, multimodal chat (images) |
+| `0.6.0` | Structured screenshot extraction, smart import pipeline |
 | `1.0.0` | SvelteKit rewrite, stable API contract, no breaking changes without major bump |
 
 Pre-1.0: we communicate breaking changes in `CHANGELOG.md` but don't guarantee migration paths. Alpha users accept this.
@@ -155,4 +156,5 @@ Pre-1.0: we communicate breaking changes in `CHANGELOG.md` but don't guarantee m
 - ADR-004 (AX-First API — contract for alpha API surface)
 - ADR-005 (v0.3 Hardening — technical prerequisites for alpha)
 - ADR-007 (Fleet Management — dry dock, crew assignments, model tool-use)
+- ADR-008 (Image Interpretation — screenshot-to-data pipeline)
 - [Lex](https://github.com/Guffawaffle/lex) — memory framework Majel demonstrates
