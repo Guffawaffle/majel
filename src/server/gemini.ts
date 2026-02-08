@@ -19,7 +19,7 @@ import {
   type SafetySetting,
 } from "@google/generative-ai";
 import { type FleetData, hasFleetData, getSections } from "./fleet-data.js";
-import { debug } from "./debug.js";
+import { log } from "./logger.js";
 
 const MODEL_NAME = "gemini-2.5-flash-lite";
 
@@ -257,11 +257,11 @@ export function createGeminiEngine(
 
   const sessions = new Map<string, SessionState>();
 
-  debug.gemini("init", {
+  log.gemini.debug({
     model: MODEL_NAME,
     hasFleetData: typeof fleetData === "string" ? fleetData.length > 0 : hasFleetData(fleetData),
     promptLen: buildSystemPrompt(fleetData).length,
-  });
+  }, "init");
 
   /** Get or create a session by ID */
   function getSession(sessionId: string): SessionState {
@@ -273,7 +273,7 @@ export function createGeminiEngine(
         lastAccess: Date.now(),
       };
       sessions.set(sessionId, state);
-      debug.gemini("session:create", { sessionId, totalSessions: sessions.size });
+      log.gemini.debug({ sessionId, totalSessions: sessions.size }, "session:create");
     }
     state.lastAccess = Date.now();
     return state;
@@ -290,7 +290,7 @@ export function createGeminiEngine(
       }
     }
     if (cleaned > 0) {
-      debug.gemini("session:cleanup", { cleaned, remaining: sessions.size });
+      log.gemini.debug({ cleaned, remaining: sessions.size }, "session:cleanup");
     }
   }
 
@@ -305,7 +305,7 @@ export function createGeminiEngine(
   return {
     async chat(message: string, sessionId = "default"): Promise<string> {
       const session = getSession(sessionId);
-      debug.gemini("chat:send", { sessionId, messageLen: message.length, historyLen: session.history.length });
+      log.gemini.debug({ sessionId, messageLen: message.length, historyLen: session.history.length }, "chat:send");
 
       session.history.push({ role: "user", text: message });
 
@@ -319,7 +319,7 @@ export function createGeminiEngine(
         session.history.splice(0, 2);
       }
 
-      debug.gemini("chat:recv", { sessionId, responseLen: responseText.length, historyLen: session.history.length });
+      log.gemini.debug({ sessionId, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
       return responseText;
     },
 
@@ -335,7 +335,7 @@ export function createGeminiEngine(
     closeSession(sessionId: string): void {
       const deleted = sessions.delete(sessionId);
       if (deleted) {
-        debug.gemini("session:close", { sessionId, remaining: sessions.size });
+        log.gemini.debug({ sessionId, remaining: sessions.size }, "session:close");
       }
     },
   };

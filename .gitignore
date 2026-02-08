@@ -21,3 +21,7 @@ dist/
 # IDE
 .vscode/
 coverage/
+
+# Logs
+logs/
+.dev.pid

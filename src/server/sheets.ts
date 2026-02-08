@@ -25,7 +25,7 @@ import {
   buildSection,
   buildFleetData,
 } from "./fleet-data.js";
-import { debug } from "./debug.js";
+import { log } from "./logger.js";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"];
 const TOKEN_PATH = path.resolve("token.json");
@@ -177,9 +177,9 @@ function runLocalOAuthFlow(oauth2Client: OAuth2Client): Promise<OAuth2Client> {
         redirect_uri: redirectUri,
       });
 
-      console.log("\n🔐 OAuth required. Open this URL in a browser:\n");
-      console.log(`   ${authUrl}\n`);
-      console.log(`   Listening for callback on ${redirectUri} ...\n`);
+      log.sheets.info("OAuth required — open this URL in a browser:");
+      log.sheets.info({ authUrl }, "auth URL");
+      log.sheets.info({ redirectUri }, "listening for callback");
     });
 
     // Timeout after 5 minutes
@@ -273,10 +273,10 @@ export async function fetchFleetData(config: MultiTabConfig): Promise<FleetData>
   const sheets = google.sheets({ version: "v4", auth });
 
   // Discover available tabs
-  debug.sheets("fetchFleetData:start", { spreadsheetId: config.spreadsheetId, mappingKeys: Object.keys(config.tabMapping) });
+  log.sheets.debug({ spreadsheetId: config.spreadsheetId, mappingKeys: Object.keys(config.tabMapping) }, "fetchFleetData:start");
   const availableTabs = await discoverTabs(sheets, config.spreadsheetId);
-  debug.sheets("discoverTabs", { found: availableTabs });
-  console.log(`   📋 Found tabs: ${availableTabs.join(", ")}`);
+  log.sheets.debug({ found: availableTabs }, "discoverTabs");
+  log.sheets.info({ tabs: availableTabs }, "discovered tabs");
 
   // Match tabs to mapping (case-insensitive)
   const matchedTabs: Array<{ tabName: string; type: TabMapping[string] }> = [];
@@ -292,10 +292,10 @@ export async function fetchFleetData(config: MultiTabConfig): Promise<FleetData>
   }
 
   if (matchedTabs.length === 0) {
-    console.warn(
-      `   ⚠️  No tabs matched the mapping. Available: [${availableTabs.join(", ")}], ` +
-        `Configured: [${Object.keys(config.tabMapping).join(", ")}]`
-    );
+    log.sheets.warn({
+      available: availableTabs,
+      configured: Object.keys(config.tabMapping),
+    }, "no tabs matched the mapping");
   }
 
   // Fetch each matched tab in parallel
@@ -303,19 +303,20 @@ export async function fetchFleetData(config: MultiTabConfig): Promise<FleetData>
     matchedTabs.map(async ({ tabName, type }) => {
       const rows = await fetchTab(sheets, config.spreadsheetId, tabName);
       const section = buildSection(type, tabName, tabName, rows);
-      console.log(
-        `   ✅ ${tabName} (${type}): ${section.rowCount} rows, ${section.csv.length} chars`
+      log.sheets.info(
+        { tab: tabName, type, rows: section.rowCount, chars: section.csv.length },
+        "tab loaded"
       );
       return section;
     })
   );
 
   const fleet = buildFleetData(config.spreadsheetId, sections);
-  debug.sheets("fetchFleetData:done", {
+  log.sheets.debug({
     sectionsLoaded: sections.length,
     totalChars: fleet.totalChars,
     sectionSummary: sections.map(s => ({ label: s.label, type: s.type, rows: s.rowCount })),
-  });
+  }, "fetchFleetData:done");
   return fleet;
 }
 

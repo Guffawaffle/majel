@@ -20,8 +20,11 @@
  */
 
 import express from "express";
+import { IncomingMessage } from "node:http";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pinoHttp } from "pino-http";
+import { log, rootLogger } from "./logger.js";
 import {
   fetchRoster,
   fetchFleetData,
@@ -80,6 +83,18 @@ const state: AppState = {
 export function createApp(appState: AppState = state): express.Express {
   const app = express();
   app.use(express.json());
+
+  // Request logging (pino-http)
+  app.use(pinoHttp({
+    logger: rootLogger.child({ subsystem: "http" }),
+    autoLogging: {
+      ignore: (req: IncomingMessage) => {
+        // Don't log static file requests or health checks in production
+        const url = req.url || "";
+        return url.startsWith("/api/health") || !url.startsWith("/api");
+      },
+    },
+  }));
 
   // Serve static frontend files
   const clientDir =
@@ -242,14 +257,14 @@ export function createApp(appState: AppState = state): express.Express {
         appState.memoryService
           .remember({ question: message, answer })
           .catch((err) => {
-            console.error("⚠️  Lex memory save failed:", err);
+            log.lex.warn({ err: err instanceof Error ? err.message : String(err) }, "memory save failed");
           });
       }
 
       res.json({ answer });
     } catch (err: unknown) {
       const errMessage = err instanceof Error ? err.message : String(err);
-      console.error("⚠️  Gemini error:", errMessage);
+      log.gemini.error({ err: errMessage }, "chat request failed");
       res.status(500).json({ error: errMessage });
     }
   });
@@ -280,7 +295,7 @@ export function createApp(appState: AppState = state): express.Express {
           summary: f.summary_caption,
         }));
       } catch (err) {
-        console.error("⚠️  Lex timeline error:", err);
+        log.lex.warn({ err: err instanceof Error ? err.message : String(err) }, "timeline error");
         result.lex = [];
       }
     }
@@ -399,22 +414,22 @@ export function createApp(appState: AppState = state): express.Express {
 
 // ─── Startup ────────────────────────────────────────────────────
 async function boot(): Promise<void> {
-  console.log("⚡ Majel initializing...");
+  log.boot.info("Majel initializing");
 
   // 1. Initialize settings store (always — it's local SQLite)
   try {
     state.settingsStore = createSettingsStore();
-    console.log("✅ Settings store online");
+    log.boot.info("settings store online");
   } catch (err) {
-    console.error("⚠️  Settings store init failed:", err);
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "settings store init failed");
   }
 
   // 2. Initialize Lex memory (always — it's local)
   try {
     state.memoryService = createMemoryService();
-    console.log("✅ Lex memory service online");
+    log.boot.info("lex memory service online");
   } catch (err) {
-    console.error("⚠️  Lex memory init failed:", err);
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "lex memory init failed");
   }
 
   // Resolve config: settings store → env → defaults
@@ -428,9 +443,9 @@ async function boot(): Promise<void> {
   if (resolvedApiKey) {
     const csv = "No roster data loaded yet.";
     state.geminiEngine = createGeminiEngine(resolvedApiKey, csv);
-    console.log("✅ Gemini engine online (model: gemini-2.5-flash-lite)");
+    log.boot.info({ model: "gemini-2.5-flash-lite" }, "gemini engine online");
   } else {
-    console.warn("⚠️  GEMINI_API_KEY not set — chat disabled");
+    log.boot.warn("GEMINI_API_KEY not set — chat disabled");
   }
 
   state.startupComplete = true;
@@ -438,17 +453,14 @@ async function boot(): Promise<void> {
   // 3. Start HTTP server FIRST — always be reachable
   const app = createApp(state);
   app.listen(PORT, () => {
-    console.log(`\n🖖 Majel online — http://localhost:${PORT}`);
-    console.log("   Awaiting input, Admiral.\n");
+    log.boot.info({ port: PORT, url: `http://localhost:${PORT}` }, "Majel online");
   });
 
   // 5. Load fleet data AFTER server is up (OAuth may be interactive)
   if (resolvedSpreadsheetId && hasCredentials()) {
     try {
-      console.log("   Connecting to Starfleet Database (Google Sheets)...");
-      console.log(
-        "   ⏳ If OAuth is needed, a URL will appear below. You have 3 minutes.\n"
-      );
+      log.boot.info("connecting to Google Sheets");
+      log.boot.debug("OAuth may be required — URL will appear if interactive consent needed");
       const tabMapping = parseTabMapping(resolvedTabMapping);
       const config: MultiTabConfig = {
         spreadsheetId: resolvedSpreadsheetId,
@@ -456,9 +468,10 @@ async function boot(): Promise<void> {
       };
       state.fleetData = await fetchFleetData(config);
       state.rosterError = null;
-      console.log(
-        `✅ Fleet data loaded (${state.fleetData.totalChars.toLocaleString()} chars, ${state.fleetData.sections.length} sections)`
-      );
+      log.boot.info({
+        totalChars: state.fleetData.totalChars,
+        sections: state.fleetData.sections.length,
+      }, "fleet data loaded");
 
       // Re-create Gemini engine with fleet data
       if (resolvedApiKey) {
@@ -466,28 +479,25 @@ async function boot(): Promise<void> {
           resolvedApiKey,
           state.fleetData
         );
-        console.log("✅ Gemini engine refreshed with fleet data");
+        log.boot.info("gemini engine refreshed with fleet data");
       }
     } catch (err: unknown) {
       state.rosterError = err instanceof Error ? err.message : String(err);
-      console.warn(`⚠️  Fleet data load deferred: ${state.rosterError}`);
-      console.warn("   Fleet data can be loaded later via GET /api/roster");
+      log.boot.warn({ error: state.rosterError }, "fleet data load deferred");
     }
   } else {
     if (!resolvedSpreadsheetId) {
-      console.warn("⚠️  MAJEL_SPREADSHEET_ID not set — roster disabled");
+      log.boot.warn("MAJEL_SPREADSHEET_ID not set — roster disabled");
     }
     if (!hasCredentials()) {
-      console.warn(
-        "⚠️  credentials.json not found — Google Sheets OAuth disabled"
-      );
+      log.boot.warn("credentials.json not found — Google Sheets OAuth disabled");
     }
   }
 }
 
 // ─── Graceful Shutdown ──────────────────────────────────────────
 async function shutdown(): Promise<void> {
-  console.log("\n   Majel offline. Live long and prosper. 🖖");
+  log.boot.info("Majel offline. Live long and prosper.");
   if (state.settingsStore) {
     state.settingsStore.close();
   }
@@ -506,7 +516,7 @@ const isTestEnv =
 
 if (!isTestEnv) {
   boot().catch((err) => {
-    console.error("💥 Fatal startup error:", err);
+    log.boot.fatal({ err: err instanceof Error ? err.message : String(err) }, "fatal startup error");
     process.exit(1);
   });
 }
