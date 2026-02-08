@@ -347,7 +347,7 @@ newChatBtn.addEventListener("click", () => {
 async function checkHealth() {
     try {
         const res = await fetch("/api/health");
-        const data = await res.json();
+        const data = (await res.json()).data;
 
         isOnline = data.status === "online";
 
@@ -413,14 +413,15 @@ async function sendChat(message) {
         });
 
         removeTypingIndicator();
-        const data = await res.json();
+        const _env = await res.json();
+        const data = _env.data || {};
 
         if (res.ok) {
             addMessage("model", data.answer);
             // Refresh session list (server already saved the messages)
             refreshSessionList();
         } else {
-            addMessage("error", `Error: ${data.error}`);
+            addMessage("error", `Error: ${_env.error?.message || "Unknown error"}`);
         }
     } catch (err) {
         removeTypingIndicator();
@@ -435,7 +436,7 @@ async function sendChat(message) {
 async function loadHistory() {
     try {
         const res = await fetch("/api/history?source=lex&limit=20");
-        const data = await res.json();
+        const data = (await res.json()).data || {};
 
         if (data.lex && data.lex.length > 0) {
             addMessage("system", `── Lex Memory: ${data.lex.length} past conversations ──`);
@@ -459,10 +460,11 @@ async function searchRecall(query) {
 
     try {
         const res = await fetch(`/api/recall?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
+        const _env = await res.json();
+        const data = _env.data || {};
 
         if (!res.ok) {
-            recallResults.innerHTML = `<p class="recall-item" style="color: var(--accent-red)">${data.error}</p>`;
+            recallResults.innerHTML = `<p class="recall-item" style="color: var(--accent-red)">${_env.error?.message || "Error"}</p>`;
             return;
         }
 
@@ -493,7 +495,8 @@ async function refreshRoster() {
 
     try {
         const res = await fetch("/api/roster");
-        const data = await res.json();
+        const _env = await res.json();
+        const data = _env.data || {};
 
         if (res.ok) {
             const sectionInfo = data.sections?.map(s => `${s.label}: ${s.rows}`).join(", ") || "";
@@ -503,7 +506,7 @@ async function refreshRoster() {
         } else {
             rosterBadge.textContent = "Fleet: Error";
             rosterBadge.className = "roster-badge error";
-            addMessage("error", `Fleet refresh failed: ${data.error}`);
+            addMessage("error", `Fleet refresh failed: ${_env.error?.message || "Unknown error"}`);
         }
     } catch (err) {
         rosterBadge.textContent = "Fleet: Error";
@@ -521,7 +524,7 @@ let cachedSessions = [];
 async function fetchSessions() {
     try {
         const res = await fetch("/api/sessions?limit=30");
-        const data = await res.json();
+        const data = (await res.json()).data || {};
         cachedSessions = data.sessions || [];
     } catch {
         cachedSessions = [];
@@ -590,7 +593,7 @@ async function restoreSession(id) {
     try {
         const res = await fetch(`/api/sessions/${id}`);
         if (!res.ok) return;
-        const session = await res.json();
+        const session = (await res.json()).data;
 
         // Update session tracking
         SESSION_ID = id;
@@ -680,7 +683,7 @@ diagnosticBtn.addEventListener("click", async () => {
     sidebarOverlay.classList.add("hidden");
     try {
         const res = await fetch("/api/diagnostic");
-        const data = await res.json();
+        const data = (await res.json()).data;
         diagnosticContent.innerHTML = renderDiagnostic(data);
     } catch {
         diagnosticContent.innerHTML = '<p class="diagnostic-error">Failed to reach /api/diagnostic</p>';
@@ -881,7 +884,7 @@ async function initFleetConfig() {
     try {
         const res = await fetch("/api/settings?category=fleet");
         if (!res.ok) return;
-        const data = await res.json();
+        const data = (await res.json()).data || {};
         if (!data.settings) return;
 
         for (const setting of data.settings) {

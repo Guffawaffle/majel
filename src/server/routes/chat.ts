@@ -5,6 +5,7 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
+import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 
 export function createChatRoutes(appState: AppState): Router {
   const router = Router();
@@ -16,15 +17,11 @@ export function createChatRoutes(appState: AppState): Router {
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 
     if (!message || typeof message !== "string") {
-      return res
-        .status(400)
-        .json({ error: "Missing 'message' in request body" });
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'message' in request body");
     }
 
     if (!appState.geminiEngine) {
-      return res.status(503).json({
-        error: "Gemini not ready. Check /api/health for status.",
-      });
+      return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready. Check /api/health for status.", 503);
     }
 
     try {
@@ -45,11 +42,11 @@ export function createChatRoutes(appState: AppState): Router {
         appState.sessionStore.addMessage(sessionId, "model", answer);
       }
 
-      res.json({ answer });
+      sendOk(res, { answer });
     } catch (err: unknown) {
       const errMessage = err instanceof Error ? err.message : String(err);
       log.gemini.error({ err: errMessage }, "chat request failed");
-      res.status(500).json({ error: errMessage });
+      sendFail(res, ErrorCode.GEMINI_ERROR, errMessage, 500);
     }
   });
 
@@ -86,7 +83,7 @@ export function createChatRoutes(appState: AppState): Router {
       }
     }
 
-    res.json(result);
+    sendOk(res, result);
   });
 
   // ─── Recall ─────────────────────────────────────────────────
@@ -95,17 +92,17 @@ export function createChatRoutes(appState: AppState): Router {
     const query = req.query.q as string;
 
     if (!query) {
-      return res.status(400).json({ error: "Missing query parameter 'q'" });
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing query parameter 'q'");
     }
 
     if (!appState.memoryService) {
-      return res.status(503).json({ error: "Memory service not available" });
+      return sendFail(res, ErrorCode.MEMORY_NOT_AVAILABLE, "Memory service not available", 503);
     }
 
     try {
       const limit = parseInt((req.query.limit as string) || "10", 10);
       const frames = await appState.memoryService.recall(query, limit);
-      res.json({
+      sendOk(res, {
         query,
         results: frames.map((f) => ({
           id: f.id,
@@ -117,7 +114,7 @@ export function createChatRoutes(appState: AppState): Router {
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      sendFail(res, ErrorCode.MEMORY_ERROR, message, 500);
     }
   });
 

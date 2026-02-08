@@ -1186,15 +1186,15 @@ describe("Dock API Routes", () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/intents");
       expect(res.status).toBe(200);
-      expect(res.body.intents.length).toBeGreaterThanOrEqual(21);
-      expect(res.body.count).toBeGreaterThanOrEqual(21);
+      expect(res.body.data.intents.length).toBeGreaterThanOrEqual(21);
+      expect(res.body.data.count).toBeGreaterThanOrEqual(21);
     });
 
     it("filters by category", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/intents?category=mining");
       expect(res.status).toBe(200);
-      expect(res.body.intents.every((i: { category: string }) => i.category === "mining")).toBe(true);
+      expect(res.body.data.intents.every((i: { category: string }) => i.category === "mining")).toBe(true);
     });
 
     it("rejects invalid category", async () => {
@@ -1217,8 +1217,8 @@ describe("Dock API Routes", () => {
         .post("/api/fleet/intents")
         .send({ key: "custom-scout", label: "Scouting", category: "custom" });
       expect(res.status).toBe(201);
-      expect(res.body.key).toBe("custom-scout");
-      expect(res.body.isBuiltin).toBe(false);
+      expect(res.body.data.key).toBe("custom-scout");
+      expect(res.body.data.isBuiltin).toBe(false);
     });
 
     it("rejects missing fields", async () => {
@@ -1236,14 +1236,14 @@ describe("Dock API Routes", () => {
       dockStore.createIntent({ key: "custom-del", label: "Del", category: "custom", description: null, icon: null });
       const res = await request(app).delete("/api/fleet/intents/custom-del");
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe("deleted");
+      expect(res.body.data.status).toBe("deleted");
     });
 
     it("rejects deleting builtin intent", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app).delete("/api/fleet/intents/mining-gas");
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/built-in/i);
+      expect(res.body.error.message).toMatch(/built-in/i);
     });
   });
 
@@ -1256,8 +1256,8 @@ describe("Dock API Routes", () => {
         .put("/api/fleet/docks/1")
         .send({ label: "Main Grinder", priority: 3 });
       expect(res.status).toBe(200);
-      expect(res.body.dockNumber).toBe(1);
-      expect(res.body.label).toBe("Main Grinder");
+      expect(res.body.data.dockNumber).toBe(1);
+      expect(res.body.data.label).toBe("Main Grinder");
     });
 
     it("rejects invalid dock number", async () => {
@@ -1274,9 +1274,9 @@ describe("Dock API Routes", () => {
       dockStore.upsertDock(2, { label: "Mining" });
       const res = await request(app).get("/api/fleet/docks");
       expect(res.status).toBe(200);
-      expect(res.body.docks.length).toBe(2);
-      expect(res.body.docks[0]).toHaveProperty("intents");
-      expect(res.body.docks[0]).toHaveProperty("ships");
+      expect(res.body.data.docks.length).toBe(2);
+      expect(res.body.data.docks[0]).toHaveProperty("intents");
+      expect(res.body.data.docks[0]).toHaveProperty("ships");
     });
   });
 
@@ -1286,7 +1286,7 @@ describe("Dock API Routes", () => {
       dockStore.upsertDock(1, { label: "Grinder" });
       const res = await request(app).get("/api/fleet/docks/1");
       expect(res.status).toBe(200);
-      expect(res.body.label).toBe("Grinder");
+      expect(res.body.data.label).toBe("Grinder");
     });
 
     it("returns 404 for nonexistent dock", async () => {
@@ -1302,7 +1302,7 @@ describe("Dock API Routes", () => {
       dockStore.upsertDock(1, { label: "Temp" });
       const res = await request(app).delete("/api/fleet/docks/1");
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe("deleted");
+      expect(res.body.data.status).toBe("deleted");
     });
   });
 
@@ -1316,8 +1316,8 @@ describe("Dock API Routes", () => {
         .put("/api/fleet/docks/1/intents")
         .send({ intents: ["grinding", "pvp"] });
       expect(res.status).toBe(200);
-      expect(res.body.intents.length).toBe(2);
-      expect(res.body.count).toBe(2);
+      expect(res.body.data.intents.length).toBe(2);
+      expect(res.body.data.count).toBe(2);
     });
 
     it("rejects non-array intents", async () => {
@@ -1340,8 +1340,8 @@ describe("Dock API Routes", () => {
         .post("/api/fleet/docks/1/ships")
         .send({ shipId: "kumari" });
       expect(res.status).toBe(201);
-      expect(res.body.shipId).toBe("kumari");
-      expect(res.body.shipName).toBe("Kumari");
+      expect(res.body.data.shipId).toBe("kumari");
+      expect(res.body.data.shipName).toBe("Kumari");
     });
 
     it("rejects missing shipId", async () => {
@@ -1363,7 +1363,7 @@ describe("Dock API Routes", () => {
         .patch("/api/fleet/docks/1/ships/kumari")
         .send({ isActive: true });
       expect(res.status).toBe(200);
-      expect(res.body.isActive).toBe(true);
+      expect(res.body.data.isActive).toBe(true);
     });
 
     it("returns 404 for non-assigned ship", async () => {
@@ -1383,7 +1383,7 @@ describe("Dock API Routes", () => {
       dockStore.addDockShip(1, "kumari");
       const res = await request(app).delete("/api/fleet/docks/1/ships/kumari");
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe("removed");
+      expect(res.body.data.status).toBe("removed");
     });
 
     it("returns 404 for non-assigned ship", async () => {
@@ -1402,9 +1402,9 @@ describe("Dock API Routes", () => {
         .post("/api/fleet/presets")
         .send({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
       expect(res.status).toBe(201);
-      expect(res.body.shipId).toBe("kumari");
-      expect(res.body.presetName).toBe("Grind Crew");
-      expect(res.body.members).toEqual([]);
+      expect(res.body.data.shipId).toBe("kumari");
+      expect(res.body.data.presetName).toBe("Grind Crew");
+      expect(res.body.data.members).toEqual([]);
     });
 
     it("rejects missing fields", async () => {
@@ -1422,8 +1422,8 @@ describe("Dock API Routes", () => {
       dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       const res = await request(app).get("/api/fleet/presets");
       expect(res.status).toBe(200);
-      expect(res.body.presets.length).toBe(1);
-      expect(res.body.count).toBe(1);
+      expect(res.body.data.presets.length).toBe(1);
+      expect(res.body.data.count).toBe(1);
     });
 
     it("filters by shipId", async () => {
@@ -1431,7 +1431,7 @@ describe("Dock API Routes", () => {
       dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       const res = await request(app).get("/api/fleet/presets?shipId=kumari");
       expect(res.status).toBe(200);
-      expect(res.body.presets.length).toBe(1);
+      expect(res.body.data.presets.length).toBe(1);
     });
   });
 
@@ -1441,8 +1441,8 @@ describe("Dock API Routes", () => {
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       const res = await request(app).get(`/api/fleet/presets/${preset.id}`);
       expect(res.status).toBe(200);
-      expect(res.body.presetName).toBe("A");
-      expect(res.body.members).toEqual([]);
+      expect(res.body.data.presetName).toBe("A");
+      expect(res.body.data.members).toEqual([]);
     });
 
     it("returns 404 for nonexistent preset", async () => {
@@ -1460,7 +1460,7 @@ describe("Dock API Routes", () => {
         .patch(`/api/fleet/presets/${preset.id}`)
         .send({ presetName: "New" });
       expect(res.status).toBe(200);
-      expect(res.body.presetName).toBe("New");
+      expect(res.body.data.presetName).toBe("New");
     });
 
     it("returns 404 for nonexistent preset", async () => {
@@ -1478,7 +1478,7 @@ describe("Dock API Routes", () => {
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Del" });
       const res = await request(app).delete(`/api/fleet/presets/${preset.id}`);
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe("deleted");
+      expect(res.body.data.status).toBe("deleted");
     });
 
     it("returns 404 for nonexistent preset", async () => {
@@ -1497,8 +1497,8 @@ describe("Dock API Routes", () => {
         .put(`/api/fleet/presets/${preset.id}/members`)
         .send({ members: [{ officerId: "kirk", roleType: "bridge", slot: "captain" }] });
       expect(res.status).toBe(200);
-      expect(res.body.members.length).toBe(1);
-      expect(res.body.members[0].officerName).toBe("Kirk");
+      expect(res.body.data.members.length).toBe(1);
+      expect(res.body.data.members[0].officerName).toBe("Kirk");
     });
 
     it("rejects non-array members", async () => {
@@ -1519,9 +1519,9 @@ describe("Dock API Routes", () => {
       dockStore.upsertDock(1, { label: "Grinder" });
       const res = await request(app).get("/api/fleet/docks/summary");
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty("statusLines");
-      expect(res.body).toHaveProperty("text");
-      expect(res.body).toHaveProperty("totalChars");
+      expect(res.body.data).toHaveProperty("statusLines");
+      expect(res.body.data).toHaveProperty("text");
+      expect(res.body.data).toHaveProperty("totalChars");
     });
   });
 
@@ -1530,8 +1530,8 @@ describe("Dock API Routes", () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/docks/conflicts");
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty("conflicts");
-      expect(res.body).toHaveProperty("count");
+      expect(res.body.data).toHaveProperty("conflicts");
+      expect(res.body.data).toHaveProperty("count");
     });
   });
 
@@ -1545,8 +1545,8 @@ describe("Dock API Routes", () => {
         .put(`/api/fleet/presets/${preset.id}/tags`)
         .send({ tags: ["meta", "event"] });
       expect(res.status).toBe(200);
-      expect(res.body.tags).toEqual(["event", "meta"]);
-      expect(res.body.count).toBe(2);
+      expect(res.body.data.tags).toEqual(["event", "meta"]);
+      expect(res.body.data.count).toBe(2);
     });
 
     it("rejects non-array tags", async () => {
@@ -1574,8 +1574,8 @@ describe("Dock API Routes", () => {
       dockStore.setPresetTags(p1.id, ["meta", "event"]);
       const res = await request(app).get("/api/fleet/tags");
       expect(res.status).toBe(200);
-      expect(res.body.tags).toEqual(["event", "meta"]);
-      expect(res.body.count).toBe(2);
+      expect(res.body.data.tags).toEqual(["event", "meta"]);
+      expect(res.body.data.count).toBe(2);
     });
   });
 
@@ -1587,8 +1587,8 @@ describe("Dock API Routes", () => {
       dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "B" });
       const res = await request(app).get("/api/fleet/presets?tag=meta");
       expect(res.status).toBe(200);
-      expect(res.body.count).toBe(1);
-      expect(res.body.presets[0].presetName).toBe("A");
+      expect(res.body.data.count).toBe(1);
+      expect(res.body.data.presets[0].presetName).toBe("A");
     });
   });
 
@@ -1601,8 +1601,8 @@ describe("Dock API Routes", () => {
       dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "B" });
       const res = await request(app).get("/api/fleet/presets?officerId=kirk");
       expect(res.status).toBe(200);
-      expect(res.body.count).toBe(1);
-      expect(res.body.presets[0].presetName).toBe("A");
+      expect(res.body.data.count).toBe(1);
+      expect(res.body.data.presets[0].presetName).toBe("A");
     });
   });
 
@@ -1616,9 +1616,9 @@ describe("Dock API Routes", () => {
       dockStore.createPreset({ shipId: "kumari", intentKey: "mining-gas", presetName: "No Match" });
       const res = await request(app).get("/api/fleet/docks/1/presets");
       expect(res.status).toBe(200);
-      expect(res.body.dockNumber).toBe(1);
-      expect(res.body.count).toBe(1);
-      expect(res.body.presets[0].presetName).toBe("Match");
+      expect(res.body.data.dockNumber).toBe(1);
+      expect(res.body.data.count).toBe(1);
+      expect(res.body.data.presets[0].presetName).toBe("Match");
     });
 
     it("returns 400 for invalid dock number", async () => {

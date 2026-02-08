@@ -4,53 +4,54 @@
 
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
+import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 
 export function createSessionRoutes(appState: AppState): Router {
   const router = Router();
 
   router.get("/api/sessions", (req, res) => {
     if (!appState.sessionStore) {
-      return res.status(503).json({ error: "Session store not available" });
+      return sendFail(res, ErrorCode.SESSION_STORE_NOT_AVAILABLE, "Session store not available", 503);
     }
     const limit = parseInt((req.query.limit as string) || "50", 10);
-    res.json({ sessions: appState.sessionStore.list(limit) });
+    sendOk(res, { sessions: appState.sessionStore.list(limit) });
   });
 
   router.get("/api/sessions/:id", (req, res) => {
     if (!appState.sessionStore) {
-      return res.status(503).json({ error: "Session store not available" });
+      return sendFail(res, ErrorCode.SESSION_STORE_NOT_AVAILABLE, "Session store not available", 503);
     }
     const session = appState.sessionStore.get(req.params.id);
     if (!session) {
-      return res.status(404).json({ error: "Session not found" });
+      return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    res.json(session);
+    sendOk(res, session);
   });
 
   router.patch("/api/sessions/:id", (req, res) => {
     if (!appState.sessionStore) {
-      return res.status(503).json({ error: "Session store not available" });
+      return sendFail(res, ErrorCode.SESSION_STORE_NOT_AVAILABLE, "Session store not available", 503);
     }
     const { title } = req.body;
     if (!title || typeof title !== "string") {
-      return res.status(400).json({ error: "Missing 'title' in request body" });
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'title' in request body");
     }
     const updated = appState.sessionStore.updateTitle(req.params.id, title.trim());
     if (!updated) {
-      return res.status(404).json({ error: "Session not found" });
+      return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    res.json({ id: req.params.id, title: title.trim(), status: "updated" });
+    sendOk(res, { id: req.params.id, title: title.trim(), status: "updated" });
   });
 
   router.delete("/api/sessions/:id", (req, res) => {
     if (!appState.sessionStore) {
-      return res.status(503).json({ error: "Session store not available" });
+      return sendFail(res, ErrorCode.SESSION_STORE_NOT_AVAILABLE, "Session store not available", 503);
     }
     const deleted = appState.sessionStore.delete(req.params.id);
     if (!deleted) {
-      return res.status(404).json({ error: "Session not found" });
+      return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    res.json({ id: req.params.id, status: "deleted" });
+    sendOk(res, { id: req.params.id, status: "deleted" });
   });
 
   return router;

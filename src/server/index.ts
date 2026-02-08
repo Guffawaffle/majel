@@ -52,6 +52,9 @@ import {
   readDockBriefing,
 } from "./app-context.js";
 
+// Envelope (ADR-004)
+import { envelopeMiddleware, errorHandler } from "./envelope.js";
+
 // Route modules
 import { createCoreRoutes } from "./routes/core.js";
 import { createChatRoutes } from "./routes/chat.js";
@@ -90,6 +93,9 @@ export function createApp(appState: AppState): express.Express {
   const app = express();
   app.use(express.json());
 
+  // AX-First response envelope (ADR-004) — requestId + timing on every request
+  app.use(envelopeMiddleware);
+
   // Structured HTTP request logging
   app.use(
     pinoHttp({
@@ -122,6 +128,9 @@ export function createApp(appState: AppState): express.Express {
   app.get("*", (_req, res) => {
     res.sendFile(path.join(clientDir, "index.html"));
   });
+
+  // ─── Error handler (ADR-004 — catch-all → envelope) ──────
+  app.use(errorHandler);
 
   return app;
 }

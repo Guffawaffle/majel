@@ -6,6 +6,7 @@ import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { GEMINI_API_KEY, readFleetConfig, readDockBriefing } from "../app-context.js";
 import { log } from "../logger.js";
+import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { getCategories } from "../settings.js";
 import { createGeminiEngine } from "../gemini.js";
 
@@ -14,7 +15,7 @@ export function createSettingsRoutes(appState: AppState): Router {
 
   router.get("/api/settings", (req, res) => {
     if (!appState.settingsStore) {
-      return res.status(503).json({ error: "Settings store not available" });
+      return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
 
     const category = req.query.category as string | undefined;
@@ -22,17 +23,15 @@ export function createSettingsRoutes(appState: AppState): Router {
 
     if (category) {
       if (!categories.includes(category)) {
-        return res.status(400).json({
-          error: `Unknown category: ${category}. Valid: ${categories.join(", ")}`,
-        });
+        return sendFail(res, ErrorCode.UNKNOWN_CATEGORY, `Unknown category: ${category}. Valid: ${categories.join(", ")}`);
       }
-      return res.json({
+      return sendOk(res, {
         category,
         settings: appState.settingsStore.getByCategory(category),
       });
     }
 
-    res.json({
+    sendOk(res, {
       categories,
       settings: appState.settingsStore.getAll(),
     });
@@ -40,14 +39,12 @@ export function createSettingsRoutes(appState: AppState): Router {
 
   router.patch("/api/settings", (req, res) => {
     if (!appState.settingsStore) {
-      return res.status(503).json({ error: "Settings store not available" });
+      return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
 
     const updates = req.body;
     if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
-      return res
-        .status(400)
-        .json({ error: "Request body must be an object of { key: value } pairs" });
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Request body must be an object of { key: value } pairs");
     }
 
     const results: Array<{ key: string; status: string; error?: string }> = [];
@@ -74,12 +71,12 @@ export function createSettingsRoutes(appState: AppState): Router {
       log.boot.info("gemini engine refreshed with updated fleet config");
     }
 
-    res.json({ results });
+    sendOk(res, { results });
   });
 
   router.delete("/api/settings/:key(*)", (req, res) => {
     if (!appState.settingsStore) {
-      return res.status(503).json({ error: "Settings store not available" });
+      return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
 
     const key = req.params.key;
@@ -88,9 +85,9 @@ export function createSettingsRoutes(appState: AppState): Router {
     if (deleted) {
       // Return the new resolved value (env or default)
       const newValue = appState.settingsStore.get(key);
-      res.json({ key, status: "reset", resolvedValue: newValue });
+      sendOk(res, { key, status: "reset", resolvedValue: newValue });
     } else {
-      res.json({ key, status: "not_found", message: "No user override existed" });
+      sendOk(res, { key, status: "not_found", message: "No user override existed" });
     }
   });
 

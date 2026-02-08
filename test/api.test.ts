@@ -102,10 +102,10 @@ describe("GET /api/health", () => {
 
     const res = await request(app).get("/api/health");
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("initializing");
-    expect(res.body.gemini).toBe("not configured");
-    expect(res.body.memory).toBe("not configured");
-    expect(res.body.fleet.loaded).toBe(false);
+    expect(res.body.data.status).toBe("initializing");
+    expect(res.body.data.gemini).toBe("not configured");
+    expect(res.body.data.memory).toBe("not configured");
+    expect(res.body.data.fleet.loaded).toBe(false);
   });
 
   it("returns online status after startup", async () => {
@@ -119,12 +119,12 @@ describe("GET /api/health", () => {
 
     const res = await request(app).get("/api/health");
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("online");
-    expect(res.body.gemini).toBe("connected");
-    expect(res.body.memory).toBe("active");
-    expect(res.body.fleet.loaded).toBe(true);
-    expect(res.body.fleet.totalChars).toBeGreaterThan(0);
-    expect(res.body.fleet.sections).toHaveLength(1);
+    expect(res.body.data.status).toBe("online");
+    expect(res.body.data.gemini).toBe("connected");
+    expect(res.body.data.memory).toBe("active");
+    expect(res.body.data.fleet.loaded).toBe(true);
+    expect(res.body.data.fleet.totalChars).toBeGreaterThan(0);
+    expect(res.body.data.fleet.sections).toHaveLength(1);
   });
 
   it("reports roster error when present", async () => {
@@ -135,8 +135,8 @@ describe("GET /api/health", () => {
     const app = createApp(state);
 
     const res = await request(app).get("/api/health");
-    expect(res.body.fleet.loaded).toBe(false);
-    expect(res.body.fleet.error).toBe("OAuth expired");
+    expect(res.body.data.fleet.loaded).toBe(false);
+    expect(res.body.data.fleet.error).toBe("OAuth expired");
   });
 });
 
@@ -149,7 +149,7 @@ describe("POST /api/chat", () => {
 
     const res = await request(app).post("/api/chat").send({});
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("Missing");
+    expect(res.body.error.message).toContain("Missing");
   });
 
   it("returns 400 when message is not a string", async () => {
@@ -168,7 +168,7 @@ describe("POST /api/chat", () => {
       .post("/api/chat")
       .send({ message: "Hello" });
     expect(res.status).toBe(503);
-    expect(res.body.error).toContain("Gemini not ready");
+    expect(res.body.error.message).toContain("Gemini not ready");
   });
 
   it("returns model response on success", async () => {
@@ -180,7 +180,7 @@ describe("POST /api/chat", () => {
       .post("/api/chat")
       .send({ message: "Hello" });
     expect(res.status).toBe(200);
-    expect(res.body.answer).toBe("Live long and prosper.");
+    expect(res.body.data.answer).toBe("Live long and prosper.");
     expect(engine.chat).toHaveBeenCalledWith("Hello", "default");
   });
 
@@ -217,7 +217,7 @@ describe("POST /api/chat", () => {
       .post("/api/chat")
       .send({ message: "Test" });
     expect(res.status).toBe(200);
-    expect(res.body.answer).toBe("Still works.");
+    expect(res.body.data.answer).toBe("Still works.");
   });
 
   it("returns 500 when Gemini throws", async () => {
@@ -230,7 +230,7 @@ describe("POST /api/chat", () => {
 
     const res = await request(app).post("/api/chat").send({ message: "Hi" });
     expect(res.status).toBe(500);
-    expect(res.body.error).toContain("API quota exceeded");
+    expect(res.body.error.message).toContain("API quota exceeded");
   });
 
   it("routes messages to the session specified by X-Session-Id header", async () => {
@@ -292,7 +292,7 @@ describe("GET /api/history", () => {
 
     const res = await request(app).get("/api/history");
     expect(res.status).toBe(200);
-    expect(res.body.session).toEqual([]);
+    expect(res.body.data.session).toEqual([]);
     // No memory service → no lex field
   });
 
@@ -304,8 +304,8 @@ describe("GET /api/history", () => {
 
     const res = await request(app).get("/api/history?source=session");
     expect(res.status).toBe(200);
-    expect(res.body.session).toHaveLength(2);
-    expect(res.body.session[0].text).toBe("Hello");
+    expect(res.body.data.session).toHaveLength(2);
+    expect(res.body.data.session[0].text).toBe("Hello");
   });
 
   it("returns lex timeline when memory is available", async () => {
@@ -316,8 +316,8 @@ describe("GET /api/history", () => {
 
     const res = await request(app).get("/api/history?source=lex");
     expect(res.status).toBe(200);
-    expect(res.body.lex).toHaveLength(2);
-    expect(res.body.lex[0].id).toBe("f1");
+    expect(res.body.data.lex).toHaveLength(2);
+    expect(res.body.data.lex[0].id).toBe("f1");
   });
 
   it("returns both sources by default", async () => {
@@ -328,8 +328,8 @@ describe("GET /api/history", () => {
 
     const res = await request(app).get("/api/history");
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty("session");
-    expect(res.body).toHaveProperty("lex");
+    expect(res.body.data).toHaveProperty("session");
+    expect(res.body.data).toHaveProperty("lex");
   });
 
   it("handles lex timeline error gracefully", async () => {
@@ -342,7 +342,7 @@ describe("GET /api/history", () => {
 
     const res = await request(app).get("/api/history?source=lex");
     expect(res.status).toBe(200);
-    expect(res.body.lex).toEqual([]);
+    expect(res.body.data.lex).toEqual([]);
   });
 
   it("respects limit parameter", async () => {
@@ -363,8 +363,8 @@ describe("GET /api/history", () => {
 
     const res = await request(app).get("/api/history?source=session&sessionId=tab-a");
     expect(res.status).toBe(200);
-    expect(res.body.session).toHaveLength(2);
-    expect(res.body.session[0].text).toBe("Tab A message");
+    expect(res.body.data.session).toHaveLength(2);
+    expect(res.body.data.session[0].text).toBe("Tab A message");
   });
 });
 
@@ -377,7 +377,7 @@ describe("GET /api/recall", () => {
 
     const res = await request(app).get("/api/recall");
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("Missing query");
+    expect(res.body.error.message).toContain("Missing query");
   });
 
   it("returns 503 when memory is not available", async () => {
@@ -400,11 +400,11 @@ describe("GET /api/recall", () => {
 
     const res = await request(app).get("/api/recall?q=Kirk");
     expect(res.status).toBe(200);
-    expect(res.body.query).toBe("Kirk");
-    expect(res.body.results).toHaveLength(1);
-    expect(res.body.results[0].id).toBe("recall-1");
-    expect(res.body.results[0].reference).toBe("Kirk discussion");
-    expect(res.body.results[0].keywords).toEqual(["kirk", "captain"]);
+    expect(res.body.data.query).toBe("Kirk");
+    expect(res.body.data.results).toHaveLength(1);
+    expect(res.body.data.results[0].id).toBe("recall-1");
+    expect(res.body.data.results[0].reference).toBe("Kirk discussion");
+    expect(res.body.data.results[0].keywords).toEqual(["kirk", "captain"]);
   });
 
   it("passes limit to recall", async () => {
@@ -426,7 +426,7 @@ describe("GET /api/recall", () => {
 
     const res = await request(app).get("/api/recall?q=test");
     expect(res.status).toBe(500);
-    expect(res.body.error).toContain("Search index corrupt");
+    expect(res.body.error.message).toContain("Search index corrupt");
   });
 });
 
@@ -440,7 +440,7 @@ describe("GET /api/roster", () => {
 
     const res = await request(app).get("/api/roster");
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("MAJEL_SPREADSHEET_ID not configured");
+    expect(res.body.error.message).toContain("MAJEL_SPREADSHEET_ID not configured");
   });
 });
 
@@ -470,7 +470,7 @@ describe("edge cases", () => {
       .post("/api/chat")
       .send({ message: "Hello" });
     expect(res.status).toBe(200);
-    expect(res.body.answer).toBe("No memory, still works.");
+    expect(res.body.data.answer).toBe("No memory, still works.");
   });
 
   it("history with source=lex without memory returns no lex field", async () => {
@@ -479,7 +479,7 @@ describe("edge cases", () => {
 
     const res = await request(app).get("/api/history?source=lex");
     expect(res.status).toBe(200);
-    expect(res.body.lex).toBeUndefined();
+    expect(res.body.data.lex).toBeUndefined();
   });
 
   it("history with source=session returns only session", async () => {
@@ -490,8 +490,8 @@ describe("edge cases", () => {
 
     const res = await request(app).get("/api/history?source=session");
     expect(res.status).toBe(200);
-    expect(res.body.session).toBeDefined();
-    expect(res.body.lex).toBeUndefined();
+    expect(res.body.data.session).toBeDefined();
+    expect(res.body.data.lex).toBeUndefined();
   });
 
   it("recall handles non-Error throw gracefully", async () => {
@@ -504,7 +504,7 @@ describe("edge cases", () => {
 
     const res = await request(app).get("/api/recall?q=test");
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe("string error");
+    expect(res.body.error.message).toBe("string error");
   });
 
   it("chat handles non-Error throw from engine", async () => {
@@ -519,7 +519,7 @@ describe("edge cases", () => {
       .post("/api/chat")
       .send({ message: "Hi" });
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe("raw string error");
+    expect(res.body.error.message).toBe("raw string error");
   });
 
   it("health shows credentials=false when mocked", async () => {
@@ -527,7 +527,7 @@ describe("edge cases", () => {
     const app = createApp(state);
 
     const res = await request(app).get("/api/health");
-    expect(res.body.credentials).toBe(false);
+    expect(res.body.data.credentials).toBe(false);
   });
 
   it("recall defaults limit to 10", async () => {
@@ -567,17 +567,17 @@ describe("settings API", () => {
       const app = createApp(makeState({ settingsStore }));
       const res = await request(app).get("/api/settings");
       expect(res.status).toBe(200);
-      expect(res.body.categories).toContain("sheets");
-      expect(res.body.categories).toContain("display");
-      expect(res.body.settings.length).toBeGreaterThan(0);
+      expect(res.body.data.categories).toContain("sheets");
+      expect(res.body.data.categories).toContain("display");
+      expect(res.body.data.settings.length).toBeGreaterThan(0);
     });
 
     it("filters by category", async () => {
       const app = createApp(makeState({ settingsStore }));
       const res = await request(app).get("/api/settings?category=display");
       expect(res.status).toBe(200);
-      expect(res.body.category).toBe("display");
-      for (const s of res.body.settings) {
+      expect(res.body.data.category).toBe("display");
+      for (const s of res.body.data.settings) {
         expect(s.category).toBe("display");
       }
     });
@@ -602,7 +602,7 @@ describe("settings API", () => {
         .patch("/api/settings")
         .send({ "display.admiralName": "Guff" });
       expect(res.status).toBe(200);
-      expect(res.body.results[0]).toEqual({ key: "display.admiralName", status: "updated" });
+      expect(res.body.data.results[0]).toEqual({ key: "display.admiralName", status: "updated" });
       expect(settingsStore.get("display.admiralName")).toBe("Guff");
     });
 
@@ -612,7 +612,7 @@ describe("settings API", () => {
         .patch("/api/settings")
         .send({ "fake.key": "value" });
       expect(res.status).toBe(200);
-      expect(res.body.results[0].status).toBe("error");
+      expect(res.body.data.results[0].status).toBe("error");
     });
 
     it("returns 400 for non-object body", async () => {
@@ -646,15 +646,15 @@ describe("settings API", () => {
       const app = createApp(makeState({ settingsStore }));
       const res = await request(app).delete("/api/settings/display.admiralName");
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe("reset");
-      expect(res.body.resolvedValue).toBe("Admiral"); // default
+      expect(res.body.data.status).toBe("reset");
+      expect(res.body.data.resolvedValue).toBe("Admiral"); // default
     });
 
     it("handles non-existent key gracefully", async () => {
       const app = createApp(makeState({ settingsStore }));
       const res = await request(app).delete("/api/settings/display.admiralName");
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe("not_found");
+      expect(res.body.data.status).toBe("not_found");
     });
   });
 });
@@ -666,16 +666,16 @@ describe("GET /api", () => {
     const app = createApp(makeState());
     const res = await request(app).get("/api");
     expect(res.status).toBe(200);
-    expect(res.body.name).toBe("Majel");
-    expect(res.body.version).toBeDefined();
-    expect(res.body.endpoints).toBeInstanceOf(Array);
-    expect(res.body.endpoints.length).toBeGreaterThan(5);
+    expect(res.body.data.name).toBe("Majel");
+    expect(res.body.data.version).toBeDefined();
+    expect(res.body.data.endpoints).toBeInstanceOf(Array);
+    expect(res.body.data.endpoints.length).toBeGreaterThan(5);
   });
 
   it("includes all major endpoints", async () => {
     const app = createApp(makeState());
     const res = await request(app).get("/api");
-    const paths = res.body.endpoints.map((e: { path: string }) => e.path);
+    const paths = res.body.data.endpoints.map((e: { path: string }) => e.path);
     expect(paths).toContain("/api/health");
     expect(paths).toContain("/api/diagnostic");
     expect(paths).toContain("/api/chat");
@@ -686,7 +686,7 @@ describe("GET /api", () => {
   it("each endpoint has method, path, and description", async () => {
     const app = createApp(makeState());
     const res = await request(app).get("/api");
-    for (const endpoint of res.body.endpoints) {
+    for (const endpoint of res.body.data.endpoints) {
       expect(endpoint.method).toBeDefined();
       expect(endpoint.path).toBeDefined();
       expect(endpoint.description).toBeDefined();
@@ -701,16 +701,16 @@ describe("GET /api/diagnostic", () => {
     const app = createApp(makeState());
     const res = await request(app).get("/api/diagnostic");
     expect(res.status).toBe(200);
-    expect(res.body.system).toBeDefined();
-    expect(res.body.system.nodeVersion).toMatch(/^v\d+/);
-    expect(res.body.system.timestamp).toBeDefined();
-    expect(res.body.system.uptime).toBeDefined();
+    expect(res.body.data.system).toBeDefined();
+    expect(res.body.data.system.nodeVersion).toMatch(/^v\d+/);
+    expect(res.body.data.system.timestamp).toBeDefined();
+    expect(res.body.data.system.uptime).toBeDefined();
   });
 
   it("reports gemini as not configured when no engine", async () => {
     const app = createApp(makeState());
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.gemini.status).toBe("not configured");
+    expect(res.body.data.gemini.status).toBe("not configured");
   });
 
   it("reports gemini status with session count when connected", async () => {
@@ -718,9 +718,9 @@ describe("GET /api/diagnostic", () => {
     await engine.chat("hello"); // creates a session in "default"
     const app = createApp(makeState({ geminiEngine: engine }));
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.gemini.status).toBe("connected");
-    expect(res.body.gemini.model).toBe("gemini-2.5-flash-lite");
-    expect(res.body.gemini.activeSessions).toBe(1);
+    expect(res.body.data.gemini.status).toBe("connected");
+    expect(res.body.data.gemini.model).toBe("gemini-2.5-flash-lite");
+    expect(res.body.data.gemini.activeSessions).toBe(1);
   });
 
   it("reports memory status with frame count when active", async () => {
@@ -728,15 +728,15 @@ describe("GET /api/diagnostic", () => {
     const memory = makeMockMemory(frames);
     const app = createApp(makeState({ memoryService: memory }));
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.memory.status).toBe("active");
-    expect(res.body.memory.frameCount).toBe(2);
-    expect(res.body.memory.dbPath).toBeDefined();
+    expect(res.body.data.memory.status).toBe("active");
+    expect(res.body.data.memory.frameCount).toBe(2);
+    expect(res.body.data.memory.dbPath).toBeDefined();
   });
 
   it("reports memory as not configured when no service", async () => {
     const app = createApp(makeState());
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.memory.status).toBe("not configured");
+    expect(res.body.data.memory.status).toBe("not configured");
   });
 
   it("reports settings status with override count when active", async () => {
@@ -745,9 +745,9 @@ describe("GET /api/diagnostic", () => {
     store.set("display.admiralName", "TestAdmiral");
     const app = createApp(makeState({ settingsStore: store }));
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.settings.status).toBe("active");
-    expect(res.body.settings.userOverrides).toBe(1);
-    expect(res.body.settings.dbPath).toBeDefined();
+    expect(res.body.data.settings.status).toBe("active");
+    expect(res.body.data.settings.userOverrides).toBe(1);
+    expect(res.body.data.settings.dbPath).toBeDefined();
     store.close();
     fs.rmSync(tmpDir, { recursive: true });
   });
@@ -756,29 +756,29 @@ describe("GET /api/diagnostic", () => {
     const fleetData = makeFleetData();
     const app = createApp(makeState({ fleetData }));
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.fleet.status).toBe("loaded");
-    expect(res.body.fleet.totalChars).toBeGreaterThan(0);
-    expect(res.body.fleet.sections).toHaveLength(1);
-    expect(res.body.fleet.spreadsheetId).toBe("test-spreadsheet");
+    expect(res.body.data.fleet.status).toBe("loaded");
+    expect(res.body.data.fleet.totalChars).toBeGreaterThan(0);
+    expect(res.body.data.fleet.sections).toHaveLength(1);
+    expect(res.body.data.fleet.spreadsheetId).toBe("test-spreadsheet");
   });
 
   it("reports fleet error when present", async () => {
     const app = createApp(makeState({ rosterError: "OAuth token expired" }));
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.fleet.status).toBe("error");
-    expect(res.body.fleet.error).toBe("OAuth token expired");
+    expect(res.body.data.fleet.status).toBe("error");
+    expect(res.body.data.fleet.error).toBe("OAuth token expired");
   });
 
   it("reports fleet as not loaded when no data or error", async () => {
     const app = createApp(makeState());
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.fleet.status).toBe("not loaded");
+    expect(res.body.data.fleet.status).toBe("not loaded");
   });
 
   it("reports sheets credential status", async () => {
     const app = createApp(makeState());
     const res = await request(app).get("/api/diagnostic");
-    expect(res.body.sheets).toBeDefined();
-    expect(typeof res.body.sheets.credentialsPresent).toBe("boolean");
+    expect(res.body.data.sheets).toBeDefined();
+    expect(typeof res.body.data.sheets.credentialsPresent).toBe("boolean");
   });
 });
