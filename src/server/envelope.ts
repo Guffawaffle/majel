@@ -32,6 +32,9 @@ export const ErrorCode = {
   UNKNOWN_CATEGORY: "UNKNOWN_CATEGORY",
   SHEETS_NOT_CONFIGURED: "SHEETS_NOT_CONFIGURED",
   BUILTIN_IMMUTABLE: "BUILTIN_IMMUTABLE",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  // 504 — timeout
+  REQUEST_TIMEOUT: "REQUEST_TIMEOUT",
   // 500 — upstream failures
   GEMINI_ERROR: "GEMINI_ERROR",
   MEMORY_ERROR: "MEMORY_ERROR",
@@ -116,11 +119,72 @@ export function sendFail(
   });
 }
 
+// ─── Timeout Middleware ─────────────────────────────────────────
+
+/**
+ * Create a timeout middleware for a specific route.
+ * If the request takes longer than `timeoutMs`, returns 504 Gateway Timeout.
+ */
+export function createTimeoutMiddleware(timeoutMs: number) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    let timedOut = false;
+    
+    const timer = setTimeout(() => {
+      if (!res.headersSent && !timedOut) {
+        timedOut = true;
+        log.http.warn({ 
+          requestId: res.locals._requestId, 
+          path: req.path, 
+          timeoutMs 
+        }, "request timeout");
+        sendFail(res, ErrorCode.REQUEST_TIMEOUT, `Request timeout after ${timeoutMs}ms`, 504);
+      }
+    }, timeoutMs);
+
+    // Clear timeout when response finishes
+    const cleanup = () => {
+      clearTimeout(timer);
+    };
+    
+    res.on("finish", cleanup);
+    res.on("close", cleanup);
+
+    next();
+  };
+}
+
+// ─── Async Error Wrapper ────────────────────────────────────────
+
+/**
+ * Wrap async route handlers to catch errors and pass to error middleware.
+ * Express doesn't automatically catch errors in async functions.
+ */
+export function asyncHandler(
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
 // ─── Catch-all error handler (mount AFTER routes) ───────────────
 
 export function errorHandler(err: Error & { status?: number; statusCode?: number }, _req: Request, res: Response, _next: NextFunction): void {
+  // Don't send error if headers already sent (e.g., timeout already fired)
+  if (res.headersSent) {
+    return;
+  }
+
   const message = err.message || "Internal server error";
-  const statusCode = err.status || err.statusCode || 500;
-  log.boot.error({ err: message, requestId: res.locals._requestId }, "unhandled error");
-  sendFail(res, ErrorCode.INTERNAL_ERROR, message, statusCode);
+  let statusCode = err.status || err.statusCode || 500;
+  let code = ErrorCode.INTERNAL_ERROR;
+
+  // Handle express.json payload too large error
+  if (err.message && err.message.includes("entity too large")) {
+    statusCode = 413;
+    code = ErrorCode.PAYLOAD_TOO_LARGE;
+  }
+
+  log.http.error({ err: message, requestId: res.locals._requestId }, "unhandled error");
+  sendFail(res, code, message, statusCode);
 }
