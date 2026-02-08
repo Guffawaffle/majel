@@ -53,20 +53,63 @@ function renderMarkdown(text) {
 
     // Unordered lists (- ... or * ...)
     html = html.replace(/^[\-\*] (.+)$/gm, "<li>$1</li>");
-    html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
+    // Wrap consecutive <li> in <ul> - safer approach without nested quantifiers
+    const lines = html.split('\n');
+    const ulProcessed = [];
+    let inUlList = false;
+    for (const line of lines) {
+        if (line.trim().startsWith('<li>') && line.trim().endsWith('</li>')) {
+            if (!inUlList) {
+                ulProcessed.push('<ul>');
+                inUlList = true;
+            }
+            ulProcessed.push(line);
+        } else {
+            if (inUlList) {
+                ulProcessed.push('</ul>');
+                inUlList = false;
+            }
+            ulProcessed.push(line);
+        }
+    }
+    if (inUlList) ulProcessed.push('</ul>');
+    html = ulProcessed.join('\n');
 
     // Ordered lists (1. ...)
     html = html.replace(/^\d+\. (.+)$/gm, "<li>$1</li>");
-    // Wrap consecutive <li> not inside <ul> in <ol>
-    // Use non-greedy quantifier and limit backtracking to prevent ReDoS
-    html = html.replace(
-        /(?<!<\/ul>)((?:<li>.*?<\/li>(?:\n|(?=<li>))?)+)(?!<\/ul>)/g,
-        (match) => {
-            // Only wrap if not already in a list
-            if (match.includes("<ul>")) return match;
-            return `<ol>${match}</ol>`;
+    // Wrap consecutive <li> not inside <ul> in <ol> - safer approach
+    const lines2 = html.split('\n');
+    const olProcessed = [];
+    let inOlList = false;
+    let insideUl = false;
+    for (const line of lines2) {
+        const trimmed = line.trim();
+        if (trimmed === '<ul>') {
+            insideUl = true;
+            if (inOlList) {
+                olProcessed.push('</ol>');
+                inOlList = false;
+            }
+            olProcessed.push(line);
+        } else if (trimmed === '</ul>') {
+            insideUl = false;
+            olProcessed.push(line);
+        } else if (trimmed.startsWith('<li>') && trimmed.endsWith('</li>') && !insideUl) {
+            if (!inOlList) {
+                olProcessed.push('<ol>');
+                inOlList = true;
+            }
+            olProcessed.push(line);
+        } else {
+            if (inOlList && trimmed) {
+                olProcessed.push('</ol>');
+                inOlList = false;
+            }
+            olProcessed.push(line);
         }
-    );
+    }
+    if (inOlList) olProcessed.push('</ol>');
+    html = olProcessed.join('\n');
 
     // Tables (| ... | ... |)
     const tableRegex = /((?:^\|.+\|\n?)+)/gm;
