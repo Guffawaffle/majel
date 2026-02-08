@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://majel.dev/schemas/officer.schema.json",
+  "title": "Officer",
+  "description": "STFC officer entity — an individual crew member with abilities that vary by bridge position.",
+  "type": "object",
+  "required": ["id", "name"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Slug identifier (e.g. 'pike', 'beckett-mariner')"
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name (e.g. 'Pike', 'Beckett Mariner')"
+    },
+    "rarity": {
+      "type": ["string", "null"],
+      "enum": ["common", "uncommon", "rare", "epic", "legendary", null],
+      "description": "Officer rarity tier."
+    },
+    "level": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "description": "Current officer level."
+    },
+    "rank": {
+      "type": ["string", "null"],
+      "description": "Officer rank (e.g. 'Ensign', 'Commander')."
+    },
+    "groupName": {
+      "type": ["string", "null"],
+      "description": "Named synergy group (e.g. 'LOWER DECKS CREW', 'VOYAGER', 'TOS')."
+    },
+    "classPreference": {
+      "type": ["string", "null"],
+      "enum": ["explorer", "interceptor", "battleship", "survey", "any", null],
+      "description": "Ship class this officer is best suited for. 'any' = versatile across all classes."
+    },
+    "activityAffinity": {
+      "type": ["string", "null"],
+      "enum": ["pve", "pvp", "mining", "any", null],
+      "description": "Activity type this officer excels at. 'any' = universal."
+    },
+    "positionPreference": {
+      "type": ["string", "null"],
+      "enum": ["captain", "bridge", "below_deck", "any", null],
+      "description": "Optimal bridge position. Some officers are 'Unfit to Lead' (never captain)."
+    },
+    "importedFrom": {
+      "type": ["string", "null"],
+      "description": "Source label if imported from Google Sheets."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

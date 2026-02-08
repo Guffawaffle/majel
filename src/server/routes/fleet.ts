@@ -35,7 +35,7 @@ export function createFleetRoutes(appState: AppState): Router {
     if (!appState.fleetStore) {
       return sendFail(res, ErrorCode.FLEET_STORE_NOT_AVAILABLE, "Fleet store not available", 503);
     }
-    const { id, name, tier, shipClass, status, role, roleDetail, notes } = req.body;
+    const { id, name, tier, shipClass, grade, rarity, faction, combatProfile, specialtyLoop, status, role, roleDetail, notes } = req.body;
     if (!id || !name) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing required fields: id, name");
     }
@@ -45,6 +45,11 @@ export function createFleetRoutes(appState: AppState): Router {
         name,
         tier: tier ?? null,
         shipClass: shipClass ?? null,
+        grade: grade ?? null,
+        rarity: rarity ?? null,
+        faction: faction ?? null,
+        combatProfile: combatProfile ?? null,
+        specialtyLoop: specialtyLoop ?? null,
         status: status || "ready",
         role: role ?? null,
         roleDetail: roleDetail ?? null,
@@ -112,7 +117,7 @@ export function createFleetRoutes(appState: AppState): Router {
     if (!appState.fleetStore) {
       return sendFail(res, ErrorCode.FLEET_STORE_NOT_AVAILABLE, "Fleet store not available", 503);
     }
-    const { id, name, rarity, level, rank, groupName } = req.body;
+    const { id, name, rarity, level, rank, groupName, classPreference, activityAffinity, positionPreference } = req.body;
     if (!id || !name) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing required fields: id, name");
     }
@@ -124,6 +129,9 @@ export function createFleetRoutes(appState: AppState): Router {
         level: level ?? null,
         rank: rank ?? null,
         groupName: groupName ?? null,
+        classPreference: classPreference ?? null,
+        activityAffinity: activityAffinity ?? null,
+        positionPreference: positionPreference ?? null,
         importedFrom: null,
       });
       sendOk(res, officer, 201);

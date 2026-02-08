@@ -582,3 +582,314 @@ describe("FleetStore — Diagnostics", () => {
     expect(counts.logEntries).toBeGreaterThan(0);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// Data Segmentation Tests (Issue #15)
+// ──────────────────────────────────────────────────────────────────
+
+describe("FleetStore — Ship Segmentation", () => {
+  let store: FleetStore;
+
+  beforeEach(() => {
+    store = createFleetStore(TEST_DB);
+  });
+
+  afterEach(() => {
+    store.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("creates a ship with combat profile and grade", () => {
+    const ship = store.createShip({
+      id: "augur",
+      name: "Augur",
+      tier: 3,
+      shipClass: "battleship",
+      grade: 3,
+      rarity: "epic",
+      faction: "romulan",
+      combatProfile: "triangle",
+      specialtyLoop: null,
+      status: "ready",
+      role: null,
+      roleDetail: null,
+      notes: null,
+      importedFrom: null,
+    });
+    expect(ship.grade).toBe(3);
+    expect(ship.rarity).toBe("epic");
+    expect(ship.faction).toBe("romulan");
+    expect(ship.combatProfile).toBe("triangle");
+    expect(ship.specialtyLoop).toBeNull();
+  });
+
+  it("creates a specialty ship with loop", () => {
+    const ship = store.createShip({
+      id: "vidar",
+      name: "Vidar",
+      tier: 4,
+      shipClass: "explorer",
+      grade: 3,
+      rarity: "rare",
+      faction: "neutral",
+      combatProfile: "specialty",
+      specialtyLoop: "borg",
+      status: "deployed",
+      role: null,
+      roleDetail: null,
+      notes: null,
+      importedFrom: null,
+    });
+    expect(ship.combatProfile).toBe("specialty");
+    expect(ship.specialtyLoop).toBe("borg");
+  });
+
+  it("creates a non-combat ship", () => {
+    const ship = store.createShip({
+      id: "botany-bay",
+      name: "Botany Bay",
+      tier: 2,
+      shipClass: "survey",
+      grade: 2,
+      rarity: "uncommon",
+      faction: "neutral",
+      combatProfile: "non_combat",
+      specialtyLoop: null,
+      status: "ready",
+      role: "mining",
+      roleDetail: null,
+      notes: null,
+      importedFrom: null,
+    });
+    expect(ship.combatProfile).toBe("non_combat");
+    expect(ship.shipClass).toBe("survey");
+  });
+
+  it("defaults new fields to null when omitted", () => {
+    const ship = store.createShip({
+      id: "legacy-ship",
+      name: "Legacy Ship",
+      tier: null,
+      shipClass: null,
+      status: "ready",
+      role: null,
+      roleDetail: null,
+      notes: null,
+      importedFrom: null,
+    });
+    expect(ship.grade).toBeNull();
+    expect(ship.rarity).toBeNull();
+    expect(ship.faction).toBeNull();
+    expect(ship.combatProfile).toBeNull();
+    expect(ship.specialtyLoop).toBeNull();
+  });
+
+  it("persists and retrieves segmentation fields", () => {
+    store.createShip({
+      id: "enterprise",
+      name: "Enterprise NX-01",
+      tier: 5,
+      shipClass: "explorer",
+      grade: 4,
+      rarity: "epic",
+      faction: "neutral",
+      combatProfile: "triangle",
+      specialtyLoop: null,
+      status: "ready",
+      role: null,
+      roleDetail: null,
+      notes: null,
+      importedFrom: null,
+    });
+    const ship = store.getShip("enterprise");
+    expect(ship!.grade).toBe(4);
+    expect(ship!.rarity).toBe("epic");
+    expect(ship!.faction).toBe("neutral");
+    expect(ship!.combatProfile).toBe("triangle");
+  });
+
+  it("updates segmentation fields", () => {
+    store.createShip({
+      id: "augur",
+      name: "Augur",
+      tier: 3,
+      shipClass: "battleship",
+      status: "ready",
+      role: null,
+      roleDetail: null,
+      notes: null,
+      importedFrom: null,
+    });
+
+    const updated = store.updateShip("augur", {
+      grade: 3,
+      rarity: "epic",
+      faction: "romulan",
+      combatProfile: "triangle",
+    });
+    expect(updated!.grade).toBe(3);
+    expect(updated!.rarity).toBe("epic");
+    expect(updated!.faction).toBe("romulan");
+    expect(updated!.combatProfile).toBe("triangle");
+  });
+
+  it("rejects invalid combat profile", () => {
+    expect(() =>
+      store.createShip({
+        id: "bad",
+        name: "Bad",
+        tier: null,
+        shipClass: null,
+        combatProfile: "invalid" as any,
+        status: "ready",
+        role: null,
+        roleDetail: null,
+        notes: null,
+        importedFrom: null,
+      }),
+    ).toThrow("Invalid combat profile");
+  });
+
+  it("rejects invalid combat profile on update", () => {
+    store.createShip({
+      id: "s1",
+      name: "Ship",
+      tier: null,
+      shipClass: null,
+      status: "ready",
+      role: null,
+      roleDetail: null,
+      notes: null,
+      importedFrom: null,
+    });
+    expect(() => store.updateShip("s1", { combatProfile: "bad" as any })).toThrow("Invalid combat profile");
+  });
+
+  it("lists ships and includes segmentation fields", () => {
+    store.createShip({
+      id: "augur",
+      name: "Augur",
+      tier: 3,
+      shipClass: "battleship",
+      grade: 3,
+      combatProfile: "triangle",
+      faction: "romulan",
+      status: "ready",
+      role: null,
+      roleDetail: null,
+      notes: null,
+      importedFrom: null,
+    });
+
+    const ships = store.listShips();
+    expect(ships[0].grade).toBe(3);
+    expect(ships[0].combatProfile).toBe("triangle");
+    expect(ships[0].faction).toBe("romulan");
+  });
+});
+
+describe("FleetStore — Officer Affinities", () => {
+  let store: FleetStore;
+
+  beforeEach(() => {
+    store = createFleetStore(TEST_DB);
+  });
+
+  afterEach(() => {
+    store.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("creates an officer with affinity hints", () => {
+    const officer = store.createOfficer({
+      id: "pike",
+      name: "Pike",
+      rarity: "epic",
+      level: 50,
+      rank: "Captain",
+      groupName: "TOS",
+      classPreference: "any",
+      activityAffinity: "pve",
+      positionPreference: "captain",
+      importedFrom: null,
+    });
+    expect(officer.classPreference).toBe("any");
+    expect(officer.activityAffinity).toBe("pve");
+    expect(officer.positionPreference).toBe("captain");
+  });
+
+  it("defaults affinity fields to null when omitted", () => {
+    const officer = store.createOfficer({
+      id: "legacy",
+      name: "Legacy Officer",
+      rarity: null,
+      level: null,
+      rank: null,
+      groupName: null,
+      importedFrom: null,
+    });
+    expect(officer.classPreference).toBeNull();
+    expect(officer.activityAffinity).toBeNull();
+    expect(officer.positionPreference).toBeNull();
+  });
+
+  it("persists and retrieves affinity fields", () => {
+    store.createOfficer({
+      id: "mariner",
+      name: "Beckett Mariner",
+      rarity: "epic",
+      level: 45,
+      rank: "Ensign",
+      groupName: "LOWER DECKS CREW",
+      classPreference: "any",
+      activityAffinity: "pve",
+      positionPreference: "below_deck",
+      importedFrom: null,
+    });
+    const officer = store.getOfficer("mariner");
+    expect(officer!.classPreference).toBe("any");
+    expect(officer!.activityAffinity).toBe("pve");
+    expect(officer!.positionPreference).toBe("below_deck");
+  });
+
+  it("updates affinity fields", () => {
+    store.createOfficer({
+      id: "kirk",
+      name: "Kirk",
+      rarity: "epic",
+      level: 60,
+      rank: "Captain",
+      groupName: "TOS",
+      importedFrom: null,
+    });
+
+    const updated = store.updateOfficer("kirk", {
+      classPreference: "explorer",
+      activityAffinity: "pvp",
+      positionPreference: "captain",
+    });
+    expect(updated!.classPreference).toBe("explorer");
+    expect(updated!.activityAffinity).toBe("pvp");
+    expect(updated!.positionPreference).toBe("captain");
+  });
+
+  it("lists officers with affinity fields", () => {
+    store.createOfficer({
+      id: "pike",
+      name: "Pike",
+      rarity: "epic",
+      level: 50,
+      rank: "Captain",
+      groupName: "TOS",
+      classPreference: "any",
+      activityAffinity: "pve",
+      positionPreference: "captain",
+      importedFrom: null,
+    });
+
+    const officers = store.listOfficers();
+    expect(officers[0].classPreference).toBe("any");
+    expect(officers[0].activityAffinity).toBe("pve");
+    expect(officers[0].positionPreference).toBe("captain");
+  });
+});

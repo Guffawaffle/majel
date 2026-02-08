@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://majel.dev/schemas/intent.schema.json",
+  "title": "Intent",
+  "description": "A player activity/intent that a ship can be deployed for (mining, combat, etc.).",
+  "type": "object",
+  "required": ["key", "label", "category"],
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Unique slug key (e.g. 'mining-gas', 'grinding', 'pvp')."
+    },
+    "label": {
+      "type": "string",
+      "description": "Display label (e.g. 'Gas Mining', 'Hostile Grinding')."
+    },
+    "category": {
+      "type": "string",
+      "enum": ["mining", "combat", "utility", "custom"],
+      "description": "Intent category."
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Human-readable description of this activity."
+    },
+    "icon": {
+      "type": ["string", "null"],
+      "description": "Emoji or icon identifier."
+    },
+    "isBuiltin": {
+      "type": "boolean",
+      "description": "Whether this is a system-seeded intent (immutable) or user-created."
+    },
+    "sortOrder": {
+      "type": "integer",
+      "description": "Display sort order."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

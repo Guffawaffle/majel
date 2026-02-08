@@ -35,11 +35,24 @@ export const VALID_SHIP_STATUSES: ShipStatus[] = [
   "awaiting-crew",
 ];
 
+export type ShipCombatProfile = "triangle" | "non_combat" | "specialty";
+
+export const VALID_COMBAT_PROFILES: ShipCombatProfile[] = [
+  "triangle",
+  "non_combat",
+  "specialty",
+];
+
 export interface Ship {
   id: string;
   name: string;
   tier: number | null;
   shipClass: string | null;
+  grade: number | null;
+  rarity: string | null;
+  faction: string | null;
+  combatProfile: ShipCombatProfile | null;
+  specialtyLoop: string | null;
   status: ShipStatus;
   role: string | null;
   roleDetail: string | null;
@@ -50,6 +63,12 @@ export interface Ship {
   updatedAt: string;
 }
 
+export type OfficerClassPreference = "explorer" | "interceptor" | "battleship" | "survey" | "any";
+
+export type OfficerActivityAffinity = "pve" | "pvp" | "mining" | "any";
+
+export type OfficerPositionPreference = "captain" | "bridge" | "below_deck" | "any";
+
 export interface Officer {
   id: string;
   name: string;
@@ -57,6 +76,9 @@ export interface Officer {
   level: number | null;
   rank: string | null;
   groupName: string | null;
+  classPreference: OfficerClassPreference | null;
+  activityAffinity: OfficerActivityAffinity | null;
+  positionPreference: OfficerPositionPreference | null;
   importedFrom: string | null;
   createdAt: string;
   updatedAt: string;
@@ -96,21 +118,37 @@ export interface AssignmentLogEntry {
   timestamp: string;
 }
 
+/** Fields required when creating a ship — new segmentation fields default to null */
+export type CreateShipInput = Omit<Ship, "createdAt" | "updatedAt" | "statusChangedAt" | "grade" | "rarity" | "faction" | "combatProfile" | "specialtyLoop"> & {
+  grade?: number | null;
+  rarity?: string | null;
+  faction?: string | null;
+  combatProfile?: ShipCombatProfile | null;
+  specialtyLoop?: string | null;
+};
+
+/** Fields required when creating an officer — affinity fields default to null */
+export type CreateOfficerInput = Omit<Officer, "createdAt" | "updatedAt" | "classPreference" | "activityAffinity" | "positionPreference"> & {
+  classPreference?: OfficerClassPreference | null;
+  activityAffinity?: OfficerActivityAffinity | null;
+  positionPreference?: OfficerPositionPreference | null;
+};
+
 // ─── Store Interface ────────────────────────────────────────
 
 export interface FleetStore {
   // ── Ships ─────────────────────────────────────────────
-  createShip(ship: Omit<Ship, "createdAt" | "updatedAt" | "statusChangedAt">): Ship;
+  createShip(ship: CreateShipInput): Ship;
   getShip(id: string): (Ship & { crew: CrewAssignment[] }) | null;
   listShips(filters?: { status?: ShipStatus; role?: string }): Ship[];
-  updateShip(id: string, fields: Partial<Pick<Ship, "name" | "status" | "role" | "roleDetail" | "notes" | "tier" | "shipClass">>): Ship | null;
+  updateShip(id: string, fields: Partial<Pick<Ship, "name" | "status" | "role" | "roleDetail" | "notes" | "tier" | "shipClass" | "grade" | "rarity" | "faction" | "combatProfile" | "specialtyLoop">>): Ship | null;
   deleteShip(id: string): boolean;
 
   // ── Officers ──────────────────────────────────────────
-  createOfficer(officer: Omit<Officer, "createdAt" | "updatedAt">): Officer;
+  createOfficer(officer: CreateOfficerInput): Officer;
   getOfficer(id: string): (Officer & { assignments: CrewAssignment[] }) | null;
   listOfficers(filters?: { groupName?: string; unassigned?: boolean }): Officer[];
-  updateOfficer(id: string, fields: Partial<Pick<Officer, "name" | "rarity" | "level" | "rank" | "groupName">>): Officer | null;
+  updateOfficer(id: string, fields: Partial<Pick<Officer, "name" | "rarity" | "level" | "rank" | "groupName" | "classPreference" | "activityAffinity" | "positionPreference">>): Officer | null;
   deleteOfficer(id: string): boolean;
 
   // ── Crew Assignments ──────────────────────────────────
@@ -164,6 +202,11 @@ export function createFleetStore(dbPath?: string): FleetStore {
       name TEXT NOT NULL,
       tier INTEGER,
       ship_class TEXT,
+      grade INTEGER,
+      rarity TEXT,
+      faction TEXT,
+      combat_profile TEXT,
+      specialty_loop TEXT,
       status TEXT NOT NULL DEFAULT 'ready',
       role TEXT,
       role_detail TEXT,
@@ -181,6 +224,9 @@ export function createFleetStore(dbPath?: string): FleetStore {
       level INTEGER,
       rank TEXT,
       group_name TEXT,
+      class_preference TEXT,
+      activity_affinity TEXT,
+      position_preference TEXT,
       imported_from TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -207,6 +253,11 @@ export function createFleetStore(dbPath?: string): FleetStore {
     -- Seed schema_version if empty (v1 = initial fleet schema)
     INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (1, datetime('now'));
 
+    -- v5: Add grade, rarity, faction, combat_profile, specialty_loop to ships;
+    --     Add class_preference, activity_affinity, position_preference to officers.
+    --     Uses ADD COLUMN IF NOT EXISTS pattern via PRAGMA table_info fallback.
+    INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (5, datetime('now'));
+
     CREATE TABLE IF NOT EXISTS assignment_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ship_id TEXT,
@@ -223,6 +274,27 @@ export function createFleetStore(dbPath?: string): FleetStore {
     CREATE INDEX IF NOT EXISTS idx_log_timestamp ON assignment_log(timestamp);
   `);
 
+  // ── Migration v5: Add segmentation columns to existing tables ──
+  // Safe ADD COLUMN: SQLite ignores if column already exists (since 3.35+)
+  // For older SQLite, we catch and ignore "duplicate column" errors.
+  const migrationColumns: Array<{ table: string; column: string; type: string }> = [
+    { table: "ships", column: "grade", type: "INTEGER" },
+    { table: "ships", column: "rarity", type: "TEXT" },
+    { table: "ships", column: "faction", type: "TEXT" },
+    { table: "ships", column: "combat_profile", type: "TEXT" },
+    { table: "ships", column: "specialty_loop", type: "TEXT" },
+    { table: "officers", column: "class_preference", type: "TEXT" },
+    { table: "officers", column: "activity_affinity", type: "TEXT" },
+    { table: "officers", column: "position_preference", type: "TEXT" },
+  ];
+  for (const { table, column, type } of migrationColumns) {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    } catch {
+      // Column already exists — safe to ignore
+    }
+  }
+
   log.fleet.debug({ dbPath: resolvedPath }, "fleet store initialized");
 
   // ── Prepared Statements ─────────────────────────────────
@@ -230,35 +302,45 @@ export function createFleetStore(dbPath?: string): FleetStore {
   const stmts = {
     // Ships
     insertShip: db.prepare(
-      `INSERT INTO ships (id, name, tier, ship_class, status, role, role_detail, notes, imported_from, status_changed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ships (id, name, tier, ship_class, grade, rarity, faction, combat_profile, specialty_loop, status, role, role_detail, notes, imported_from, status_changed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     getShip: db.prepare(
-      `SELECT id, name, tier, ship_class AS shipClass, status, role, role_detail AS roleDetail,
+      `SELECT id, name, tier, ship_class AS shipClass, grade, rarity, faction,
+              combat_profile AS combatProfile, specialty_loop AS specialtyLoop,
+              status, role, role_detail AS roleDetail,
               notes, imported_from AS importedFrom, status_changed_at AS statusChangedAt,
               created_at AS createdAt, updated_at AS updatedAt
        FROM ships WHERE id = ?`,
     ),
     listShips: db.prepare(
-      `SELECT id, name, tier, ship_class AS shipClass, status, role, role_detail AS roleDetail,
+      `SELECT id, name, tier, ship_class AS shipClass, grade, rarity, faction,
+              combat_profile AS combatProfile, specialty_loop AS specialtyLoop,
+              status, role, role_detail AS roleDetail,
               notes, imported_from AS importedFrom, status_changed_at AS statusChangedAt,
               created_at AS createdAt, updated_at AS updatedAt
        FROM ships ORDER BY name ASC`,
     ),
     listShipsByStatus: db.prepare(
-      `SELECT id, name, tier, ship_class AS shipClass, status, role, role_detail AS roleDetail,
+      `SELECT id, name, tier, ship_class AS shipClass, grade, rarity, faction,
+              combat_profile AS combatProfile, specialty_loop AS specialtyLoop,
+              status, role, role_detail AS roleDetail,
               notes, imported_from AS importedFrom, status_changed_at AS statusChangedAt,
               created_at AS createdAt, updated_at AS updatedAt
        FROM ships WHERE status = ? ORDER BY name ASC`,
     ),
     listShipsByRole: db.prepare(
-      `SELECT id, name, tier, ship_class AS shipClass, status, role, role_detail AS roleDetail,
+      `SELECT id, name, tier, ship_class AS shipClass, grade, rarity, faction,
+              combat_profile AS combatProfile, specialty_loop AS specialtyLoop,
+              status, role, role_detail AS roleDetail,
               notes, imported_from AS importedFrom, status_changed_at AS statusChangedAt,
               created_at AS createdAt, updated_at AS updatedAt
        FROM ships WHERE role = ? ORDER BY name ASC`,
     ),
     listShipsByStatusAndRole: db.prepare(
-      `SELECT id, name, tier, ship_class AS shipClass, status, role, role_detail AS roleDetail,
+      `SELECT id, name, tier, ship_class AS shipClass, grade, rarity, faction,
+              combat_profile AS combatProfile, specialty_loop AS specialtyLoop,
+              status, role, role_detail AS roleDetail,
               notes, imported_from AS importedFrom, status_changed_at AS statusChangedAt,
               created_at AS createdAt, updated_at AS updatedAt
        FROM ships WHERE status = ? AND role = ? ORDER BY name ASC`,
@@ -268,26 +350,34 @@ export function createFleetStore(dbPath?: string): FleetStore {
 
     // Officers
     insertOfficer: db.prepare(
-      `INSERT INTO officers (id, name, rarity, level, rank, group_name, imported_from, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO officers (id, name, rarity, level, rank, group_name, class_preference, activity_affinity, position_preference, imported_from, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     getOfficer: db.prepare(
       `SELECT id, name, rarity, level, rank, group_name AS groupName,
+              class_preference AS classPreference, activity_affinity AS activityAffinity,
+              position_preference AS positionPreference,
               imported_from AS importedFrom, created_at AS createdAt, updated_at AS updatedAt
        FROM officers WHERE id = ?`,
     ),
     listOfficers: db.prepare(
       `SELECT id, name, rarity, level, rank, group_name AS groupName,
+              class_preference AS classPreference, activity_affinity AS activityAffinity,
+              position_preference AS positionPreference,
               imported_from AS importedFrom, created_at AS createdAt, updated_at AS updatedAt
        FROM officers ORDER BY name ASC`,
     ),
     listOfficersByGroup: db.prepare(
       `SELECT id, name, rarity, level, rank, group_name AS groupName,
+              class_preference AS classPreference, activity_affinity AS activityAffinity,
+              position_preference AS positionPreference,
               imported_from AS importedFrom, created_at AS createdAt, updated_at AS updatedAt
        FROM officers WHERE group_name = ? ORDER BY name ASC`,
     ),
     listUnassignedOfficers: db.prepare(
       `SELECT o.id, o.name, o.rarity, o.level, o.rank, o.group_name AS groupName,
+              o.class_preference AS classPreference, o.activity_affinity AS activityAffinity,
+              o.position_preference AS positionPreference,
               o.imported_from AS importedFrom, o.created_at AS createdAt, o.updated_at AS updatedAt
        FROM officers o
        WHERE NOT EXISTS (SELECT 1 FROM crew_assignments ca WHERE ca.officer_id = o.id)
@@ -379,14 +469,28 @@ export function createFleetStore(dbPath?: string): FleetStore {
       if (!VALID_SHIP_STATUSES.includes(status)) {
         throw new Error(`Invalid ship status: ${status}. Valid: ${VALID_SHIP_STATUSES.join(", ")}`);
       }
+      const combatProfile = input.combatProfile ?? null;
+      if (combatProfile && !VALID_COMBAT_PROFILES.includes(combatProfile)) {
+        throw new Error(`Invalid combat profile: ${combatProfile}. Valid: ${VALID_COMBAT_PROFILES.join(", ")}`);
+      }
+      const grade = input.grade ?? null;
+      const rarity = input.rarity ?? null;
+      const faction = input.faction ?? null;
+      const specialtyLoop = input.specialtyLoop ?? null;
       stmts.insertShip.run(
         input.id, input.name, input.tier ?? null, input.shipClass ?? null,
+        grade, rarity, faction,
+        combatProfile, specialtyLoop,
         status, input.role ?? null, input.roleDetail ?? null,
         input.notes ?? null, input.importedFrom ?? null, now, now, now,
       );
       logAction(input.id, null, "created", { name: input.name, status });
       log.fleet.debug({ id: input.id, name: input.name }, "ship created");
-      return { ...input, status, statusChangedAt: now, createdAt: now, updatedAt: now } as Ship;
+      return {
+        ...input,
+        grade, rarity, faction, combatProfile, specialtyLoop,
+        status, statusChangedAt: now, createdAt: now, updatedAt: now,
+      } as Ship;
     },
 
     getShip(id) {
@@ -421,6 +525,16 @@ export function createFleetStore(dbPath?: string): FleetStore {
       if (fields.name !== undefined) { updates.push("name = ?"); params.push(fields.name); changes.name = fields.name; }
       if (fields.tier !== undefined) { updates.push("tier = ?"); params.push(fields.tier); changes.tier = fields.tier; }
       if (fields.shipClass !== undefined) { updates.push("ship_class = ?"); params.push(fields.shipClass); changes.shipClass = fields.shipClass; }
+      if (fields.grade !== undefined) { updates.push("grade = ?"); params.push(fields.grade); changes.grade = fields.grade; }
+      if (fields.rarity !== undefined) { updates.push("rarity = ?"); params.push(fields.rarity); changes.rarity = fields.rarity; }
+      if (fields.faction !== undefined) { updates.push("faction = ?"); params.push(fields.faction); changes.faction = fields.faction; }
+      if (fields.combatProfile !== undefined) {
+        if (fields.combatProfile !== null && !VALID_COMBAT_PROFILES.includes(fields.combatProfile)) {
+          throw new Error(`Invalid combat profile: ${fields.combatProfile}. Valid: ${VALID_COMBAT_PROFILES.join(", ")}`);
+        }
+        updates.push("combat_profile = ?"); params.push(fields.combatProfile); changes.combatProfile = fields.combatProfile;
+      }
+      if (fields.specialtyLoop !== undefined) { updates.push("specialty_loop = ?"); params.push(fields.specialtyLoop); changes.specialtyLoop = fields.specialtyLoop; }
       if (fields.role !== undefined) { updates.push("role = ?"); params.push(fields.role); changes.role = fields.role; }
       if (fields.roleDetail !== undefined) { updates.push("role_detail = ?"); params.push(fields.roleDetail); changes.roleDetail = fields.roleDetail; }
       if (fields.notes !== undefined) { updates.push("notes = ?"); params.push(fields.notes); changes.notes = fields.notes; }
@@ -462,14 +576,23 @@ export function createFleetStore(dbPath?: string): FleetStore {
 
     createOfficer(input) {
       const now = new Date().toISOString();
+      const classPreference = input.classPreference ?? null;
+      const activityAffinity = input.activityAffinity ?? null;
+      const positionPreference = input.positionPreference ?? null;
       stmts.insertOfficer.run(
         input.id, input.name, input.rarity ?? null, input.level ?? null,
-        input.rank ?? null, input.groupName ?? null, input.importedFrom ?? null,
+        input.rank ?? null, input.groupName ?? null,
+        classPreference, activityAffinity, positionPreference,
+        input.importedFrom ?? null,
         now, now,
       );
       logAction(null, input.id, "created", { name: input.name });
       log.fleet.debug({ id: input.id, name: input.name }, "officer created");
-      return { ...input, createdAt: now, updatedAt: now } as Officer;
+      return {
+        ...input,
+        classPreference, activityAffinity, positionPreference,
+        createdAt: now, updatedAt: now,
+      } as Officer;
     },
 
     getOfficer(id) {
@@ -502,6 +625,9 @@ export function createFleetStore(dbPath?: string): FleetStore {
       if (fields.level !== undefined) { updates.push("level = ?"); params.push(fields.level); }
       if (fields.rank !== undefined) { updates.push("rank = ?"); params.push(fields.rank); }
       if (fields.groupName !== undefined) { updates.push("group_name = ?"); params.push(fields.groupName); }
+      if (fields.classPreference !== undefined) { updates.push("class_preference = ?"); params.push(fields.classPreference); }
+      if (fields.activityAffinity !== undefined) { updates.push("activity_affinity = ?"); params.push(fields.activityAffinity); }
+      if (fields.positionPreference !== undefined) { updates.push("position_preference = ?"); params.push(fields.positionPreference); }
 
       if (updates.length === 0) return existing;
 
@@ -633,6 +759,11 @@ export function createFleetStore(dbPath?: string): FleetStore {
                 name,
                 tier: tierCol >= 0 ? parseInt(row[tierCol], 10) || null : null,
                 shipClass: classCol >= 0 ? (row[classCol] || "").trim() || null : null,
+                grade: null,
+                rarity: null,
+                faction: null,
+                combatProfile: null,
+                specialtyLoop: null,
                 status: "ready",
                 role: null,
                 roleDetail: null,
@@ -662,6 +793,9 @@ export function createFleetStore(dbPath?: string): FleetStore {
                 level: levelCol >= 0 ? parseInt(row[levelCol], 10) || null : null,
                 rank: rankCol >= 0 ? (row[rankCol] || "").trim() || null : null,
                 groupName: groupCol >= 0 ? (row[groupCol] || "").trim() || null : null,
+                classPreference: null,
+                activityAffinity: null,
+                positionPreference: null,
                 importedFrom: section.label,
               });
               officersImported++;

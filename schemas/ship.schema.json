@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://majel.dev/schemas/ship.schema.json",
+  "title": "Ship",
+  "description": "STFC ship entity — the vessel itself, independent of crew or dock assignment.",
+  "type": "object",
+  "required": ["id", "name", "status"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Slug identifier (e.g. 'uss-enterprise', 'augur')"
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name (e.g. 'USS Enterprise', 'Augur')"
+    },
+    "tier": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 9,
+      "description": "Ship tier (T1–T9). Higher tiers unlock crew slots and stats."
+    },
+    "shipClass": {
+      "type": ["string", "null"],
+      "enum": ["explorer", "interceptor", "battleship", "survey", null],
+      "description": "Primary ship class. Determines combat triangle participation."
+    },
+    "grade": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 7,
+      "description": "Ship grade (G1–G7). Indicates the era/power tier of the ship design."
+    },
+    "rarity": {
+      "type": ["string", "null"],
+      "enum": ["common", "uncommon", "rare", "epic", null],
+      "description": "Ship rarity. Affects max power ceiling and build cost."
+    },
+    "faction": {
+      "type": ["string", "null"],
+      "description": "Faction affiliation (e.g. 'federation', 'klingon', 'romulan', 'neutral')."
+    },
+    "combatProfile": {
+      "type": ["string", "null"],
+      "enum": ["triangle", "non_combat", "specialty", null],
+      "description": "How this ship participates in combat. 'triangle' = Explorer/Interceptor/Battleship rock-paper-scissors. 'non_combat' = Survey/buffer ships. 'specialty' = loop-specific ships (Vidar, Voyager, etc.)."
+    },
+    "specialtyLoop": {
+      "type": ["string", "null"],
+      "description": "For specialty ships, which game loop they serve (e.g. 'borg', 'swarm', 'deep-space', 'latinum'). Null for non-specialty ships."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["deployed", "ready", "maintenance", "training", "reserve", "awaiting-crew"],
+      "default": "ready",
+      "description": "Operational status of this ship in the player's fleet."
+    },
+    "role": {
+      "type": ["string", "null"],
+      "description": "User-assigned fleet role (freeform)."
+    },
+    "roleDetail": {
+      "type": ["string", "null"],
+      "description": "Extended role description."
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Freeform user notes."
+    },
+    "importedFrom": {
+      "type": ["string", "null"],
+      "description": "Source label if imported from Google Sheets."
+    },
+    "statusChangedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

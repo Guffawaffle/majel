@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://majel.dev/schemas/loadout.schema.json",
+  "title": "Loadout",
+  "description": "A Loadout is the fundamental planning unit: Ship + Intent + Crew. Answers the question: 'When I use Ship X for Activity Y, what crew should I run?'",
+  "type": "object",
+  "required": ["id", "shipId", "intentKey", "presetName"],
+  "properties": {
+    "id": {
+      "type": "integer",
+      "description": "Auto-increment identifier."
+    },
+    "shipId": {
+      "type": "string",
+      "description": "FK to ship. The vessel this loadout configures."
+    },
+    "intentKey": {
+      "type": "string",
+      "description": "FK to intent_catalog. The activity this loadout optimizes for."
+    },
+    "presetName": {
+      "type": "string",
+      "description": "Human-readable name (e.g. 'PMC Grinder', 'Voyager Trio PvE')."
+    },
+    "isDefault": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is the default loadout for this ship+intent combo."
+    },
+    "members": {
+      "type": "array",
+      "description": "Officers assigned to this loadout.",
+      "items": {
+        "$ref": "#/$defs/loadoutMember"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "Freeform tags for discoverability (e.g. 'meta', 'budget', 'events').",
+      "items": {
+        "type": "string"
+      }
+    },
+    "shipName": {
+      "type": "string",
+      "description": "Denormalized ship display name (from joins)."
+    },
+    "intentLabel": {
+      "type": "string",
+      "description": "Denormalized intent display label (from joins)."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "loadoutMember": {
+      "type": "object",
+      "required": ["officerId", "roleType"],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Auto-increment member ID."
+        },
+        "presetId": {
+          "type": "integer",
+          "description": "FK to parent loadout."
+        },
+        "officerId": {
+          "type": "string",
+          "description": "FK to officer."
+        },
+        "roleType": {
+          "type": "string",
+          "enum": ["bridge", "below_deck"],
+          "description": "Whether this officer is on the bridge or below deck."
+        },
+        "slot": {
+          "type": ["string", "null"],
+          "description": "Named slot position (e.g. 'captain', 'science', 'engineering'). Null if unspecified."
+        },
+        "officerName": {
+          "type": "string",
+          "description": "Denormalized officer display name (from joins)."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
