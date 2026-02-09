@@ -28,38 +28,58 @@ describe("buildSystemPrompt", () => {
     it("establishes personality traits", () => {
       const prompt = buildSystemPrompt(null);
       expect(prompt).toContain("PERSONALITY:");
-      expect(prompt).toContain("dry wit");
+      expect(prompt).toContain("Dry wit");
       expect(prompt).toContain("Admiral");
     });
   });
 
-  describe("capabilities layer", () => {
-    it("declares training knowledge coverage", () => {
+  describe("scope & authority layer", () => {
+    it("declares scope and authority ladder", () => {
       const prompt = buildSystemPrompt(null);
+      expect(prompt).toContain("SCOPE & AUTHORITY:");
+      expect(prompt).toContain("AUTHORITY LADDER");
       expect(prompt).toContain("training knowledge");
-      expect(prompt).toContain("CAPABILITIES:");
     });
 
-    it("explicitly lists STFC-relevant capabilities", () => {
+    it("permits discussion of any topic (anti-refusal)", () => {
       const prompt = buildSystemPrompt(null);
-      expect(prompt).toContain("Star Trek Fleet Command");
-      expect(prompt).toContain("crew compositions");
-      expect(prompt).toContain("Star Trek canon lore");
+      expect(prompt).toContain("any topic the Admiral asks about");
+      expect(prompt).toContain("STFC strategy");
+      expect(prompt).toContain("Star Trek lore");
     });
 
-    it("discloses underlying systems (Lex, Gemini)", () => {
+    it("treats patch-sensitive STFC specifics as uncertain", () => {
+      const prompt = buildSystemPrompt(null);
+      expect(prompt).toContain("UNCERTAIN");
+      expect(prompt).toContain("outdated");
+      expect(prompt).toContain("live game");
+    });
+
+    it("discloses underlying systems (Lex, Gemini, Sheets) in architecture section", () => {
       const prompt = buildSystemPrompt(null);
       expect(prompt).toContain("Lex");
       expect(prompt).toContain("Gemini");
       expect(prompt).toContain("Google Sheets");
     });
 
-    it("includes comprehensive epistemic framework", () => {
+    it("architecture section is general-only, no live state claims", () => {
       const prompt = buildSystemPrompt(null);
-      expect(prompt).toContain("EPISTEMIC FRAMEWORK");
+      expect(prompt).toContain("general description only");
+      expect(prompt).toContain("CANNOT inspect your own subsystems");
+      expect(prompt).not.toContain("you know this accurately");
+    });
+
+    it("includes hard boundaries on fabrication", () => {
+      const prompt = buildSystemPrompt(null);
+      expect(prompt).toContain("HARD BOUNDARIES");
+      expect(prompt).toContain("never fabricate");
+    });
+
+    it("includes operating rules with source attribution", () => {
+      const prompt = buildSystemPrompt(null);
+      expect(prompt).toContain("OPERATING RULES");
       expect(prompt).toContain("SOURCE ATTRIBUTION");
       expect(prompt).toContain("CONFIDENCE SIGNALING");
-      expect(prompt).toContain("NEVER FABRICATE");
     });
 
     it("signals uncertainty is expected behavior", () => {
@@ -70,22 +90,14 @@ describe("buildSystemPrompt", () => {
 
     it("requires source attribution for all response types", () => {
       const prompt = buildSystemPrompt(null);
-      expect(prompt).toContain("FLEET DATA");
+      expect(prompt).toContain("INJECTED DATA");
       expect(prompt).toContain("TRAINING KNOWLEDGE");
       expect(prompt).toContain("INFERENCE");
       expect(prompt).toContain("UNKNOWN");
     });
 
-    it("flags game meta as potentially outdated", () => {
-      const prompt = buildSystemPrompt(null);
-      expect(prompt).toContain("live game");
-      expect(prompt).toContain("outdated");
-    });
-
     it("does NOT contain restrictive anti-patterns", () => {
       const prompt = buildSystemPrompt("Name,Class\nKirk,Command");
-      // These are the phrases that broke Majel v1.
-      // "not limited to" is fine — it's the ABSENCE of "not" that's the problem.
       expect(prompt).not.toContain("use ONLY");
       expect(prompt).not.toMatch(/(?<!not )limited to the/i);
       expect(prompt).not.toContain("unable to process");
@@ -96,10 +108,19 @@ describe("buildSystemPrompt", () => {
 
     it("does NOT contain overconfidence anti-patterns", () => {
       const prompt = buildSystemPrompt(null);
-      // These phrases encourage confabulation by telling the model
-      // to never show uncertainty.
       expect(prompt).not.toContain("utterly competent");
       expect(prompt).not.toContain("don't hedge");
+      // Should not claim authoritative STFC knowledge
+      expect(prompt).not.toContain("you know this accurately");
+    });
+
+    it("does NOT enumerate STFC specifics as known capabilities", () => {
+      const prompt = buildSystemPrompt(null);
+      // These phrases from the old prompt implied authoritative knowledge
+      // of patch-sensitive data the model doesn't actually have
+      expect(prompt).not.toMatch(/covers:.*ship stats/is);
+      expect(prompt).not.toMatch(/covers:.*tier lists/is);
+      expect(prompt).not.toMatch(/covers:.*PvP meta/is);
     });
   });
 
@@ -153,9 +174,9 @@ describe("buildSystemPrompt", () => {
       expect(prompt).not.toContain("BEGIN ROSTER DATA");
     });
 
-    it("still has capabilities declared", () => {
+    it("still has scope & authority declared", () => {
       const prompt = buildSystemPrompt(null);
-      expect(prompt).toContain("CAPABILITIES:");
+      expect(prompt).toContain("SCOPE & AUTHORITY:");
       expect(prompt).toContain("training knowledge");
     });
 
@@ -231,10 +252,10 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("Cross-reference between sections");
     });
 
-    it("still declares capabilities and identity", () => {
+    it("still declares scope & authority and identity", () => {
       const data = buildFleetData("sheet-1", [officerSection]);
       const prompt = buildSystemPrompt(data);
-      expect(prompt).toContain("CAPABILITIES:");
+      expect(prompt).toContain("SCOPE & AUTHORITY:");
       expect(prompt).toContain("training knowledge");
       expect(prompt).toContain("You are Majel");
     });
