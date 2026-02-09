@@ -359,7 +359,7 @@ describe("FleetStore — Crew Assignments", () => {
     expect(ship!.crew).toHaveLength(0);
   });
 
-  it("prevents bridge crew from being on multiple ships", () => {
+  it("throws error when assigning bridge crew to multiple ships", () => {
     // Create another ship
     store.createShip({ id: "defiant", name: "USS Defiant", tier: 4, shipClass: "Battleship", status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
     
