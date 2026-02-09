@@ -20,6 +20,7 @@ import {
 } from "@google/generative-ai";
 import { type FleetData, hasFleetData, getSections } from "./fleet-data.js";
 import { log } from "./logger.js";
+import { type MicroRunner, VALIDATION_DISCLAIMER } from "./micro-runner.js";
 
 const MODEL_NAME = "gemini-2.5-flash-lite";
 
@@ -272,6 +273,7 @@ export function createGeminiEngine(
   fleetData: FleetData | string | null,
   fleetConfig?: FleetConfig | null,
   dockBriefing?: string | null,
+  microRunner?: MicroRunner | null,
 ): GeminiEngine {
   const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -288,6 +290,7 @@ export function createGeminiEngine(
     hasFleetData: typeof fleetData === "string" ? fleetData.length > 0 : hasFleetData(fleetData),
     hasFleetConfig: !!fleetConfig,
     hasDockBriefing: !!dockBriefing,
+    hasMicroRunner: !!microRunner,
     promptLen: buildSystemPrompt(fleetData, fleetConfig, dockBriefing).length,
   }, "init");
 
@@ -335,8 +338,56 @@ export function createGeminiEngine(
       const session = getSession(sessionId);
       log.gemini.debug({ sessionId, messageLen: message.length, historyLen: session.history.length }, "chat:send");
 
+      // Always store the original user message in history
       session.history.push({ role: "user", text: message });
 
+      // ── MicroRunner pipeline (optional) ──────────────────
+      if (microRunner) {
+        const startTime = Date.now();
+        const { contract, gatedContext, augmentedMessage } = microRunner.prepare(message);
+
+        // Send augmented message (with gated context prepended)
+        const result = await session.chatSession.sendMessage(augmentedMessage);
+        let responseText = result.response.text();
+
+        // Validate response against contract
+        const validation = microRunner.validate(
+          responseText, contract, gatedContext, sessionId, startTime,
+        );
+        let receipt = validation.receipt;
+
+        // Single repair pass if validation failed
+        if (validation.needsRepair && validation.repairPrompt) {
+          log.gemini.debug({ sessionId, violations: receipt.validationDetails }, "microrunner:repair");
+          const repairResult = await session.chatSession.sendMessage(validation.repairPrompt);
+          responseText = repairResult.response.text();
+          receipt.repairAttempted = true;
+
+          // Re-validate the repaired response
+          const revalidation = microRunner.validate(
+            responseText, contract, gatedContext, sessionId, startTime,
+          );
+          receipt.validationResult = revalidation.receipt.validationResult === "pass" ? "repaired" : "fail";
+          receipt.validationDetails = revalidation.receipt.validationDetails;
+          receipt.durationMs = Date.now() - startTime;
+
+          // If still failing after repair, prepend disclaimer
+          if (receipt.validationResult === "fail") {
+            responseText = `${VALIDATION_DISCLAIMER}\n\n${responseText}`;
+          }
+        }
+
+        microRunner.finalize(receipt);
+
+        session.history.push({ role: "model", text: responseText });
+        while (session.history.length > SESSION_MAX_TURNS * 2) {
+          session.history.splice(0, 2);
+        }
+        log.gemini.debug({ sessionId, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
+        return responseText;
+      }
+
+      // ── Standard path (no MicroRunner) ────────────────────
       const result = await session.chatSession.sendMessage(message);
       const responseText = result.response.text();
 
