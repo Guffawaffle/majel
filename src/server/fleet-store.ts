@@ -143,6 +143,7 @@ export interface FleetStore {
   listShips(filters?: { status?: ShipStatus; role?: string }): Ship[];
   updateShip(id: string, fields: Partial<Pick<Ship, "name" | "status" | "role" | "roleDetail" | "notes" | "tier" | "shipClass" | "grade" | "rarity" | "faction" | "combatProfile" | "specialtyLoop">>): Ship | null;
   deleteShip(id: string): boolean;
+  previewDeleteShip(id: string): { crewAssignments: { officerId: string; officerName: string; roleType: string }[] };
 
   // ── Officers ──────────────────────────────────────────
   createOfficer(officer: CreateOfficerInput): Officer;
@@ -150,6 +151,7 @@ export interface FleetStore {
   listOfficers(filters?: { groupName?: string; unassigned?: boolean }): Officer[];
   updateOfficer(id: string, fields: Partial<Pick<Officer, "name" | "rarity" | "level" | "rank" | "groupName" | "classPreference" | "activityAffinity" | "positionPreference">>): Officer | null;
   deleteOfficer(id: string): boolean;
+  previewDeleteOfficer(id: string): { crewAssignments: { shipId: string; shipName: string; roleType: string }[] };
 
   // ── Crew Assignments ──────────────────────────────────
   assignCrew(shipId: string, officerId: string, roleType: CrewRoleType, slot?: string, activeForRole?: string): CrewAssignment;
@@ -477,6 +479,18 @@ export function createFleetStore(dbPath?: string): FleetStore {
     countOfficers: db.prepare(`SELECT COUNT(*) AS count FROM officers`),
     countAssignments: db.prepare(`SELECT COUNT(*) AS count FROM crew_assignments`),
     countLog: db.prepare(`SELECT COUNT(*) AS count FROM assignment_log`),
+
+    // Cascade previews
+    previewDeleteShipCrew: db.prepare(
+      `SELECT ca.officer_id AS officerId, o.name AS officerName, ca.role_type AS roleType
+       FROM crew_assignments ca JOIN officers o ON ca.officer_id = o.id
+       WHERE ca.ship_id = ? ORDER BY o.name ASC`,
+    ),
+    previewDeleteOfficerCrew: db.prepare(
+      `SELECT ca.ship_id AS shipId, s.name AS shipName, ca.role_type AS roleType
+       FROM crew_assignments ca JOIN ships s ON ca.ship_id = s.id
+       WHERE ca.officer_id = ? ORDER BY s.name ASC`,
+    ),
   };
 
   // ── Internal helpers ────────────────────────────────────
@@ -599,7 +613,10 @@ export function createFleetStore(dbPath?: string): FleetStore {
       logAction(id, null, "deleted", { name: existing.name });
       return true;
     },
-
+    previewDeleteShip(id) {
+      const crewAssignments = stmts.previewDeleteShipCrew.all(id) as { officerId: string; officerName: string; roleType: string }[];
+      return { crewAssignments };
+    },
     // ── Officers ──────────────────────────────────────────
 
     createOfficer(input) {
@@ -675,6 +692,11 @@ export function createFleetStore(dbPath?: string): FleetStore {
       stmts.deleteOfficer.run(id);
       logAction(null, id, "deleted", { name: existing.name });
       return true;
+    },
+
+    previewDeleteOfficer(id) {
+      const crewAssignments = stmts.previewDeleteOfficerCrew.all(id) as { shipId: string; shipName: string; roleType: string }[];
+      return { crewAssignments };
     },
 
     // ── Crew Assignments ──────────────────────────────────

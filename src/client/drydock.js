@@ -7,6 +7,7 @@
  */
 
 import * as api from './api.js';
+import { showConfirmDialog } from './confirm-dialog.js';
 
 // ─── State ──────────────────────────────────────────────────
 let docks = [];
@@ -15,7 +16,6 @@ let allOfficers = [];
 let allIntents = [];
 let conflicts = {};
 let activeDockNum = null;
-let opsLevel = 1;
 
 // ─── DOM Refs ───────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -29,14 +29,6 @@ const $$ = (sel) => document.querySelectorAll(sel);
 export async function init() {
     const area = $("#drydock-area");
     if (!area) return;
-
-    // Load ops level from settings
-    const settings = await api.loadFleetSettings();
-    if (settings.settings) {
-        const ol = settings.settings.find(s => s.key === "fleet.opsLevel");
-        if (ol) opsLevel = parseInt(ol.value, 10) || 1;
-    }
-
     await refresh();
 }
 
@@ -87,8 +79,8 @@ function render() {
         ${renderTabHeader()}
         <div class="dock-content">
             ${docks.length === 0
-                ? renderEmptyState()
-                : renderDockPanel(activeDock)}
+            ? renderEmptyState()
+            : renderDockPanel(activeDock)}
         </div>
     `;
 
@@ -137,16 +129,9 @@ function renderIntelSection() {
 }
 
 /**
- * Tab header: ops level badge + dock tabs + add button
+ * Tab header: dock tabs + add button
  */
 function renderTabHeader() {
-    const opsDisplay = `
-        <button class="ops-level-badge" data-action="edit-ops" title="Click to edit Ops Level">
-            <span class="ops-label">OPS</span>
-            <span class="ops-value">${opsLevel}</span>
-        </button>
-    `;
-
     let tabs = '';
     for (const dock of docks) {
         const label = dock.label || `Dock ${dock.dockNumber}`;
@@ -163,7 +148,6 @@ function renderTabHeader() {
 
     return `
         <div class="dock-tab-header">
-            ${opsDisplay}
             <div class="dock-tabs">${tabs}${addBtn}</div>
         </div>
     `;
@@ -411,39 +395,28 @@ function bindEvents() {
             const num = parseInt(deleteBtn.dataset.dock, 10);
             const dock = docks.find(d => d.dockNumber === num);
             const label = dock?.label || `Dock ${num}`;
-            const shipCount = dock?.ships?.length || 0;
-            const intentCount = dock?.intents?.length || 0;
 
-            let warning = `Delete "${label}"?`;
-            if (shipCount > 0 || intentCount > 0) {
-                warning += `\n\nThis will also remove:\n`;
-                if (shipCount > 0) warning += `• ${shipCount} ship assignment${shipCount > 1 ? 's' : ''}\n`;
-                if (intentCount > 0) warning += `• ${intentCount} intent${intentCount > 1 ? 's' : ''}\n`;
-                warning += `\nThis cannot be undone.`;
+            // Fetch cascade preview from backend
+            const preview = await api.previewDeleteDock(num);
+            const sections = [];
+            if (preview.ships?.length > 0) {
+                sections.push({ label: "Ship assignments", items: preview.ships.map(s => s.shipName) });
+            }
+            if (preview.intents?.length > 0) {
+                sections.push({ label: "Intent selections", items: preview.intents.map(i => i.label) });
             }
 
-            if (!confirm(warning)) return;
+            const confirmed = await showConfirmDialog({
+                title: `Delete Dock ${num}?`,
+                subtitle: label !== `Dock ${num}` ? label : undefined,
+                sections,
+                approveLabel: "Delete dock",
+            });
+            if (!confirmed) return;
 
             await api.deleteDock(num);
             activeDockNum = null;
             await refresh();
-        });
-    }
-
-    // Ops level edit
-    const opsBtn = area.querySelector("[data-action='edit-ops']");
-    if (opsBtn) {
-        opsBtn.addEventListener("click", () => {
-            const input = prompt("Enter your Ops Level (1-80):", opsLevel);
-            if (input === null) return;
-            const val = parseInt(input, 10);
-            if (isNaN(val) || val < 1 || val > 80) {
-                alert("Ops level must be between 1 and 80.");
-                return;
-            }
-            opsLevel = val;
-            api.saveFleetSetting("fleet.opsLevel", val);
-            render();
         });
     }
 

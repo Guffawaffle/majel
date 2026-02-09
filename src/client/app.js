@@ -56,6 +56,27 @@ const sidebarOverlay = $("#sidebar-overlay");
 // ─── State ──────────────────────────────────────────────────
 let isOnline = false;
 let currentMode = "loading";
+let opsLevel = 1;
+
+// ─── Ops Level ──────────────────────────────────────────────
+async function initOpsLevel() {
+    try {
+        const settings = await api.loadFleetSettings();
+        if (settings.settings) {
+            const ol = settings.settings.find(s => s.key === "fleet.opsLevel");
+            if (ol) opsLevel = parseInt(ol.value, 10) || 1;
+        }
+    } catch { /* ignore — will show 1 */ }
+    updateOpsDisplay();
+}
+
+function updateOpsDisplay() {
+    const el = $("#ops-level-value");
+    if (el) el.textContent = opsLevel;
+}
+
+/** Exported so drydock can read the current ops level */
+export function getOpsLevel() { return opsLevel; }
 
 // ─── Health Check & Status Updates ─────────────────────────
 async function checkHealthAndUpdateUI() {
@@ -333,6 +354,23 @@ if (viewSwitcher) {
     });
 }
 
+// Ops level badge click
+const opsBtn = $("#ops-level-global");
+if (opsBtn) {
+    opsBtn.addEventListener("click", () => {
+        const input = prompt("Enter your Ops Level (1-80):", opsLevel);
+        if (input === null) return;
+        const val = parseInt(input, 10);
+        if (isNaN(val) || val < 1 || val > 80) {
+            alert("Ops level must be between 1 and 80.");
+            return;
+        }
+        opsLevel = val;
+        api.saveFleetSetting("fleet.opsLevel", val);
+        updateOpsDisplay();
+    });
+}
+
 recallBtn.addEventListener("click", () => {
     recallResults.innerHTML = "";
     recallInput.value = "";
@@ -374,6 +412,7 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
     // Initialize all modules
     chat.init(sessions.refreshSessionList);
     sessions.init();
+    await initOpsLevel();
     await drydock.init();
     await fleetManager.init();
 

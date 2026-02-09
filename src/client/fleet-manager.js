@@ -7,6 +7,7 @@
  */
 
 import * as api from './api.js';
+import { showConfirmDialog } from './confirm-dialog.js';
 
 // ─── State ──────────────────────────────────────────────────
 let officers = [];
@@ -410,7 +411,22 @@ function bindCardEvents() {
         btn.addEventListener("click", async () => {
             const id = btn.dataset.id;
             const name = officers.find(o => o.id === id)?.name || id;
-            if (!confirm(`Delete officer "${name}"? This cannot be undone.`)) return;
+
+            const preview = await api.previewDeleteOfficer(id);
+            const sections = [];
+            if (preview.crewAssignments?.length > 0) {
+                sections.push({ label: "Crew assignments", items: preview.crewAssignments.map(a => `${a.shipName} (${a.roleType})`) });
+            }
+            if (preview.presetMemberships?.length > 0) {
+                sections.push({ label: "Crew presets", items: preview.presetMemberships.map(p => `${p.presetName} — ${p.shipName}`) });
+            }
+
+            const confirmed = await showConfirmDialog({
+                title: `Delete officer "${name}"?`,
+                sections,
+                approveLabel: "Delete officer",
+            });
+            if (!confirmed) return;
             await api.deleteOfficer(id);
             editingId = null;
             await refresh();
@@ -422,7 +438,25 @@ function bindCardEvents() {
         btn.addEventListener("click", async () => {
             const id = btn.dataset.id;
             const name = ships.find(s => s.id === id)?.name || id;
-            if (!confirm(`Delete ship "${name}"? This cannot be undone.`)) return;
+
+            const preview = await api.previewDeleteShip(id);
+            const sections = [];
+            if (preview.dockAssignments?.length > 0) {
+                sections.push({ label: "Dock assignments", items: preview.dockAssignments.map(d => `D${d.dockNumber}: ${d.dockLabel}`) });
+            }
+            if (preview.crewPresets?.length > 0) {
+                sections.push({ label: "Crew presets", items: preview.crewPresets.map(p => `${p.presetName} (${p.intentLabel})`) });
+            }
+            if (preview.crewAssignments?.length > 0) {
+                sections.push({ label: "Crew assignments", items: preview.crewAssignments.map(a => `${a.officerName} (${a.roleType})`) });
+            }
+
+            const confirmed = await showConfirmDialog({
+                title: `Delete ship "${name}"?`,
+                sections,
+                approveLabel: "Delete ship",
+            });
+            if (!confirmed) return;
             await api.deleteShip(id);
             editingId = null;
             await refresh();
