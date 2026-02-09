@@ -182,8 +182,8 @@ export function addMessage(role, text, options = {}) {
         avatarLabel = "ℹ";
         senderName = "System";
     } else {
-        avatarLabel = "M";
-        senderName = "Majel";
+        avatarLabel = "A";
+        senderName = "Aria";
     }
 
     // Format body
@@ -238,9 +238,9 @@ export function addTypingIndicator() {
     row.id = "typing";
     row.innerHTML = `
     <div class="message-content">
-      <div class="message-avatar" style="background: var(--accent-gold); color: var(--bg-primary);">M</div>
+      <div class="message-avatar" style="background: var(--accent-gold); color: var(--bg-primary);">A</div>
       <div class="message-body">
-        <div class="message-sender" style="color: var(--accent-gold);">Majel</div>
+        <div class="message-sender" style="color: var(--accent-gold);">Aria</div>
         <div class="typing-dots"><span></span><span></span><span></span></div>
       </div>
     </div>
