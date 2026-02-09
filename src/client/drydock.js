@@ -146,11 +146,7 @@ function renderTabHeader() {
 
     const addBtn = `<button class="dock-tab dock-tab-add" data-action="add-dock" title="Add a new dock">+</button>`;
 
-    return `
-        <div class="dock-tab-header">
-            <div class="dock-tabs">${tabs}${addBtn}</div>
-        </div>
-    `;
+    return `<div class="dock-tabs">${tabs}${addBtn}</div>`;
 }
 
 /**
@@ -179,8 +175,16 @@ function renderDockPanel(dock) {
 
     return `
         ${renderDockHeader(dock)}
-        ${renderShipSection(dock)}
-        ${renderIntentSection(dock.intents || [])}
+        <div class="dock-columns">
+            <div class="panel">
+                <div class="panel-header">Ships</div>
+                <div class="panel-body">${renderShipSection(dock)}</div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">Intents</div>
+                <div class="panel-body">${renderIntentSection(dock.intents || [])}</div>
+            </div>
+        </div>
         ${renderCrewSection(dock)}
     `;
 }
@@ -242,11 +246,10 @@ function renderShipSection(dock) {
         : '';
 
     return `
-        <div class="dock-section">
-            <h3 class="dock-section-title">Ships</h3>
+        <div class="dock-ship-list">
             ${shipRows || '<p class="hint">No ships assigned to this dock.</p>'}
-            ${selectHtml}
         </div>
+        ${selectHtml ? `<div class="ship-add-row">${selectHtml}</div>` : ''}
     `;
 }
 
@@ -315,11 +318,8 @@ function renderIntentSection(dockIntents) {
     }
 
     return `
-        <div class="dock-section">
-            <h3 class="dock-section-title">Intents</h3>
-            <div class="dock-intent-grid">
-                ${html}
-            </div>
+        <div class="dock-intent-grid">
+            ${html}
         </div>
     `;
 }
@@ -446,9 +446,9 @@ function bindEvents() {
                 const dock = docks.find(d => d.dockNumber === num);
                 if (dock) dock.label = labelInput.value.trim();
                 // Re-render just the tabs
-                const tabHeader = area.querySelector(".dock-tab-header");
-                if (tabHeader) {
-                    tabHeader.outerHTML = renderTabHeader();
+                const tabBar = area.querySelector(".dock-tabs");
+                if (tabBar) {
+                    tabBar.outerHTML = renderTabHeader();
                     bindTabEvents();
                 }
             }, 600);

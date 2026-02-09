@@ -47,7 +47,10 @@ const setupGemini = $("#setup-gemini");
 const setupSheets = $("#setup-sheets");
 const drydockArea = $("#drydock-area");
 const fleetManagerArea = $("#fleet-manager-area");
-const viewSwitcher = $("#view-switcher");
+const titleBar = $("#title-bar");
+const titleBarHeading = $("#title-bar-heading");
+const titleBarSubtitle = $("#title-bar-subtitle");
+const sidebarNavBtns = document.querySelectorAll(".sidebar-nav-btn[data-view]");
 
 // Mobile sidebar
 const sidebar = $("#sidebar");
@@ -276,12 +279,23 @@ function renderDiagnostic(d) {
 }
 
 // ─── View Switching ─────────────────────────────────────────
+function setActiveNav(view) {
+    sidebarNavBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
+}
+
+function setTitleBar(icon, heading, subtitle = "") {
+    if (titleBarHeading) titleBarHeading.textContent = `${icon} ${heading}`;
+    if (titleBarSubtitle) titleBarSubtitle.textContent = subtitle;
+    if (titleBar) titleBar.classList.remove("hidden");
+}
+
 function showSetup(health) {
     setupGuide.classList.remove("hidden");
     chatArea.classList.add("hidden");
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
-    if (viewSwitcher) viewSwitcher.classList.add("hidden");
+    if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
+    if (titleBar) titleBar.classList.add("hidden");
 
     if (health.gemini === "connected") {
         setupGemini.classList.add("done");
@@ -299,8 +313,8 @@ function showChat() {
     inputArea.classList.remove("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
     if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
-    if (viewSwitcher) viewSwitcher.classList.remove("hidden");
-    setActiveView("chat");
+    setActiveNav("chat");
+    setTitleBar("💬", "Chat", "Gemini-powered fleet advisor");
 }
 
 function showDrydock() {
@@ -309,8 +323,8 @@ function showDrydock() {
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.remove("hidden");
     if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
-    if (viewSwitcher) viewSwitcher.classList.remove("hidden");
-    setActiveView("drydock");
+    setActiveNav("drydock");
+    setTitleBar("🔧", "Drydock", "Configure docks, ships & crew");
     drydock.refresh();
 }
 
@@ -320,39 +334,33 @@ function showFleetManager() {
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
     if (fleetManagerArea) fleetManagerArea.classList.remove("hidden");
-    if (viewSwitcher) viewSwitcher.classList.remove("hidden");
-    setActiveView("fleet");
+    setActiveNav("fleet");
+    setTitleBar("🚀", "Fleet Roster", "Officers & ships");
     fleetManager.refresh();
-}
-
-function setActiveView(view) {
-    if (!viewSwitcher) return;
-    viewSwitcher.querySelectorAll(".view-switch-btn").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.view === view);
-    });
 }
 
 // ─── Event Handlers ─────────────────────────────────────────
 historyBtn.addEventListener("click", () => loadHistory());
 
-// View switcher
-if (viewSwitcher) {
-    viewSwitcher.querySelectorAll(".view-switch-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const view = btn.dataset.view;
-            if (view === "drydock") {
-                showDrydock();
-                currentMode = "drydock";
-            } else if (view === "fleet") {
-                showFleetManager();
-                currentMode = "fleet";
-            } else {
-                showChat();
-                currentMode = "chat";
-            }
-        });
+// Sidebar navigation
+sidebarNavBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+        const view = btn.dataset.view;
+        if (view === "drydock") {
+            showDrydock();
+            currentMode = "drydock";
+        } else if (view === "fleet") {
+            showFleetManager();
+            currentMode = "fleet";
+        } else {
+            showChat();
+            currentMode = "chat";
+        }
+        // Close sidebar on mobile
+        sidebar.classList.remove("open");
+        sidebarOverlay.classList.add("hidden");
     });
-}
+});
 
 // Ops level badge click
 const opsBtn = $("#ops-level-global");
