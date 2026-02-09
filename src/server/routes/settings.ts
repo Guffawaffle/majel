@@ -4,11 +4,12 @@
 
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
-import { GEMINI_API_KEY, readFleetConfig, readDockBriefing } from "../app-context.js";
+import { readFleetConfig, readDockBriefing } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { getCategories } from "../settings.js";
 import { createGeminiEngine } from "../gemini.js";
+import { resolveConfig } from "../config.js";
 
 export function createSettingsRoutes(appState: AppState): Router {
   const router = Router();
@@ -49,21 +50,29 @@ export function createSettingsRoutes(appState: AppState): Router {
 
     const results: Array<{ key: string; status: string; error?: string }> = [];
     let fleetConfigChanged = false;
+    let configChanged = false;
+    
     for (const [key, value] of Object.entries(updates)) {
       try {
         appState.settingsStore.set(key, String(value));
         results.push({ key, status: "updated" });
         if (key.startsWith("fleet.")) fleetConfigChanged = true;
+        configChanged = true;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         results.push({ key, status: "error", error: message });
       }
     }
 
+    // Re-resolve config after settings change (ADR-005 Phase 3)
+    if (configChanged) {
+      appState.config = resolveConfig(appState.settingsStore);
+    }
+
     // Rebuild Gemini engine with updated fleet config so the model sees the new values
-    if (fleetConfigChanged && GEMINI_API_KEY && appState.geminiEngine) {
+    if (fleetConfigChanged && appState.config.geminiApiKey && appState.geminiEngine) {
       appState.geminiEngine = createGeminiEngine(
-        GEMINI_API_KEY,
+        appState.config.geminiApiKey,
         appState.fleetData,
         readFleetConfig(appState.settingsStore),
         readDockBriefing(appState.dockStore),

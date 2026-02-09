@@ -44,13 +44,12 @@ import { createDockStore } from "./dock-store.js";
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
   type AppState,
-  PORT,
-  GEMINI_API_KEY,
-  SPREADSHEET_ID,
-  TAB_MAPPING_ENV,
   readFleetConfig,
   readDockBriefing,
 } from "./app-context.js";
+
+// Configuration (ADR-005 Phase 3)
+import { bootstrapConfig, resolveConfig } from "./config.js";
 
 // Envelope (ADR-004)
 import { envelopeMiddleware, errorHandler } from "./envelope.js";
@@ -72,7 +71,8 @@ const __dirname = path.dirname(__filename);
 // ─── Static file path ───────────────────────────────────────────
 const clientDir = path.resolve(
   __dirname,
-  process.env.NODE_ENV === "production" ? "../../dist/client" : "../client",
+  // Use bootstrap config for NODE_ENV check
+  bootstrapConfig().nodeEnv === "production" ? "../../dist/client" : "../client",
 );
 
 // ─── Module-level state ─────────────────────────────────────────
@@ -86,6 +86,7 @@ const state: AppState = {
   fleetData: null,
   rosterError: null,
   startupComplete: false,
+  config: bootstrapConfig(), // Initialize with bootstrap config
 };
 
 // ─── App Factory ────────────────────────────────────────────────
@@ -143,6 +144,9 @@ async function boot(): Promise<void> {
   try {
     state.settingsStore = createSettingsStore();
     log.boot.info("settings store online");
+    
+    // Re-resolve config now that settings store is available
+    state.config = resolveConfig(state.settingsStore);
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "settings store init failed");
   }
@@ -181,18 +185,14 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "dock store init failed");
   }
 
-  // Resolve config: settings store → env → defaults
-  const resolvedApiKey = GEMINI_API_KEY;
-  const resolvedSpreadsheetId =
-    state.settingsStore?.get("sheets.spreadsheetId") || SPREADSHEET_ID;
-  const resolvedTabMapping =
-    state.settingsStore?.get("sheets.tabMapping") || TAB_MAPPING_ENV;
+  // Resolve config from settings store
+  const { geminiApiKey, spreadsheetId, tabMapping } = state.config;
 
   // 3. Initialize Gemini (doesn't need fleet data yet)
-  if (resolvedApiKey) {
+  if (geminiApiKey) {
     const csv = "No roster data loaded yet.";
     state.geminiEngine = createGeminiEngine(
-      resolvedApiKey,
+      geminiApiKey,
       csv,
       readFleetConfig(state.settingsStore),
       readDockBriefing(state.dockStore),
@@ -206,19 +206,19 @@ async function boot(): Promise<void> {
 
   // 3. Start HTTP server FIRST — always be reachable
   const app = createApp(state);
-  app.listen(PORT, () => {
-    log.boot.info({ port: PORT, url: `http://localhost:${PORT}` }, "Majel online");
+  app.listen(state.config.port, () => {
+    log.boot.info({ port: state.config.port, url: `http://localhost:${state.config.port}` }, "Majel online");
   });
 
   // 5. Load fleet data AFTER server is up (OAuth may be interactive)
-  if (resolvedSpreadsheetId && hasCredentials()) {
+  if (spreadsheetId && hasCredentials()) {
     try {
       log.boot.info("connecting to Google Sheets");
       log.boot.debug("OAuth may be required — URL will appear if interactive consent needed");
-      const tabMapping = parseTabMapping(resolvedTabMapping);
+      const tabMappingConfig = parseTabMapping(tabMapping);
       const config: MultiTabConfig = {
-        spreadsheetId: resolvedSpreadsheetId,
-        tabMapping,
+        spreadsheetId: spreadsheetId,
+        tabMapping: tabMappingConfig,
       };
       state.fleetData = await fetchFleetData(config);
       state.rosterError = null;
@@ -228,9 +228,9 @@ async function boot(): Promise<void> {
       }, "fleet data loaded");
 
       // Re-create Gemini engine with fleet data
-      if (resolvedApiKey) {
+      if (geminiApiKey) {
         state.geminiEngine = createGeminiEngine(
-          resolvedApiKey,
+          geminiApiKey,
           state.fleetData,
           readFleetConfig(state.settingsStore),
           readDockBriefing(state.dockStore),
@@ -242,7 +242,7 @@ async function boot(): Promise<void> {
       log.boot.warn({ error: state.rosterError }, "fleet data load deferred");
     }
   } else {
-    if (!resolvedSpreadsheetId) {
+    if (!spreadsheetId) {
       log.boot.warn("MAJEL_SPREADSHEET_ID not set — roster disabled");
     }
     if (!hasCredentials()) {
@@ -276,10 +276,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 // ─── Launch (guarded for test imports) ──────────────────────────
-const isTestEnv =
-  process.env.NODE_ENV === "test" || process.env.VITEST === "true";
-
-if (!isTestEnv) {
+if (!state.config.isTest) {
   boot().catch((err) => {
     log.boot.fatal({ err: err instanceof Error ? err.message : String(err) }, "fatal startup error");
     process.exit(1);

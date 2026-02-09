@@ -12,6 +12,7 @@ import type { GeminiEngine } from "../src/server/gemini.js";
 import type { MemoryService, Frame } from "../src/server/memory.js";
 import { buildSection, buildFleetData, type FleetData } from "../src/server/fleet-data.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/settings.js";
+import { bootstrapConfig } from "../src/server/config.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -89,6 +90,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     fleetData: null,
     rosterError: null,
     startupComplete: false,
+    config: bootstrapConfig(),
     ...overrides,
   };
 }

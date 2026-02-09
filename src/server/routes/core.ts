@@ -7,9 +7,6 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import {
-  GEMINI_API_KEY,
-  SPREADSHEET_ID,
-  TAB_MAPPING_ENV,
   readFleetConfig,
   readDockBriefing,
 } from "../app-context.js";
@@ -18,6 +15,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { hasCredentials, fetchFleetData, parseTabMapping, type MultiTabConfig } from "../sheets.js";
 import { createGeminiEngine } from "../gemini.js";
 import { hasFleetData, fleetDataSummary } from "../fleet-data.js";
+import { resolveConfig } from "../config.js";
 
 export function createCoreRoutes(appState: AppState): Router {
   const router = Router();
@@ -153,19 +151,21 @@ export function createCoreRoutes(appState: AppState): Router {
   // ─── Roster Refresh ─────────────────────────────────────────
 
   router.get("/api/roster", async (_req, res) => {
-    if (!SPREADSHEET_ID) {
+    const { spreadsheetId, tabMapping, geminiApiKey } = appState.config;
+    
+    if (!spreadsheetId) {
       return sendFail(res, ErrorCode.SHEETS_NOT_CONFIGURED, "MAJEL_SPREADSHEET_ID not configured");
     }
 
     try {
-      const tabMapping = parseTabMapping(TAB_MAPPING_ENV);
-      const config: MultiTabConfig = { spreadsheetId: SPREADSHEET_ID, tabMapping };
+      const tabMappingConfig = parseTabMapping(tabMapping);
+      const config: MultiTabConfig = { spreadsheetId, tabMapping: tabMappingConfig };
       appState.fleetData = await fetchFleetData(config);
       appState.rosterError = null;
 
-      if (GEMINI_API_KEY) {
+      if (geminiApiKey) {
         appState.geminiEngine = createGeminiEngine(
-          GEMINI_API_KEY, appState.fleetData, readFleetConfig(appState.settingsStore), readDockBriefing(appState.dockStore),
+          geminiApiKey, appState.fleetData, readFleetConfig(appState.settingsStore), readDockBriefing(appState.dockStore),
         );
       }
 
