@@ -258,5 +258,14 @@ export function createFleetRoutes(appState: AppState): Router {
     sendOk(res, appState.fleetStore.counts());
   });
 
+  // ─── Fleet Overview ────────────────────────────────────────
+
+  router.get("/api/fleet/overview", (_req, res) => {
+    if (!appState.fleetStore) {
+      return sendFail(res, ErrorCode.FLEET_STORE_NOT_AVAILABLE, "Fleet store not available", 503);
+    }
+    sendOk(res, appState.fleetStore.getFleetOverview());
+  });
+
   return router;
 }

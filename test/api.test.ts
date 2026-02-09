@@ -784,3 +784,148 @@ describe("GET /api/diagnostic", () => {
     expect(typeof res.body.data.sheets.credentialsPresent).toBe("boolean");
   });
 });
+
+// ─── GET /api/fleet/overview ────────────────────────────────────
+
+describe("GET /api/fleet/overview", () => {
+  const TEST_DB = path.join(os.tmpdir(), "test-fleet-overview.db");
+
+  afterEach(() => {
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("returns 503 when fleet store not available", async () => {
+    const app = createApp(makeState({ fleetStore: null }));
+    const res = await request(app).get("/api/fleet/overview");
+    expect(res.status).toBe(503);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error.code).toBe("FLEET_STORE_NOT_AVAILABLE");
+  });
+
+  it("returns fleet overview with empty data", async () => {
+    const { createFleetStore } = await import("../src/server/fleet-store.js");
+    const store = createFleetStore(TEST_DB);
+    const app = createApp(makeState({ fleetStore: store }));
+    
+    const res = await request(app).get("/api/fleet/overview");
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.data.totalShips).toBe(0);
+    expect(res.body.data.totalOfficers).toBe(0);
+    expect(res.body.data.unassignedOfficers).toBe(0);
+    expect(res.body.data.crewFillRates.bridgeCrew).toBe(0);
+    expect(res.body.data.crewFillRates.specialistCrew).toBe(0);
+    expect(res.body.data.crewFillRates.totalAssignments).toBe(0);
+    expect(res.body.data.shipsByStatus).toEqual({
+      deployed: 0,
+      ready: 0,
+      maintenance: 0,
+      training: 0,
+      reserve: 0,
+      "awaiting-crew": 0,
+    });
+
+    store.close();
+  });
+
+  it("returns fleet overview with data", async () => {
+    const { createFleetStore } = await import("../src/server/fleet-store.js");
+    const store = createFleetStore(TEST_DB);
+    
+    // Create ships
+    store.createShip({ id: "s1", name: "Ship 1", tier: null, shipClass: null, status: "deployed", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createShip({ id: "s2", name: "Ship 2", tier: null, shipClass: null, status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    
+    // Create officers
+    store.createOfficer({ id: "o1", name: "Officer 1", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+    store.createOfficer({ id: "o2", name: "Officer 2", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+    store.createOfficer({ id: "o3", name: "Officer 3", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+    
+    // Assign crew
+    store.assignCrew("s1", "o1", "bridge", "captain");
+    store.assignCrew("s1", "o2", "specialist");
+
+    const app = createApp(makeState({ fleetStore: store }));
+    const res = await request(app).get("/api/fleet/overview");
+    
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.data.totalShips).toBe(2);
+    expect(res.body.data.totalOfficers).toBe(3);
+    expect(res.body.data.unassignedOfficers).toBe(1);
+    expect(res.body.data.shipsByStatus.deployed).toBe(1);
+    expect(res.body.data.shipsByStatus.ready).toBe(1);
+    expect(res.body.data.crewFillRates.bridgeCrew).toBe(1);
+    expect(res.body.data.crewFillRates.specialistCrew).toBe(1);
+    expect(res.body.data.crewFillRates.totalAssignments).toBe(2);
+
+    store.close();
+  });
+});
+
+// ─── POST /api/fleet/ships/:id/crew (Bridge Crew Conflict) ─────
+
+describe("POST /api/fleet/ships/:id/crew - Bridge Crew Validation", () => {
+  const TEST_DB = path.join(os.tmpdir(), "test-fleet-bridge-conflict.db");
+
+  afterEach(() => {
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("prevents assigning bridge crew to multiple ships", async () => {
+    const { createFleetStore } = await import("../src/server/fleet-store.js");
+    const store = createFleetStore(TEST_DB);
+    
+    // Create ships and officers
+    store.createShip({ id: "enterprise", name: "USS Enterprise", tier: null, shipClass: null, status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createShip({ id: "defiant", name: "USS Defiant", tier: null, shipClass: null, status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createOfficer({ id: "kirk", name: "Kirk", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+
+    const app = createApp(makeState({ fleetStore: store }));
+    
+    // Assign Kirk as bridge crew on Enterprise
+    const res1 = await request(app)
+      .post("/api/fleet/ships/enterprise/crew")
+      .send({ officerId: "kirk", roleType: "bridge", slot: "captain" });
+    expect(res1.status).toBe(201);
+    expect(res1.body.ok).toBe(true);
+
+    // Try to assign Kirk as bridge crew on Defiant - should fail
+    const res2 = await request(app)
+      .post("/api/fleet/ships/defiant/crew")
+      .send({ officerId: "kirk", roleType: "bridge", slot: "captain" });
+    expect(res2.status).toBe(400);
+    expect(res2.body.ok).toBe(false);
+    expect(res2.body.error.code).toBe("INVALID_PARAM");
+    expect(res2.body.error.message).toContain("already assigned as bridge crew");
+
+    store.close();
+  });
+
+  it("allows assigning specialist crew to multiple ships", async () => {
+    const { createFleetStore } = await import("../src/server/fleet-store.js");
+    const store = createFleetStore(TEST_DB);
+    
+    // Create ships and officers
+    store.createShip({ id: "enterprise", name: "USS Enterprise", tier: null, shipClass: null, status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createShip({ id: "defiant", name: "USS Defiant", tier: null, shipClass: null, status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createOfficer({ id: "scotty", name: "Scotty", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+
+    const app = createApp(makeState({ fleetStore: store }));
+    
+    // Assign Scotty as specialist crew on both ships - should work
+    const res1 = await request(app)
+      .post("/api/fleet/ships/enterprise/crew")
+      .send({ officerId: "scotty", roleType: "specialist" });
+    expect(res1.status).toBe(201);
+    expect(res1.body.ok).toBe(true);
+
+    const res2 = await request(app)
+      .post("/api/fleet/ships/defiant/crew")
+      .send({ officerId: "scotty", roleType: "specialist" });
+    expect(res2.status).toBe(201);
+    expect(res2.body.ok).toBe(true);
+
+    store.close();
+  });
+});
