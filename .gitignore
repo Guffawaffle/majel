@@ -26,3 +26,7 @@ coverage/
 logs/
 .dev.pid
 .research/
+
+# Local data (never committed — see ADR-011, ADR-013)
+*.db
+.import-receipts/
