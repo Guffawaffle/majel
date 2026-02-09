@@ -12,6 +12,7 @@
  */
 
 import { log } from "./logger.js";
+import type { BehaviorStore } from "./behavior-store.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ export interface MicroRunnerReceipt {
     source: string;
     importedAt: string;
   }>;
+  behavioralRulesApplied: string[];
   validationResult: "pass" | "fail" | "repaired";
   validationDetails: string[];
   repairAttempted: boolean;
@@ -471,6 +473,8 @@ export const VALIDATION_DISCLAIMER =
 export interface MicroRunnerConfig {
   contextSources: ContextSources;
   knownOfficerNames?: string[];
+  /** Optional behavioral rules store (ADR-014 Phase 2). */
+  behaviorStore?: BehaviorStore;
 }
 
 export interface MicroRunner {
@@ -521,6 +525,17 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
   return {
     prepare(message: string) {
       const contract = compileTask(message, config.contextSources, config.knownOfficerNames);
+
+      // Phase 2: Inject active behavioral rules into the contract
+      if (config.behaviorStore) {
+        const activeRules = config.behaviorStore.getRules(contract.taskType);
+        for (const rule of activeRules) {
+          // Prepend severity prefix for the model
+          const prefix = rule.severity === "must" ? "MUST:" : rule.severity === "should" ? "SHOULD:" : "STYLE:";
+          contract.rules.push(`${prefix} ${rule.text}`);
+        }
+      }
+
       const gated = gateContext(contract, config.contextSources);
       const augmentedMessage = buildAugmentedMessage(message, gated);
 
@@ -537,6 +552,11 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       const result = validateResponse(response, contract, gatedContext);
       const durationMs = Date.now() - startTime;
 
+      // Collect which behavioral rules contributed
+      const behavioralRulesApplied = config.behaviorStore
+        ? config.behaviorStore.getRules(contract.taskType).map((r) => r.id)
+        : [];
+
       const receipt: MicroRunnerReceipt = {
         timestamp: new Date().toISOString(),
         sessionId,
@@ -544,6 +564,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
         contextManifest: contract.contextManifest,
         contextKeysInjected: gatedContext.keysInjected,
         t2Provenance: gatedContext.t2Provenance,
+        behavioralRulesApplied,
         validationResult: result.passed ? "pass" : "fail",
         validationDetails: result.violations,
         repairAttempted: false,
@@ -579,6 +600,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
         contextManifest: receipt.contextManifest,
         keysInjected: receipt.contextKeysInjected,
         t2Provenance: receipt.t2Provenance,
+        behavioralRules: receipt.behavioralRulesApplied,
         validation: receipt.validationResult,
         violations: receipt.validationDetails,
         repairAttempted: receipt.repairAttempted,
