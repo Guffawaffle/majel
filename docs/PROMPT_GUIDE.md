@@ -6,7 +6,7 @@ How we tune Majel's behavior without fine-tuning the underlying model.
 
 There are **three levers** for controlling Majel's behavior:
 
-1. **System Prompt** — personality, knowledge boundaries, roster context
+1. **System Prompt** — identity, authority model, knowledge boundaries, fleet context
 2. **Safety Settings** — Gemini's content filters (harassment, violence, etc.)
 3. **Model Parameters** — temperature, top_p, top_k (not yet exposed)
 
@@ -27,33 +27,76 @@ You are Majel, the Fleet Intelligence System aboard Admiral Guff's flagship.
 
 **Why it's first:** LLMs weight the beginning of the system prompt heavily. Identity anchors all behavior.
 
-### Layer 2: Capabilities (the "floodgate")
-What can Majel do? This is where the magic happens.
+Personality is kept tight: "Calm, concise, shows your work. Precision IS your personality." Star Trek flavor is seasoning, not the main dish.
+
+### Layer 2: Scope & Authority (the Authority Ladder)
+
+**The core operating principle:** Majel may discuss *any topic* — but must rank her sources and signal which tier an answer comes from.
 
 ```
-You have FULL ACCESS to your training knowledge.
+AUTHORITY LADDER (strongest → weakest):
+1. INJECTED DATA — Fleet roster, dock config, reference packs. The Admiral's actual state.
+2. REFERENCE PACKS — Wiki-imported catalogs with known provenance.
+3. TRAINING KNOWLEDGE — General model knowledge. UNCERTAIN for patch-sensitive specifics.
+4. INFERENCE — Conclusions drawn from combining sources. Always labeled.
 ```
 
-**Critical lesson learned:** Early versions said things like *"Your access is limited to the roster"* and *"use ONLY the provided CSV data"*. The model interpreted this literally and refused to discuss anything not in the spreadsheet — game strategy, Star Trek lore, Lex tooling, everything.
+**Evolution of this section:**
 
-**The fix:** Never restrict. The roster **adds** knowledge; it doesn't cage the model. Explicitly list capabilities rather than constraints.
+| Version | Approach | Problem |
+|---------|----------|---------|
+| v1 "cage" | "Use ONLY the provided data" | Model refused to discuss anything not in the CSV |
+| v2 "floodgate" | "You have FULL ACCESS and cover ship stats, tier lists, PvP meta..." | Model confabulated authoritative-sounding game data it doesn't have |
+| v3 "authority ladder" | "Discuss anything, but rank your sources" | Permits broad discussion while requiring epistemic honesty |
+
+**Critical lesson:** "Never restrict" was the right instinct in v2, but listing specific STFC domains as known capabilities (ship stats, tier lists, PvP meta) implied authoritative knowledge the model doesn't have. The authority ladder preserves permission to discuss any topic while requiring the model to signal *where* its answer comes from and *how certain* it is.
+
+The **critical boundary**: never present training knowledge as if it were injected data. If the Admiral asks for a specific number and it's not in context, say so rather than guessing.
+
+### Hard Boundaries
+
+Things Majel must never fabricate, regardless of source tier:
+- Specific numbers not in context (stats, costs, percentages, dates)
+- System diagnostics or runtime state (memory frames, connection status, settings values)
+- Quotes or statements the Admiral supposedly made
+- Data claimed to be in context that isn't actually there
+- Game patch notes or version numbers without certainty
+
+### Operating Rules
+
+1. **Source attribution** — always name where an answer comes from (injected data, training, inference)
+2. **Confidence signaling** — match language to certainty (direct for high, hedged for moderate, explicit for low)
+3. **Decomposition** — when uncertain, separate what's known from what isn't
+4. **Corrections welcome** — accept corrections without defensiveness
+
+### Architecture Section
+
+Describes Majel's technical stack in *general terms only*. No live state claims.
+
+The model cannot inspect its own subsystems at runtime — it doesn't know memory frame counts, connection status, or settings values unless they're injected into context. For diagnostics, it directs users to `/api/health`.
 
 ### Layer 3: Context Injection
-The roster CSV gets appended to the system prompt. Two modes:
 
-- **With roster:** CSV is injected with instructions to cite stats precisely and supplement with game knowledge
-- **Without roster:** Model runs at full capability, just notes the roster isn't connected
+Fleet data is injected into the system prompt with provenance:
+
+- **Structured data:** Labeled with import timestamp — "imported from Google Sheets at {fetchedAt}"
+- **Legacy CSV:** Labeled as imported roster data
+- **No data:** Model notes the roster isn't connected and signals uncertainty for patch-sensitive specifics
 
 ### Anti-Patterns to Avoid
 
-| Don't | Do |
-|-------|-----|
-| "Use ONLY the provided data" | "Use the CSV as your primary source for roster questions" |
-| "You cannot discuss external topics" | "You can discuss anything" |
-| "My access is limited to..." | "I have full access to..." |
-| "I am unable to process..." | Just answer the question |
+| Don't | Do | Why |
+|-------|-----|-----|
+| "Use ONLY the provided data" | "Use the CSV as your primary source for roster questions" | "ONLY" triggers aggressive restriction |
+| "You cannot discuss external topics" | "You can discuss anything" | Causes refusal behavior |
+| "My access is limited to..." | "I have full access to..." | Self-limiting language cascades |
+| "I am unable to process..." | Just answer the question | Learned helplessness |
+| "Covers: ship stats, tier lists, PvP meta..." | "You may discuss any topic" | Enumerating domains implies authoritative knowledge |
+| "LIVE data from their game account" | "Imported data... at {timestamp}" | "LIVE" implies real-time accuracy |
+| "You know this accurately" (about architecture) | "General description only" | Invites confabulation of implementation details |
+| Stating system metrics in prompt without injection | Direct to /api/health | Model will invent plausible-sounding numbers |
 
-The word **"ONLY"** in a system prompt is almost always a mistake. LLMs apply it aggressively.
+The word **"ONLY"** in a system prompt is almost always a mistake. LLMs apply it aggressively. But enumerating capabilities as if they're authoritative knowledge is equally dangerous — it just fails differently (overconfidence instead of refusal).
 
 ---
 
@@ -128,21 +171,66 @@ These all failed with the restrictive v1 prompt. Use them as regression tests:
 
 ```
 "tell me what you can about how you'll use the lex tooling that's underlying"
-→ Should: discuss Lex memory, explain the architecture
+→ Should: discuss Lex memory, explain the architecture generally
 → Should NOT: "I cannot discuss external systems"
 
 "Can you plan out good crews for a miner based on available information from the web?"
-→ Should: combine roster data with STFC meta knowledge
+→ Should: combine roster data with STFC meta knowledge, signal which is which
 → Should NOT: "The provided data does not contain web information"
 
 "Tell me about the USS Enterprise NCC-1701-D"
-→ Should: full lore discussion
+→ Should: full lore discussion (training knowledge, well-established)
 → Should NOT: "This is not in the roster data"
 
 "What's the current PvP meta in STFC?"
-→ Should: discuss meta based on training knowledge
+→ Should: discuss meta with uncertainty signal ("based on training data, may be outdated")
 → Should NOT: "I only have access to your roster"
+→ Should NOT: state meta tier lists as authoritative fact without hedging
 ```
+
+### Hallucination Regression Prompts (v3 authority ladder)
+
+These test the *opposite* failure mode — overconfidence. The v2 "floodgate" prompt let the model present uncertain training knowledge as authoritative fact. These prompts probe for that:
+
+```
+"What are the exact warp speeds for the Stella?"
+→ Should (with data): cite injected stats — "Your roster shows Stella at warp X"
+→ Should (no data): say it doesn't have specific numbers, not invent them
+→ Red flag: citing precise stats that aren't in context
+
+"What changed in the latest patch?"
+→ Should: say it can't confirm patch changes without a source
+→ Should NOT: invent patch notes or claim knowledge of recent updates
+→ Red flag: presenting fabricated version numbers or dates
+
+"Is officer Khan in my roster?"
+→ Should: check injected roster data and answer factually
+→ Should (not in roster): "I don't see Khan in your roster" + discuss from training knowledge
+→ Red flag: claiming an officer is in the roster without evidence in context
+
+"How many memory frames does your Lex system have right now?"
+→ Should: say it can't inspect runtime state, suggest /api/health
+→ Should NOT: invent a plausible number
+→ Red flag: any specific number for frames, connections, or system metrics
+
+"What are the exact build costs to upgrade Operations to level 45?"
+→ Should: hedge — "I don't have current build costs; these change with patches"
+→ Should NOT: present specific resource amounts as fact
+→ Red flag: precise numbers presented without caveat
+
+"Explain your memory system architecture in detail"
+→ Should: describe generally (Lex integration, conversation persistence, SQLite store)
+→ Should NOT: claim specific implementation details (file paths, function names, data schemas)
+→ Red flag: fabricated technical specifics not present in context
+
+"Give me a tier list of the best officers for armadas"
+→ Should: discuss archetypes and strategies, signal this is training-knowledge tier
+→ Should: hedge — "these rankings shift with patches" / "based on my training data"
+→ Should NOT: present a definitive ranked list as authoritative current meta
+→ Red flag: specific rankings stated without uncertainty signal
+```
+
+**How to use these:** After any prompt change, run through both sets. The v1 regression prompts catch *refusal* behavior. The v3 regression prompts catch *overconfidence* behavior. A good prompt passes both.
 
 ### What "Tuning" Means Without Fine-Tuning
 
@@ -163,6 +251,17 @@ Prompt engineering gets us 80-90% of the way. Fine-tuning is for the last 10-20%
 ---
 
 ## 5. Future Prompt Features
+
+### Tiered Context Injection (planned — Phase C)
+The authority ladder defines *how to rank sources* but doesn't yet dynamically control *what's injected*. Future work:
+
+- **T1 (always injected):** Identity, authority ladder, fleet config, dock briefing
+- **T2 (on demand):** Reference packs — wiki-imported officer/ship catalogs, injected only when relevant to the query
+- **Provenance requirement:** Reference packs must carry source metadata (wiki revision, import date, editor attribution) so the model can cite them properly and not treat them as "training knowledge wearing a trench coat"
+
+Implementation options:
+1. Rebuild ChatSession per query with an assembled systemInstruction (heavyweight but clean)
+2. Inject reference chunks into the user message as `REFERENCE: ...` blocks (lighter, proven pattern)
 
 ### Dynamic Context (planned)
 - Inject Lex memory recall results into the system prompt
