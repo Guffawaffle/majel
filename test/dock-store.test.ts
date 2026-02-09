@@ -154,9 +154,11 @@ describe("DockStore — Dock Loadouts", () => {
     expect(updated.priority).toBe(5);
   });
 
-  it("rejects dock number outside 1-8", () => {
-    expect(() => store.upsertDock(0, { label: "Bad" })).toThrow("between 1 and 8");
-    expect(() => store.upsertDock(9, { label: "Bad" })).toThrow("between 1 and 8");
+  it("rejects non-positive dock number", () => {
+    expect(() => store.upsertDock(0, { label: "Bad" })).toThrow("positive integer");
+    expect(() => store.upsertDock(-1, { label: "Bad" })).toThrow("positive integer");
+    // dock 9+ should now be valid (no upper limit)
+    expect(() => store.upsertDock(9, { label: "Ok" })).not.toThrow();
   });
 
   it("lists all docks with context", () => {
@@ -244,8 +246,12 @@ describe("DockStore — Dock Intents", () => {
     expect(store.getDockIntents(1)).toEqual([]);
   });
 
-  it("rejects intent assignment to nonexistent dock", () => {
-    expect(() => store.setDockIntents(7, ["grinding"])).toThrow("Dock 7 not found");
+  it("auto-creates dock when setting intents on nonexistent dock", () => {
+    store.setDockIntents(7, ["grinding"]);
+    const dock = store.getDock(7);
+    expect(dock).toBeTruthy();
+    expect(dock!.intents.length).toBe(1);
+    expect(dock!.intents[0].key).toBe("grinding");
   });
 
   it("rejects unknown intent key", () => {
@@ -342,8 +348,11 @@ describe("DockStore — Dock Ships", () => {
     expect(() => dockStore.addDockShip(1, "nonexistent-ship")).toThrow("not found in fleet roster");
   });
 
-  it("rejects ship assignment to nonexistent dock", () => {
-    expect(() => dockStore.addDockShip(7, "kumari")).toThrow("Dock 7 not found");
+  it("auto-creates dock when adding ship to nonexistent dock", () => {
+    dockStore.addDockShip(7, "kumari");
+    const dock = dockStore.getDock(7);
+    expect(dock).toBeTruthy();
+    expect(dockStore.getDockShips(7).length).toBe(1);
   });
 
   it("removes a ship from a dock", () => {
@@ -1623,7 +1632,7 @@ describe("Dock API Routes", () => {
 
     it("returns 400 for invalid dock number", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/docks/99/presets");
+      const res = await request(app).get("/api/fleet/docks/0/presets");
       expect(res.status).toBe(400);
     });
   });

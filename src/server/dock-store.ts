@@ -148,6 +148,7 @@ export interface DockStore {
   getDock(dockNumber: number): DockWithContext | null;
   upsertDock(dockNumber: number, fields: { label?: string; notes?: string; priority?: number }): DockLoadout;
   deleteDock(dockNumber: number): boolean;
+  nextDockNumber(): number;
 
   // ── Dock Intents ──────────────────────────────────────
   setDockIntents(dockNumber: number, intentKeys: string[]): void;
@@ -265,7 +266,7 @@ export function createDockStore(dbPath?: string): DockStore {
 
     -- What each drydock is configured to do
     CREATE TABLE IF NOT EXISTS drydock_loadouts (
-      dock_number INTEGER PRIMARY KEY CHECK (dock_number BETWEEN 1 AND 8),
+      dock_number INTEGER PRIMARY KEY CHECK (dock_number >= 1),
       label TEXT,
       notes TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
@@ -276,7 +277,7 @@ export function createDockStore(dbPath?: string): DockStore {
     -- Multi-select: which intents are assigned to which dock
     CREATE TABLE IF NOT EXISTS dock_intents (
       dock_number INTEGER NOT NULL REFERENCES drydock_loadouts(dock_number) ON DELETE CASCADE,
-      intent_key TEXT NOT NULL REFERENCES intent_catalog(key),
+      intent_key TEXT NOT NULL REFERENCES intent_catalog(key) ON DELETE CASCADE,
       PRIMARY KEY (dock_number, intent_key)
     );
 
@@ -284,7 +285,7 @@ export function createDockStore(dbPath?: string): DockStore {
     CREATE TABLE IF NOT EXISTS dock_ships (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       dock_number INTEGER NOT NULL REFERENCES drydock_loadouts(dock_number) ON DELETE CASCADE,
-      ship_id TEXT NOT NULL REFERENCES ships(id),
+      ship_id TEXT NOT NULL REFERENCES ships(id) ON DELETE CASCADE,
       is_active INTEGER NOT NULL DEFAULT 0,
       sort_order INTEGER NOT NULL DEFAULT 0,
       notes TEXT,
@@ -315,8 +316,8 @@ export function createDockStore(dbPath?: string): DockStore {
     -- Saved crew configuration for a ship + intent combo (ADR-010 Phase 2)
     CREATE TABLE IF NOT EXISTS crew_presets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ship_id TEXT NOT NULL REFERENCES ships(id),
-      intent_key TEXT NOT NULL REFERENCES intent_catalog(key),
+      ship_id TEXT NOT NULL REFERENCES ships(id) ON DELETE CASCADE,
+      intent_key TEXT NOT NULL REFERENCES intent_catalog(key) ON DELETE CASCADE,
       preset_name TEXT NOT NULL,
       is_default INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -328,7 +329,7 @@ export function createDockStore(dbPath?: string): DockStore {
     CREATE TABLE IF NOT EXISTS crew_preset_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       preset_id INTEGER NOT NULL REFERENCES crew_presets(id) ON DELETE CASCADE,
-      officer_id TEXT NOT NULL REFERENCES officers(id),
+      officer_id TEXT NOT NULL REFERENCES officers(id) ON DELETE CASCADE,
       role_type TEXT NOT NULL CHECK (role_type IN ('bridge', 'below_deck')),
       slot TEXT,
       UNIQUE(preset_id, officer_id)
@@ -719,8 +720,8 @@ export function createDockStore(dbPath?: string): DockStore {
   }
 
   function upsertDock(dockNumber: number, fields: { label?: string; notes?: string; priority?: number }): DockLoadout {
-    if (dockNumber < 1 || dockNumber > 8) {
-      throw new Error("Dock number must be between 1 and 8");
+    if (dockNumber < 1) {
+      throw new Error("Dock number must be a positive integer");
     }
     stmts.upsertDock.run(
       dockNumber,
@@ -736,12 +737,19 @@ export function createDockStore(dbPath?: string): DockStore {
     return result.changes > 0;
   }
 
+  function nextDockNumber(): number {
+    const row = db.prepare(`SELECT COALESCE(MAX(dock_number), 0) + 1 AS next FROM drydock_loadouts`).get() as { next: number };
+    return row.next;
+  }
+
   // ── Dock Intent Methods ─────────────────────────────────
 
   const setDockIntentsTx = db.transaction((dockNumber: number, intentKeys: string[]) => {
-    // Validate dock exists
+    // Auto-create dock if it doesn't exist yet
     const dock = stmts.getDock.get(dockNumber);
-    if (!dock) throw new Error(`Dock ${dockNumber} not found. Create it first with PUT /api/fleet/docks/${dockNumber}`);
+    if (!dock) {
+      stmts.upsertDock.run(dockNumber, null, null, 0);
+    }
 
     // Validate all intent keys exist
     for (const key of intentKeys) {
@@ -766,9 +774,11 @@ export function createDockStore(dbPath?: string): DockStore {
   // ── Dock Ship Methods ───────────────────────────────────
 
   function addDockShip(dockNumber: number, shipId: string, options?: { notes?: string }): DockShip {
-    // Validate dock exists
+    // Auto-create dock if it doesn't exist yet
     const dock = stmts.getDock.get(dockNumber);
-    if (!dock) throw new Error(`Dock ${dockNumber} not found. Create it first.`);
+    if (!dock) {
+      stmts.upsertDock.run(dockNumber, null, null, 0);
+    }
 
     // Get max sort order for this dock
     const maxSort = (db.prepare(
@@ -1175,6 +1185,7 @@ export function createDockStore(dbPath?: string): DockStore {
     getDock,
     upsertDock,
     deleteDock,
+    nextDockNumber,
     setDockIntents,
     getDockIntents,
     addDockShip,

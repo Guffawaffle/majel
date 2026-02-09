@@ -210,6 +210,29 @@ export async function updateDock(num, fields) {
 }
 
 /**
+ * Delete a dock and all its associated data (ships, intents, presets)
+ * @param {number} num - Dock number
+ * @returns {Promise<Object>}
+ */
+export async function deleteDock(num) {
+    const res = await fetch(`/api/fleet/docks/${num}`, {
+        method: "DELETE",
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Get the next available dock number
+ * @returns {Promise<number>}
+ */
+export async function fetchNextDockNumber() {
+    const res = await fetch("/api/fleet/docks/next-number");
+    const env = await res.json();
+    return env.data?.nextDockNumber || 1;
+}
+
+/**
  * Set intents for a dock
  * @param {number} num - Dock number
  * @param {string[]} intents - Array of intent keys
