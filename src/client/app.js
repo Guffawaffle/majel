@@ -15,6 +15,7 @@ import * as chat from './chat.js';
 import * as sessions from './sessions.js';
 import * as fleetConfig from './fleet-config.js';
 import * as drydock from './drydock.js';
+import * as fleetManager from './fleet-manager.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -46,6 +47,7 @@ const inputArea = $("#input-area");
 const setupGemini = $("#setup-gemini");
 const setupSheets = $("#setup-sheets");
 const drydockArea = $("#drydock-area");
+const fleetManagerArea = $("#fleet-manager-area");
 const viewSwitcher = $("#view-switcher");
 
 // Mobile sidebar
@@ -276,6 +278,7 @@ function showChat() {
     chatArea.classList.remove("hidden");
     inputArea.classList.remove("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
+    if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
     if (viewSwitcher) viewSwitcher.classList.remove("hidden");
     setActiveView("chat");
 }
@@ -285,9 +288,21 @@ function showDrydock() {
     chatArea.classList.add("hidden");
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.remove("hidden");
+    if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
     if (viewSwitcher) viewSwitcher.classList.remove("hidden");
     setActiveView("drydock");
     drydock.refresh();
+}
+
+function showFleetManager() {
+    setupGuide.classList.add("hidden");
+    chatArea.classList.add("hidden");
+    inputArea.classList.add("hidden");
+    if (drydockArea) drydockArea.classList.add("hidden");
+    if (fleetManagerArea) fleetManagerArea.classList.remove("hidden");
+    if (viewSwitcher) viewSwitcher.classList.remove("hidden");
+    setActiveView("fleet");
+    fleetManager.refresh();
 }
 
 function setActiveView(view) {
@@ -308,6 +323,9 @@ if (viewSwitcher) {
             if (view === "drydock") {
                 showDrydock();
                 currentMode = "drydock";
+            } else if (view === "fleet") {
+                showFleetManager();
+                currentMode = "fleet";
             } else {
                 showChat();
                 currentMode = "chat";
@@ -359,6 +377,7 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
     sessions.init();
     await fleetConfig.init();
     await drydock.init();
+    await fleetManager.init();
 
     // Initial health check
     const health = await checkHealthAndUpdateUI();
@@ -388,7 +407,7 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
             currentMode = "chat";
             chat.addMessage("system", "✅ Configuration detected — Majel is online, Admiral.");
             chatInput.focus();
-        } else if (currentMode !== "setup" && currentMode !== "drydock" && h.gemini !== "connected") {
+        } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "fleet" && h.gemini !== "connected") {
             showSetup(h);
             currentMode = "setup";
         }
