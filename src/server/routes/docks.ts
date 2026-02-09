@@ -72,6 +72,13 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Computed Endpoints (must be before :num to avoid param matching) ──
 
+  router.get("/api/fleet/docks/next-number", (req, res) => {
+    if (!appState.dockStore) {
+      return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
+    }
+    sendOk(res, { nextDockNumber: appState.dockStore.nextDockNumber() });
+  });
+
   router.get("/api/fleet/docks/summary", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
@@ -93,8 +100,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const num = parseInt(req.params.num, 10);
-    if (isNaN(num) || num < 1 || num > 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be between 1 and 8");
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
     const dock = appState.dockStore.getDock(num);
     if (!dock) {
@@ -108,8 +115,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const num = parseInt(req.params.num, 10);
-    if (isNaN(num) || num < 1 || num > 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be between 1 and 8");
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
     try {
       const { label, notes, priority } = req.body;
@@ -126,8 +133,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const num = parseInt(req.params.num, 10);
-    if (isNaN(num) || num < 1 || num > 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be between 1 and 8");
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
     const deleted = appState.dockStore.deleteDock(num);
     if (!deleted) {
@@ -143,8 +150,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const num = parseInt(req.params.num, 10);
-    if (isNaN(num) || num < 1 || num > 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be between 1 and 8");
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
     const { intents } = req.body;
     if (!Array.isArray(intents)) {
@@ -167,8 +174,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const num = parseInt(req.params.num, 10);
-    if (isNaN(num) || num < 1 || num > 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be between 1 and 8");
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
     const { shipId, notes } = req.body;
     if (!shipId) {
@@ -188,8 +195,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const num = parseInt(req.params.num, 10);
-    if (isNaN(num) || num < 1 || num > 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be between 1 and 8");
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
     const removed = appState.dockStore.removeDockShip(num, req.params.shipId);
     if (!removed) {
@@ -203,8 +210,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const num = parseInt(req.params.num, 10);
-    if (isNaN(num) || num < 1 || num > 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be between 1 and 8");
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
     try {
       const { isActive, sortOrder, notes } = req.body;
@@ -361,8 +368,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const num = parseInt(req.params.num, 10);
-    if (isNaN(num) || num < 1 || num > 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be between 1 and 8");
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
     const presets = appState.dockStore.findPresetsForDock(num);
     sendOk(res, { dockNumber: num, presets, count: presets.length });

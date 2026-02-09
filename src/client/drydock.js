@@ -3,7 +3,7 @@
  *
  * Majel — STFC Fleet Intelligence System
  * Tab-per-dock UI for ship assignment, intent selection, and crew management.
- * Mirrors the wireframe design from .research/wireframes/drydock-ui-mockup-v2.html
+ * Docks are dynamically created/deleted — no fixed count.
  */
 
 import * as api from './api.js';
@@ -14,8 +14,8 @@ let allShips = [];
 let allOfficers = [];
 let allIntents = [];
 let conflicts = {};
-let activeDockNum = 1;
-let dockCount = 5; // default, updated from fleet settings
+let activeDockNum = null;
+let opsLevel = 1;
 
 // ─── DOM Refs ───────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -30,11 +30,11 @@ export async function init() {
     const area = $("#drydock-area");
     if (!area) return;
 
-    // Load fleet settings first to get dock count
+    // Load ops level from settings
     const settings = await api.loadFleetSettings();
     if (settings.settings) {
-        const dc = settings.settings.find(s => s.key === "fleet.drydockCount");
-        if (dc) dockCount = parseInt(dc.value, 10) || 5;
+        const ol = settings.settings.find(s => s.key === "fleet.opsLevel");
+        if (ol) opsLevel = parseInt(ol.value, 10) || 1;
     }
 
     await refresh();
@@ -59,6 +59,11 @@ export async function refresh() {
         allIntents = intentsData;
         conflicts = conflictsData;
 
+        // Set active dock to first if current is invalid
+        if (!activeDockNum || !docks.find(d => d.dockNumber === activeDockNum)) {
+            activeDockNum = docks.length > 0 ? docks[0].dockNumber : null;
+        }
+
         render();
     } catch (err) {
         console.error("Drydock refresh failed:", err);
@@ -75,16 +80,15 @@ function render() {
     const area = $("#drydock-area");
     if (!area) return;
 
-    // Ensure active dock is valid
-    if (activeDockNum < 1 || activeDockNum > dockCount) activeDockNum = 1;
-
-    const activeDock = docks.find(d => d.dockNumber === activeDockNum) || null;
+    const activeDock = activeDockNum ? docks.find(d => d.dockNumber === activeDockNum) || null : null;
 
     area.innerHTML = `
         ${renderIntelSection()}
-        ${renderDockTabs()}
+        ${renderTabHeader()}
         <div class="dock-content">
-            ${renderDockPanel(activeDock)}
+            ${docks.length === 0
+                ? renderEmptyState()
+                : renderDockPanel(activeDock)}
         </div>
     `;
 
@@ -133,22 +137,48 @@ function renderIntelSection() {
 }
 
 /**
- * Tab strip — one tab per dock
+ * Tab header: ops level badge + dock tabs + add button
  */
-function renderDockTabs() {
+function renderTabHeader() {
+    const opsDisplay = `
+        <button class="ops-level-badge" data-action="edit-ops" title="Click to edit Ops Level">
+            <span class="ops-label">OPS</span>
+            <span class="ops-value">${opsLevel}</span>
+        </button>
+    `;
+
     let tabs = '';
-    for (let i = 1; i <= dockCount; i++) {
-        const dock = docks.find(d => d.dockNumber === i);
-        const label = dock?.label || `Dock ${i}`;
-        const isActive = i === activeDockNum;
-        const hasShips = dock?.ships?.length > 0;
+    for (const dock of docks) {
+        const label = dock.label || `Dock ${dock.dockNumber}`;
+        const isActive = dock.dockNumber === activeDockNum;
+        const hasShips = dock.ships?.length > 0;
         const indicator = hasShips ? ' •' : '';
-        tabs += `<button class="dock-tab ${isActive ? 'active' : ''}" data-dock="${i}">
-            <span class="dock-tab-num">D${i}</span>
+        tabs += `<button class="dock-tab ${isActive ? 'active' : ''}" data-dock="${dock.dockNumber}">
+            <span class="dock-tab-num">D${dock.dockNumber}</span>
             <span class="dock-tab-label">${escHtml(label)}${indicator}</span>
         </button>`;
     }
-    return `<div class="dock-tabs">${tabs}</div>`;
+
+    const addBtn = `<button class="dock-tab dock-tab-add" data-action="add-dock" title="Add a new dock">+</button>`;
+
+    return `
+        <div class="dock-tab-header">
+            ${opsDisplay}
+            <div class="dock-tabs">${tabs}${addBtn}</div>
+        </div>
+    `;
+}
+
+/**
+ * Empty state — no docks yet
+ */
+function renderEmptyState() {
+    return `
+        <div class="dock-panel-empty">
+            <p>No drydocks configured yet.</p>
+            <p class="hint">Click the <strong>+</strong> button above to add your first dock.</p>
+        </div>
+    `;
 }
 
 /**
@@ -158,10 +188,7 @@ function renderDockPanel(dock) {
     if (!dock) {
         return `
             <div class="dock-panel-empty">
-                <p>Dock ${activeDockNum} is not configured yet.</p>
-                <p class="hint">Assign a ship below to activate this dock.</p>
-                ${renderShipSection(null)}
-                ${renderIntentSection([])}
+                <p>Select a dock tab above.</p>
             </div>
         `;
     }
@@ -175,7 +202,7 @@ function renderDockPanel(dock) {
 }
 
 /**
- * Dock header with editable label
+ * Dock header with editable label and delete button
  */
 function renderDockHeader(dock) {
     return `
@@ -185,6 +212,10 @@ function renderDockHeader(dock) {
                 <input type="text" class="dock-label-input" data-dock="${dock.dockNumber}"
                     value="${escHtml(dock.label || '')}"
                     placeholder="Name this dock..." />
+                <button class="dock-delete-btn" data-action="delete-dock" data-dock="${dock.dockNumber}"
+                    title="Delete this dock">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </button>
             </div>
             ${dock.notes ? `<p class="dock-notes">${escHtml(dock.notes)}</p>` : ''}
         </div>
@@ -198,69 +229,39 @@ function renderShipSection(dock) {
     const dockShips = dock?.ships || [];
     const activeShipId = dockShips.find(s => s.isActive)?.shipId;
 
-    // Ships already assigned to this dock
-    const assignedIds = new Set(dockShips.map(s => String(s.shipId)));
+    // Available ships = all ships minus those already in this dock
+    const assignedIds = new Set(dockShips.map(s => s.shipId));
+    const availableShips = allShips.filter(s => !assignedIds.has(s.id));
 
-    // Ships assigned to OTHER docks (show as unavailable)
-    const otherDockShipIds = new Set();
-    for (const d of docks) {
-        if (d.dockNumber !== activeDockNum) {
-            for (const s of (d.ships || [])) {
-                otherDockShipIds.add(String(s.shipId));
-            }
-        }
-    }
-
-    // Assigned ships in this dock — shown first with radio for active selection
-    let assignedHtml = '';
-    if (dockShips.length > 0) {
-        assignedHtml = dockShips.map(ds => {
-            const ship = allShips.find(s => String(s.id) === String(ds.shipId));
-            const name = ship?.name || ds.shipName || `Ship #${ds.shipId}`;
-            const cls = ship?.shipClass || '';
-            const isActive = ds.isActive;
-            return `
-                <label class="ship-radio-row ${isActive ? 'active' : ''}">
-                    <input type="radio" name="active-ship-${activeDockNum}"
-                        value="${ds.shipId}" ${isActive ? 'checked' : ''}
-                        data-action="set-active-ship" data-ship="${ds.shipId}" />
-                    <span class="ship-name">${escHtml(name)}</span>
-                    ${cls ? `<span class="ship-class-badge">${escHtml(cls)}</span>` : ''}
-                    <button class="ship-remove-btn" data-action="remove-ship" data-ship="${ds.shipId}" title="Remove from dock">✕</button>
+    let shipRows = '';
+    for (const ds of dockShips) {
+        const ship = allShips.find(s => s.id === ds.shipId);
+        const shipName = ship ? ship.name : ds.shipId;
+        const isActive = ds.shipId === activeShipId;
+        shipRows += `
+            <div class="ship-radio-row ${isActive ? 'active' : ''}">
+                <label>
+                    <input type="radio" name="active-ship" data-action="set-active-ship"
+                        data-ship="${ds.shipId}" ${isActive ? 'checked' : ''} />
+                    <span class="ship-name">${escHtml(shipName)}</span>
                 </label>
-            `;
-        }).join('');
-    }
-
-    // Available ships (not assigned to any dock)
-    const availableShips = allShips.filter(s =>
-        !assignedIds.has(String(s.id)) && !otherDockShipIds.has(String(s.id))
-    );
-
-    let availableHtml = '';
-    if (availableShips.length > 0) {
-        const options = availableShips.map(s =>
-            `<option value="${s.id}">${escHtml(s.name)}${s.shipClass ? ` (${s.shipClass})` : ''}</option>`
-        ).join('');
-        availableHtml = `
-            <div class="ship-add-row">
-                <select class="ship-add-select" data-action="add-ship-select">
-                    <option value="">+ Add ship to dock...</option>
-                    ${options}
-                </select>
+                <button class="ship-remove-btn" data-action="remove-ship" data-ship="${ds.shipId}" title="Remove">×</button>
             </div>
         `;
-    } else if (allShips.length === 0) {
-        availableHtml = `<p class="hint">No ships in fleet yet. Import from Google Sheets or add manually.</p>`;
     }
+
+    const selectHtml = availableShips.length > 0
+        ? `<select class="ship-add-select" data-action="add-ship-select">
+            <option value="">+ Assign ship...</option>
+            ${availableShips.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('')}
+           </select>`
+        : '';
 
     return `
         <div class="dock-section">
             <h3 class="dock-section-title">Ships</h3>
-            <div class="dock-ship-list">
-                ${assignedHtml}
-                ${availableHtml}
-            </div>
+            ${shipRows || '<p class="hint">No ships assigned to this dock.</p>'}
+            ${selectHtml}
         </div>
     `;
 }
@@ -385,12 +386,66 @@ function bindEvents() {
     if (!area) return;
 
     // Dock tab switching
-    area.querySelectorAll(".dock-tab").forEach(tab => {
+    area.querySelectorAll(".dock-tab:not(.dock-tab-add)").forEach(tab => {
         tab.addEventListener("click", () => {
             activeDockNum = parseInt(tab.dataset.dock, 10);
             render();
         });
     });
+
+    // Add dock button
+    const addBtn = area.querySelector("[data-action='add-dock']");
+    if (addBtn) {
+        addBtn.addEventListener("click", async () => {
+            const nextNum = await api.fetchNextDockNumber();
+            await api.updateDock(nextNum, { label: `Dock ${nextNum}` });
+            activeDockNum = nextNum;
+            await refresh();
+        });
+    }
+
+    // Delete dock button
+    const deleteBtn = area.querySelector("[data-action='delete-dock']");
+    if (deleteBtn) {
+        deleteBtn.addEventListener("click", async () => {
+            const num = parseInt(deleteBtn.dataset.dock, 10);
+            const dock = docks.find(d => d.dockNumber === num);
+            const label = dock?.label || `Dock ${num}`;
+            const shipCount = dock?.ships?.length || 0;
+            const intentCount = dock?.intents?.length || 0;
+
+            let warning = `Delete "${label}"?`;
+            if (shipCount > 0 || intentCount > 0) {
+                warning += `\n\nThis will also remove:\n`;
+                if (shipCount > 0) warning += `• ${shipCount} ship assignment${shipCount > 1 ? 's' : ''}\n`;
+                if (intentCount > 0) warning += `• ${intentCount} intent${intentCount > 1 ? 's' : ''}\n`;
+                warning += `\nThis cannot be undone.`;
+            }
+
+            if (!confirm(warning)) return;
+
+            await api.deleteDock(num);
+            activeDockNum = null;
+            await refresh();
+        });
+    }
+
+    // Ops level edit
+    const opsBtn = area.querySelector("[data-action='edit-ops']");
+    if (opsBtn) {
+        opsBtn.addEventListener("click", () => {
+            const input = prompt("Enter your Ops Level (1-80):", opsLevel);
+            if (input === null) return;
+            const val = parseInt(input, 10);
+            if (isNaN(val) || val < 1 || val > 80) {
+                alert("Ops level must be between 1 and 80.");
+                return;
+            }
+            opsLevel = val;
+            api.saveFleetSetting("fleet.opsLevel", val);
+            render();
+        });
+    }
 
     // Intel toggle
     const intelToggle = area.querySelector("[data-action='toggle-intel']");
@@ -418,16 +473,10 @@ function bindEvents() {
                 const dock = docks.find(d => d.dockNumber === num);
                 if (dock) dock.label = labelInput.value.trim();
                 // Re-render just the tabs
-                const tabsEl = area.querySelector(".dock-tabs");
-                if (tabsEl) {
-                    tabsEl.outerHTML = renderDockTabs();
-                    // Re-bind tab events
-                    area.querySelectorAll(".dock-tab").forEach(tab => {
-                        tab.addEventListener("click", () => {
-                            activeDockNum = parseInt(tab.dataset.dock, 10);
-                            render();
-                        });
-                    });
+                const tabHeader = area.querySelector(".dock-tab-header");
+                if (tabHeader) {
+                    tabHeader.outerHTML = renderTabHeader();
+                    bindTabEvents();
                 }
             }, 600);
         });
@@ -466,7 +515,6 @@ function bindEvents() {
         addSelect.addEventListener("change", async () => {
             const shipId = addSelect.value;
             if (!shipId) return;
-            // If no ships yet, make first one active
             const dock = docks.find(d => d.dockNumber === activeDockNum);
             const isFirst = !dock || (dock.ships || []).length === 0;
             await api.addDockShip(activeDockNum, parseInt(shipId, 10), isFirst);
@@ -477,19 +525,40 @@ function bindEvents() {
     // Intent checkbox toggle
     area.querySelectorAll("[data-action='toggle-intent']").forEach(cb => {
         cb.addEventListener("change", async () => {
-            // Gather all checked intents
             const checked = [];
             area.querySelectorAll("[data-action='toggle-intent']").forEach(el => {
                 if (el.checked) checked.push(el.dataset.key);
             });
             await api.saveDockIntents(activeDockNum, checked);
-            // Update local cache
             const dock = docks.find(d => d.dockNumber === activeDockNum);
             if (dock) {
                 dock.intents = allIntents.filter(i => checked.includes(i.key));
             }
         });
     });
+}
+
+/**
+ * Re-bind just the tab events after a partial re-render
+ */
+function bindTabEvents() {
+    const area = $("#drydock-area");
+    if (!area) return;
+    area.querySelectorAll(".dock-tab:not(.dock-tab-add)").forEach(tab => {
+        tab.addEventListener("click", () => {
+            activeDockNum = parseInt(tab.dataset.dock, 10);
+            render();
+        });
+    });
+    const addBtn = area.querySelector("[data-action='add-dock']");
+    if (addBtn) {
+        addBtn.addEventListener("click", async () => {
+            const nextNum = await api.fetchNextDockNumber();
+            await api.updateDock(nextNum, { label: `Dock ${nextNum}` });
+            activeDockNum = nextNum;
+            await refresh();
+        });
+    }
 }
 
 // ─── Helpers ────────────────────────────────────────────────

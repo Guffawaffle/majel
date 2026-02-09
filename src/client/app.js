@@ -13,7 +13,6 @@
 import * as api from './api.js';
 import * as chat from './chat.js';
 import * as sessions from './sessions.js';
-import * as fleetConfig from './fleet-config.js';
 import * as drydock from './drydock.js';
 import * as fleetManager from './fleet-manager.js';
 
@@ -375,7 +374,6 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
     // Initialize all modules
     chat.init(sessions.refreshSessionList);
     sessions.init();
-    await fleetConfig.init();
     await drydock.init();
     await fleetManager.init();
 
