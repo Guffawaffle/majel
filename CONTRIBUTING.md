@@ -1,0 +1,330 @@
+# Contributing to Majel
+
+Thank you for considering contributing to Majel! This document outlines the process and guidelines for contributing to the project.
+
+## Code of Conduct
+
+This project adheres to the Contributor Covenant [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+
+## Project Status
+
+Majel is currently in **open alpha** (v0.x):
+
+- Breaking changes may occur between minor versions
+- API contracts are not yet stable (stable at v1.0)
+- Migration paths for breaking changes are not guaranteed
+- Documentation may lag behind implementation
+
+Alpha users accept these terms. We document breaking changes in `CHANGELOG.md` but prioritize forward progress over backward compatibility.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 22+ (LTS recommended)
+- npm 10+
+- Git
+- A Google Gemini API key ([free tier works](https://aistudio.google.com/apikey))
+- Optional: Google Cloud project with Sheets API enabled (for roster import)
+
+### Development Setup
+
+1. **Fork and clone:**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/majel.git
+   cd majel
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env — at minimum, set GEMINI_API_KEY
+   ```
+
+4. **Run development server:**
+   ```bash
+   npm run dev
+   ```
+
+5. **Verify setup:**
+   - Open http://localhost:3000
+   - Check `/api/health` — should show `"status": "online"`
+
+## Development Workflow
+
+### Branch Strategy
+
+- `main` — production-ready code, tagged releases
+- Feature branches: `feature/your-feature-name`
+- Bug fixes: `fix/issue-description`
+- Documentation: `docs/what-youre-documenting`
+
+**Always branch from `main`:**
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/your-feature
+```
+
+### Making Changes
+
+1. **Keep changes focused:**
+   - One feature or fix per PR
+   - Related changes can be grouped (e.g., "Add crew preset endpoints + tests")
+   - Avoid unrelated refactoring in feature PRs
+
+2. **Follow existing patterns:**
+   - Match the code style of surrounding code
+   - Use existing abstractions (envelope responses, middleware, stores)
+   - Check `docs/ADR-*.md` for architectural decisions
+
+3. **Type safety:**
+   ```bash
+   npm run typecheck  # Must pass before committing
+   ```
+
+4. **Write tests:**
+   - New features require tests in `test/` directory
+   - Use Vitest (`npm run test`)
+   - Aim for coverage parity with existing modules (~60% lines)
+   - See `test/api.test.ts` for endpoint test patterns
+
+5. **Run local CI:**
+   ```bash
+   npm run local-ci  # typecheck + coverage + build
+   ```
+
+### Code Style
+
+**No linter is configured** (intentional choice for alpha). Follow these conventions:
+
+#### TypeScript/JavaScript
+
+- **Indentation:** 2 spaces, no tabs
+- **Quotes:** Double quotes for strings (`"like this"`)
+- **Semicolons:** Always use them
+- **Line length:** ~120 characters (not strict)
+- **Naming:**
+  - `camelCase` for variables/functions (`fleetStore`, `createGeminiEngine`)
+  - `PascalCase` for types/interfaces (`AppState`, `FleetData`)
+  - `SCREAMING_SNAKE_CASE` for constants (`SETTINGS_SCHEMA`, `DEFAULT_PORT`)
+
+#### File Organization
+
+- **One export per file** for stores/services (`settings.ts` exports `SettingsStore`)
+- **Group related routes** in route modules (`routes/core.ts`, `routes/fleet.ts`)
+- **Comments:** Use JSDoc for public APIs, `//` for inline clarifications
+- **Imports:** Group by external deps → internal modules → types
+
+#### API Conventions (ADR-004)
+
+All API responses must use the envelope pattern:
+
+```typescript
+// Success
+sendOk(res, { loaded: true, count: 42 });
+
+// Failure
+sendFail(res, ErrorCode.NOT_FOUND, "Ship not found", 404);
+```
+
+No raw `res.json()` or `res.status()` in route handlers.
+
+### Commit Messages
+
+Use conventional format:
+
+```
+type(scope): brief description
+
+Longer explanation if needed (optional).
+
+Fixes #123
+```
+
+**Types:**
+- `feat` — new feature
+- `fix` — bug fix
+- `docs` — documentation changes
+- `test` — test additions/fixes
+- `refactor` — code restructuring, no behavior change
+- `chore` — dependency updates, tooling
+
+**Examples:**
+```
+feat(fleet): add crew preset tagging
+fix(sheets): handle missing tab gracefully
+docs(adr): add ADR-010 for multimodal chat
+test(memory): cover recall edge cases
+```
+
+### Pull Request Process
+
+1. **Before opening:**
+   - [ ] `npm run local-ci` passes
+   - [ ] Commits are clean and descriptive
+   - [ ] No unrelated changes included
+   - [ ] `.env` or sensitive files not committed
+
+2. **PR description:**
+   ```markdown
+   ## Summary
+   Brief description of what this PR does.
+
+   ## Changes
+   - Added X
+   - Fixed Y
+   - Updated Z
+
+   ## Testing
+   How you validated the changes.
+
+   ## Related Issues
+   Fixes #123
+   ```
+
+3. **Review process:**
+   - Maintainer reviews within ~1 week (no SLA, best effort)
+   - Address feedback in new commits (don't force-push unless asked)
+   - Squashing happens at merge time
+
+4. **After merge:**
+   - Your branch is deleted automatically
+   - Changes appear in next release
+
+## Testing Guidelines
+
+### Running Tests
+
+```bash
+npm run test          # Run all tests once
+npm run test:watch    # Watch mode during development
+npm run test:coverage # Generate coverage report
+```
+
+### Writing Tests
+
+Use Vitest + Supertest for API tests:
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import request from "supertest";
+import { createApp } from "../src/server/index.js";
+
+describe("GET /api/your-endpoint", () => {
+  let app: Express;
+
+  beforeAll(async () => {
+    app = await createApp();
+  });
+
+  it("should return expected data", async () => {
+    const res = await request(app).get("/api/your-endpoint");
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.data).toHaveProperty("someField");
+  });
+});
+```
+
+**Key patterns:**
+- Use `beforeAll`/`afterAll` for setup/teardown
+- Test success and error cases
+- Verify envelope structure (`ok`, `data`/`error`)
+- Mock external dependencies (Gemini API, Sheets API) when needed
+
+## Project Structure
+
+```
+majel/
+├── src/
+│   ├── server/
+│   │   ├── index.ts          # App factory + server boot
+│   │   ├── routes/           # Route modules (core, chat, fleet, sessions, settings)
+│   │   ├── config.ts         # Unified configuration resolver
+│   │   ├── settings.ts       # SQLite settings store
+│   │   ├── gemini.ts         # LLM engine wrapper
+│   │   ├── memory.ts         # Lex integration
+│   │   ├── sessions.ts       # Chat session store
+│   │   ├── fleet-store.ts    # Officer/ship data layer
+│   │   ├── dock-store.ts     # Drydock loadouts
+│   │   └── [utilities]
+│   └── client/               # Static frontend (vanilla JS)
+├── test/                     # Vitest test suite
+├── docs/                     # ADRs + guides
+├── schemas/                  # Data schemas (JSON)
+└── [config files]
+```
+
+## Architectural Decision Records (ADRs)
+
+Major architectural decisions are documented in `docs/ADR-*.md`. **Read these before contributing:**
+
+- [ADR-001: Architecture](docs/ADR-001-architecture.md) — Local-first philosophy
+- [ADR-002: Framework](docs/ADR-002-framework.md) — SvelteKit deferred to v1.0
+- [ADR-003: Epistemic Framework](docs/ADR-003-epistemic-framework.md) — Source attribution
+- [ADR-004: AX-First API](docs/ADR-004-ax-first-api.md) — Envelope pattern
+- [ADR-005: v0.3 Hardening](docs/ADR-005-v03-hardening.md) — Route split, middleware
+- [ADR-006: Open Alpha](docs/ADR-006-open-alpha.md) — This phase
+- [ADR-007: Fleet Management](docs/ADR-007-fleet-management.md) — Drydock, crew
+- [ADR-008: Image Interpretation](docs/ADR-008-image-interpretation.md) — Screenshot pipeline
+- [ADR-009: Session Isolation](docs/ADR-009-session-isolation.md) — Multi-tab safety
+- [ADR-010: Multimodal Chat](docs/ADR-010-multimodal-chat.md) — Image uploads
+
+If your change challenges an ADR decision, discuss it in an issue before coding.
+
+## Feature Requests & Bug Reports
+
+### Reporting Bugs
+
+Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.yml):
+
+- Include steps to reproduce
+- Provide relevant logs (`npm run dev` output)
+- Mention your environment (Node version, OS)
+- Check `/api/diagnostic` output
+
+### Requesting Features
+
+Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.yml):
+
+- Describe the use case, not just the solution
+- Explain who benefits (STFC players? Lex showcase? Maintainers?)
+- Acknowledge alpha status — some features are shelved intentionally (see ADR-006)
+
+## What We're NOT Accepting (Alpha Boundaries)
+
+These are explicitly shelved for v1.0 or later. PRs adding these will be declined:
+
+- Multi-user authentication or authorization
+- Cloud deployment configurations
+- Plugin/extension systems
+- SvelteKit migration (v1.0 scope)
+- Mobile native apps
+- Alliance/guild features (multi-user)
+- Custom model selection UI
+
+See [ADR-006](docs/ADR-006-open-alpha.md) for the full shelved features list.
+
+## Communication
+
+- **GitHub Issues** — bug reports, feature requests, discussions
+- **Pull Requests** — code contributions
+- **No chat/Discord yet** — project is too early for community management overhead
+
+Response times are best-effort. Majel is a side project.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the same [MIT License](LICENSE) that covers the project.
+
+---
+
+**Thank you for helping make Majel better!** 🖖
+
+*Live long and prosper.*
