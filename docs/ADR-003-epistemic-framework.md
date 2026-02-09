@@ -2,7 +2,10 @@
 
 **Status:** Accepted  
 **Date:** 2026-02-08  
+**Updated:** 2026-02-09  
 **Authors:** Guff, Opie (Claude)
+
+> **Evolution note:** This ADR established the prompt-level epistemic rules (source attribution, confidence signaling, hard fabrication boundaries). These were later encoded as the **authority ladder** in the system prompt (commit `91ebc3b`). ADR-014 (MicroRunner) extends this by adding **runtime enforcement** — contract-driven context gating and output validation that verify compliance outside the model, rather than relying solely on prompt instructions.
 
 ## Context
 
@@ -84,6 +87,7 @@ STFC is a live game with regular patches. Training knowledge has a cutoff. The c
 ## References
 
 - ADR-001 (original architecture — brute-force context injection)
+- ADR-014 (MicroRunner — runtime enforcement of these epistemic rules)
 - `src/server/gemini.ts` — `buildSystemPrompt()` implementation
 - `test/gemini.test.ts` — epistemic framework test suite
 - `docs/PROMPT_GUIDE.md` — prompt tuning strategy
