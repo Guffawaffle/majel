@@ -109,6 +109,8 @@ interface TaskContract {
 
 This is intentionally coarse. We're gating context, not building a task planner. Misclassification is low-cost — a `strategy_general` still works, it just injects less context than a targeted query would.
 
+> **Evolution note (ContextGate):** ADR-015 (Canonical Entity Identity) upgrades the reference lookup path. Instead of name-matching against the roster, `lookupOfficer()` resolves via `ref_id` links to `reference_officers` entries with full provenance (page ID, revision ID, timestamp). The `ReferenceEntry` interface expands to include `sourcePageId`, `sourceRevisionId`, and optional roster data (`rosterLevel`, `rosterAssignment`). This makes `reference_lookup` truly deterministic.
+
 ### 2. ContextGate
 
 Assembles only the context that the TaskContract requires:

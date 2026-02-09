@@ -4,6 +4,8 @@
 **Date:** 2026-02-09  
 **Authors:** Guff, Opie (Claude), with legal guidance from Lex
 
+> **Evolution note:** ADR-015 (Canonical Entity Identity) extends this ADR's provenance tracking into a full namespaced ID system. Wiki-imported entities now get `wiki:officer:<pageId>` IDs derived from the MediaWiki page ID (instead of slugified names), and provenance metadata (page ID, revision ID, timestamp) is stored in a dedicated `reference_officers` table. The ingest script's existing provenance extraction becomes the source for these fields.
+
 ## Context
 
 Majel needs officer and ship reference data (names, groups, rarities, ability descriptions) to power intelligent fleet management. ADR-012 proposed localization templates with manual user input. While that's the right *fallback*, the STFC Fandom Wiki already contains a well-maintained [Officers table](https://star-trek-fleet-command.fandom.com/wiki/Officers) and [Ships table](https://star-trek-fleet-command.fandom.com/wiki/Ships) with exactly the fields we need.

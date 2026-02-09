@@ -4,6 +4,8 @@
 **Date:** 2026-02-09  
 **Authors:** Guff, Opie (Claude)
 
+> **Evolution note:** ADR-013 (Wiki Import) established a concrete ingest path for officer/ship data, partially superseding the localization template approach for those entity types. ADR-015 (Canonical Entity Identity) formalizes the ID scheme: wiki-imported entities get `wiki:officer:<pageId>` namespaced IDs with full provenance, stored in a separate `reference_officers` table. The template model remains valid for research trees and other reference data not covered by wiki import.
+
 ## Context
 
 Majel needs game reference data (officer abilities, ship specs, research trees) to power crew suggestions, conflict detection, and the Research view. This data is semi-static — it changes with game patches but is stable between them.
