@@ -216,18 +216,19 @@ ALTER TABLE reference_ships ADD COLUMN external_id TEXT;
 
 This is additive — don't block on it. The wiki-provenance IDs already give us stable identity right now. If Scopely IDs arrive later, they slot in as a higher-authority external key without disrupting the existing namespace.
 
-### D8: Migration from Slugified IDs
+### D8: Clean Break from Slugified IDs
 
-Existing data uses slugified name IDs (`khan`, `uss-saladin`). The migration:
+> **Project age context:** Majel is ~24 hours old. There are zero external users, zero production databases, and zero backwards compatibility obligations. We do not write migration code for a schema that has never shipped. We just build it right.
 
-1. **Add `ref_id` column** to `officers` and `ships` tables (nullable, no FK constraint initially).
-2. **Add `id_namespace` column** to both tables: `'roster'` for existing Sheets-imported entries, `'user'` for any manually created entries.
-3. **Rename existing IDs** in a migration: `khan` → `roster:officer:khan`, `uss-saladin` → `roster:ship:uss-saladin`. This is an offline migration run at boot if schema_version < N.
-4. **Update all foreign keys** in `crew_assignments`, `dock_ships`, `crew_presets`, `crew_preset_members`.
-5. **Create `reference_officers` table** (separate from roster).
-6. **After wiki import:** Scan roster for name matches and populate `ref_id` links where unambiguous.
+Existing data uses slugified name IDs (`khan`, `uss-saladin`). The implementation:
 
-**Risk mitigation:** The migration is wrapped in a transaction. If it fails, the database rolls back to slugified IDs and the app continues to work. The namespaced IDs are strictly better but the system must degrade gracefully.
+1. **Rewrite the schema directly.** The `officers` and `ships` tables get `ref_id` columns and namespaced IDs from the start. No `ALTER TABLE`, no migration scripts, no version checks — just the correct `CREATE TABLE`.
+2. **Create `reference_officers` table** alongside the existing roster tables.
+3. **Update `importFromFleetData()`** to mint `roster:officer:<slug>` IDs instead of bare slugs.
+4. **Update the wiki ingest script** to mint `wiki:officer:<pageId>` IDs and write to `reference_officers`.
+5. **Drop and re-import** any test data. There is nothing to preserve.
+
+If anyone has a local `.smartergpt/lex/fleet.db` from development testing, they delete it and re-import. That's the entire migration story.
 
 ## Consequences
 
@@ -240,20 +241,18 @@ Existing data uses slugified name IDs (`khan`, `uss-saladin`). The migration:
 - **Provenance auditable end-to-end.** From wiki XML export → reference table → ref_id link → MicroRunner receipt — the chain is unbroken.
 
 ### Negative
-- **Migration complexity.** Existing databases need an ID rename migration. Must be bulletproof.
 - **Two-table model for officers/ships.** Developers must understand "roster officer" vs "reference officer" — more concepts to hold in memory.
 - **Wiki import script needs update.** The ingest script currently uses slugified IDs — must switch to page-ID-based namespaced IDs.
 - **Typeahead UX requires reference data.** If the user hasn't imported wiki data yet, the "pick from reference" flow has nothing to offer — falls back to the custom entry lane.
 
 ### Risks
-- **Over-engineering for alpha:** This is thorough. But the cost of getting identity wrong early is high — broken joins, migration nightmares, data corruption in users' local databases. Better to pay the design cost now.
 - **Page ID stability assumption:** We assume MediaWiki page IDs are stable. They are in practice (they're database PKs) but could theoretically change if a wiki is rebuilt. The `source_revision_id` provides a secondary anchor.
 
 ## Phases
 
 | Phase | Scope | Depends On |
 |---|---|---|
-| **Phase 1: Schema + Migration** | Add `ref_id` + `id_namespace` columns, rename existing IDs, create `reference_officers` table | This ADR accepted |
+| **Phase 1: Schema** | Rewrite `officers`/`ships` tables with namespaced IDs + `ref_id` column, create `reference_officers` table. No migration — clean break. | This ADR accepted |
 | **Phase 2: Ingest Update** | Wiki ingest script stores provenance in `reference_officers`, uses page-ID-based namespaced IDs | Phase 1 |
 | **Phase 3: Linking** | Auto-link roster entities to reference entities on import, manual link/unlink UI | Phase 2 |
 | **Phase 4: MicroRunner Upgrade** | `lookupOfficer()` resolves via `ref_id` chain, enriched `ReferenceEntry` with full provenance | Phase 2 |
