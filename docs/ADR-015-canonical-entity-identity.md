@@ -60,10 +60,10 @@ Every entity in the system gets an ID that encodes its **origin namespace**:
 |---|---|---|---|
 | `wiki:officer:<pageId>` | Wiki-imported reference | ADR-013 ingest pipeline | **No** — ID is immutable once created |
 | `wiki:ship:<pageId>` | Wiki-imported reference | ADR-013 ingest pipeline | **No** |
-| `roster:officer:<slug>` | Bootstrapped from Sheets import | Google Sheets CSV | **No** — ID is immutable; metadata is app-managed |
-| `roster:ship:<slug>` | Bootstrapped from Sheets import | Google Sheets CSV | **No** |
 | `user:officer:<uuid>` | User-created local-only | Manual entry UI | **No** — minted at creation, never changes |
 | `user:ship:<uuid>` | User-created local-only | Manual entry UI | **No** |
+
+> **Evolution note:** ADR-016 (Catalog-Overlay Model) retires the `roster:*` namespace. With the wiki catalog as the primary entity source and user state stored as an overlay (`officer_overlay`, `ship_overlay`), there is no separate "roster entity" — an owned officer is a `wiki:*` reference entry with an overlay row. The `user:*` namespace remains for entities not yet in any reference catalog.
 
 **Key invariant:** IDs are non-user-editable once created. The display name can change; the identity anchor cannot. This is the same principle as database surrogate keys — the ID is for the system, the name is for the human.
 
