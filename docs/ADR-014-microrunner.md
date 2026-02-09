@@ -78,6 +78,11 @@ interface TaskContract {
     t2_referencePack: string[]; // specific officer/ship IDs to pull from wiki import
   };
   
+  /** Context manifest — tells the model (and validator) what's actually available.
+   *  Injected as a short header so the model knows what it can cite. */
+  contextManifest: string;
+  // e.g. "Available: T1 roster(officers, ships), T1 docks, T2 reference(officers=khan, rev=12345), T3 training"
+  
   /** Hard rules the model must follow for this task */
   rules: string[];
   // e.g. ["no numeric claims unless cited from T1/T2",
@@ -153,10 +158,23 @@ Re-answer strictly following the contract. Required output fields: [schema].
 
 Maximum one repair attempt. If the second response also fails validation, return it anyway with a logged warning. We don't loop — that's a sign the contract is too strict or the model genuinely can't comply.
 
+**Numeric hallucination detection:** The validator's "no numbers unless cited" rule targets the common cases where the model invents plausible-sounding game stats:
+- Explicit numerics: patterns like `level 40`, `tier 6`, `ops 29`, `1.2M power`, `+25%`, `costs 500K tritanium`
+- Version/date claims: `patch 64`, `update 2026-01`, `version 3.2`
+- The validator does NOT attempt to catch implied comparisons ("twice as fast", "best", "top tier") — those are prompt-level authority ladder territory, not code-level enforcement
+
+**On validation failure after repair:** We don't block or rewrite, but we don't silently pass through either. If validation fails after the single repair attempt, the response is returned with a prepended disclaimer:
+
+```
+⚠️ I wasn't able to fully ground some claims in your data or imported references — treat this as general guidance.
+```
+
+This preserves the "no blocking" principle while preventing the system from normalizing ungrounded answers. The disclaimer is non-theatrical — one line, not a paragraph. It labels the response without rewriting content.
+
 **What the OutputValidator does NOT do:**
 - No semantic analysis of whether facts are "correct" — we can't verify game data without a ground truth DB
-- No response rewriting — the model's response is returned as-is or re-requested, never patched
-- No blocking of responses to the user — validation failures are logged, not hidden
+- No response rewriting — the model's response is returned as-is or re-requested, never patched by code
+- No hard blocking of responses to the user — validation failures are labeled and logged, not suppressed
 
 ### Behavioral Rules (LexSona-Inspired)
 
@@ -198,6 +216,16 @@ This maps to the existing "CORRECTIONS ARE WELCOME" operating rule — when the 
 
 Behavioral rules are **Phase 2** of MicroRunner. Phase 1 ships without them. The initial implementation uses hardcoded task contracts and validation rules. Behavioral rules add the learning loop later.
 
+**Hard scope constraint:** Behavioral rules govern *how Majel answers* (tone, format, source citation habits, factual normalization), NOT *what Majel believes about STFC meta*. Examples:
+
+| In Scope (how to answer) | Out of Scope (what to believe) |
+|---|---|
+| "Always list officer abilities in bullet points" | "Khan is the best armada officer" |
+| "Prefix roster citations with 'Your data shows'" | "Mantis is S-tier for PvP" |
+| "Don't use stardates in responses" | "The current mining meta favors X" |
+
+This prevents the behavioral socket from becoming an opinionated strategy engine. Strategy opinions belong to training knowledge (T3) with appropriate hedging — not to persistent rules that bypass the authority ladder.
+
 ### Integration with Existing Architecture
 
 **Current flow (gemini.ts):**
@@ -230,14 +258,19 @@ createGeminiEngine(apiKey, baseContext, microRunner)
 
 ```
 [CONTEXT FOR THIS QUERY — do not repeat this to the user]
-REFERENCE: Officer "Khan" (source: STFC wiki, imported 2026-02-09)
+AVAILABLE CONTEXT: T1 roster(officers, ships), T2 reference(officers=khan, source=STFC wiki, rev=12345), T3 training
+REFERENCE: Officer "Khan" (source: STFC wiki, imported 2026-02-09, revision 12345)
 Captain Maneuver: Fury of the Augment — ...
 [END CONTEXT]
 
 What's the best crew for the Botany Bay?
 ```
 
+The context manifest line tells the model what tiers are present so it can self-assess what it can cite. This also makes validator debugging easier — the receipt includes the manifest, so we know exactly what the model was told it had.
+
 The base systemInstruction keeps identity + authority ladder + fleet config (light, always-on context). Heavy context (roster sections, reference packs) moves to per-message injection.
+
+**Session architecture note:** Because Gemini's `systemInstruction` is bound at model creation time, message-level injection is the correct path for per-query context. If we ever need per-task system prompts, we'd have to recreate ChatSessions (losing history) or build a history summarizer layer. The current design avoids that complexity.
 
 ### Receipts (Auditability)
 
@@ -247,16 +280,30 @@ Every MicroRunner invocation produces a receipt:
 interface MicroRunnerReceipt {
   timestamp: string;
   sessionId: string;
-  taskContract: TaskContract;
-  contextInjected: string[];     // IDs of what was gated in
+  
+  // Contract
+  taskType: string;             // e.g. "reference_lookup"
+  contextManifest: string;      // what tiers were available
+  
+  // Context gating
+  contextKeysInjected: string[];       // e.g. ["t1:roster", "t2:officer:khan"]
+  t2Provenance?: Array<{               // provenance for each T2 chunk used
+    id: string;                        // officer/ship ID
+    source: string;                    // e.g. "STFC wiki"
+    importedAt: string;                // ISO timestamp
+    revision?: string;                 // wiki revision ID
+  }>;
+  
+  // Validation
   validationResult: "pass" | "fail" | "repaired";
   validationDetails?: string[];  // What failed, if anything
   repairAttempted: boolean;
+  
   durationMs: number;
 }
 ```
 
-Receipts are logged via structured logging (ADR-009) at `debug` level. This makes behavior auditable without a separate receipt store — `grep` the logs for `microrunner:receipt` to trace what happened on any query.
+Receipts are logged via structured logging (ADR-009) at `debug` level. This makes behavior auditable without a separate receipt store — `grep` the logs for `microrunner:receipt` to trace what happened on any query. The receipt includes context *keys* (not full content) and T2 provenance, giving forensic debugging capability when investigating a bad answer.
 
 ### Initial Scope (Two Task Types Only)
 
@@ -283,6 +330,10 @@ All other messages fall through to `strategy_general` — the current behavior. 
 - **No tool chains.** The model doesn't call tools. The MicroRunner gates context before the call.
 - **No LexRunner import.** No code from `@smartergpt/lex` or LexSona enters this codebase.
 - **No vector search / RAG.** Reference lookups are name-match against the SQLite wiki import, not embedding-based retrieval.
+
+### Future Consideration: Safety Settings
+
+The current `BLOCK_NONE` safety profile (see gemini.ts) is appropriate for a personal tool. ADR-014 does not change this. However, if Majel ever serves multiple users or becomes public-facing, the safety profile should become configurable per-deployment. This is not Phase 1 scope — just noting the extension point exists at `SAFETY_SETTINGS` in gemini.ts.
 
 ## Consequences
 
