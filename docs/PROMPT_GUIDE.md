@@ -1,16 +1,17 @@
-# Majel Prompt Tuning Guide
+# Aria Prompt Tuning Guide
 
-How we tune Majel's behavior without fine-tuning the underlying model.
+How we tune Aria's behavior without fine-tuning the underlying model.
 
 ## TL;DR
 
-There are **three levers** for controlling Majel's behavior:
+There are **four levers** for controlling Aria's behavior:
 
 1. **System Prompt** — identity, authority model, knowledge boundaries, fleet context
 2. **Safety Settings** — Gemini's content filters (harassment, violence, etc.)
-3. **Model Parameters** — temperature, top_p, top_k (not yet exposed)
+3. **MicroRunner** — contract-driven context gating and output validation (ADR-014)
+4. **Model Parameters** — temperature, top_p, top_k (not yet exposed)
 
-The system prompt is where 95% of tuning happens. Safety settings are a one-time config. Model parameters are for fine-grained control later.
+The system prompt is where most tuning happens. The MicroRunner enforces the authority ladder at runtime. Safety settings are a one-time config. Model parameters are for fine-grained control later.
 
 ---
 
@@ -19,10 +20,11 @@ The system prompt is where 95% of tuning happens. Safety settings are a one-time
 The prompt is built in layers (see `src/server/gemini.ts`):
 
 ### Layer 1: Identity
-Who is Majel? This never changes regardless of data availability.
+Who is Aria? This never changes regardless of data availability.
 
 ```
-You are Majel, the Fleet Intelligence System aboard Admiral Guff's flagship.
+You are Aria, the Fleet Intelligence System aboard Admiral Guff's flagship.
+Your full designation is Ariadne — named in honor of Majel Barrett-Roddenberry (1932–2008).
 ```
 
 **Why it's first:** LLMs weight the beginning of the system prompt heavily. Identity anchors all behavior.
@@ -31,7 +33,7 @@ Personality is kept tight: "Calm, concise, shows your work. Precision IS your pe
 
 ### Layer 2: Scope & Authority (the Authority Ladder)
 
-**The core operating principle:** Majel may discuss *any topic* — but must rank her sources and signal which tier an answer comes from.
+**The core operating principle:** Aria may discuss *any topic* — but must rank her sources and signal which tier an answer comes from.
 
 ```
 AUTHORITY LADDER (strongest → weakest):
@@ -55,7 +57,7 @@ The **critical boundary**: never present training knowledge as if it were inject
 
 ### Hard Boundaries
 
-Things Majel must never fabricate, regardless of source tier:
+Things Aria must never fabricate, regardless of source tier:
 - Specific numbers not in context (stats, costs, percentages, dates)
 - System diagnostics or runtime state (memory frames, connection status, settings values)
 - Quotes or statements the Admiral supposedly made
@@ -71,7 +73,7 @@ Things Majel must never fabricate, regardless of source tier:
 
 ### Architecture Section
 
-Describes Majel's technical stack in *general terms only*. No live state claims.
+Describes Aria's technical stack in *general terms only*. No live state claims.
 
 The model cannot inspect its own subsystems at runtime — it doesn't know memory frame counts, connection status, or settings values unless they're injected into context. For diagnostics, it directs users to `/api/health`.
 
@@ -122,7 +124,7 @@ Gemini has 4 content filter categories, each with adjustable thresholds:
 
 ### Why BLOCK_NONE?
 
-Majel is a **personal assistant for a war game**. Default safety filters cause false positives for:
+Aria is a **personal assistant for a war game**. Default safety filters cause false positives for:
 - Discussions of combat strategy ("attack power", "destroy the enemy")
 - Officer abilities with violent names
 - Tactical language that's core to the game
@@ -133,7 +135,7 @@ These aren't bugs in Gemini — the filters are designed for general-purpose cha
 
 ### When to Tighten
 
-If Majel becomes a public-facing product, revisit this. For a personal tool, `BLOCK_NONE` is appropriate.
+If Aria becomes a public-facing product, revisit this. For a personal tool, `BLOCK_NONE` is appropriate.
 
 ---
 
@@ -250,18 +252,46 @@ Prompt engineering gets us 80-90% of the way. Fine-tuning is for the last 10-20%
 
 ---
 
-## 5. Future Prompt Features
+## 5. MicroRunner (ADR-014) — Runtime Enforcement
 
-### Tiered Context Injection (planned — Phase C)
-The authority ladder defines *how to rank sources* but doesn't yet dynamically control *what's injected*. Future work:
+The MicroRunner adds **runtime enforcement** of the authority ladder. Instead of hoping the model follows the prompt rules, the MicroRunner verifies compliance after each response.
 
-- **T1 (always injected):** Identity, authority ladder, fleet config, dock briefing
-- **T2 (on demand):** Reference packs — wiki-imported officer/ship catalogs, injected only when relevant to the query
-- **Provenance requirement:** Reference packs must carry source metadata (wiki revision, import date, editor attribution) so the model can cite them properly and not treat them as "training knowledge wearing a trench coat"
+### How It Works
 
-Implementation options:
-1. Rebuild ChatSession per query with an assembled systemInstruction (heavyweight but clean)
-2. Inject reference chunks into the user message as `REFERENCE: ...` blocks (lighter, proven pattern)
+Every user message flows through a three-stage pipeline:
+
+1. **PromptCompiler** — classifies the message into a task type (`reference_lookup`, `dock_planning`, `fleet_query`, `strategy_general`) using keyword matching. Fast, deterministic, no API call.
+2. **ContextGate** — assembles only the context the task needs. A lore question doesn't waste tokens on the full roster CSV. T2 reference packs (wiki-imported officer data) are injected per-query as labeled `REFERENCE:` blocks with provenance.
+3. **OutputValidator** — checks the response for ungrounded numeric claims, fabricated diagnostics, and missing source attribution. On failure, triggers a single repair pass.
+
+### Task Types
+
+| Type | Trigger | Context Injected | Validation |
+|------|---------|------------------|------------|
+| `reference_lookup` | Officer/ship name mentioned | T2 reference pack + T1 roster match | Source citation, no ungrounded stats |
+| `dock_planning` | "dock", "drydock", "loadout" | T1 dock briefing + roster + fleet config | Dock data citation, no invented configs |
+| `fleet_query` | "my roster", "my fleet" | T1 fleet config + roster + dock briefing | Source citation, no ungrounded stats |
+| `strategy_general` | Everything else (default) | T1 fleet config only | No validation (authority ladder handles it) |
+
+### Tiered Context Injection (implemented)
+
+The authority ladder defines *how to rank sources*. The MicroRunner dynamically controls *what's injected*:
+
+- **T1 (always in system prompt):** Identity, authority ladder, fleet config, dock briefing
+- **T2 (on demand, per-message):** Reference packs — wiki-imported officer/ship catalogs, injected only when relevant to the query
+- **T3 (always available):** Training knowledge — the model's own knowledge, hedged per authority ladder
+
+Reference packs carry provenance metadata (source, import date) so the model can cite them properly. Context is injected as `REFERENCE: ...` blocks prepended to the user message (Approach B from ADR-014).
+
+### Receipts
+
+Every MicroRunner invocation produces a receipt logged at `debug` level. Receipts include task type, context manifest, keys injected, T2 provenance, validation result, and duration. Use `grep microrunner:receipt` to trace what happened on any query.
+
+### Phase 2: Behavioral Rules (planned)
+
+Admiral corrections will accumulate into durable behavioral adjustments via a Bayesian confidence scoring system. Rules start with a skeptical prior and must earn activation through repeated reinforcement. See ADR-014 for the full design.
+
+## 6. Future Prompt Features
 
 ### Dynamic Context (planned)
 - Inject Lex memory recall results into the system prompt
@@ -272,7 +302,7 @@ Implementation options:
 - Future: sliding window with summarization for long sessions
 
 ### Tool Use / Function Calling
-- Gemini supports function calling — could let Majel query the Sheets API dynamically
+- Gemini supports function calling — could let Aria query the Sheets API dynamically
 - Could add Lex recall as a Gemini tool so the model decides when to search memory
 
 ---

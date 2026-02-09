@@ -40,12 +40,14 @@ import { createSettingsStore } from "./settings.js";
 import { createSessionStore } from "./sessions.js";
 import { createFleetStore } from "./fleet-store.js";
 import { createDockStore } from "./dock-store.js";
+import { createBehaviorStore } from "./behavior-store.js";
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
   type AppState,
   readFleetConfig,
   readDockBriefing,
+  buildMicroRunnerFromState,
 } from "./app-context.js";
 
 // Configuration (ADR-005 Phase 3)
@@ -83,6 +85,7 @@ const state: AppState = {
   sessionStore: null,
   fleetStore: null,
   dockStore: null,
+  behaviorStore: null,
   fleetData: null,
   rosterError: null,
   startupComplete: false,
@@ -188,19 +191,30 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "dock store init failed");
   }
 
+  // 2e. Initialize behavior store (ADR-014 Phase 2 — behavioral rules)
+  try {
+    state.behaviorStore = createBehaviorStore();
+    const behaviorCounts = state.behaviorStore.counts();
+    log.boot.info({ rules: behaviorCounts.total, active: behaviorCounts.active }, "behavior store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "behavior store init failed");
+  }
+
   // Resolve config from settings store
   const { geminiApiKey, spreadsheetId, tabMapping } = state.config;
 
   // 3. Initialize Gemini (doesn't need fleet data yet)
   if (geminiApiKey) {
     const csv = "No roster data loaded yet.";
+    const runner = buildMicroRunnerFromState(state);
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,
       csv,
       readFleetConfig(state.settingsStore),
       readDockBriefing(state.dockStore),
+      runner,
     );
-    log.boot.info({ model: "gemini-2.5-flash-lite" }, "gemini engine online");
+    log.boot.info({ model: "gemini-2.5-flash-lite", microRunner: !!runner }, "gemini engine online");
   } else {
     log.boot.warn("GEMINI_API_KEY not set — chat disabled");
   }
@@ -230,15 +244,17 @@ async function boot(): Promise<void> {
         sections: state.fleetData.sections.length,
       }, "fleet data loaded");
 
-      // Re-create Gemini engine with fleet data
+      // Re-create Gemini engine with fleet data + MicroRunner
       if (geminiApiKey) {
+        const runner = buildMicroRunnerFromState(state);
         state.geminiEngine = createGeminiEngine(
           geminiApiKey,
           state.fleetData,
           readFleetConfig(state.settingsStore),
           readDockBriefing(state.dockStore),
+          runner,
         );
-        log.boot.info("gemini engine refreshed with fleet data");
+        log.boot.info({ microRunner: !!runner }, "gemini engine refreshed with fleet data");
       }
     } catch (err: unknown) {
       state.rosterError = err instanceof Error ? err.message : String(err);
@@ -268,6 +284,9 @@ async function shutdown(): Promise<void> {
   }
   if (state.dockStore) {
     state.dockStore.close();
+  }
+  if (state.behaviorStore) {
+    state.behaviorStore.close();
   }
   if (state.memoryService) {
     await state.memoryService.close();
