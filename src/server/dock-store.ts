@@ -174,6 +174,11 @@ export interface DockStore {
   listAllTags(): string[];
   findPresetsForDock(dockNumber: number): CrewPresetWithMembers[];
 
+  // ── Cascade Previews ──────────────────────────────────
+  previewDeleteDock(dockNumber: number): { ships: { shipId: string; shipName: string }[]; intents: { key: string; label: string }[]; shipCount: number; intentCount: number };
+  previewDeleteShip(shipId: string): { dockAssignments: { dockNumber: number; dockLabel: string }[]; presets: { id: number; presetName: string; intentLabel: string }[] };
+  previewDeleteOfficer(officerId: string): { presetMemberships: { presetId: number; presetName: string; shipName: string; intentLabel: string }[] };
+
   // ── Briefing ──────────────────────────────────────────
   buildBriefing(): DockBriefing;
 
@@ -649,6 +654,47 @@ export function createDockStore(dbPath?: string): DockStore {
        ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
     ),
 
+    // Cascade previews
+    previewDeleteDock: db.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM dock_ships WHERE dock_number = ?) AS shipCount,
+         (SELECT COUNT(*) FROM dock_intents WHERE dock_number = ?) AS intentCount`,
+    ),
+    previewDeleteDockShips: db.prepare(
+      `SELECT ds.ship_id AS shipId, s.name AS shipName
+       FROM dock_ships ds JOIN ships s ON ds.ship_id = s.id
+       WHERE ds.dock_number = ? ORDER BY s.name ASC`,
+    ),
+    previewDeleteDockIntents: db.prepare(
+      `SELECT di.intent_key AS key, ic.label
+       FROM dock_intents di JOIN intent_catalog ic ON di.intent_key = ic.key
+       WHERE di.dock_number = ? ORDER BY ic.label ASC`,
+    ),
+    previewDeleteShipFromDocks: db.prepare(
+      `SELECT ds.dock_number AS dockNumber, dl.label AS dockLabel
+       FROM dock_ships ds
+       JOIN drydock_loadouts dl ON ds.dock_number = dl.dock_number
+       WHERE ds.ship_id = ?
+       ORDER BY ds.dock_number ASC`,
+    ),
+    previewDeleteShipPresets: db.prepare(
+      `SELECT cp.id, cp.preset_name AS presetName, ic.label AS intentLabel
+       FROM crew_presets cp
+       JOIN intent_catalog ic ON cp.intent_key = ic.key
+       WHERE cp.ship_id = ?
+       ORDER BY cp.preset_name ASC`,
+    ),
+    previewDeleteOfficerFromPresets: db.prepare(
+      `SELECT cp.id AS presetId, cp.preset_name AS presetName,
+              s.name AS shipName, ic.label AS intentLabel
+       FROM crew_preset_members cpm
+       JOIN crew_presets cp ON cpm.preset_id = cp.id
+       JOIN ships s ON cp.ship_id = s.id
+       JOIN intent_catalog ic ON cp.intent_key = ic.key
+       WHERE cpm.officer_id = ?
+       ORDER BY cp.preset_name ASC`,
+    ),
+
     // Counts
     countIntents: db.prepare(`SELECT COUNT(*) AS count FROM intent_catalog`),
     countDocks: db.prepare(`SELECT COUNT(*) AS count FROM drydock_loadouts`),
@@ -740,6 +786,26 @@ export function createDockStore(dbPath?: string): DockStore {
   function nextDockNumber(): number {
     const row = db.prepare(`SELECT COALESCE(MAX(dock_number), 0) + 1 AS next FROM drydock_loadouts`).get() as { next: number };
     return row.next;
+  }
+
+  // ── Cascade Preview Methods ─────────────────────────────
+
+  function previewDeleteDock(dockNumber: number) {
+    const counts = stmts.previewDeleteDock.get(dockNumber, dockNumber) as { shipCount: number; intentCount: number };
+    const ships = stmts.previewDeleteDockShips.all(dockNumber) as { shipId: string; shipName: string }[];
+    const intents = stmts.previewDeleteDockIntents.all(dockNumber) as { key: string; label: string }[];
+    return { ships, intents, shipCount: counts.shipCount, intentCount: counts.intentCount };
+  }
+
+  function previewDeleteShip(shipId: string) {
+    const dockAssignments = stmts.previewDeleteShipFromDocks.all(shipId) as { dockNumber: number; dockLabel: string }[];
+    const presets = stmts.previewDeleteShipPresets.all(shipId) as { id: number; presetName: string; intentLabel: string }[];
+    return { dockAssignments, presets };
+  }
+
+  function previewDeleteOfficer(officerId: string) {
+    const presetMemberships = stmts.previewDeleteOfficerFromPresets.all(officerId) as { presetId: number; presetName: string; shipName: string; intentLabel: string }[];
+    return { presetMemberships };
   }
 
   // ── Dock Intent Methods ─────────────────────────────────
@@ -1203,6 +1269,9 @@ export function createDockStore(dbPath?: string): DockStore {
     listAllTags,
     findPresetsForDock,
     buildBriefing,
+    previewDeleteDock,
+    previewDeleteShip,
+    previewDeleteOfficer,
     getDbPath: () => resolvedPath,
     counts: () => ({
       intents: (stmts.countIntents.get() as { count: number }).count,

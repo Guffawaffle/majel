@@ -223,6 +223,39 @@ export async function deleteDock(num) {
 }
 
 /**
+ * Preview what would be deleted when removing a dock
+ * @param {number} num - Dock number
+ * @returns {Promise<Object>} - { ships, intents, shipCount, intentCount }
+ */
+export async function previewDeleteDock(num) {
+    const res = await fetch(`/api/fleet/docks/${num}/cascade-preview`);
+    const env = await res.json();
+    return env.data || {};
+}
+
+/**
+ * Preview what would be deleted when removing a ship
+ * @param {string} id - Ship ID
+ * @returns {Promise<Object>} - { dockAssignments, crewPresets, crewAssignments }
+ */
+export async function previewDeleteShip(id) {
+    const res = await fetch(`/api/fleet/ships/${id}/cascade-preview`);
+    const env = await res.json();
+    return env.data || {};
+}
+
+/**
+ * Preview what would be deleted when removing an officer
+ * @param {string} id - Officer ID
+ * @returns {Promise<Object>} - { presetMemberships, crewAssignments }
+ */
+export async function previewDeleteOfficer(id) {
+    const res = await fetch(`/api/fleet/officers/${id}/cascade-preview`);
+    const env = await res.json();
+    return env.data || {};
+}
+
+/**
  * Get the next available dock number
  * @returns {Promise<number>}
  */

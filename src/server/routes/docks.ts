@@ -143,6 +143,53 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, { dockNumber: num, status: "deleted" });
   });
 
+  // ─── Cascade Previews ──────────────────────────────────
+
+  router.get("/api/fleet/docks/:num/cascade-preview", (req, res) => {
+    if (!appState.dockStore) {
+      return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
+    }
+    const num = parseInt(req.params.num, 10);
+    if (isNaN(num) || num < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
+    }
+    const preview = appState.dockStore.previewDeleteDock(num);
+    sendOk(res, { dockNumber: num, ...preview });
+  });
+
+  router.get("/api/fleet/ships/:id/cascade-preview", (req, res) => {
+    const dockStore = appState.dockStore;
+    const fleetStore = appState.fleetStore;
+    if (!dockStore || !fleetStore) {
+      return sendFail(res, ErrorCode.FLEET_STORE_NOT_AVAILABLE, "Store not available", 503);
+    }
+    const id = req.params.id;
+    const dockPreview = dockStore.previewDeleteShip(id);
+    const fleetPreview = fleetStore.previewDeleteShip(id);
+    sendOk(res, {
+      shipId: id,
+      dockAssignments: dockPreview.dockAssignments,
+      crewPresets: dockPreview.presets,
+      crewAssignments: fleetPreview.crewAssignments,
+    });
+  });
+
+  router.get("/api/fleet/officers/:id/cascade-preview", (req, res) => {
+    const dockStore = appState.dockStore;
+    const fleetStore = appState.fleetStore;
+    if (!dockStore || !fleetStore) {
+      return sendFail(res, ErrorCode.FLEET_STORE_NOT_AVAILABLE, "Store not available", 503);
+    }
+    const id = req.params.id;
+    const dockPreview = dockStore.previewDeleteOfficer(id);
+    const fleetPreview = fleetStore.previewDeleteOfficer(id);
+    sendOk(res, {
+      officerId: id,
+      presetMemberships: dockPreview.presetMemberships,
+      crewAssignments: fleetPreview.crewAssignments,
+    });
+  });
+
   // ─── Dock Intents ───────────────────────────────────────
 
   router.put("/api/fleet/docks/:num/intents", (req, res) => {

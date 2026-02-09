@@ -1636,4 +1636,77 @@ describe("Dock API Routes", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  // ── Cascade Preview Routes ──────────────────────────────
+
+  describe("GET /api/fleet/docks/:num/cascade-preview", () => {
+    it("returns empty preview for dock with no data", async () => {
+      dockStore.upsertDock(1, { label: "Empty" });
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const res = await request(app).get("/api/fleet/docks/1/cascade-preview");
+      expect(res.status).toBe(200);
+      expect(res.body.data.shipCount).toBe(0);
+      expect(res.body.data.intentCount).toBe(0);
+      expect(res.body.data.ships).toEqual([]);
+      expect(res.body.data.intents).toEqual([]);
+    });
+
+    it("returns ships and intents that would be deleted", async () => {
+      dockStore.upsertDock(1, { label: "Test" });
+      dockStore.addDockShip(1, "kumari");
+      dockStore.setDockIntents(1, ["pvp"]);
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const res = await request(app).get("/api/fleet/docks/1/cascade-preview");
+      expect(res.status).toBe(200);
+      expect(res.body.data.shipCount).toBe(1);
+      expect(res.body.data.intentCount).toBe(1);
+      expect(res.body.data.ships[0].shipName).toBe("Kumari");
+      expect(res.body.data.intents[0].label).toBe("PvP/Raiding");
+    });
+  });
+
+  describe("GET /api/fleet/ships/:id/cascade-preview", () => {
+    it("returns dock assignments and presets for a ship", async () => {
+      dockStore.upsertDock(1, { label: "Dock 1" });
+      dockStore.addDockShip(1, "kumari");
+      dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "Arena Build" });
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const res = await request(app).get("/api/fleet/ships/kumari/cascade-preview");
+      expect(res.status).toBe(200);
+      expect(res.body.data.dockAssignments.length).toBe(1);
+      expect(res.body.data.dockAssignments[0].dockLabel).toBe("Dock 1");
+      expect(res.body.data.crewPresets.length).toBe(1);
+      expect(res.body.data.crewPresets[0].presetName).toBe("Arena Build");
+    });
+
+    it("returns empty for ship with no references", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const res = await request(app).get("/api/fleet/ships/kumari/cascade-preview");
+      expect(res.status).toBe(200);
+      expect(res.body.data.dockAssignments).toEqual([]);
+      expect(res.body.data.crewPresets).toEqual([]);
+      expect(res.body.data.crewAssignments).toEqual([]);
+    });
+  });
+
+  describe("GET /api/fleet/officers/:id/cascade-preview", () => {
+    it("returns preset memberships for an officer", async () => {
+      fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+      const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "Arena Build" });
+      dockStore.setPresetMembers(preset.id, [{ officerId: "kirk", roleType: "bridge", slot: "captain" }]);
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const res = await request(app).get("/api/fleet/officers/kirk/cascade-preview");
+      expect(res.status).toBe(200);
+      expect(res.body.data.presetMemberships.length).toBe(1);
+      expect(res.body.data.presetMemberships[0].presetName).toBe("Arena Build");
+    });
+
+    it("returns empty for officer with no references", async () => {
+      const app = createApp(makeState({ dockStore, fleetStore }));
+      const res = await request(app).get("/api/fleet/officers/kirk/cascade-preview");
+      expect(res.status).toBe(200);
+      expect(res.body.data.presetMemberships).toEqual([]);
+      expect(res.body.data.crewAssignments).toEqual([]);
+    });
+  });
 });
