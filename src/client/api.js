@@ -168,3 +168,246 @@ export async function loadFleetSettings() {
         return { settings: [] };
     }
 }
+
+// ─── Drydock / Fleet APIs ───────────────────────────────────
+
+/**
+ * Fetch all drydock loadouts
+ * @returns {Promise<Array>} Array of dock objects
+ */
+export async function fetchDocks() {
+    const res = await fetch("/api/fleet/docks");
+    const env = await res.json();
+    return env.data?.docks || [];
+}
+
+/**
+ * Fetch a single dock's full detail
+ * @param {number} num - Dock number
+ * @returns {Promise<Object|null>} Dock detail or null
+ */
+export async function fetchDock(num) {
+    const res = await fetch(`/api/fleet/docks/${num}`);
+    if (!res.ok) return null;
+    const env = await res.json();
+    return env.data?.dock || null;
+}
+
+/**
+ * Update dock metadata (label, notes)
+ * @param {number} num - Dock number
+ * @param {Object} fields - { label?, notes? }
+ * @returns {Promise<Object>} Updated dock
+ */
+export async function updateDock(num, fields) {
+    const res = await fetch(`/api/fleet/docks/${num}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Set intents for a dock
+ * @param {number} num - Dock number
+ * @param {string[]} intents - Array of intent keys
+ * @returns {Promise<Object>}
+ */
+export async function saveDockIntents(num, intents) {
+    const res = await fetch(`/api/fleet/docks/${num}/intents`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intents }),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Assign a ship to a dock rotation
+ * @param {number} num - Dock number
+ * @param {number} shipId - Ship ID
+ * @param {boolean} isActive - Whether this is the active ship
+ * @returns {Promise<Object>}
+ */
+export async function addDockShip(num, shipId, isActive = false) {
+    const res = await fetch(`/api/fleet/docks/${num}/ships`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ship_id: shipId, is_active: isActive ? 1 : 0 }),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Remove a ship from a dock
+ * @param {number} num - Dock number
+ * @param {number} shipId - Ship ID
+ * @returns {Promise<Object>}
+ */
+export async function removeDockShip(num, shipId) {
+    const res = await fetch(`/api/fleet/docks/${num}/ships/${shipId}`, {
+        method: "DELETE",
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Set which ship is active in a dock
+ * @param {number} num - Dock number
+ * @param {number} shipId - Ship ID
+ * @returns {Promise<Object>}
+ */
+export async function setActiveShip(num, shipId) {
+    const res = await fetch(`/api/fleet/docks/${num}/ships/${shipId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: 1 }),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Fetch intent catalog
+ * @returns {Promise<Array>} Array of intent objects
+ */
+export async function fetchIntents() {
+    const res = await fetch("/api/fleet/intents");
+    const env = await res.json();
+    return env.data?.intents || [];
+}
+
+/**
+ * Fetch all ships
+ * @returns {Promise<Array>} Array of ship objects
+ */
+export async function fetchShips() {
+    const res = await fetch("/api/fleet/ships");
+    const env = await res.json();
+    return env.data?.ships || [];
+}
+
+/**
+ * Fetch all officers
+ * @returns {Promise<Array>} Array of officer objects
+ */
+export async function fetchOfficers() {
+    const res = await fetch("/api/fleet/officers");
+    const env = await res.json();
+    return env.data?.officers || [];
+}
+
+/**
+ * Fetch dock conflict analysis
+ * @returns {Promise<Object>} Conflicts data
+ */
+export async function fetchConflicts() {
+    const res = await fetch("/api/fleet/docks/conflicts");
+    const env = await res.json();
+    return env.data || {};
+}
+
+/**
+ * Fetch dock summary (all docks with intents, ships, presets)
+ * @returns {Promise<Array>} Dock summaries
+ */
+export async function fetchDockSummary() {
+    const res = await fetch("/api/fleet/docks/summary");
+    const env = await res.json();
+    return env.data?.summary || [];
+}
+
+// ─── Ship / Officer CRUD ────────────────────────────────────
+
+/**
+ * Create a new ship
+ * @param {Object} ship - Ship data (id, name required)
+ * @returns {Promise<Object>}
+ */
+export async function createShip(ship) {
+    const res = await fetch("/api/fleet/ships", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ship),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Update a ship's fields
+ * @param {string} id - Ship ID
+ * @param {Object} fields - Fields to update
+ * @returns {Promise<Object>}
+ */
+export async function updateShip(id, fields) {
+    const res = await fetch(`/api/fleet/ships/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Delete a ship
+ * @param {string} id - Ship ID
+ * @returns {Promise<Object>}
+ */
+export async function deleteShip(id) {
+    const res = await fetch(`/api/fleet/ships/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Create a new officer
+ * @param {Object} officer - Officer data (id, name required)
+ * @returns {Promise<Object>}
+ */
+export async function createOfficer(officer) {
+    const res = await fetch("/api/fleet/officers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(officer),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Update an officer's fields
+ * @param {string} id - Officer ID
+ * @param {Object} fields - Fields to update
+ * @returns {Promise<Object>}
+ */
+export async function updateOfficer(id, fields) {
+    const res = await fetch(`/api/fleet/officers/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Delete an officer
+ * @param {string} id - Officer ID
+ * @returns {Promise<Object>}
+ */
+export async function deleteOfficer(id) {
+    const res = await fetch(`/api/fleet/officers/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
