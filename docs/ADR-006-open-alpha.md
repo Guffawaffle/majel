@@ -21,6 +21,17 @@ Majel is usable, not polished. The alpha boundary:
 - **No guarantees:** Breaking changes between versions, schema migrations may require fresh DBs
 - **Audience:** Technically comfortable STFC players who can follow a setup guide, set env vars, and run `npm run dev`
 
+### Zero Backwards Compatibility (Pre-Alpha)
+
+Majel is days old. There are **zero external users** and zero production databases. During this pre-alpha phase:
+
+- **No migration code.** Schema changes are made directly. If your local DB is stale, delete it and re-import.
+- **No deprecation cycles.** APIs, schemas, and interfaces change freely.
+- **No semver obligations.** The version number is aspirational, not contractual.
+- **"Delete and re-create" is an acceptable migration path** for any local state.
+
+This policy holds until the first external user runs `npm run dev` against their own fleet data. At that point we start caring about data preservation. Until then, we build it right instead of building it backwards-compatible.
+
 ### The Lex Proof-of-Concept Angle
 
 Majel's secondary purpose is demonstrating [Lex](https://github.com/Guffawaffle/lex) in a real application. This shapes what we prioritize:
