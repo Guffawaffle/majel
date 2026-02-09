@@ -4,6 +4,8 @@
 **Date:** 2026-02-09  
 **Authors:** Guff, Opie (Claude)
 
+> **Evolution note:** ADR-015 (Canonical Entity Identity) formalizes the identity model for entities across all three tiers defined here. Bootstrap entities get `roster:*` namespaced IDs, reference entities get `wiki:*` IDs with provenance, and the `ref_id` column links roster entities to their canonical reference counterparts. This resolves the "who owns this row?" question at the identity level, not just the data-ownership level.
+
 ## Context
 
 Majel started as a **chat window over a spreadsheet**. Google Sheets held all fleet data, Majel imported it as CSV, injected it into Gemini prompts, and rendered answers. The sheet was the source of truth; the app was read-only.
