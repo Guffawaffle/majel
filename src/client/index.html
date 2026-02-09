@@ -112,6 +112,18 @@ MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
         </div>
       </div>
 
+      <!-- View Switcher -->
+      <div id="view-switcher" class="view-switcher hidden">
+        <button class="view-switch-btn active" data-view="chat">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v8H4l-2 2V3z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          Chat
+        </button>
+        <button class="view-switch-btn" data-view="drydock">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 11l3-8h8l3 8H1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4 11v2h8v-2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          Drydock
+        </button>
+      </div>
+
       <!-- Chat Area -->
       <main id="chat-area">
         <!-- Welcome screen -->
@@ -153,6 +165,9 @@ MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
           <p class="input-hint">Gemini 2.5 Flash-Lite · <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline</p>
         </form>
       </footer>
+
+      <!-- Drydock Area (hidden by default, shown via view switcher) -->
+      <section id="drydock-area" class="drydock-area hidden"></section>
     </div>
 
     <!-- Fleet Config Panel (right edge) -->
