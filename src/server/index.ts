@@ -52,7 +52,7 @@ import {
 import { bootstrapConfig, resolveConfig } from "./config.js";
 
 // Envelope (ADR-004)
-import { envelopeMiddleware, errorHandler } from "./envelope.js";
+import { envelopeMiddleware, errorHandler, createTimeoutMiddleware } from "./envelope.js";
 
 // Route modules
 import { createCoreRoutes } from "./routes/core.js";
@@ -92,10 +92,13 @@ const state: AppState = {
 // ─── App Factory ────────────────────────────────────────────────
 export function createApp(appState: AppState): express.Express {
   const app = express();
-  app.use(express.json());
-
+  
   // AX-First response envelope (ADR-004) — requestId + timing on every request
+  // MUST come before body parser so request ID is available for all errors
   app.use(envelopeMiddleware);
+  
+  // Body parser with size limit (ADR-005 Phase 4)
+  app.use(express.json({ limit: '100kb' }));
 
   // Structured HTTP request logging
   app.use(

@@ -11,7 +11,7 @@ import {
   readDockBriefing,
 } from "../app-context.js";
 import { log } from "../logger.js";
-import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 import { hasCredentials, fetchFleetData, parseTabMapping, type MultiTabConfig } from "../sheets.js";
 import { createGeminiEngine } from "../gemini.js";
 import { hasFleetData, fleetDataSummary } from "../fleet-data.js";
@@ -22,7 +22,7 @@ export function createCoreRoutes(appState: AppState): Router {
 
   // ─── Health ─────────────────────────────────────────────────
 
-  router.get("/api/health", (_req, res) => {
+  router.get("/api/health", createTimeoutMiddleware(2000), (_req, res) => {
     sendOk(res, {
       status: appState.startupComplete ? "online" : "initializing",
       fleet: hasFleetData(appState.fleetData)
@@ -150,7 +150,7 @@ export function createCoreRoutes(appState: AppState): Router {
 
   // ─── Roster Refresh ─────────────────────────────────────────
 
-  router.get("/api/roster", async (_req, res) => {
+  router.get("/api/roster", createTimeoutMiddleware(60000), async (_req, res) => {
     const { spreadsheetId, tabMapping, geminiApiKey } = appState.config;
     
     if (!spreadsheetId) {
