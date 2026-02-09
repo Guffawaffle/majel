@@ -111,6 +111,8 @@ This is intentionally coarse. We're gating context, not building a task planner.
 
 > **Evolution note (ContextGate):** ADR-015 (Canonical Entity Identity) upgrades the reference lookup path. Instead of name-matching against the roster, `lookupOfficer()` resolves via `ref_id` links to `reference_officers` entries with full provenance (page ID, revision ID, timestamp). The `ReferenceEntry` interface expands to include `sourcePageId`, `sourceRevisionId`, and optional roster data (`rosterLevel`, `rosterAssignment`). This makes `reference_lookup` truly deterministic.
 
+> **Evolution note (overlay-aware gating):** ADR-016 (Catalog-Overlay Model) adds ownership awareness to context gating. The ContextGate filters T2 injection by `ownership_state` — owned officers are primary suggestions, targeted officers are highlighted alternates, unowned are excluded from primary context, and unknown officers trigger explicit disambiguation in the response.
+
 ### 2. ContextGate
 
 Assembles only the context that the TaskContract requires:

@@ -6,6 +6,8 @@
 
 > **Evolution note:** ADR-015 (Canonical Entity Identity) formalizes the identity model for entities across all three tiers defined here. Bootstrap entities get `roster:*` namespaced IDs, reference entities get `wiki:*` IDs with provenance, and the `ref_id` column links roster entities to their canonical reference counterparts. This resolves the "who owns this row?" question at the identity level, not just the data-ownership level.
 
+> **Evolution note (D1 superseded):** ADR-016 (Catalog-Overlay Model) retires Google Sheets as a bootstrap source entirely. The wiki reference catalog (ADR-013) becomes the primary entity source, with user state stored as a thin overlay (`officer_overlay`, `ship_overlay`) on reference entries rather than as imported roster rows. The three-tier model still holds, but Tier 1 (Bootstrap) is now seeded from the wiki catalog, not from Sheets. The `roster:*` namespace from ADR-015 is retired — the overlay on `wiki:*` reference entities replaces it.
+
 ## Context
 
 Majel started as a **chat window over a spreadsheet**. Google Sheets held all fleet data, Majel imported it as CSV, injected it into Gemini prompts, and rendered answers. The sheet was the source of truth; the app was read-only.
