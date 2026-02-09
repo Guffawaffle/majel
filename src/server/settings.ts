@@ -94,6 +94,16 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
 
   // ── Model ───────────────────────────────────────────────────
   {
+    key: "model.apiKey",
+    category: "model",
+    label: "Gemini API Key",
+    description: "Google Gemini API key for LLM access.",
+    type: "string",
+    default: "",
+    envVar: "GEMINI_API_KEY",
+    sensitive: true,
+  },
+  {
     key: "model.name",
     category: "model",
     label: "Model Name",

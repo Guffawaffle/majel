@@ -12,6 +12,7 @@ import type { SettingsStore } from "./settings.js";
 import type { SessionStore } from "./sessions.js";
 import type { FleetStore } from "./fleet-store.js";
 import type { DockStore } from "./dock-store.js";
+import type { AppConfig } from "./config.js";
 
 // ─── App State ──────────────────────────────────────────────────
 
@@ -25,15 +26,8 @@ export interface AppState {
   fleetData: FleetData | null;
   rosterError: string | null;
   startupComplete: boolean;
+  config: AppConfig;
 }
-
-// ─── Configuration Constants ────────────────────────────────────
-
-export const PORT = parseInt(process.env.PORT || "3000", 10);
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-export const SPREADSHEET_ID = process.env.MAJEL_SPREADSHEET_ID || "";
-export const SHEET_RANGE = process.env.MAJEL_SHEET_RANGE || "Sheet1!A:Z";
-export const TAB_MAPPING_ENV = process.env.MAJEL_TAB_MAPPING || "";
 
 // ─── Helpers ────────────────────────────────────────────────────
 
