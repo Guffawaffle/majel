@@ -5,14 +5,14 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
-import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 
 export function createChatRoutes(appState: AppState): Router {
   const router = Router();
 
   // ─── Chat ───────────────────────────────────────────────────
 
-  router.post("/api/chat", async (req, res) => {
+  router.post("/api/chat", createTimeoutMiddleware(30000), async (req, res) => {
     const { message } = req.body;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 
