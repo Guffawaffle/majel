@@ -358,6 +358,120 @@ describe("FleetStore — Crew Assignments", () => {
     const ship = store.getShip("enterprise");
     expect(ship!.crew).toHaveLength(0);
   });
+
+  it("prevents bridge crew from being on multiple ships", () => {
+    // Create another ship
+    store.createShip({ id: "defiant", name: "USS Defiant", tier: 4, shipClass: "Battleship", status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    
+    // Assign Kirk as bridge crew on Enterprise
+    store.assignCrew("enterprise", "kirk", "bridge", "captain");
+    
+    // Try to assign Kirk as bridge crew on Defiant - should fail
+    expect(() => store.assignCrew("defiant", "kirk", "bridge", "captain"))
+      .toThrow(/already assigned as bridge crew/);
+  });
+
+  it("allows specialist crew on multiple ships", () => {
+    // Create another ship
+    store.createShip({ id: "defiant", name: "USS Defiant", tier: 4, shipClass: "Battleship", status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    
+    // Assign Kirk as specialist crew on both ships - should work
+    store.assignCrew("enterprise", "kirk", "specialist");
+    expect(() => store.assignCrew("defiant", "kirk", "specialist")).not.toThrow();
+  });
+
+  it("allows reassigning bridge crew after unassignment", () => {
+    // Create another ship
+    store.createShip({ id: "defiant", name: "USS Defiant", tier: 4, shipClass: "Battleship", status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    
+    // Assign Kirk as bridge crew on Enterprise
+    store.assignCrew("enterprise", "kirk", "bridge", "captain");
+    
+    // Unassign Kirk from Enterprise
+    store.unassignCrew("enterprise", "kirk");
+    
+    // Now assign Kirk as bridge crew on Defiant - should work
+    expect(() => store.assignCrew("defiant", "kirk", "bridge", "captain")).not.toThrow();
+  });
+});
+
+describe("FleetStore — Fleet Overview", () => {
+  let store: FleetStore;
+
+  beforeEach(() => {
+    store = createFleetStore(TEST_DB);
+  });
+
+  afterEach(() => {
+    store.close();
+    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+  });
+
+  it("returns fleet overview with empty data", () => {
+    const overview = store.getFleetOverview();
+    expect(overview.totalShips).toBe(0);
+    expect(overview.totalOfficers).toBe(0);
+    expect(overview.unassignedOfficers).toBe(0);
+    expect(overview.crewFillRates.bridgeCrew).toBe(0);
+    expect(overview.crewFillRates.specialistCrew).toBe(0);
+    expect(overview.crewFillRates.totalAssignments).toBe(0);
+    expect(overview.shipsByStatus).toEqual({
+      deployed: 0,
+      ready: 0,
+      maintenance: 0,
+      training: 0,
+      reserve: 0,
+      "awaiting-crew": 0,
+    });
+  });
+
+  it("counts ships by status", () => {
+    store.createShip({ id: "s1", name: "Ship 1", tier: null, shipClass: null, status: "deployed", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createShip({ id: "s2", name: "Ship 2", tier: null, shipClass: null, status: "deployed", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createShip({ id: "s3", name: "Ship 3", tier: null, shipClass: null, status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createShip({ id: "s4", name: "Ship 4", tier: null, shipClass: null, status: "maintenance", role: null, roleDetail: null, notes: null, importedFrom: null });
+
+    const overview = store.getFleetOverview();
+    expect(overview.totalShips).toBe(4);
+    expect(overview.shipsByStatus.deployed).toBe(2);
+    expect(overview.shipsByStatus.ready).toBe(1);
+    expect(overview.shipsByStatus.maintenance).toBe(1);
+    expect(overview.shipsByStatus.training).toBe(0);
+  });
+
+  it("counts unassigned officers", () => {
+    store.createOfficer({ id: "o1", name: "Officer 1", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+    store.createOfficer({ id: "o2", name: "Officer 2", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+    store.createOfficer({ id: "o3", name: "Officer 3", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+
+    const overview1 = store.getFleetOverview();
+    expect(overview1.totalOfficers).toBe(3);
+    expect(overview1.unassignedOfficers).toBe(3);
+
+    // Assign one officer
+    store.createShip({ id: "s1", name: "Ship 1", tier: null, shipClass: null, status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.assignCrew("s1", "o1", "bridge");
+
+    const overview2 = store.getFleetOverview();
+    expect(overview2.totalOfficers).toBe(3);
+    expect(overview2.unassignedOfficers).toBe(2);
+  });
+
+  it("counts crew fill rates by type", () => {
+    store.createShip({ id: "s1", name: "Ship 1", tier: null, shipClass: null, status: "ready", role: null, roleDetail: null, notes: null, importedFrom: null });
+    store.createOfficer({ id: "o1", name: "Officer 1", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+    store.createOfficer({ id: "o2", name: "Officer 2", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+    store.createOfficer({ id: "o3", name: "Officer 3", rarity: null, level: null, rank: null, groupName: null, importedFrom: null });
+
+    store.assignCrew("s1", "o1", "bridge", "captain");
+    store.assignCrew("s1", "o2", "bridge", "science");
+    store.assignCrew("s1", "o3", "specialist");
+
+    const overview = store.getFleetOverview();
+    expect(overview.crewFillRates.bridgeCrew).toBe(2);
+    expect(overview.crewFillRates.specialistCrew).toBe(1);
+    expect(overview.crewFillRates.totalAssignments).toBe(3);
+  });
 });
 
 describe("FleetStore — Assignment Log", () => {

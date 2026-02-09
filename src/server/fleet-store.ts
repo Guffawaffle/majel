@@ -159,6 +159,19 @@ export interface FleetStore {
   // ── Assignment Log ────────────────────────────────────
   getLog(filters?: { shipId?: string; officerId?: string; action?: LogAction; limit?: number }): AssignmentLogEntry[];
 
+  // ── Fleet Overview ────────────────────────────────────
+  getFleetOverview(): {
+    shipsByStatus: Record<ShipStatus, number>;
+    unassignedOfficers: number;
+    totalShips: number;
+    totalOfficers: number;
+    crewFillRates: {
+      bridgeCrew: number;
+      specialistCrew: number;
+      totalAssignments: number;
+    };
+  };
+
   // ── Import ────────────────────────────────────────────
   importFromFleetData(fleetData: FleetData): { ships: number; officers: number; skipped: number };
 
@@ -421,6 +434,12 @@ export function createFleetStore(dbPath?: string): FleetStore {
        WHERE ca.officer_id = ?
        ORDER BY s.name`,
     ),
+    checkBridgeCrewConflict: db.prepare(
+      `SELECT s.name AS shipName, ca.ship_id AS shipId
+       FROM crew_assignments ca
+       JOIN ships s ON s.id = ca.ship_id
+       WHERE ca.officer_id = ? AND ca.role_type = 'bridge' AND ca.ship_id != ?`,
+    ),
 
     // Assignment Log
     insertLog: db.prepare(
@@ -443,6 +462,15 @@ export function createFleetStore(dbPath?: string): FleetStore {
       `SELECT id, ship_id AS shipId, officer_id AS officerId, action, detail, timestamp
        FROM assignment_log WHERE action = ? ORDER BY timestamp DESC LIMIT ?`,
     ),
+
+    // Fleet Overview
+    countShipsByStatus: db.prepare(`SELECT status, COUNT(*) AS count FROM ships GROUP BY status`),
+    countUnassignedOfficers: db.prepare(
+      `SELECT COUNT(*) AS count FROM officers o
+       WHERE NOT EXISTS (SELECT 1 FROM crew_assignments ca WHERE ca.officer_id = o.id)`,
+    ),
+    countBridgeCrew: db.prepare(`SELECT COUNT(*) AS count FROM crew_assignments WHERE role_type = 'bridge'`),
+    countSpecialistCrew: db.prepare(`SELECT COUNT(*) AS count FROM crew_assignments WHERE role_type = 'specialist'`),
 
     // Counts
     countShips: db.prepare(`SELECT COUNT(*) AS count FROM ships`),
@@ -660,6 +688,14 @@ export function createFleetStore(dbPath?: string): FleetStore {
         throw new Error(`Officer not found: ${officerId}`);
       }
 
+      // Validate bridge crew conflict: an officer can't be bridge crew on multiple ships
+      if (roleType === "bridge") {
+        const conflict = stmts.checkBridgeCrewConflict.get(officerId, shipId) as { shipName: string; shipId: string } | undefined;
+        if (conflict) {
+          throw new Error(`Officer ${officerId} is already assigned as bridge crew on ${conflict.shipName} (${conflict.shipId}). Remove them first before assigning to a new ship.`);
+        }
+      }
+
       const now = new Date().toISOString();
       const result = stmts.insertAssignment.run(
         shipId, officerId, roleType, slot ?? null, activeForRole ?? null, now,
@@ -707,6 +743,41 @@ export function createFleetStore(dbPath?: string): FleetStore {
         return stmts.getLogByAction.all(filters.action, limit) as AssignmentLogEntry[];
       }
       return stmts.getLog.all(limit) as AssignmentLogEntry[];
+    },
+
+    // ── Fleet Overview ────────────────────────────────────
+
+    getFleetOverview() {
+      const statusCounts = stmts.countShipsByStatus.all() as Array<{ status: ShipStatus; count: number }>;
+      const shipsByStatus: Record<ShipStatus, number> = {
+        deployed: 0,
+        ready: 0,
+        maintenance: 0,
+        training: 0,
+        reserve: 0,
+        "awaiting-crew": 0,
+      };
+      for (const row of statusCounts) {
+        shipsByStatus[row.status] = row.count;
+      }
+
+      const unassignedOfficers = (stmts.countUnassignedOfficers.get() as { count: number }).count;
+      const totalShips = (stmts.countShips.get() as { count: number }).count;
+      const totalOfficers = (stmts.countOfficers.get() as { count: number }).count;
+      const bridgeCrew = (stmts.countBridgeCrew.get() as { count: number }).count;
+      const specialistCrew = (stmts.countSpecialistCrew.get() as { count: number }).count;
+
+      return {
+        shipsByStatus,
+        unassignedOfficers,
+        totalShips,
+        totalOfficers,
+        crewFillRates: {
+          bridgeCrew,
+          specialistCrew,
+          totalAssignments: bridgeCrew + specialistCrew,
+        },
+      };
     },
 
     // ── Import ────────────────────────────────────────────
