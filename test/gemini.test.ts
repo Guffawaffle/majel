@@ -12,9 +12,9 @@ import { buildSection, buildFleetData, type FleetData } from "../src/server/flee
 
 describe("buildSystemPrompt", () => {
   describe("identity layer (always present)", () => {
-    it("includes Majel identity regardless of roster", () => {
+    it("includes Aria identity regardless of roster", () => {
       const prompt = buildSystemPrompt(null);
-      expect(prompt).toContain("You are Majel");
+      expect(prompt).toContain("You are Aria");
       expect(prompt).toContain("Fleet Intelligence System");
       expect(prompt).toContain("Admiral Guff");
     });
@@ -257,7 +257,7 @@ describe("buildSystemPrompt", () => {
       const prompt = buildSystemPrompt(data);
       expect(prompt).toContain("SCOPE & AUTHORITY:");
       expect(prompt).toContain("training knowledge");
-      expect(prompt).toContain("You are Majel");
+      expect(prompt).toContain("You are Aria");
     });
 
     it("handles empty FleetData (no sections)", () => {

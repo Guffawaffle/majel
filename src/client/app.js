@@ -430,7 +430,7 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
     if (!health) {
         chatArea.classList.remove("hidden");
         inputArea.classList.add("hidden");
-        chat.addMessage("error", "Could not connect to Majel server. Is it running?");
+        chat.addMessage("error", "Could not connect to Ariadne server. Is it running?");
         chat.addMessage("system", "Expected: npm run dev");
         currentMode = "loading";
     } else if (health.gemini !== "connected") {
@@ -450,7 +450,7 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
         if (currentMode === "setup" && h.gemini === "connected") {
             showChat();
             currentMode = "chat";
-            chat.addMessage("system", "✅ Configuration detected — Majel is online, Admiral.");
+            chat.addMessage("system", "✅ Configuration detected — Aria is online, Admiral.");
             chatInput.focus();
         } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "fleet" && h.gemini !== "connected") {
             showSetup(h);

@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Majel — STFC Fleet Intelligence</title>
+  <title>Ariadne — STFC Fleet Intelligence</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
     <!-- ── Sidebar ── -->
     <nav id="sidebar">
-      <div class="sidebar-logo">⟐ MAJEL</div>
+      <div class="sidebar-logo">⟐ ARIADNE</div>
 
       <button class="sidebar-nav-btn active" data-view="chat">
         <span class="icon">💬</span> Chat
@@ -67,7 +67,7 @@
         <button id="sidebar-toggle" aria-label="Toggle menu">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
-        <span class="mobile-title">Majel</span>
+        <span class="mobile-title">Aria</span>
         <div class="mobile-status">
           <span id="mobile-status-dot" class="status-dot offline"></span>
         </div>
@@ -83,7 +83,7 @@
       <div id="setup-guide" class="hidden">
         <div class="setup-container">
           <h2>⚙️ Setup Required</h2>
-          <p>Majel needs a couple things configured before she can help you, Admiral.</p>
+          <p>Aria needs a couple things configured before she can help you, Admiral.</p>
 
           <div class="setup-section" id="setup-gemini">
             <h3>1. Gemini API Key <span class="required-badge">Required</span></h3>
@@ -106,7 +106,7 @@
               <ol>
                 <li>Go to <a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noopener">Google Cloud Console → APIs</a></li>
                 <li>Select your project, click <strong>"+ ENABLE APIS AND SERVICES"</strong>, search <strong>"Google Sheets API"</strong>, enable it</li>
-                <li>Go to <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">OAuth consent screen</a> → External → fill in app name ("Majel"), your email, add <code>spreadsheets.readonly</code> scope, add yourself as test user</li>
+                <li>Go to <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">OAuth consent screen</a> → External → fill in app name ("Ariadne"), your email, add <code>spreadsheets.readonly</code> scope, add yourself as test user</li>
                 <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a> → <strong>"+ CREATE CREDENTIALS"</strong> → <strong>"OAuth client ID"</strong> → type: <strong>Desktop app</strong></li>
                 <li>Click <strong>"DOWNLOAD JSON"</strong> → save as <code>credentials.json</code> in <code>/srv/majel/</code></li>
                 <li>Get your spreadsheet ID from the URL:<br/>
@@ -133,8 +133,9 @@ MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
         <!-- Welcome screen -->
         <div id="welcome" class="welcome-screen">
           <div class="welcome-icon">🖖</div>
-          <h2>Majel</h2>
+          <h2>Aria</h2>
           <p class="welcome-sub">STFC Fleet Intelligence System</p>
+          <p class="welcome-credit">Named in honor of Majel Barrett-Roddenberry</p>
           <div class="welcome-suggestions">
             <button class="suggestion" data-msg="What crew should I use for the Enterprise?">What crew for the Enterprise?</button>
             <button class="suggestion" data-msg="Show me my strongest officers">My strongest officers</button>
@@ -158,7 +159,7 @@ MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
           <div class="input-container">
             <textarea
               id="chat-input"
-              placeholder="Message Majel..."
+              placeholder="Message Aria..."
               autocomplete="off"
               rows="1"
             ></textarea>
