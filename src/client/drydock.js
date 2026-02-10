@@ -217,9 +217,9 @@ function renderShipSection(dock) {
     const dockShips = dock?.ships || [];
     const activeShipId = dockShips.find(s => s.isActive)?.shipId;
 
-    // Available ships = all ships minus those already in this dock
+    // Available ships = owned ships minus those already in this dock
     const assignedIds = new Set(dockShips.map(s => s.shipId));
-    const availableShips = allShips.filter(s => !assignedIds.has(s.id));
+    const availableShips = allShips.filter(s => !assignedIds.has(s.id) && s.ownershipState === 'owned');
 
     let shipRows = '';
     for (const ds of dockShips) {
@@ -465,7 +465,7 @@ function bindEvents() {
     // Active ship radio
     area.querySelectorAll("[data-action='set-active-ship']").forEach(radio => {
         radio.addEventListener("change", async () => {
-            const shipId = parseInt(radio.dataset.ship, 10);
+            const shipId = radio.dataset.ship;
             await api.setActiveShip(activeDockNum, shipId);
             await refresh();
         });
@@ -476,7 +476,7 @@ function bindEvents() {
         btn.addEventListener("click", async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const shipId = parseInt(btn.dataset.ship, 10);
+            const shipId = btn.dataset.ship;
             await api.removeDockShip(activeDockNum, shipId);
             await refresh();
         });
@@ -490,7 +490,7 @@ function bindEvents() {
             if (!shipId) return;
             const dock = docks.find(d => d.dockNumber === activeDockNum);
             const isFirst = !dock || (dock.ships || []).length === 0;
-            await api.addDockShip(activeDockNum, parseInt(shipId, 10), isFirst);
+            await api.addDockShip(activeDockNum, shipId, isFirst);
             await refresh();
         });
     }
