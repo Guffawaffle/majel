@@ -159,34 +159,28 @@ export function createDockRoutes(appState: AppState): Router {
 
   router.get("/api/fleet/ships/:id/cascade-preview", (req, res) => {
     const dockStore = appState.dockStore;
-    const fleetStore = appState.fleetStore;
-    if (!dockStore || !fleetStore) {
-      return sendFail(res, ErrorCode.FLEET_STORE_NOT_AVAILABLE, "Store not available", 503);
+    if (!dockStore) {
+      return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const id = req.params.id;
     const dockPreview = dockStore.previewDeleteShip(id);
-    const fleetPreview = fleetStore.previewDeleteShip(id);
     sendOk(res, {
       shipId: id,
       dockAssignments: dockPreview.dockAssignments,
       crewPresets: dockPreview.presets,
-      crewAssignments: fleetPreview.crewAssignments,
     });
   });
 
   router.get("/api/fleet/officers/:id/cascade-preview", (req, res) => {
     const dockStore = appState.dockStore;
-    const fleetStore = appState.fleetStore;
-    if (!dockStore || !fleetStore) {
-      return sendFail(res, ErrorCode.FLEET_STORE_NOT_AVAILABLE, "Store not available", 503);
+    if (!dockStore) {
+      return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const id = req.params.id;
     const dockPreview = dockStore.previewDeleteOfficer(id);
-    const fleetPreview = fleetStore.previewDeleteOfficer(id);
     sendOk(res, {
       officerId: id,
       presetMemberships: dockPreview.presetMemberships,
-      crewAssignments: fleetPreview.crewAssignments,
     });
   });
 

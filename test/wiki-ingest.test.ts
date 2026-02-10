@@ -33,7 +33,6 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     memoryService: null,
     settingsStore: null,
     sessionStore: null,
-    fleetStore: null,
     dockStore: null,
     behaviorStore: null,
     referenceStore: null,

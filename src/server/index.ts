@@ -32,7 +32,6 @@ import { createGeminiEngine } from "./gemini.js";
 import { createMemoryService } from "./memory.js";
 import { createSettingsStore } from "./settings.js";
 import { createSessionStore } from "./sessions.js";
-import { createFleetStore } from "./fleet-store.js";
 import { createDockStore } from "./dock-store.js";
 import { createBehaviorStore } from "./behavior-store.js";
 import { createReferenceStore } from "./reference-store.js";
@@ -57,7 +56,6 @@ import { createCoreRoutes } from "./routes/core.js";
 import { createChatRoutes } from "./routes/chat.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSessionRoutes } from "./routes/sessions.js";
-import { createFleetRoutes } from "./routes/fleet.js";
 import { createDockRoutes } from "./routes/docks.js";
 import { createCatalogRoutes } from "./routes/catalog.js";
 import { createDiagnosticQueryRoutes } from "./routes/diagnostic-query.js";
@@ -81,7 +79,6 @@ const state: AppState = {
   memoryService: null,
   settingsStore: null,
   sessionStore: null,
-  fleetStore: null,
   dockStore: null,
   behaviorStore: null,
   referenceStore: null,
@@ -126,7 +123,6 @@ export function createApp(appState: AppState): express.Express {
   app.use(createChatRoutes(appState));
   app.use(createSettingsRoutes(appState));
   app.use(createSessionRoutes(appState));
-  app.use(createFleetRoutes(appState));
   app.use(createDockRoutes(appState));
   app.use(createCatalogRoutes(appState));
   app.use(createDiagnosticQueryRoutes(appState));
@@ -173,16 +169,7 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
   }
 
-  // 2c. Initialize fleet store (always — it's local SQLite)
-  try {
-    state.fleetStore = createFleetStore();
-    const counts = state.fleetStore.counts();
-    log.boot.info({ ships: counts.ships, officers: counts.officers }, "fleet store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "fleet store init failed");
-  }
-
-  // 2d. Initialize dock store (always — shares fleet.db)
+  // 2d. Initialize dock store (shares reference.db)
   try {
     state.dockStore = createDockStore();
     const dockCounts = state.dockStore.counts();
@@ -255,9 +242,6 @@ async function shutdown(): Promise<void> {
   }
   if (state.sessionStore) {
     state.sessionStore.close();
-  }
-  if (state.fleetStore) {
-    state.fleetStore.close();
   }
   if (state.dockStore) {
     state.dockStore.close();

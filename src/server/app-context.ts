@@ -9,7 +9,6 @@ import type { GeminiEngine, FleetConfig } from "./gemini.js";
 import type { MemoryService } from "./memory.js";
 import type { SettingsStore } from "./settings.js";
 import type { SessionStore } from "./sessions.js";
-import type { FleetStore } from "./fleet-store.js";
 import type { DockStore } from "./dock-store.js";
 import type { BehaviorStore } from "./behavior-store.js";
 import type { ReferenceStore } from "./reference-store.js";
@@ -24,7 +23,6 @@ export interface AppState {
   memoryService: MemoryService | null;
   settingsStore: SettingsStore | null;
   sessionStore: SessionStore | null;
-  fleetStore: FleetStore | null;
   dockStore: DockStore | null;
   behaviorStore: BehaviorStore | null;
   referenceStore: ReferenceStore | null;

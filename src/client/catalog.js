@@ -80,11 +80,14 @@ function render() {
 
     const items = activeTab === 'officers' ? officers : ships;
     const refCount = activeTab === 'officers' ? counts.reference.officers : counts.reference.ships;
+    const hasActiveFilters = filters.ownership !== 'all' || filters.target !== 'all' || filters.rarity || filters.group || filters.faction || filters.class || searchQuery;
+    const resultNote = hasActiveFilters ? `<div class="cat-result-count">Showing ${items.length} of ${refCount} ${activeTab}</div>` : '';
 
     area.innerHTML = `
         ${renderTabBar()}
         ${renderToolbar(refCount)}
         ${renderFilterChips()}
+        ${resultNote}
         ${renderBulkActions(items)}
         <div class="cat-grid" role="grid">
             ${items.length === 0 ? renderEmpty() : renderGrid(items)}
@@ -155,6 +158,14 @@ function renderFilterChips() {
         { value: 'not-targeted', label: 'Not targeted' },
     ];
 
+    // Active filter summary
+    const activeFilters = [];
+    if (filters.ownership !== 'all') activeFilters.push(filters.ownership === 'owned' ? 'Owned' : 'Unowned');
+    if (filters.target !== 'all') activeFilters.push(filters.target === 'targeted' ? 'Targeted' : 'Not targeted');
+    const filterSummary = activeFilters.length > 0
+        ? `<span class="cat-filter-summary">Showing: ${activeFilters.join(' + ')}</span>`
+        : '';
+
     return `
         <div class="cat-filters">
             <div class="cat-filter-group">
@@ -171,6 +182,7 @@ function renderFilterChips() {
                             data-action="filter-target" data-value="${o.value}">${o.label}</button>
                 `).join('')}
             </div>
+            ${filterSummary}
         </div>
     `;
 }

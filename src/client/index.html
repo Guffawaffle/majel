@@ -18,11 +18,11 @@
       <button class="sidebar-nav-btn" data-view="drydock">
         <span class="icon">🔧</span> Drydock
       </button>
-      <button class="sidebar-nav-btn" data-view="fleet">
-        <span class="icon">🚀</span> Fleet
-      </button>
       <button class="sidebar-nav-btn" data-view="catalog">
         <span class="icon">📋</span> Catalog
+      </button>
+      <button class="sidebar-nav-btn" data-view="diagnostics">
+        <span class="icon">⚡</span> Diagnostics
       </button>
 
       <div class="sidebar-section-label">Tools</div>
@@ -34,9 +34,6 @@
       </button>
       <button id="recall-btn" class="sidebar-nav-btn">
         <span class="icon">🧠</span> Memory Recall
-      </button>
-      <button id="diagnostic-btn" class="sidebar-nav-btn">
-        <span class="icon">⚡</span> Diagnostic
       </button>
 
       <div class="sidebar-section-label">Recent Chats</div>
@@ -153,11 +150,11 @@
       <!-- Drydock Area (hidden by default) -->
       <section id="drydock-area" class="drydock-area hidden"></section>
 
-      <!-- Fleet Manager Area (hidden by default) -->
-      <section id="fleet-manager-area" class="fleet-manager-area hidden"></section>
-
       <!-- Catalog Area (hidden by default) -->
       <section id="catalog-area" class="catalog-area hidden"></section>
+
+      <!-- Diagnostics Area (hidden by default) -->
+      <section id="diagnostics-area" class="diagnostics-area hidden"></section>
     </div>
 
     <!-- Recall Dialog -->
@@ -173,19 +170,6 @@
         <button type="submit">Search</button>
       </form>
       <div id="recall-results"></div>
-    </dialog>
-
-    <!-- Diagnostic Dialog -->
-    <dialog id="diagnostic-dialog">
-      <div class="dialog-header">
-        <h3>📊 System Diagnostic</h3>
-        <button class="dialog-close" id="diagnostic-close" aria-label="Close">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
-      </div>
-      <div id="diagnostic-content" class="diagnostic-content">
-        <p class="diagnostic-loading">Querying subsystems...</p>
-      </div>
     </dialog>
 
     <!-- Sidebar overlay (mobile) -->
