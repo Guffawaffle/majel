@@ -73,7 +73,6 @@ export function createSettingsRoutes(appState: AppState): Router {
     if (fleetConfigChanged && appState.config.geminiApiKey && appState.geminiEngine) {
       appState.geminiEngine = createGeminiEngine(
         appState.config.geminiApiKey,
-        appState.fleetData,
         readFleetConfig(appState.settingsStore),
         readDockBriefing(appState.dockStore),
       );

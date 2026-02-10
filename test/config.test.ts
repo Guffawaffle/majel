@@ -98,51 +98,6 @@ describe("resolveConfig: priority chain", () => {
     const config = resolveConfig(store);
     expect(config.geminiApiKey).toBe("user-key"); // user setting wins
   });
-
-  it("resolves spreadsheetId from env", () => {
-    process.env.MAJEL_SPREADSHEET_ID = "spreadsheet-123";
-    
-    const config = resolveConfig(store);
-    expect(config.spreadsheetId).toBe("spreadsheet-123");
-  });
-
-  it("resolves spreadsheetId from user setting", () => {
-    process.env.MAJEL_SPREADSHEET_ID = "env-sheet";
-    store.set("sheets.spreadsheetId", "user-sheet");
-    
-    const config = resolveConfig(store);
-    expect(config.spreadsheetId).toBe("user-sheet");
-  });
-
-  it("resolves tabMapping from env", () => {
-    process.env.MAJEL_TAB_MAPPING = "Officers:officers,Ships:ships";
-    
-    const config = resolveConfig(store);
-    expect(config.tabMapping).toBe("Officers:officers,Ships:ships");
-  });
-
-  it("resolves tabMapping from user setting", () => {
-    process.env.MAJEL_TAB_MAPPING = "env-mapping";
-    store.set("sheets.tabMapping", "user-mapping");
-    
-    const config = resolveConfig(store);
-    expect(config.tabMapping).toBe("user-mapping");
-  });
-
-  it("resolves sheetRange from env", () => {
-    process.env.MAJEL_SHEET_RANGE = "Sheet1!A1:Z100";
-    
-    const config = resolveConfig(store);
-    expect(config.sheetRange).toBe("Sheet1!A1:Z100");
-  });
-
-  it("resolves sheetRange from user setting", () => {
-    process.env.MAJEL_SHEET_RANGE = "env-range";
-    store.set("sheets.range", "user-range");
-    
-    const config = resolveConfig(store);
-    expect(config.sheetRange).toBe("user-range");
-  });
 });
 
 // ─── Runtime Re-Resolution ──────────────────────────────────────
@@ -189,22 +144,18 @@ describe("resolveConfig: runtime re-resolution", () => {
   it("supports multiple concurrent setting changes", () => {
     store.set("system.port", "4000");
     store.set("model.apiKey", "key-1");
-    store.set("sheets.spreadsheetId", "sheet-1");
     
     const config1 = resolveConfig(store);
     expect(config1.port).toBe(4000);
     expect(config1.geminiApiKey).toBe("key-1");
-    expect(config1.spreadsheetId).toBe("sheet-1");
 
     // Update all settings
     store.set("system.port", "5000");
     store.set("model.apiKey", "key-2");
-    store.set("sheets.spreadsheetId", "sheet-2");
     
     const config2 = resolveConfig(store);
     expect(config2.port).toBe(5000);
     expect(config2.geminiApiKey).toBe("key-2");
-    expect(config2.spreadsheetId).toBe("sheet-2");
   });
 });
 
@@ -337,11 +288,6 @@ describe("resolveConfig: type safety", () => {
     
     // Gemini
     expect(typeof config.geminiApiKey).toBe("string");
-    
-    // Sheets
-    expect(typeof config.spreadsheetId).toBe("string");
-    expect(typeof config.tabMapping).toBe("string");
-    expect(typeof config.sheetRange).toBe("string");
     
     // Lex
     expect(typeof config.lexWorkspaceRoot).toBe("string");

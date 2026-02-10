@@ -28,12 +28,6 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pinoHttp } from "pino-http";
 import { log, rootLogger } from "./logger.js";
-import {
-  fetchFleetData,
-  hasCredentials,
-  parseTabMapping,
-  type MultiTabConfig,
-} from "./sheets.js";
 import { createGeminiEngine } from "./gemini.js";
 import { createMemoryService } from "./memory.js";
 import { createSettingsStore } from "./settings.js";
@@ -41,6 +35,8 @@ import { createSessionStore } from "./sessions.js";
 import { createFleetStore } from "./fleet-store.js";
 import { createDockStore } from "./dock-store.js";
 import { createBehaviorStore } from "./behavior-store.js";
+import { createReferenceStore } from "./reference-store.js";
+import { createOverlayStore } from "./overlay-store.js";
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
@@ -86,8 +82,8 @@ const state: AppState = {
   fleetStore: null,
   dockStore: null,
   behaviorStore: null,
-  fleetData: null,
-  rosterError: null,
+  referenceStore: null,
+  overlayStore: null,
   startupComplete: false,
   config: bootstrapConfig(), // Initialize with bootstrap config
 };
@@ -200,16 +196,35 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "behavior store init failed");
   }
 
-  // Resolve config from settings store
-  const { geminiApiKey, spreadsheetId, tabMapping } = state.config;
+  // 2f. Initialize reference store (ADR-015/016 — canonical reference catalog)
+  try {
+    state.referenceStore = createReferenceStore();
+    const refCounts = state.referenceStore.counts();
+    log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
+  }
 
-  // 3. Initialize Gemini (doesn't need fleet data yet)
+  // 2g. Initialize overlay store (ADR-016 — user ownership + targeting)
+  try {
+    state.overlayStore = createOverlayStore();
+    const overlayCounts = state.overlayStore.counts();
+    log.boot.info({
+      officerOverlays: overlayCounts.officers.total,
+      shipOverlays: overlayCounts.ships.total,
+    }, "overlay store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "overlay store init failed");
+  }
+
+  // Resolve config from settings store
+  const { geminiApiKey } = state.config;
+
+  // 3. Initialize Gemini engine
   if (geminiApiKey) {
-    const csv = "No roster data loaded yet.";
     const runner = buildMicroRunnerFromState(state);
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,
-      csv,
       readFleetConfig(state.settingsStore),
       readDockBriefing(state.dockStore),
       runner,
@@ -221,53 +236,11 @@ async function boot(): Promise<void> {
 
   state.startupComplete = true;
 
-  // 3. Start HTTP server FIRST — always be reachable
+  // 4. Start HTTP server
   const app = createApp(state);
   app.listen(state.config.port, () => {
     log.boot.info({ port: state.config.port, url: `http://localhost:${state.config.port}` }, "Majel online");
   });
-
-  // 5. Load fleet data AFTER server is up (OAuth may be interactive)
-  if (spreadsheetId && hasCredentials()) {
-    try {
-      log.boot.info("connecting to Google Sheets");
-      log.boot.debug("OAuth may be required — URL will appear if interactive consent needed");
-      const tabMappingConfig = parseTabMapping(tabMapping);
-      const config: MultiTabConfig = {
-        spreadsheetId: spreadsheetId,
-        tabMapping: tabMappingConfig,
-      };
-      state.fleetData = await fetchFleetData(config);
-      state.rosterError = null;
-      log.boot.info({
-        totalChars: state.fleetData.totalChars,
-        sections: state.fleetData.sections.length,
-      }, "fleet data loaded");
-
-      // Re-create Gemini engine with fleet data + MicroRunner
-      if (geminiApiKey) {
-        const runner = buildMicroRunnerFromState(state);
-        state.geminiEngine = createGeminiEngine(
-          geminiApiKey,
-          state.fleetData,
-          readFleetConfig(state.settingsStore),
-          readDockBriefing(state.dockStore),
-          runner,
-        );
-        log.boot.info({ microRunner: !!runner }, "gemini engine refreshed with fleet data");
-      }
-    } catch (err: unknown) {
-      state.rosterError = err instanceof Error ? err.message : String(err);
-      log.boot.warn({ error: state.rosterError }, "fleet data load deferred");
-    }
-  } else {
-    if (!spreadsheetId) {
-      log.boot.warn("MAJEL_SPREADSHEET_ID not set — roster disabled");
-    }
-    if (!hasCredentials()) {
-      log.boot.warn("credentials.json not found — Google Sheets OAuth disabled");
-    }
-  }
 }
 
 // ─── Graceful Shutdown ──────────────────────────────────────────
@@ -287,6 +260,12 @@ async function shutdown(): Promise<void> {
   }
   if (state.behaviorStore) {
     state.behaviorStore.close();
+  }
+  if (state.overlayStore) {
+    state.overlayStore.close();
+  }
+  if (state.referenceStore) {
+    state.referenceStore.close();
   }
   if (state.memoryService) {
     await state.memoryService.close();

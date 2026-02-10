@@ -10,20 +10,11 @@ import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import type { GeminiEngine } from "../src/server/gemini.js";
 import type { MemoryService, Frame } from "../src/server/memory.js";
-import { buildSection, buildFleetData, type FleetData } from "../src/server/fleet-data.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/settings.js";
 import { bootstrapConfig } from "../src/server/config.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-
-// Mock hasCredentials since it checks the filesystem
-vi.mock("../src/server/sheets.js", () => ({
-  hasCredentials: vi.fn(() => false),
-  fetchRoster: vi.fn(),
-  fetchFleetData: vi.fn(),
-  parseTabMapping: vi.fn(() => ({ Officers: "officers", Ships: "ships" })),
-}));
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -71,14 +62,6 @@ function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
   };
 }
 
-function makeFleetData(): FleetData {
-  return buildFleetData("test-spreadsheet", [
-    buildSection("officers", "Officers", "Officers", [
-      ["Name", "Level"], ["Kirk", "50"], ["Spock", "45"],
-    ]),
-  ]);
-}
-
 function makeState(overrides: Partial<AppState> = {}): AppState {
   return {
     geminiEngine: null,
@@ -88,8 +71,8 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     fleetStore: null,
     dockStore: null,
     behaviorStore: null,
-    fleetData: null,
-    rosterError: null,
+    referenceStore: null,
+    overlayStore: null,
     startupComplete: false,
     config: bootstrapConfig(),
     ...overrides,
@@ -108,7 +91,7 @@ describe("GET /api/health", () => {
     expect(res.body.data.status).toBe("initializing");
     expect(res.body.data.gemini).toBe("not configured");
     expect(res.body.data.memory).toBe("not configured");
-    expect(res.body.data.fleet.loaded).toBe(false);
+    expect(res.body.data.referenceStore).toBeDefined();
   });
 
   it("returns online status after startup", async () => {
@@ -116,7 +99,6 @@ describe("GET /api/health", () => {
       startupComplete: true,
       geminiEngine: makeMockEngine(),
       memoryService: makeMockMemory(),
-      fleetData: makeFleetData(),
     });
     const app = createApp(state);
 
@@ -125,21 +107,8 @@ describe("GET /api/health", () => {
     expect(res.body.data.status).toBe("online");
     expect(res.body.data.gemini).toBe("connected");
     expect(res.body.data.memory).toBe("active");
-    expect(res.body.data.fleet.loaded).toBe(true);
-    expect(res.body.data.fleet.totalChars).toBeGreaterThan(0);
-    expect(res.body.data.fleet.sections).toHaveLength(1);
-  });
-
-  it("reports roster error when present", async () => {
-    const state = makeState({
-      startupComplete: true,
-      rosterError: "OAuth expired",
-    });
-    const app = createApp(state);
-
-    const res = await request(app).get("/api/health");
-    expect(res.body.data.fleet.loaded).toBe(false);
-    expect(res.body.data.fleet.error).toBe("OAuth expired");
+    expect(res.body.data.referenceStore).toBeDefined();
+    expect(res.body.data.overlayStore).toBeDefined();
   });
 });
 
@@ -433,20 +402,6 @@ describe("GET /api/recall", () => {
   });
 });
 
-// ─── GET /api/roster ────────────────────────────────────────────
-
-describe("GET /api/roster", () => {
-  it("returns 400 when SPREADSHEET_ID is not configured", async () => {
-    // SPREADSHEET_ID comes from env, which is empty in tests
-    const state = makeState();
-    const app = createApp(state);
-
-    const res = await request(app).get("/api/roster");
-    expect(res.status).toBe(400);
-    expect(res.body.error.message).toContain("MAJEL_SPREADSHEET_ID not configured");
-  });
-});
-
 // ─── SPA Fallback ───────────────────────────────────────────────
 
 describe("SPA fallback", () => {
@@ -525,12 +480,13 @@ describe("edge cases", () => {
     expect(res.body.error.message).toBe("raw string error");
   });
 
-  it("health shows credentials=false when mocked", async () => {
+  it("health returns referenceStore/overlayStore status", async () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
 
     const res = await request(app).get("/api/health");
-    expect(res.body.data.credentials).toBe(false);
+    expect(res.body.data.referenceStore).toBeDefined();
+    expect(res.body.data.overlayStore).toBeDefined();
   });
 
   it("recall defaults limit to 10", async () => {
@@ -570,7 +526,6 @@ describe("settings API", () => {
       const app = createApp(makeState({ settingsStore }));
       const res = await request(app).get("/api/settings");
       expect(res.status).toBe(200);
-      expect(res.body.data.categories).toContain("sheets");
       expect(res.body.data.categories).toContain("display");
       expect(res.body.data.settings.length).toBeGreaterThan(0);
     });
@@ -753,36 +708,6 @@ describe("GET /api/diagnostic", () => {
     expect(res.body.data.settings.dbPath).toBeDefined();
     store.close();
     fs.rmSync(tmpDir, { recursive: true });
-  });
-
-  it("reports fleet data when loaded", async () => {
-    const fleetData = makeFleetData();
-    const app = createApp(makeState({ fleetData }));
-    const res = await request(app).get("/api/diagnostic");
-    expect(res.body.data.fleet.status).toBe("loaded");
-    expect(res.body.data.fleet.totalChars).toBeGreaterThan(0);
-    expect(res.body.data.fleet.sections).toHaveLength(1);
-    expect(res.body.data.fleet.spreadsheetId).toBe("test-spreadsheet");
-  });
-
-  it("reports fleet error when present", async () => {
-    const app = createApp(makeState({ rosterError: "OAuth token expired" }));
-    const res = await request(app).get("/api/diagnostic");
-    expect(res.body.data.fleet.status).toBe("error");
-    expect(res.body.data.fleet.error).toBe("OAuth token expired");
-  });
-
-  it("reports fleet as not loaded when no data or error", async () => {
-    const app = createApp(makeState());
-    const res = await request(app).get("/api/diagnostic");
-    expect(res.body.data.fleet.status).toBe("not loaded");
-  });
-
-  it("reports sheets credential status", async () => {
-    const app = createApp(makeState());
-    const res = await request(app).get("/api/diagnostic");
-    expect(res.body.data.sheets).toBeDefined();
-    expect(typeof res.body.data.sheets.credentialsPresent).toBe("boolean");
   });
 });
 

@@ -1144,15 +1144,6 @@ describe("DockStore — Dock Briefing", () => {
 import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 
-// Mock hasCredentials since it checks the filesystem
-import { vi } from "vitest";
-vi.mock("../src/server/sheets.js", () => ({
-  hasCredentials: vi.fn(() => false),
-  fetchRoster: vi.fn(),
-  fetchFleetData: vi.fn(),
-  parseTabMapping: vi.fn(() => ({ Officers: "officers", Ships: "ships" })),
-}));
-
 function makeState(overrides: Partial<AppState> = {}): AppState {
   return {
     geminiEngine: null,
@@ -1162,8 +1153,8 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     fleetStore: null,
     dockStore: null,
     behaviorStore: null,
-    fleetData: null,
-    rosterError: null,
+    referenceStore: null,
+    overlayStore: null,
     startupComplete: false,
     ...overrides,
   };
