@@ -100,6 +100,7 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "DELETE", path: "/api/catalog/ships/:id/overlay", description: "Reset ship overlay" },
         { method: "POST", path: "/api/catalog/officers/bulk-overlay", description: "Bulk set officer overlays" },
         { method: "POST", path: "/api/catalog/ships/bulk-overlay", description: "Bulk set ship overlays" },
+        { method: "POST", path: "/api/catalog/sync", description: "Sync reference data from STFC wiki" },
       ],
     });
   });

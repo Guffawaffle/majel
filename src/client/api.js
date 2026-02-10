@@ -471,6 +471,22 @@ export async function deleteOfficer(id) {
 // ─── Catalog API (ADR-016 Phase 2) ─────────────────────────
 
 /**
+ * Sync reference data from the STFC Fandom Wiki.
+ * User-initiated: fetches Officers + Ships via Special:Export.
+ * @param {Object} options - { officers?: boolean, ships?: boolean }
+ * @returns {Promise<Object>} { ok, data: { officers, ships, provenance } }
+ */
+export async function syncWikiData(options = {}) {
+    const res = await fetch("/api/catalog/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ consent: true, ...options }),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
  * Fetch merged catalog officers (reference + overlay)
  * @param {Object} filters - { q?, rarity?, group?, ownership?, target? }
  * @returns {Promise<Array>} Merged officer records

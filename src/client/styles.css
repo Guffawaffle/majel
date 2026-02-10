@@ -1832,6 +1832,52 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); }
 
 .cat-error { padding: 20px; color: var(--accent-red); font-size: 14px; }
 
+/* ── Sync Wiki Data Button ──────────────────────────────── */
+
+.cat-sync-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  background: rgba(96, 160, 255, 0.1);
+  border: 1px solid rgba(96, 160, 255, 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--accent-blue);
+  font-size: 12px; font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cat-sync-btn:hover { background: rgba(96, 160, 255, 0.2); border-color: var(--accent-blue); }
+.cat-sync-btn.syncing { opacity: 0.7; cursor: wait; }
+.cat-sync-btn.syncing .cat-sync-icon { animation: cat-spin 1s linear infinite; }
+
+@keyframes cat-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Sync Toast Notification ────────────────────────────── */
+
+.cat-sync-toast {
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  margin-bottom: 12px;
+}
+.cat-sync-toast.visible { opacity: 1; }
+.cat-sync-success {
+  background: rgba(52, 199, 89, 0.12);
+  border: 1px solid rgba(52, 199, 89, 0.3);
+  color: var(--accent-green);
+}
+.cat-sync-error {
+  background: rgba(255, 69, 58, 0.12);
+  border: 1px solid rgba(255, 69, 58, 0.3);
+  color: var(--accent-red);
+}
+
 /* ═══════════════════════════════════════════════════════════
    Responsive
    ═══════════════════════════════════════════════════════════ */

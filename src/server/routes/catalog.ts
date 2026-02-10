@@ -12,6 +12,7 @@ import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../overlay-store.js";
+import { syncWikiData } from "../wiki-ingest.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
   const router = Router();
@@ -243,6 +244,45 @@ export function createCatalogRoutes(appState: AppState): Router {
     const ship = appState.referenceStore!.getShip(req.params.id);
     if (!ship) return sendFail(res, ErrorCode.NOT_FOUND, `Ship not found: ${req.params.id}`, 404);
     sendOk(res, ship);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Wiki Sync — user-initiated reference data import
+  // Fetches from Fandom Special:Export, parses wikitables,
+  // and bulk-upserts into the reference store. Single request
+  // per entity type — NOT a crawler or scraper.
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * POST /api/catalog/sync
+   * Sync reference data from the STFC Fandom Wiki.
+   * Body: { consent: true, officers?: boolean, ships?: boolean }
+   * Response: { officers: {created,updated,total,parsed}, ships: {...}, provenance: {...} }
+   */
+  router.post("/api/catalog/sync", async (req, res) => {
+    if (!requireReferenceStore(res)) return;
+    const store = appState.referenceStore!;
+
+    const { consent, officers, ships } = req.body;
+    if (!consent) {
+      return sendFail(
+        res,
+        ErrorCode.MISSING_PARAM,
+        "consent:true required — acknowledges Fandom wiki data is CC BY-SA 3.0 licensed",
+        400,
+      );
+    }
+
+    try {
+      const result = await syncWikiData(store, {
+        officers: officers !== false,
+        ships: ships !== false,
+      });
+      sendOk(res, result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendFail(res, ErrorCode.INTERNAL_ERROR, `Wiki sync failed: ${msg}`, 502);
+    }
   });
 
   // ═══════════════════════════════════════════════════════════

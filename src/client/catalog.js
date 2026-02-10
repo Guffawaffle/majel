@@ -22,6 +22,7 @@ let filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction:
 let counts = { reference: { officers: 0, ships: 0 }, overlay: {} };
 let undoStack = []; // { type, refIds, previousStates }
 let loading = false;
+let syncing = false;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -129,6 +130,13 @@ function renderToolbar(totalRef) {
                 ${searchQuery ? '<button class="cat-search-clear" data-action="clear-search" title="Clear search">✕</button>' : ''}
             </div>
             <span class="cat-result-count">${items.length}${totalRef ? ` / ${totalRef}` : ''}</span>
+            <button class="cat-sync-btn ${syncing ? 'syncing' : ''}" data-action="sync-wiki" title="Sync reference data from STFC Fandom Wiki">
+                <svg class="cat-sync-icon" width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M14 8A6 6 0 1 1 8 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M8 0l3 2-3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                ${syncing ? 'Syncing...' : 'Sync Wiki Data'}
+            </button>
         </div>
     `;
 }
@@ -257,7 +265,7 @@ function renderEmpty() {
     }
     return `<div class="cat-empty">
         <p>No ${activeTab} in the reference catalog yet.</p>
-        <p class="hint">Import reference data using the wiki ingest script to populate the catalog.</p>
+        <p class="hint">Use the <strong>Sync Wiki Data</strong> button above to import from the STFC Fandom Wiki.</p>
     </div>`;
 }
 
@@ -395,6 +403,11 @@ function bindEvents() {
         btn.addEventListener('click', () => performUndo());
     });
 
+    // Sync Wiki Data
+    area.querySelectorAll('[data-action="sync-wiki"]').forEach(btn => {
+        btn.addEventListener('click', () => performSync());
+    });
+
     // Keyboard navigation on cards
     area.querySelectorAll('.cat-card').forEach(card => {
         card.addEventListener('keydown', (e) => {
@@ -482,6 +495,51 @@ async function performUndo() {
     }
 
     await refresh();
+}
+
+// ─── Wiki Sync ──────────────────────────────────────────────
+
+async function performSync() {
+    if (syncing) return;
+    syncing = true;
+    render(); // Show syncing state immediately
+
+    try {
+        const result = await api.syncWikiData();
+        if (!result.ok) {
+            throw new Error(result.error?.message || 'Sync failed');
+        }
+        const d = result.data;
+        const msg = [
+            d.officers ? `Officers: ${d.officers.created} new, ${d.officers.updated} updated (${d.officers.parsed} parsed)` : null,
+            d.ships ? `Ships: ${d.ships.created} new, ${d.ships.updated} updated (${d.ships.parsed} parsed)` : null,
+        ].filter(Boolean).join(' · ');
+        showSyncResult(msg, 'success');
+    } catch (err) {
+        showSyncResult(`Sync failed: ${err.message}`, 'error');
+    } finally {
+        syncing = false;
+        await refresh();
+    }
+}
+
+function showSyncResult(message, type) {
+    const area = $("#catalog-area");
+    if (!area) return;
+
+    // Remove any existing toast
+    area.querySelectorAll('.cat-sync-toast').forEach(el => el.remove());
+
+    const toast = document.createElement('div');
+    toast.className = `cat-sync-toast cat-sync-${type}`;
+    toast.textContent = message;
+    area.prepend(toast);
+
+    setTimeout(() => toast.classList.add('visible'), 10);
+    setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+    }, 6000);
 }
 
 // ─── Helpers ────────────────────────────────────────────────
