@@ -103,7 +103,7 @@ export const log = {
   sheets: rootLogger.child({ subsystem: "sheets" }),
   /** Settings store */
   settings: rootLogger.child({ subsystem: "settings" }),
-  /** Fleet management */
+  /** Data stores (reference, overlay, dock, wiki-ingest) */
   fleet: rootLogger.child({ subsystem: "fleet" }),
   /** HTTP/API layer */
   http: rootLogger.child({ subsystem: "http" }),

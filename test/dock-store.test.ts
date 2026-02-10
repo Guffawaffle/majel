@@ -305,7 +305,7 @@ describe("DockStore — Dock Ships", () => {
   let refStore: ReferenceStore;
 
   beforeEach(() => {
-    // Fleet store creates ships table; dock store needs it for FK refs
+    // Reference store creates ships table; dock store needs it for FK refs
     refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
 

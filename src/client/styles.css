@@ -210,13 +210,6 @@ html, body {
 
 #status-text { color: var(--text-muted); }
 
-.roster-badge {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.roster-badge.loaded { color: var(--accent-green); }
-.roster-badge.error { color: var(--accent-red); }
-
 /* ── Session List ── */
 
 .session-list {

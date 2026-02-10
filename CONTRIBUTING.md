@@ -111,13 +111,13 @@ git checkout -b feature/your-feature
 - **Line length:** ~120 characters (not strict)
 - **Naming:**
   - `camelCase` for variables/functions (`fleetStore`, `createGeminiEngine`)
-  - `PascalCase` for types/interfaces (`AppState`, `FleetData`)
+  - `PascalCase` for types/interfaces (`AppState`, `FleetConfig`)
   - `SCREAMING_SNAKE_CASE` for constants (`SETTINGS_SCHEMA`, `DEFAULT_PORT`)
 
 #### File Organization
 
 - **One export per file** for stores/services (`settings.ts` exports `SettingsStore`)
-- **Group related routes** in route modules (`routes/core.ts`, `routes/fleet.ts`)
+- **Group related routes** in route modules (`routes/core.ts`, `routes/catalog.ts`, `routes/docks.ts`)
 - **Comments:** Use JSDoc for public APIs, `//` for inline clarifications
 - **Imports:** Group by external deps → internal modules → types
 
@@ -245,13 +245,14 @@ majel/
 ├── src/
 │   ├── server/
 │   │   ├── index.ts          # App factory + server boot
-│   │   ├── routes/           # Route modules (core, chat, fleet, sessions, settings)
+│   │   ├── routes/           # Route modules (core, chat, catalog, docks, sessions, settings)
 │   │   ├── config.ts         # Unified configuration resolver
 │   │   ├── settings.ts       # SQLite settings store
 │   │   ├── gemini.ts         # LLM engine wrapper
 │   │   ├── memory.ts         # Lex integration
 │   │   ├── sessions.ts       # Chat session store
-│   │   ├── fleet-store.ts    # Officer/ship data layer
+│   │   ├── reference-store.ts # Reference catalog (wiki-sourced officers/ships)
+│   │   ├── overlay-store.ts  # User ownership & target overlay
 │   │   ├── dock-store.ts     # Drydock loadouts
 │   │   └── [utilities]
 │   └── client/               # Static frontend (vanilla JS)
