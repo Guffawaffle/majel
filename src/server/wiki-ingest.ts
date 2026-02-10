@@ -110,8 +110,11 @@ export function slugify(name: string): string {
 export function normalizeRarity(raw: string): string | null {
   if (!raw) return null;
   const r = raw.trim().toLowerCase();
-  // Strip star characters (☆ ★ etc.)
-  const cleaned = r.replace(/[☆★⭐\s]/g, "").trim();
+  // Strip star characters, pipes, wiki markup remnants
+  const cleaned = r.replace(/[☆★⭐\|\[\]\s]/g, "").trim();
+  if (!cleaned) return null;
+
+  // Exact match
   const map: Record<string, string> = {
     common: "common",
     uncommon: "uncommon",
@@ -119,7 +122,14 @@ export function normalizeRarity(raw: string): string | null {
     epic: "epic",
     legendary: "legendary",
   };
-  return map[cleaned] || null;
+  if (map[cleaned]) return map[cleaned];
+
+  // Partial / prefix match (handles "Uncommon ☆☆" → "uncommon", "Epic" → "epic", etc.)
+  for (const [key, value] of Object.entries(map)) {
+    if (cleaned.startsWith(key) || cleaned.includes(key)) return value;
+  }
+
+  return null;
 }
 
 /** Count star characters in a rarity cell to derive grade */
@@ -259,13 +269,35 @@ export function parseOfficerTable(wikitext: string): ParsedOfficer[] {
 export function parseShipTable(wikitext: string): ParsedShip[] {
   const ships: ParsedShip[] = [];
 
-  const tableStart = wikitext.indexOf('{| class="wikitable');
-  const tableEnd = wikitext.indexOf("|}", tableStart);
-  if (tableStart < 0 || tableEnd < 0) {
+  // Find ALL wikitables and parse each (some pages split ships across tables)
+  let searchPos = 0;
+  while (true) {
+    const tableStart = wikitext.indexOf('{| class="wikitable', searchPos);
+    if (tableStart < 0) break;
+    const tableEnd = wikitext.indexOf("|}", tableStart);
+    if (tableEnd < 0) break;
+
+    const tableText = wikitext.slice(tableStart, tableEnd);
+    parseShipTableBlock(tableText, ships);
+    searchPos = tableEnd + 2;
+  }
+
+  if (ships.length === 0) {
     throw new Error("Could not locate ship wikitable in page source");
   }
 
-  const tableText = wikitext.slice(tableStart, tableEnd);
+  // Deduplicate by name
+  const seen = new Set<string>();
+  return ships.filter(s => {
+    const key = slugify(s.name);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Parse a single wikitable block for ship rows */
+function parseShipTableBlock(tableText: string, ships: ParsedShip[]): void {
   const rawRows = tableText.split(/\n\|-\s*\n/);
 
   for (let i = 1; i < rawRows.length; i++) {
@@ -289,15 +321,15 @@ export function parseShipTable(wikitext: string): ParsedShip[] {
     // Rarity: second cell (e.g., "Common ☆", "Rare ☆☆☆")
     const rarityRaw = cleanWikitext(cells[1]);
     const rarity = normalizeRarity(rarityRaw);
-    if (!rarity) continue; // Skip non-ship rows
+    if (!rarity) continue; // Skip non-ship rows (header remnants, empty rows)
 
     // Grade from star count
     const grade = countStars(cells[1]);
 
     // Ship class (Type): typically column index 5
-    // Try to find "Explorer", "Interceptor", "Battleship", "Survey" in later columns
+    // Try to find known class names in later columns
     let shipClass: string | null = null;
-    const classNames = ["explorer", "interceptor", "battleship", "survey"];
+    const classNames = ["explorer", "interceptor", "battleship", "survey", "armada"];
     for (let c = 2; c < cells.length; c++) {
       const cellText = cleanWikitext(cells[c]).trim().toLowerCase();
       if (classNames.includes(cellText)) {
@@ -308,15 +340,6 @@ export function parseShipTable(wikitext: string): ParsedShip[] {
 
     ships.push({ name, rarity, shipClass, grade });
   }
-
-  // Deduplicate by name
-  const seen = new Set<string>();
-  return ships.filter(s => {
-    const key = slugify(s.name);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 // ─── Fetch from Wiki ────────────────────────────────────────
