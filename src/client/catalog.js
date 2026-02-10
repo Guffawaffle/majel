@@ -162,8 +162,10 @@ function renderFilterChips() {
     const activeFilters = [];
     if (filters.ownership !== 'all') activeFilters.push(filters.ownership === 'owned' ? 'Owned' : 'Unowned');
     if (filters.target !== 'all') activeFilters.push(filters.target === 'targeted' ? 'Targeted' : 'Not targeted');
+    // Ownership + Target use OR logic on the server; other combos use AND
+    const overlayJoiner = activeFilters.length === 2 ? ' or ' : ' + ';
     const filterSummary = activeFilters.length > 0
-        ? `<span class="cat-filter-summary">Showing: ${activeFilters.join(' + ')}</span>`
+        ? `<span class="cat-filter-summary">Showing: ${activeFilters.join(overlayJoiner)}</span>`
         : '';
 
     return `

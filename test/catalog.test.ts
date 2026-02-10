@@ -349,6 +349,21 @@ describe("GET /api/catalog/officers/merged", () => {
     expect(notTargeted.body.data.count).toBe(2);
   });
 
+  it("uses OR when both ownership and target filters are active", async () => {
+    seedOfficers(refStore);
+    // Kirk is owned (not targeted), Spock is targeted (not owned), Uhura is neither
+    overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
+    overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", target: true });
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+
+    const res = await request(app).get("/api/catalog/officers/merged?ownership=owned&target=true");
+    expect(res.status).toBe(200);
+    // OR: Kirk (owned) + Spock (targeted) = 2
+    expect(res.body.data.count).toBe(2);
+    const names = res.body.data.officers.map((o: { name: string }) => o.name).sort();
+    expect(names).toEqual(["Kirk", "Spock"]);
+  });
+
   it("combines search + overlay filter", async () => {
     seedOfficers(refStore);
     overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
