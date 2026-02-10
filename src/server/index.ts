@@ -59,6 +59,7 @@ import { createSettingsRoutes } from "./routes/settings.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { createFleetRoutes } from "./routes/fleet.js";
 import { createDockRoutes } from "./routes/docks.js";
+import { createCatalogRoutes } from "./routes/catalog.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -126,6 +127,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createSessionRoutes(appState));
   app.use(createFleetRoutes(appState));
   app.use(createDockRoutes(appState));
+  app.use(createCatalogRoutes(appState));
 
   // ─── SPA Fallback ─────────────────────────────────────────
   app.get("*", (_req, res) => {
