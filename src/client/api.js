@@ -339,21 +339,21 @@ export async function fetchIntents() {
 }
 
 /**
- * Fetch all ships
+ * Fetch all ships (from reference catalog)
  * @returns {Promise<Array>} Array of ship objects
  */
 export async function fetchShips() {
-    const res = await fetch("/api/fleet/ships");
+    const res = await fetch("/api/catalog/ships");
     const env = await res.json();
     return env.data?.ships || [];
 }
 
 /**
- * Fetch all officers
+ * Fetch all officers (from reference catalog)
  * @returns {Promise<Array>} Array of officer objects
  */
 export async function fetchOfficers() {
-    const res = await fetch("/api/fleet/officers");
+    const res = await fetch("/api/catalog/officers");
     const env = await res.json();
     return env.data?.officers || [];
 }
@@ -376,96 +376,6 @@ export async function fetchDockSummary() {
     const res = await fetch("/api/fleet/docks/summary");
     const env = await res.json();
     return env.data?.summary || [];
-}
-
-// ─── Ship / Officer CRUD ────────────────────────────────────
-
-/**
- * Create a new ship
- * @param {Object} ship - Ship data (id, name required)
- * @returns {Promise<Object>}
- */
-export async function createShip(ship) {
-    const res = await fetch("/api/fleet/ships", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ship),
-    });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
-}
-
-/**
- * Update a ship's fields
- * @param {string} id - Ship ID
- * @param {Object} fields - Fields to update
- * @returns {Promise<Object>}
- */
-export async function updateShip(id, fields) {
-    const res = await fetch(`/api/fleet/ships/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
-    });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
-}
-
-/**
- * Delete a ship
- * @param {string} id - Ship ID
- * @returns {Promise<Object>}
- */
-export async function deleteShip(id) {
-    const res = await fetch(`/api/fleet/ships/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-    });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
-}
-
-/**
- * Create a new officer
- * @param {Object} officer - Officer data (id, name required)
- * @returns {Promise<Object>}
- */
-export async function createOfficer(officer) {
-    const res = await fetch("/api/fleet/officers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(officer),
-    });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
-}
-
-/**
- * Update an officer's fields
- * @param {string} id - Officer ID
- * @param {Object} fields - Fields to update
- * @returns {Promise<Object>}
- */
-export async function updateOfficer(id, fields) {
-    const res = await fetch(`/api/fleet/officers/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
-    });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
-}
-
-/**
- * Delete an officer
- * @param {string} id - Officer ID
- * @returns {Promise<Object>}
- */
-export async function deleteOfficer(id) {
-    const res = await fetch(`/api/fleet/officers/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-    });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
 }
 
 // ─── Catalog API (ADR-016 Phase 2) ─────────────────────────
