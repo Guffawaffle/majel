@@ -1,7 +1,7 @@
 # ADR-018: Cloud Deployment, Chat Gating & Database Strategy
 
-**Status:** Proposed  
-**Date:** 2026-02-09  
+**Status:** Accepted (revised 2026-02-10 — D1 changed from Turso to Cloud SQL PostgreSQL)  
+**Date:** 2026-02-09 (original), 2026-02-10 (revised)  
 **Authors:** Guff, Opie (Claude)
 
 ## Context
@@ -28,46 +28,62 @@ Majel has reached a point where it's worth showing to other people. The current 
 | Don't break local dev | High | `npm run dev` must keep working exactly as it does today |
 | Protect Gemini quota | Critical | Chat + AI diagnostic queries are the only expensive endpoints |
 | Let visitors explore freely | High | Catalog, fleet, drydock, diagnostics (non-AI) should be open |
-| Keep costs < $10/mo | High | Free tier where possible, Turso free tier is generous |
+| Keep costs < $10/mo | High | Cloud SQL db-f1-micro is free for 12mo, then ~$8/mo |
 | Support future multi-tenancy | Medium | Tenant isolation should be possible without a rewrite |
 | Minimize migration risk | High | 512 tests must pass through every step |
 
 ## Decision
 
-### D1: Turso/libSQL as Database Backend
+### D1: Cloud SQL for PostgreSQL
 
-**Replace `better-sqlite3` with `@libsql/client`.**
+**Replace SQLite (via `@libsql/client`) with Google Cloud SQL for PostgreSQL.**
 
-Why Turso over Postgres:
-- **Same SQL dialect** — queries, schemas, `ON CONFLICT` upserts, partial indexes all carry over with minimal changes
-- **Local file mode** — `createClient({ url: "file:local.db" })` works identically to SQLite for local dev
-- **Embedded replicas** — Cloud Run can read from a local replica file with microsecond reads, writes go to Turso's remote primary
-- **Free tier** — 500M rows read/mo, 10M rows written/mo, 5GB storage, 100 databases. More than enough.
-- **No sync→async cascade** — libSQL's `execute()` is async but returns `ResultSet` with `.rows`, `.columns`, `.lastInsertRowid`. The mechanical conversion from `db.prepare().all()` → `client.execute()` is straightforward and the interface change is contained within each store.
+> **History:** Phase 1 migrated from `better-sqlite3` (sync) to `@libsql/client` (async).
+> That work was NOT wasted — it converted all store interfaces to async, which Postgres
+> also requires. Phase 3 replaces the driver and SQL dialect; the async contract stays.
 
-Why not Postgres:
-- Different SQL dialect (no `INSERT OR IGNORE`, different `PRAGMA` replacement, boolean types, `NOW()` vs `datetime('now')`)
-- Requires a managed instance ($5+/mo minimum) or Cloud SQL ($$$)
-- Overkill for the data volumes — we have 228 reference entities and personal overlay data
+Why Cloud SQL for PostgreSQL:
+- **GCP-native** — lives in the same project as Cloud Run. One bill, one IAM, one console.
+- **Built-in Cloud Run connector** — Cloud Run has a first-class Unix socket connector to Cloud SQL. Zero network config, zero public IP exposure.
+- **Industry standard** — Postgres is the most widely deployed open-source RDBMS. Battle-tested, well-documented, no vendor lock-in risk.
+- **Managed backups** — automatic daily backups, point-in-time recovery, IAM-integrated access.
+- **Real multi-tenancy** — schemas or row-level isolation. No per-tenant database limits.
+- **Free trial** — `db-f1-micro` instance included in GCP free tier for 12 months. After that, ~$8/mo for the smallest instance.
+- **Async already done** — Phase 1 converted all stores to async. The Postgres driver (`pg`) is also async. Store interfaces don't change.
 
-**Migration path** (per store):
-1. Replace `better-sqlite3` import with `@libsql/client`
-2. Replace `db.prepare(sql).run(params)` → `await client.execute({ sql, args: [...] })`
-3. Replace `db.prepare(sql).get(params)` → `await client.execute(...)` + extract `.rows[0]`
-4. Replace `db.prepare(sql).all(params)` → `await client.execute(...)` + extract `.rows`
-5. Replace `db.transaction(() => { ... })()` → `const tx = await client.transaction("write"); ... await tx.commit()`
-6. Replace `PRAGMA journal_mode = WAL` → not needed (Turso handles this)
-7. Replace `PRAGMA foreign_keys = ON` → `await client.execute("PRAGMA foreign_keys = ON")`
-8. Store methods become `async` — callers updated accordingly
-9. `diagnostic-query.ts` introspection rewired to use `sqlite_master` via libSQL (still works — it's still SQLite under the hood)
+Why not Turso (original D1, superseded):
+- Vendor dependency on a ~3-year-old startup
+- Data lives outside GCP — separate dashboard, separate billing
+- If Turso pivots pricing or goes down, we're scrambling
+- Embedded replicas are clever but add operational complexity
+
+**Migration scope** (Phase 3 — per store):
+1. Replace `@libsql/client` imports with `pg` (node-postgres) `Pool`
+2. Replace `?` placeholders with `$1, $2, $3` numbered placeholders (~80 queries)
+3. Replace `datetime('now')` → `NOW()` (~25 occurrences)
+4. Replace `INSERT OR IGNORE` → `INSERT ... ON CONFLICT DO NOTHING`
+5. Replace `REAL` → `DOUBLE PRECISION` (2 columns in behavior-store)
+6. Replace integer booleans (`0`/`1`) → proper `BOOLEAN` (12 columns, ~8 arg conversions)
+7. Replace `INTEGER PRIMARY KEY AUTOINCREMENT` → `SERIAL PRIMARY KEY` (5 tables)
+8. Replace `SELECT last_insert_rowid()` → `INSERT ... RETURNING id` (2 stores)
+9. Replace `TEXT` timestamps → `TIMESTAMPTZ` (all stores)
+10. Remove `PRAGMA` statements (PG handles WAL/FK by default)
+11. Rewrite `diagnostic-query.ts` to use `information_schema` instead of `sqlite_master`
+12. Replace `client.batch([...], "write")` → PG transactions (5 uses)
+13. Replace `client.transaction("write")` → `pool.connect()` + `BEGIN`/`COMMIT` (10 uses)
+14. Replace `LIKE` → `ILIKE` for case-insensitive search (PG `LIKE` is case-sensitive)
+15. Update `db.ts` connection layer: single `Pool` instead of per-file `createClient()`
+
+**Preserved from Phase 1:** All async store interfaces, Express route handlers, test structure, auth middleware. The migration is contained to the store/db layer.
 
 **Database topology:**
 
-| Database | Scope | Turso DB | Notes |
-|----------|-------|----------|-------|
-| `reference.db` | Global (shared) | `majel-reference` | Wiki data. Same for all users. Read-heavy. |
-| Per-tenant data | Per user | `majel-tenant-{id}` | Overlays, docks, sessions, settings, behavior. One DB per tenant on Turso free tier (100 DBs). |
-| `memory.db` | Per user | Stays local / Lex-managed | Lex controls its own DB. Not part of this migration. |
+| Schema | Scope | Tables | Notes |
+|--------|-------|--------|-------|
+| `public` | All app tables in one schema | All store tables | Single `db-f1-micro` instance. Schemas for isolation if needed later. |
+| N/A | Lex memory | `memory.db` stays local | Lex controls its own SQLite DB. Not part of this migration. |
+
+**Local dev:** Docker Compose provides a local Postgres container (`docker compose up -d postgres`). Connection string: `postgres://majel:majel@localhost:5432/majel`. `npm run dev` just works after `docker compose up`.
 
 ### D2: Tiered Access Control
 
@@ -88,104 +104,128 @@ Three tiers, progressively gated:
 
 **Implementation:**
 - New middleware: `requireVisitor` (checks tenant cookie), `requireAdmiral` (checks bearer token)
-- Tenant resolved from cookie → loads per-tenant stores (or creates them on first visit)
+- Tenant resolved from cookie → loads per-tenant data (or creates on first visit)
 - Reference store is shared (read-only for visitors) — no per-tenant copy needed
-- Invite codes stored in a `majel-admin` Turso database (or a simple JSON file for v1)
+- Invite codes stored in the same Cloud SQL instance (Phase 2: local `admin.db`, Phase 3: migrated to PG)
 
-### D3: Cloud Run Deployment
+### D3: Cloud Run + Cloud SQL Deployment
 
-**Target:** Google Cloud Run with min-instances=0 (scale-to-zero for cost).
+**Target:** Google Cloud Run with min-instances=0, connected to Cloud SQL via Unix socket.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                    Cloud Run Service                      │
 │                                                           │
 │  Majel Express Server (single container)                  │
-│  ├── Embedded replica: reference.db (read-only, shared)   │
-│  ├── Embedded replica: tenant-{id}.db (per visitor)       │
-│  └── Lex memory.db (admiral only, local file)             │
+│  ├── Cloud SQL Auth Proxy (sidecar / built-in connector)  │
+│  └── Lex memory.db (admiral only, local ephemeral file)   │
 │                                                           │
-│  Reads: local file (microseconds)                         │
-│  Writes: Turso primary (10-50ms)                          │
+│  DB access: Unix socket to Cloud SQL (~1-5ms)             │
+│  Scale: 0-N instances (stateless, DB is external)         │
 └─────────────────────┬────────────────────────────────────┘
-                      │ HTTPS (managed by Cloud Run)
+                      │ Unix socket (private, no public IP)
                       │
               ┌───────▼────────┐
-              │   Turso Edge   │
+              │  Cloud SQL     │
+              │  PostgreSQL 16 │
+              │  (db-f1-micro) │
               │                │
-              │  majel-ref     │  ← shared reference data
-              │  majel-t-abc   │  ← visitor tenant
-              │  majel-t-def   │  ← visitor tenant  
-              │  majel-admin   │  ← invite codes, admin state
+              │  majel DB:     │
+              │  ├─ officers   │  ← reference data (shared)
+              │  ├─ ships      │  ← reference data (shared)
+              │  ├─ overlays   │  ← per-tenant fleet data
+              │  ├─ docks      │  ← per-tenant drydock
+              │  ├─ sessions   │  ← per-tenant chat history
+              │  ├─ settings   │  ← per-tenant settings
+              │  ├─ behavior   │  ← per-tenant Bayesian priors
+              │  └─ invites    │  ← admin: invite codes + sessions
               └────────────────┘
 ```
 
-**Why this works on Cloud Run:**
-- Embedded replicas give local-speed reads even on ephemeral containers
-- Writes go to Turso's primary (durable, survives container recycling)
-- On cold start: `client.sync()` pulls latest state in ~100ms
-- Scale-to-zero means $0 when nobody's using it
+**Why this works:**
+- Cloud SQL Auth Proxy provides auto-TLS Unix socket connections — no public IP, no password in env vars (IAM auth)
+- Cloud Run connects to Cloud SQL natively via `--add-cloudsql-instances` flag
+- Multiple Cloud Run instances can share the same Cloud SQL DB (stateless app, stateful DB)
+- Scale-to-zero means $0 for compute when idle
 - HTTPS is automatic (Cloud Run provides it)
+- Custom domain mapping: `aria.smartergpt.dev` → Cloud Run → Cloud SQL
 
 **Cost estimate:**
 - Cloud Run: $0 (free tier — 2M requests/mo, 360K vCPU-seconds)
-- Turso: $0 (free tier — 500M reads, 10M writes, 5GB, 100 DBs)
-- Gemini: Usage-dependent, but gated behind Admiral token
-- **Total for demo: $0/mo** (free tiers cover a demo workload easily)
+- Cloud SQL (db-f1-micro): $0 first 12mo (free trial), then ~$8/mo
+- Gemini: Usage-dependent, gated behind Admiral token
+- **Total for demo: $0/mo (year 1), ~$8/mo (year 2+)**
 
 ### D4: Phased Rollout
 
-| Phase | Scope | Deliverables | Blocks |
+| Phase | Scope | Deliverables | Status |
 |-------|-------|-------------|--------|
-| **0** | Dockerfile + local Docker | `Dockerfile`, `.dockerignore`, validate app runs in container | Nothing |
-| **1** | libSQL migration (local mode) | Replace `better-sqlite3` with `@libsql/client` using `file:` URLs. All 512 tests pass. No cloud yet. `npm run dev` still works. | Phase 0 |
-| **2** | Auth middleware + invite codes | `requireVisitor`, `requireAdmiral` middleware. Invite code CRUD. Tenant cookie. Demo mode env flag. | Phase 1 |
-| **3** | Tenant isolation | Per-tenant store resolution. Shared reference store. Tenant lifecycle (create on invite, expire after N days). | Phase 2 |
-| **4** | Cloud Run deployment | Turso remote DBs, embedded replicas, Cloud Run config, `gcloud run deploy` script. | Phase 3 |
-| **5** | Reference data seeding | Ship reference DB with wiki data. Public GET endpoints for reference data per wiki license (attribution). Admin/CLI tool to refresh reference data from wiki source. | Phase 4 |
-| **6** | Polish | Rate limiting on AI endpoints. Visitor analytics. Tenant cleanup cron. | Phase 5 |
+| **0** | Dockerfile + local Docker | `Dockerfile`, `.dockerignore`, validate app runs in container | ✅ Done (`f66479b`) |
+| **1** | Async migration (via libSQL) | Replace `better-sqlite3` with async `@libsql/client`. All stores async. 512 tests pass. | ✅ Done (`65c1471`) |
+| **2** | Auth middleware + invite codes | `requireVisitor`, `requireAdmiral` middleware. Invite code CRUD. Tenant cookie. Demo mode. | ✅ Done (`1191d38`) |
+| **3** | PostgreSQL migration | Replace `@libsql/client` with `pg`. SQL dialect conversion. Docker Compose for local PG. All tests pass on PG. | Next |
+| **4** | Cloud Run + Cloud SQL deployment | Cloud SQL instance, Cloud Run config, `gcloud run deploy` script, DNS mapping. | Blocks on 3 |
+| **5** | Reference data seeding | Public catalog endpoints with wiki attribution. Admin sync endpoint. | Blocks on 4 |
+| **6** | Polish | Rate limiting on AI endpoints. Visitor analytics. Tenant cleanup cron. | Blocks on 5 |
+
+**Phase 3 detail (PostgreSQL migration):**
+1. Add `pg` + `@types/pg` to dependencies, remove `@libsql/client`
+2. Create `docker-compose.yml` with local Postgres container
+3. Rewrite `db.ts` — `Pool`-based connection, parameterized query helper
+4. Migrate stores one at a time (reference → overlay → dock → session → settings → behavior → invite)
+5. For each store: convert schema (booleans, timestamps, serial PKs), convert SQL (placeholders, datetime, RETURNING), update tests
+6. Rewrite `diagnostic-query.ts` to use `information_schema` + `pg_indexes`
+7. Update Dockerfile (remove native build deps for SQLite)
+8. Final: `npm test` green on Postgres, `npm run dev` works with `docker compose up`
 
 **Each phase produces a working, tested commit.** No partial states, no "we'll fix it in Phase N."
 
-> **Note (Phase 5 context):** Once deployed, the first operational priority is seeding the Turso reference DB with wiki data and exposing public GET endpoints that satisfy the wiki's license terms (typically attribution + making the data available). After that, we need an admin or CLI mechanism to keep reference data current — whether that's a `/api/admin/sync` endpoint, a CLI command, or a scheduled job. Details TBD but the goal is: *deployed Majel ships with data, not an empty catalog.*
+> **Note (Phase 5 context):** Once deployed, the first operational priority is seeding the Cloud SQL reference tables with wiki data and exposing public GET endpoints that satisfy the wiki's license terms (attribution). After that, an admin mechanism to keep reference data current — `/api/admin/sync` endpoint, CLI command, or scheduled job.
 
 ## Consequences
 
 ### Positive
-- Majel becomes deployable and shareable
-- Visitors can explore the full fleet management UI for free (no Gemini cost)
-- Turso free tier means $0/mo for demo workloads
-- Local dev experience preserved (`file:` URLs behave like SQLite)
-- Multi-tenancy is architected in, not bolted on
-- The sync→async conversion is contained (store methods become async, callers update)
+- Majel becomes deployable and shareable at `aria.smartergpt.dev`
+- GCP-native stack — everything in one project, one bill, one IAM
+- Cloud SQL is managed: automatic backups, point-in-time recovery, monitoring
+- Postgres is industry-standard — no vendor lock-in risk
+- Multi-instance Cloud Run: stateless app can scale horizontally
+- Phase 1 async migration is preserved — store interfaces don't change again
+- Local dev uses Docker Compose with Postgres — standard, portable
 
 ### Negative
-- `better-sqlite3` synchronous API was a genuine advantage — simple, fast, no promises. Losing it adds complexity.
-- libSQL is a younger ecosystem than `better-sqlite3` — potential rough edges
-- Per-tenant databases on Turso free tier caps at 100 DBs — fine for demo, needs paid tier ($5/mo) if it grows
-- `diagnostic-query.ts` raw SQL endpoint needs rework — less SQLite-introspection-friendly over the network
-- Lex memory stays local (Lex owns its own storage). Visitors won't have persistent Lex memory unless we address this separately.
+- SQL dialect migration is substantial (~80 queries, 9 files, 15 categories of changes)
+- Local dev now requires Docker (or local Postgres install) — slightly more friction than `file:local.db`
+- Cloud SQL `db-f1-micro` costs ~$8/mo after GCP free trial expires (year 2+)
+- `diagnostic-query.ts` needs a full rewrite for `information_schema` instead of `sqlite_master`
+- Lex memory stays local (Lex owns its own SQLite DB). Visitors won't have persistent Lex memory unless addressed separately.
 
 ### Risks
-- **Turso availability** — if Turso has an outage, the app is down. Mitigation: embedded replicas serve reads from local cache.
-- **Cost creep** — if the app gets popular, Turso paid tier ($5/mo) + Cloud Run scaling costs could grow. Mitigation: invite codes limit user count.
-- **Migration scope** — 6 stores × async conversion × caller updates is mechanical but substantial. Mitigation: migrate one store at a time, test at each step.
+- **Cloud SQL cold start** — `db-f1-micro` can take 30-60s to wake from a stopped state. Mitigation: keep `activation-policy=ALWAYS` (always-on) for the micro instance.
+- **Cost after free trial** — ~$8/mo for Cloud SQL. Mitigation: this is acceptable for a portfolio/demo project.
+- **Migration scope** — 9 files, ~80 queries, SQL dialect changes. Mitigation: migrate one store at a time, test at each step. Phase 1's async work means the interface layer doesn't change.
 
 ## Alternatives Considered
 
 | Option | Why Not |
 |--------|---------|
-| **Postgres (Supabase/Neon)** | Different SQL dialect, $5+/mo minimum, overkill for data volumes |
+| **Turso/libSQL** | Same SQL dialect (nice), but vendor dependency on a startup. Data lives outside GCP. Originally chosen in D1, superseded. |
+| **Litestream + GCS** | $0 cost, zero code changes, but single-instance only (no horizontal scaling). Good for demos but limited future. |
+| **Supabase / Neon** | Postgres-compatible but external vendors. Adds another dashboard and billing. |
 | **Cloud Run + Volume Mount** | SQLite works but single-instance only, no multi-tenancy path |
 | **Compute Engine VM** | Always-on cost ($5-8/mo), manual HTTPS setup, no scale-to-zero |
 | **Stay local-only** | Can't share it. The whole point is showing people. |
-| **Cloudflare D1** | SQLite-compatible but different SDK, no embedded replicas, locked to Cloudflare Workers |
+| **Cloudflare D1** | SQLite-compatible but locked to Cloudflare Workers, different deployment model |
+| **Firestore** | Wrong tool — no SQL, document model doesn't fit relational fleet data |
+| **Spanner / AlloyDB** | Absurd overkill and cost for a demo project |
 
 ## References
 
-- [Turso TypeScript SDK](https://docs.turso.tech/sdk/ts/reference)
-- [Turso Embedded Replicas](https://docs.turso.tech/features/embedded-replicas)
-- [Turso Pricing (free tier)](https://turso.tech/pricing)
+- [Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres)
+- [Cloud Run + Cloud SQL Quickstart](https://cloud.google.com/sql/docs/postgres/connect-run)
+- [Cloud SQL Auth Proxy](https://cloud.google.com/sql/docs/postgres/sql-proxy)
+- [Cloud SQL Pricing](https://cloud.google.com/sql/pricing) (free tier: db-f1-micro for 12 months)
 - [Cloud Run Documentation](https://cloud.google.com/run/docs)
+- [node-postgres (pg)](https://node-postgres.com/)
 - ADR-016 (Catalog-Overlay Model — current store architecture)
 - ADR-006 (Open Alpha — shelved features list)
