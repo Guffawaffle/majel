@@ -114,6 +114,7 @@ export function createCatalogRoutes(appState: AppState): Router {
         target: ov?.target ?? false,
         userLevel: ov?.level ?? null,
         userRank: ov?.rank ?? null,
+        userPower: ov?.power ?? null,
         targetNote: ov?.targetNote ?? null,
         targetPriority: ov?.targetPriority ?? null,
       };
@@ -232,6 +233,7 @@ export function createCatalogRoutes(appState: AppState): Router {
         target: ov?.target ?? false,
         userTier: ov?.tier ?? null,
         userLevel: ov?.level ?? null,
+        userPower: ov?.power ?? null,
         targetNote: ov?.targetNote ?? null,
         targetPriority: ov?.targetPriority ?? null,
       };
@@ -347,7 +349,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.NOT_FOUND, `Reference officer not found: ${refId}`, 404);
     }
 
-    const { ownershipState, target, level, rank, targetNote, targetPriority } = req.body;
+    const { ownershipState, target, level, rank, power, targetNote, targetPriority } = req.body;
 
     // Validate ownership state if provided
     if (ownershipState !== undefined && !isValidOwnership(ownershipState)) {
@@ -360,6 +362,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       ...(target !== undefined && { target: !!target }),
       ...(level !== undefined && { level }),
       ...(rank !== undefined && { rank }),
+      ...(power !== undefined && { power }),
       ...(targetNote !== undefined && { targetNote }),
       ...(targetPriority !== undefined && { targetPriority }),
     });
@@ -395,7 +398,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.NOT_FOUND, `Reference ship not found: ${refId}`, 404);
     }
 
-    const { ownershipState, target, tier, level, targetNote, targetPriority } = req.body;
+    const { ownershipState, target, tier, level, power, targetNote, targetPriority } = req.body;
 
     if (ownershipState !== undefined && !isValidOwnership(ownershipState)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`, 400);
@@ -407,6 +410,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       ...(target !== undefined && { target: !!target }),
       ...(tier !== undefined && { tier }),
       ...(level !== undefined && { level }),
+      ...(power !== undefined && { power }),
       ...(targetNote !== undefined && { targetNote }),
       ...(targetPriority !== undefined && { targetPriority }),
     });

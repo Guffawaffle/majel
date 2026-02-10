@@ -33,6 +33,7 @@ export interface OfficerOverlay {
   target: boolean;
   level: number | null;
   rank: string | null;
+  power: number | null;
   targetNote: string | null;
   targetPriority: number | null;           // 1=high, 2=medium, 3=low
   updatedAt: string;
@@ -44,6 +45,7 @@ export interface ShipOverlay {
   target: boolean;
   tier: number | null;
   level: number | null;
+  power: number | null;
   targetNote: string | null;
   targetPriority: number | null;
   updatedAt: string;
@@ -55,6 +57,7 @@ export interface SetOfficerOverlayInput {
   target?: boolean;
   level?: number | null;
   rank?: string | null;
+  power?: number | null;
   targetNote?: string | null;
   targetPriority?: number | null;
 }
@@ -65,6 +68,7 @@ export interface SetShipOverlayInput {
   target?: boolean;
   tier?: number | null;
   level?: number | null;
+  power?: number | null;
   targetNote?: string | null;
   targetPriority?: number | null;
 }
@@ -150,15 +154,29 @@ export function createOverlayStore(dbPath?: string): OverlayStore {
     CREATE INDEX IF NOT EXISTS idx_ship_overlay_target ON ship_overlay(target) WHERE target = 1;
   `);
 
+  // ── Migration: add power column (ADR-017) ─────────────────
+  // Safe for SQLite: ADD COLUMN IF NOT EXISTS isn't supported,
+  // so we check PRAGMA table_info and add only if missing.
+  const officerCols = db.prepare("PRAGMA table_info(officer_overlay)").all() as { name: string }[];
+  if (!officerCols.some(c => c.name === "power")) {
+    db.exec("ALTER TABLE officer_overlay ADD COLUMN power INTEGER");
+    log.fleet.info("migrated officer_overlay: added power column");
+  }
+  const shipCols = db.prepare("PRAGMA table_info(ship_overlay)").all() as { name: string }[];
+  if (!shipCols.some(c => c.name === "power")) {
+    db.exec("ALTER TABLE ship_overlay ADD COLUMN power INTEGER");
+    log.fleet.info("migrated ship_overlay: added power column");
+  }
+
   // ── Prepared Statements ───────────────────────────────────
 
   const OFFICER_SELECT = `SELECT ref_id AS refId, ownership_state AS ownershipState,
-    target, level, rank, target_note AS targetNote,
+    target, level, rank, power, target_note AS targetNote,
     target_priority AS targetPriority, updated_at AS updatedAt
     FROM officer_overlay`;
 
   const SHIP_SELECT = `SELECT ref_id AS refId, ownership_state AS ownershipState,
-    target, tier, level, target_note AS targetNote,
+    target, tier, level, power, target_note AS targetNote,
     target_priority AS targetPriority, updated_at AS updatedAt
     FROM ship_overlay`;
 
@@ -166,13 +184,14 @@ export function createOverlayStore(dbPath?: string): OverlayStore {
     // Officer overlay
     getOfficerOverlay: db.prepare(`${OFFICER_SELECT} WHERE ref_id = ?`),
     upsertOfficerOverlay: db.prepare(
-      `INSERT INTO officer_overlay (ref_id, ownership_state, target, level, rank, target_note, target_priority, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO officer_overlay (ref_id, ownership_state, target, level, rank, power, target_note, target_priority, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(ref_id) DO UPDATE SET
          ownership_state = excluded.ownership_state,
          target = excluded.target,
          level = excluded.level,
          rank = excluded.rank,
+         power = excluded.power,
          target_note = excluded.target_note,
          target_priority = excluded.target_priority,
          updated_at = excluded.updated_at`
@@ -183,13 +202,14 @@ export function createOverlayStore(dbPath?: string): OverlayStore {
     // Ship overlay
     getShipOverlay: db.prepare(`${SHIP_SELECT} WHERE ref_id = ?`),
     upsertShipOverlay: db.prepare(
-      `INSERT INTO ship_overlay (ref_id, ownership_state, target, tier, level, target_note, target_priority, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO ship_overlay (ref_id, ownership_state, target, tier, level, power, target_note, target_priority, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(ref_id) DO UPDATE SET
          ownership_state = excluded.ownership_state,
          target = excluded.target,
          tier = excluded.tier,
          level = excluded.level,
+         power = excluded.power,
          target_note = excluded.target_note,
          target_priority = excluded.target_priority,
          updated_at = excluded.updated_at`
@@ -280,11 +300,12 @@ export function createOverlayStore(dbPath?: string): OverlayStore {
       const target = input.target !== undefined ? (input.target ? 1 : 0) : (existing?.target ?? 0);
       const level = input.level !== undefined ? input.level : (existing?.level ?? null);
       const rank = input.rank !== undefined ? input.rank : (existing?.rank ?? null);
+      const power = input.power !== undefined ? input.power : (existing?.power ?? null);
       const targetNote = input.targetNote !== undefined ? input.targetNote : (existing?.targetNote ?? null);
       const targetPriority = input.targetPriority !== undefined ? input.targetPriority : (existing?.targetPriority ?? null);
 
       stmts.upsertOfficerOverlay.run(
-        input.refId, ownershipState, target, level, rank, targetNote, targetPriority, now,
+        input.refId, ownershipState, target, level, rank, power, targetNote, targetPriority, now,
       );
       log.fleet.debug({ refId: input.refId, ownershipState, target: target === 1 }, "officer overlay set");
       return normalizeOfficerOverlay(stmts.getOfficerOverlay.get(input.refId) as RawOfficerOverlay);
@@ -315,11 +336,12 @@ export function createOverlayStore(dbPath?: string): OverlayStore {
       const target = input.target !== undefined ? (input.target ? 1 : 0) : (existing?.target ?? 0);
       const tier = input.tier !== undefined ? input.tier : (existing?.tier ?? null);
       const level = input.level !== undefined ? input.level : (existing?.level ?? null);
+      const power = input.power !== undefined ? input.power : (existing?.power ?? null);
       const targetNote = input.targetNote !== undefined ? input.targetNote : (existing?.targetNote ?? null);
       const targetPriority = input.targetPriority !== undefined ? input.targetPriority : (existing?.targetPriority ?? null);
 
       stmts.upsertShipOverlay.run(
-        input.refId, ownershipState, target, tier, level, targetNote, targetPriority, now,
+        input.refId, ownershipState, target, tier, level, power, targetNote, targetPriority, now,
       );
       log.fleet.debug({ refId: input.refId, ownershipState, target: target === 1 }, "ship overlay set");
       return normalizeShipOverlay(stmts.getShipOverlay.get(input.refId) as RawShipOverlay);

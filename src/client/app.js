@@ -15,6 +15,7 @@ import * as chat from './chat.js';
 import * as sessions from './sessions.js';
 import * as drydock from './drydock.js';
 import * as catalog from './catalog.js';
+import * as fleet from './fleet.js';
 import * as diagnostics from './diagnostics.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
@@ -41,6 +42,7 @@ const inputArea = $("#input-area");
 const setupGemini = $("#setup-gemini");
 const drydockArea = $("#drydock-area");
 const catalogArea = $("#catalog-area");
+const fleetArea = $("#fleet-area");
 const diagnosticsArea = $("#diagnostics-area");
 const titleBar = $("#title-bar");
 const titleBarHeading = $("#title-bar-heading");
@@ -173,7 +175,7 @@ async function searchRecall(query) {
 }
 
 // ─── View Switching & Hash Routing ──────────────────────────
-const VALID_VIEWS = ['chat', 'drydock', 'catalog', 'diagnostics'];
+const VALID_VIEWS = ['chat', 'drydock', 'catalog', 'fleet', 'diagnostics'];
 
 function setActiveNav(view) {
     sidebarNavBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
@@ -202,6 +204,7 @@ function showSetup(health) {
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
     if (catalogArea) catalogArea.classList.add("hidden");
+    if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     if (titleBar) titleBar.classList.add("hidden");
 
@@ -218,6 +221,7 @@ function showChat() {
     inputArea.classList.remove("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
     if (catalogArea) catalogArea.classList.add("hidden");
+    if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("chat");
     setTitleBar("💬", "Chat", "Gemini-powered fleet advisor");
@@ -230,6 +234,7 @@ function showDrydock() {
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.remove("hidden");
     if (catalogArea) catalogArea.classList.add("hidden");
+    if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("drydock");
     setTitleBar("🔧", "Drydock", "Configure docks, ships & crew");
@@ -243,6 +248,7 @@ function showCatalog() {
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
     if (catalogArea) catalogArea.classList.remove("hidden");
+    if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("catalog");
     setTitleBar("📋", "Catalog", "Reference data & ownership tracking");
@@ -256,6 +262,7 @@ function showDiagnostics() {
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
     if (catalogArea) catalogArea.classList.add("hidden");
+    if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.remove("hidden");
     setActiveNav("diagnostics");
     setTitleBar("⚡", "Diagnostics", "System health, data summary & query console");
@@ -263,9 +270,24 @@ function showDiagnostics() {
     diagnostics.refresh();
 }
 
+function showFleet() {
+    setupGuide.classList.add("hidden");
+    chatArea.classList.add("hidden");
+    inputArea.classList.add("hidden");
+    if (drydockArea) drydockArea.classList.add("hidden");
+    if (catalogArea) catalogArea.classList.add("hidden");
+    if (fleetArea) fleetArea.classList.remove("hidden");
+    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
+    setActiveNav("fleet");
+    setTitleBar("🚀", "Fleet", "Your owned roster — levels, ranks & power");
+    updateHash("fleet");
+    fleet.refresh();
+}
+
 function navigateToView(view) {
     if (view === 'drydock') { showDrydock(); currentMode = 'drydock'; }
     else if (view === 'catalog') { showCatalog(); currentMode = 'catalog'; }
+    else if (view === 'fleet') { showFleet(); currentMode = 'fleet'; }
     else if (view === 'diagnostics') { showDiagnostics(); currentMode = 'diagnostics'; }
     else { showChat(); currentMode = 'chat'; }
 }
@@ -332,6 +354,7 @@ recallClose.addEventListener("click", () => recallDialog.close());
     await initOpsLevel();
     await drydock.init();
     await catalog.init();
+    await fleet.init();
     await diagnostics.init();
 
     // Initial health check
@@ -368,7 +391,7 @@ recallClose.addEventListener("click", () => recallDialog.close());
             currentMode = "chat";
             chat.addMessage("system", "✅ Configuration detected — Aria is online, Admiral.");
             chatInput.focus();
-        } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "catalog" && currentMode !== "diagnostics" && h.gemini !== "connected") {
+        } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "catalog" && currentMode !== "fleet" && currentMode !== "diagnostics" && h.gemini !== "connected") {
             showSetup(h);
             currentMode = "setup";
         }
