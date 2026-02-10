@@ -69,20 +69,6 @@ export async function searchRecall(query) {
 }
 
 /**
- * Refresh fleet roster data from Google Sheets
- * @returns {Promise<Object>} Fleet data response
- */
-export async function refreshRoster() {
-    const res = await fetch("/api/roster");
-    const _env = await res.json();
-    return {
-        ok: res.ok,
-        data: _env.data || {},
-        error: _env.error,
-    };
-}
-
-/**
  * Fetch list of saved sessions
  * @returns {Promise<Array>} Array of session objects
  */
@@ -284,7 +270,7 @@ export async function saveDockIntents(num, intents) {
 /**
  * Assign a ship to a dock rotation
  * @param {number} num - Dock number
- * @param {number} shipId - Ship ID
+ * @param {string} shipId - Reference ship ID
  * @param {boolean} isActive - Whether this is the active ship
  * @returns {Promise<Object>}
  */
@@ -301,7 +287,7 @@ export async function addDockShip(num, shipId, isActive = false) {
 /**
  * Remove a ship from a dock
  * @param {number} num - Dock number
- * @param {number} shipId - Ship ID
+ * @param {string} shipId - Reference ship ID
  * @returns {Promise<Object>}
  */
 export async function removeDockShip(num, shipId) {
@@ -315,7 +301,7 @@ export async function removeDockShip(num, shipId) {
 /**
  * Set which ship is active in a dock
  * @param {number} num - Dock number
- * @param {number} shipId - Ship ID
+ * @param {string} shipId - Reference ship ID
  * @returns {Promise<Object>}
  */
 export async function setActiveShip(num, shipId) {

@@ -101,7 +101,7 @@ export interface ContextSources {
 /**
  * Known officer names for keyword matching.
  * This is a bootstrap set — in Phase 2, this could be populated
- * dynamically from the fleet store at engine creation time.
+ * dynamically from the reference store at engine creation time.
  */
 const DOCK_KEYWORDS = /\b(dock|drydock|dry[\s-]?dock|loadout|D[1-6])\b/i;
 const FLEET_KEYWORDS = /\b(my roster|my fleet|my ships|my officers|my crew)\b/i;
