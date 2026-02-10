@@ -25,7 +25,6 @@ Alpha users accept these terms. We document breaking changes in `CHANGELOG.md` b
 - npm 10+
 - Git
 - A Google Gemini API key ([free tier works](https://aistudio.google.com/apikey))
-- Optional: Google Cloud project with Sheets API enabled (for roster import)
 
 ### Development Setup
 
@@ -91,7 +90,7 @@ git checkout -b feature/your-feature
 4. **Write tests:**
    - New features require tests in `test/` directory
    - Use Vitest (`npm run test`)
-   - Aim for coverage parity with existing modules (~60% lines)
+   - Aim for coverage parity with existing modules
    - See `test/api.test.ts` for endpoint test patterns
 
 5. **Run local CI:**
@@ -158,8 +157,8 @@ Fixes #123
 **Examples:**
 ```
 feat(fleet): add crew preset tagging
-fix(sheets): handle missing tab gracefully
-docs(adr): add ADR-010 for multimodal chat
+fix(catalog): handle wiki sync timeout gracefully
+docs(adr): add ADR-016 for catalog-overlay model
 test(memory): cover recall edge cases
 ```
 
@@ -236,7 +235,7 @@ describe("GET /api/your-endpoint", () => {
 - Use `beforeAll`/`afterAll` for setup/teardown
 - Test success and error cases
 - Verify envelope structure (`ok`, `data`/`error`)
-- Mock external dependencies (Gemini API, Sheets API) when needed
+- Mock external dependencies (Gemini API) when needed
 
 ## Project Structure
 
@@ -272,10 +271,17 @@ Major architectural decisions are documented in `docs/ADR-*.md`. **Read these be
 - [ADR-004: AX-First API](docs/ADR-004-ax-first-api.md) — Envelope pattern
 - [ADR-005: v0.3 Hardening](docs/ADR-005-v03-hardening.md) — Route split, middleware
 - [ADR-006: Open Alpha](docs/ADR-006-open-alpha.md) — This phase
-- [ADR-007: Fleet Management](docs/ADR-007-fleet-management.md) — Drydock, crew
-- [ADR-008: Image Interpretation](docs/ADR-008-image-interpretation.md) — Screenshot pipeline
-- [ADR-009: Session Isolation](docs/ADR-009-session-isolation.md) — Multi-tab safety
-- [ADR-010: Multimodal Chat](docs/ADR-010-multimodal-chat.md) — Image uploads
+- [ADR-007: Fleet Management](docs/ADR-007-fleet-management.md) — Drydock, crew (superseded by ADR-016)
+- [ADR-008: Image Interpretation](docs/ADR-008-image-interpretation.md) — Screenshot pipeline (planned)
+- [ADR-009: Structured Logging](docs/ADR-009-structured-logging.md) — Pino JSON logs
+- [ADR-010: Drydock Loadouts](docs/ADR-010-drydock-loadouts.md) — Ship configurations
+- [ADR-011: Data Sovereignty](docs/ADR-011-data-sovereignty.md) — Sheet-as-bootstrap, app-as-truth
+- [ADR-012: Reference Data](docs/ADR-012-reference-data.md) — Localization templates + user input
+- [ADR-013: Wiki Data Import](docs/ADR-013-wiki-data-import.md) — Attribution, consent & ingest
+- [ADR-014: MicroRunner](docs/ADR-014-microrunner.md) — Runtime prompt enforcement
+- [ADR-015: Canonical Entity Identity](docs/ADR-015-canonical-entity-identity.md) — Wiki-based entity IDs
+- [ADR-016: Catalog-Overlay Model](docs/ADR-016-catalog-overlay-model.md) — Reference + overlay architecture
+- [ADR-017: Fleet Tab & Player Roadmap](docs/ADR-017-fleet-tab-and-player-roadmap.md) — Inline-editable roster
 
 If your change challenges an ADR decision, discuss it in an issue before coding.
 

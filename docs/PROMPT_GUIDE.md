@@ -81,9 +81,9 @@ The model cannot inspect its own subsystems at runtime — it doesn't know memor
 
 Fleet data is injected into the system prompt with provenance:
 
-- **Structured data:** Labeled with import timestamp — "imported from Google Sheets at {fetchedAt}"
-- **Legacy CSV:** Labeled as imported roster data
-- **No data:** Model notes the roster isn't connected and signals uncertainty for patch-sensitive specifics
+- **Reference data:** Wiki-sourced officer and ship catalogs with provenance metadata (source URL, import date)
+- **Overlay data:** User-provided levels, tiers, notes, and priorities
+- **No data:** Model notes the catalog hasn't been synced yet and signals uncertainty for roster-specific questions
 
 ### Anti-Patterns to Avoid
 
@@ -302,7 +302,7 @@ Admiral corrections will accumulate into durable behavioral adjustments via a Ba
 - Future: sliding window with summarization for long sessions
 
 ### Tool Use / Function Calling
-- Gemini supports function calling — could let Aria query the Sheets API dynamically
+- Gemini supports function calling — could let Aria query the database dynamically
 - Could add Lex recall as a Gemini tool so the model decides when to search memory
 
 ---

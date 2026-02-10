@@ -13,95 +13,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### Fleet Management (ADR-007)
-- **Fleet store** — SQLite-backed officer and ship management
-  - CRUD endpoints for officers: `GET/POST/PATCH/DELETE /api/fleet/officers`
-  - CRUD endpoints for ships: `GET/POST/PATCH/DELETE /api/fleet/ships`
-  - Crew assignment: `POST /api/fleet/ships/:id/crew`, `DELETE /api/fleet/ships/:shipId/crew/:officerId`
-  - Activity log: `GET /api/fleet/log` for tracking all mutations
-  - Entity counts: `GET /api/fleet/counts`
-- **Drydock loadouts** — dry dock configuration with intent-driven crew management
-  - CRUD endpoints for docks: `GET/PUT/DELETE /api/fleet/docks/:num`
-  - Intent system: `GET/POST/DELETE /api/fleet/intents`, `PUT /api/fleet/docks/:num/intents`
-  - Ship assignment to docks: `POST/PATCH/DELETE /api/fleet/docks/:num/ships/:shipId`
-  - Computed briefing: `GET /api/fleet/docks/summary`
-  - Conflict detection: `GET /api/fleet/docks/conflicts` (officer double-assignment checks)
+#### Catalog + Overlay Model (ADR-016)
+- **Reference + overlay architecture** — immutable wiki data with personal overlay deltas
+  - Reference store: `reference-store.ts` — read-only officer/ship data from wiki
+  - Overlay store: `overlay-store.ts` — user levels, tiers, notes, priorities (survives re-syncs)
+  - Merged views: `GET /api/catalog/officers/merged`, `GET /api/catalog/ships/merged`
+  - Entity counts: `GET /api/catalog/counts`
+- **Wiki sync** — bulk import from STFC Fandom wiki (174 officers, 54 ships)
+  - `POST /api/catalog/sync` — scrape + parse + upsert
+  - Canonical entity IDs: `wiki:officer:<pageId>`, `wiki:ship:<pageId>` (ADR-015)
+  - Idempotent: safe to re-run without losing overlay data
+- **Catalog API** — 8 endpoints for browsing and overlaying fleet data
+  - `GET /api/catalog/officers`, `GET /api/catalog/ships` — reference data
+  - `GET /api/catalog/officers/:id`, `GET /api/catalog/ships/:id` — individual records
+  - `PATCH /api/catalog/officers/:id/overlay`, `PATCH /api/catalog/ships/:id/overlay` — set overlays
+  - `DELETE /api/catalog/officers/:id/overlay`, `DELETE /api/catalog/ships/:id/overlay` — clear overlays
+  - `POST /api/catalog/bulk-overlay` — batch overlay updates
+
+#### Drydock System (ADR-010)
+- **Drydock loadouts** — ship configurations with officer assignments
+  - CRUD: `GET/PUT/DELETE /api/dock/docks/:num`
+  - Summary: `GET /api/dock/docks/summary`
+  - Conflict detection: `GET /api/dock/docks/conflicts`
+  - Cascade preview: `GET /api/dock/docks/:num/cascade-preview`
+- **Intent system** — declarative crew roles
+  - `GET/POST/DELETE /api/dock/intents`
+  - `PUT /api/dock/docks/:num/intents`
 - **Crew presets** — reusable crew configurations with tagging
-  - CRUD endpoints: `GET/POST/PATCH/DELETE /api/fleet/presets`
-  - Preset members: `PUT /api/fleet/presets/:id/members`
-  - Preset tags: `PUT /api/fleet/presets/:id/tags`, `GET /api/fleet/tags`
-  - Dock preset finder: `GET /api/fleet/docks/:num/presets`
-- **Fleet import** — bulk import from Google Sheets into fleet store
-  - `POST /api/fleet/import` — auto-detect officer/ship tabs, create entities
-  - Deduplication by name + tier (officers) or name + tier (ships)
+  - `GET/POST/PATCH/DELETE /api/dock/presets`
+  - Dock-specific preset finder: `GET /api/dock/docks/:num/presets`
+  - Tag management: `GET /api/dock/tags`
+
+#### Fleet Tab (ADR-017)
+- **Inline-editable fleet roster** — power, rank, tier, level, priority, notes
+  - Debounced auto-save on field blur
+  - Filter bar (owned, all, faction, rarity) with search
+  - Stats bar with live aggregates (total power, officer/ship counts)
+  - Power column with formatted display (e.g., "42.5M")
+
+#### AI Diagnostics
+- **Natural-language query tool** — AI-powered data exploration
+  - `GET /api/diagnostic` — health check
+  - `POST /api/diagnostic/schema` — describe database schema to AI
+  - `POST /api/diagnostic/query` — AI generates + executes SQL from natural language
+  - `POST /api/diagnostic/summary` — AI summarizes query results
+- **Diagnostics tab** — browser UI with query input, SQL transparency, result display
+
+#### SPA Routing
+- **Hash-based routing** — 5 views: `#chat`, `#catalog`, `#fleet`, `#drydock`, `#diagnostics`
+  - Tab state persisted in URL hash
+  - Back/forward browser navigation support
+  - Default view: `#chat`
 
 #### Session Management (ADR-009)
 - **Chat session store** — SQLite-backed session persistence
-  - `GET /api/sessions` — list all saved sessions
-  - `GET /api/sessions/:id` — retrieve session with messages
-  - `PATCH /api/sessions/:id` — update session title
-  - `DELETE /api/sessions/:id` — delete session
-- **Session isolation** — each browser tab gets independent Gemini chat session
-  - Session IDs generated client-side, persisted server-side
-  - Multi-tab safety: no cross-contamination of conversation history
+  - `GET/PATCH/DELETE /api/sessions(/:id)`
+  - Multi-tab safety: session IDs generated client-side
+- **Session isolation** — independent Gemini chat per browser tab
 
 #### Configuration
-- **Settings schema expansion** — 49 configurable settings across 5 categories
-  - Fleet defaults: `fleet.defaultShipTier`, `fleet.defaultOfficerTier`, `fleet.autoAssignOfficers`
-  - Model tuning: `model.temperature`, `model.topP`, `model.topK`, `model.maxOutputTokens`
-  - System: `system.requestTimeoutMs`, `system.logLevel`, `system.logPretty`
-- **Unified config resolver** — priority chain: user setting > env var > schema default
-  - `GET /api/settings` — all settings with resolved values
-  - `PATCH /api/settings` — bulk update settings
-  - `DELETE /api/settings/:key` — reset to default
+- **Settings schema** — 49 configurable settings across 5 categories
+  - Model tuning: temperature, topP, topK, maxOutputTokens
+  - System: request timeout, log level, log format
+- **Settings API** — `GET/PATCH /api/settings`, `DELETE /api/settings/:key`
+- **Unified config resolver** — priority: user setting > env var > schema default
 
 #### Documentation
-- **ADR-007** — Fleet Management (drydock, crew, intents)
-- **ADR-008** — Image Interpretation (screenshot-to-data pipeline) — planned for v0.6
-- **ADR-009** — Session Isolation (multi-tab safety)
-- **ADR-010** — Multimodal Chat (image uploads) — planned for v0.5
+- **17 ADRs** covering architecture, framework, epistemic model, API design,
+  middleware, identity, fleet management, image interpretation (planned),
+  session isolation, drydock loadouts, structured logging, Ariadne rebrand,
+  LCARS v2, MicroRunner, canonical entity identity, catalog-overlay model,
+  and fleet tab return.
 
 ### Changed
 
-#### Route Reorganization (ADR-005 Phase 4)
-- **Modular route system** — split monolithic routes into 5 focused modules:
-  - `routes/core.ts` — health, diagnostic, roster refresh, API discovery
+#### Route Reorganization
+- **7 route modules** — modular routing across 56 endpoints:
+  - `routes/core.ts` — health, API discovery
   - `routes/chat.ts` — chat, history, recall
-  - `routes/fleet.ts` — officers, ships, crew, docks, presets, intents, import
+  - `routes/catalog.ts` — officers, ships, overlays, sync
+  - `routes/docks.ts` — loadouts, presets, tags, intents
+  - `routes/diagnostic-query.ts` — AI data queries
   - `routes/sessions.ts` — session CRUD
   - `routes/settings.ts` — settings CRUD
-- **Timeout middleware** — per-route timeouts via `createTimeoutMiddleware()`
-  - `/api/health` → 2s
-  - `/api/chat` → 60s
-  - `/api/roster` → 60s
-  - All others → 30s default
-- **API discovery** — `GET /api` now lists all 50+ endpoints with descriptions
+- **API discovery** — `GET /api` lists all endpoints with descriptions
 
-#### Multi-Tab Sheet Import (ADR-007)
-- **Tab mapping** — `MAJEL_TAB_MAPPING="Officers:officers,Ships:ships,Custom:custom"`
-  - Auto-detect data type per tab (officers, ships, custom)
-  - Merge all tabs into unified `FleetData` structure
-  - Backward-compatible with single-tab `MAJEL_SHEET_RANGE`
+#### Google Sheets Removal (ADR-016 D7)
+- **Fully removed** — no Sheets API, no OAuth, no `googleapis` dependency
+- Replaced by wiki sync + overlay model
+- All `credentials.json`, `token.json`, spreadsheet config obsoleted
 
-#### Gemini Engine Enhancement
-- **Drydock briefing injection** — system prompt now includes computed dock summary
-  - Lists all 10 docks with assigned ships, crew, intents
-  - Updates on every chat turn (live data)
-- **Fleet config awareness** — Gemini receives tier defaults, auto-assign preferences
+#### Gemini Engine
+- **MicroRunner pipeline** (ADR-014) — classify → context gate → validate
+  - Task types: `reference_lookup`, `dock_planning`, `fleet_query`, `strategy_general`
+  - T2 reference packs injected on demand (not always in prompt)
+  - Output validation against authority ladder
+- **Drydock briefing injection** — system prompt includes dock summary
 - **Session tracking** — `getSessionCount()` for diagnostics
 
 ### Improved
-- **Error handling** — consistent `ErrorCode` enum across all endpoints
-- **Logging** — structured JSON logs via Pino (`MAJEL_LOG_PRETTY=true` for dev readability)
-- **Test coverage** — 11 test files covering 60%+ of codebase
-  - `fleet-store.test.ts`, `dock-store.test.ts` for data layer
-  - `api.test.ts` expanded for new endpoints
-- **Diagnostic depth** — `/api/diagnostic` now shows frame counts, DB paths, uptime
-
-### Security
-- Dependency audit: `npm audit` clean (no high/critical vulnerabilities)
-- SQLite DBs in `.smartergpt/` excluded from Git
-- Sensitive settings marked for future masking
+- **Security hardening** — server-side input validation on all PATCH routes
+  - Level 1–200, tier 1–10, power 0–999M, rank 50 chars, targetNote 500 chars
+  - CSS.escape() for user-generated selectors
+  - TOCTOU race fix (overlay writes wrapped in transactions)
+  - Stale closure fix in tab management
+  - Double-fire blur+debounce prevention
+- **Error handling** — consistent `ErrorCode` enum, structured error responses
+- **Logging** — Pino structured JSON logs (`MAJEL_LOG_PRETTY=true` for dev)
+- **Test coverage** — 13 test files, 512 tests via Vitest
+- **Diagnostic depth** — `/api/diagnostic` shows frame counts, DB paths, uptime
 
 ---
 
