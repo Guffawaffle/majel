@@ -364,6 +364,78 @@ export async function fetchDockSummary() {
     return env.data?.summary || [];
 }
 
+// ─── Crew Presets API ───────────────────────────────────────
+
+/**
+ * Fetch crew presets relevant to a specific dock (matches ship OR intent)
+ * @param {number} dockNumber - Dock number
+ * @returns {Promise<Array>} Array of preset objects with members and tags
+ */
+export async function fetchPresetsForDock(dockNumber) {
+    const res = await fetch(`/api/dock/docks/${dockNumber}/presets`);
+    const env = await res.json();
+    return env.data?.presets || [];
+}
+
+/**
+ * List crew presets with optional filters
+ * @param {Object} filters - { shipId?, intentKey?, tag?, officerId? }
+ * @returns {Promise<Array>} Array of preset objects
+ */
+export async function listPresets(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.shipId) params.set("shipId", filters.shipId);
+    if (filters.intentKey) params.set("intentKey", filters.intentKey);
+    if (filters.tag) params.set("tag", filters.tag);
+    if (filters.officerId) params.set("officerId", filters.officerId);
+    const qs = params.toString();
+    const res = await fetch(`/api/dock/presets${qs ? "?" + qs : ""}`);
+    const env = await res.json();
+    return env.data?.presets || [];
+}
+
+/**
+ * Create a new crew preset
+ * @param {Object} fields - { shipId: string, intentKey: string, presetName: string, isDefault?: boolean }
+ * @returns {Promise<Object>} { ok, data, error }
+ */
+export async function createPreset(fields) {
+    const res = await fetch("/api/dock/presets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Delete a crew preset
+ * @param {number} id - Preset ID
+ * @returns {Promise<Object>} { ok, data, error }
+ */
+export async function deletePreset(id) {
+    const res = await fetch(`/api/dock/presets/${id}`, { method: "DELETE" });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Set the crew members of a preset (replaces all members)
+ * @param {number} presetId - Preset ID
+ * @param {Array<{officerId: string, roleType: string, slot?: string}>} members
+ * @returns {Promise<Object>} { ok, data, error }
+ */
+export async function setPresetMembers(presetId, members) {
+    const res = await fetch(`/api/dock/presets/${presetId}/members`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ members }),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
 // ─── Catalog API (ADR-016 Phase 2) ─────────────────────────
 
 /**

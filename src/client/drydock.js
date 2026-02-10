@@ -16,6 +16,8 @@ let allOfficers = [];
 let allIntents = [];
 let conflicts = {};
 let activeDockNum = null;
+let dockPresets = [];       // presets for current active dock
+let activePresetId = null;  // currently selected preset ID
 
 // ─── DOM Refs ───────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -54,6 +56,26 @@ export async function refresh() {
         // Set active dock to first if current is invalid
         if (!activeDockNum || !docks.find(d => d.dockNumber === activeDockNum)) {
             activeDockNum = docks.length > 0 ? docks[0].dockNumber : null;
+        }
+
+        // Load crew presets for active dock
+        if (activeDockNum) {
+            try {
+                dockPresets = await api.fetchPresetsForDock(activeDockNum);
+            } catch {
+                dockPresets = [];
+            }
+            // Validate active preset still exists
+            if (activePresetId && !dockPresets.find(p => p.id === activePresetId)) {
+                activePresetId = null;
+            }
+            // Auto-select first preset if none selected
+            if (!activePresetId && dockPresets.length > 0) {
+                activePresetId = dockPresets[0].id;
+            }
+        } else {
+            dockPresets = [];
+            activePresetId = null;
         }
 
         render();
@@ -325,7 +347,7 @@ function renderIntentSection(dockIntents) {
 }
 
 /**
- * Crew section — bridge slots + below-deck (Phase 1: display only)
+ * Crew section — preset selector + bridge slots with officer assignment
  */
 function renderCrewSection(dock) {
     const dockShips = dock?.ships || [];
@@ -340,25 +362,144 @@ function renderCrewSection(dock) {
         `;
     }
 
-    // Bridge slots: captain + 2 officers (placeholder for now)
+    const activePreset = activePresetId ? dockPresets.find(p => p.id === activePresetId && p.shipId === activeShip.shipId) : null;
+    const hasIntents = (dock.intents || []).length > 0;
+
     return `
         <div class="dock-section">
             <h3 class="dock-section-title">Crew</h3>
-            <div class="crew-bridge">
-                <div class="bridge-slot captain">
-                    <div class="bridge-slot-label">Captain</div>
-                    <div class="bridge-slot-empty">— Unassigned —</div>
-                </div>
-                <div class="bridge-slot officer">
-                    <div class="bridge-slot-label">Officer</div>
-                    <div class="bridge-slot-empty">— Unassigned —</div>
-                </div>
-                <div class="bridge-slot officer">
-                    <div class="bridge-slot-label">Officer</div>
-                    <div class="bridge-slot-empty">— Unassigned —</div>
-                </div>
+            ${renderPresetSelector(dock, activeShip)}
+            ${activePreset ? renderBridgeSlots(activePreset) : ''}
+        </div>
+    `;
+}
+
+/**
+ * Preset selector — dropdown of existing presets + create new
+ */
+function renderPresetSelector(dock, activeShip) {
+    const shipPresets = dockPresets.filter(p => p.shipId === activeShip.shipId);
+    const intentKeys = (dock.intents || []).map(i => i.key);
+    const hasIntents = intentKeys.length > 0;
+
+    if (shipPresets.length === 0) {
+        // No presets for this ship — show create prompt
+        if (!hasIntents) {
+            return `<p class="hint">Select at least one intent to create crew presets.</p>`;
+        }
+        return `
+            <div class="preset-bar">
+                <span class="preset-bar-empty">No crew presets for this ship yet.</span>
+                <button class="btn btn-sm btn-accent" data-action="create-preset"
+                    data-ship="${activeShip.shipId}" data-intent="${intentKeys[0]}">
+                    + New Preset
+                </button>
             </div>
-            <p class="hint">Crew preset management coming soon. Use chat to ask Majel for crew recommendations.</p>
+        `;
+    }
+
+    // Build dropdown options
+    const options = shipPresets.map(p => {
+        const memberCount = (p.members || []).length;
+        const intentLabel = p.intentLabel || p.intentKey;
+        const label = `${escHtml(p.presetName)} (${intentLabel}) · ${memberCount}/3`;
+        return `<option value="${p.id}" ${p.id === activePresetId ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    return `
+        <div class="preset-bar">
+            <select class="preset-select" data-action="select-preset">
+                ${options}
+            </select>
+            ${hasIntents ? `
+                <button class="btn btn-sm btn-ghost" data-action="create-preset"
+                    data-ship="${activeShip.shipId}" data-intent="${intentKeys[0]}"
+                    title="New preset">+</button>
+            ` : ''}
+            <button class="btn btn-sm btn-ghost btn-danger" data-action="delete-preset"
+                data-preset="${activePresetId}" title="Delete this preset">🗑</button>
+        </div>
+    `;
+}
+
+/**
+ * Bridge slots — captain + 2 officers, populated from preset members
+ */
+function renderBridgeSlots(preset) {
+    const members = preset.members || [];
+
+    // Map members to slots
+    const captain = members.find(m => m.slot === 'captain');
+    const officers = members.filter(m => m.slot !== 'captain');
+    const officer1 = officers[0] || null;
+    const officer2 = officers[1] || null;
+
+    // Get IDs already assigned in this preset (to exclude from dropdowns)
+    const assignedIds = new Set(members.map(m => m.officerId));
+
+    return `
+        <div class="crew-section">
+            <div class="crew-zone-label">Bridge</div>
+            <div class="bridge-slots">
+                ${renderSlot('captain', 'Captain', captain, assignedIds, preset.id)}
+                ${renderSlot('officer-1', 'Officer', officer1, assignedIds, preset.id)}
+                ${renderSlot('officer-2', 'Officer', officer2, assignedIds, preset.id)}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Single bridge slot — filled or empty with officer picker
+ */
+function renderSlot(slotKey, label, member, assignedIds, presetId) {
+    const isCaptain = slotKey === 'captain';
+    const slotClass = isCaptain ? 'captain' : 'officer';
+
+    if (member) {
+        // Filled slot
+        const officer = allOfficers.find(o => o.id === member.officerId);
+        const name = officer?.name || member.officerName || member.officerId;
+        const rarity = officer?.rarity || '';
+        const initial = name.charAt(0).toUpperCase();
+
+        return `
+            <div class="bridge-slot ${slotClass} filled" data-slot="${slotKey}">
+                <button class="slot-remove" data-action="remove-crew"
+                    data-preset="${presetId}" data-slot="${slotKey}"
+                    data-officer="${member.officerId}" title="Remove">×</button>
+                <div class="bridge-slot-label">${label}</div>
+                <div class="slot-avatar">${initial}</div>
+                <div class="slot-officer-name">${escHtml(name)}</div>
+                ${rarity ? `<div class="slot-officer-rank">${escHtml(rarity)}</div>` : ''}
+            </div>
+        `;
+    }
+
+    // Empty slot — show officer picker
+    const ownedOfficers = allOfficers.filter(o =>
+        o.ownershipState === 'owned' && !assignedIds.has(o.id)
+    );
+
+    const optionsHtml = ownedOfficers.map(o =>
+        `<option value="${o.id}">${escHtml(o.name)}${o.rarity ? ` (${o.rarity})` : ''}</option>`
+    ).join('');
+
+    return `
+        <div class="bridge-slot ${slotClass}" data-slot="${slotKey}">
+            <div class="bridge-slot-label">${label}</div>
+            ${ownedOfficers.length > 0 ? `
+                <select class="slot-officer-select" data-action="assign-crew"
+                    data-preset="${presetId}" data-slot="${slotKey}">
+                    <option value="">— Assign —</option>
+                    ${optionsHtml}
+                </select>
+            ` : `
+                <div class="bridge-slot-empty">— Unassigned —</div>
+                ${allOfficers.filter(o => o.ownershipState === 'owned').length === 0
+                    ? '<div class="slot-hint">Mark officers as owned in the Catalog</div>'
+                    : ''}
+            `}
         </div>
     `;
 }
@@ -371,10 +512,7 @@ function bindEvents() {
 
     // Dock tab switching
     area.querySelectorAll(".dock-tab:not(.dock-tab-add)").forEach(tab => {
-        tab.addEventListener("click", () => {
-            activeDockNum = parseInt(tab.dataset.dock, 10);
-            render();
-        });
+        tab.addEventListener("click", () => switchDock(parseInt(tab.dataset.dock, 10)));
     });
 
     // Add dock button
@@ -509,6 +647,79 @@ function bindEvents() {
             }
         });
     });
+
+    // ── Crew Preset Events ─────────────────────────────────
+
+    // Select preset from dropdown
+    const presetSelect = area.querySelector("[data-action='select-preset']");
+    if (presetSelect) {
+        presetSelect.addEventListener("change", () => {
+            activePresetId = parseInt(presetSelect.value, 10);
+            render();
+        });
+    }
+
+    // Create new preset
+    area.querySelectorAll("[data-action='create-preset']").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const shipId = btn.dataset.ship;
+            const intentKey = btn.dataset.intent;
+            const shipName = allShips.find(s => s.id === shipId)?.name || 'Ship';
+            const intentLabel = allIntents.find(i => i.key === intentKey)?.label || intentKey;
+            const presetName = `${shipName} — ${intentLabel}`;
+
+            const result = await api.createPreset({ shipId, intentKey, presetName });
+            if (result.ok && result.data) {
+                activePresetId = result.data.id;
+            }
+            await refresh();
+        });
+    });
+
+    // Delete preset
+    area.querySelectorAll("[data-action='delete-preset']").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const presetId = parseInt(btn.dataset.preset, 10);
+            const preset = dockPresets.find(p => p.id === presetId);
+            const presetName = preset?.presetName || `Preset #${presetId}`;
+
+            const confirmed = await showConfirmDialog({
+                title: "Delete Crew Preset?",
+                subtitle: presetName,
+                sections: preset?.members?.length > 0
+                    ? [{ label: "Assigned officers", items: preset.members.map(m => m.officerName || m.officerId) }]
+                    : [],
+                approveLabel: "Delete preset",
+            });
+            if (!confirmed) return;
+
+            await api.deletePreset(presetId);
+            activePresetId = null;
+            await refresh();
+        });
+    });
+
+    // Assign officer to slot
+    area.querySelectorAll("[data-action='assign-crew']").forEach(sel => {
+        sel.addEventListener("change", async () => {
+            const officerId = sel.value;
+            if (!officerId) return;
+            const presetId = parseInt(sel.dataset.preset, 10);
+            const slotKey = sel.dataset.slot;
+            await saveSlotAssignment(presetId, slotKey, officerId);
+        });
+    });
+
+    // Remove officer from slot
+    area.querySelectorAll("[data-action='remove-crew']").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const presetId = parseInt(btn.dataset.preset, 10);
+            const slotKey = btn.dataset.slot;
+            await saveSlotAssignment(presetId, slotKey, null);
+        });
+    });
 }
 
 /**
@@ -518,10 +729,7 @@ function bindTabEvents() {
     const area = $("#drydock-area");
     if (!area) return;
     area.querySelectorAll(".dock-tab:not(.dock-tab-add)").forEach(tab => {
-        tab.addEventListener("click", () => {
-            activeDockNum = parseInt(tab.dataset.dock, 10);
-            render();
-        });
+        tab.addEventListener("click", () => switchDock(parseInt(tab.dataset.dock, 10)));
     });
     const addBtn = area.querySelector("[data-action='add-dock']");
     if (addBtn) {
@@ -535,6 +743,68 @@ function bindTabEvents() {
 }
 
 // ─── Helpers ────────────────────────────────────────────────
+
+/**
+ * Switch to a different dock — loads presets for the new dock and re-renders.
+ * Lighter than full refresh() since it reuses already-loaded ships/officers/intents.
+ */
+async function switchDock(dockNum) {
+    activeDockNum = dockNum;
+    activePresetId = null;
+    try {
+        dockPresets = await api.fetchPresetsForDock(dockNum);
+        if (dockPresets.length > 0) {
+            activePresetId = dockPresets[0].id;
+        }
+    } catch {
+        dockPresets = [];
+    }
+    render();
+}
+
+/**
+ * Save a crew slot assignment by rebuilding the full members array
+ * and calling setPresetMembers. Handles add/replace/remove for a slot.
+ *
+ * @param {number} presetId - The preset to update
+ * @param {string} slotKey - 'captain', 'officer-1', or 'officer-2'
+ * @param {string|null} officerId - Officer to assign, or null to clear
+ */
+async function saveSlotAssignment(presetId, slotKey, officerId) {
+    const preset = dockPresets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    const currentMembers = preset.members || [];
+
+    // Build the 3-slot member array from current state
+    const captain = currentMembers.find(m => m.slot === 'captain');
+    const officers = currentMembers.filter(m => m.slot !== 'captain');
+    const officer1 = officers[0] || null;
+    const officer2 = officers[1] || null;
+
+    // Apply the change
+    const slots = {
+        'captain': captain?.officerId || null,
+        'officer-1': officer1?.officerId || null,
+        'officer-2': officer2?.officerId || null,
+    };
+    slots[slotKey] = officerId;
+
+    // Build members array for the API
+    const members = [];
+    if (slots['captain']) {
+        members.push({ officerId: slots['captain'], roleType: 'bridge', slot: 'captain' });
+    }
+    if (slots['officer-1']) {
+        members.push({ officerId: slots['officer-1'], roleType: 'bridge', slot: 'officer' });
+    }
+    if (slots['officer-2']) {
+        members.push({ officerId: slots['officer-2'], roleType: 'bridge', slot: 'officer' });
+    }
+
+    await api.setPresetMembers(presetId, members);
+    await refresh();
+}
 
 function escHtml(str) {
     if (!str) return '';
