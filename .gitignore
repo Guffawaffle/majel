@@ -31,4 +31,3 @@ logs/
 *.db
 *.db-shm
 *.db-wal
-.import-receipts/
