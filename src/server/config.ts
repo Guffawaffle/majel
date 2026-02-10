@@ -108,7 +108,7 @@ function resolveLogPretty(isTest: boolean, isDev: boolean): boolean {
  * @param settingsStore - User settings store (null during early bootstrap)
  * @returns Fully resolved configuration object
  */
-export function resolveConfig(settingsStore: SettingsStore | null): AppConfig {
+export async function resolveConfig(settingsStore: SettingsStore | null): Promise<AppConfig> {
   // Environment detection (always from process.env — not configurable)
   const nodeEnv = process.env.NODE_ENV || "development";
   const isTest = nodeEnv === "test" || process.env.VITEST === "true";
@@ -116,11 +116,11 @@ export function resolveConfig(settingsStore: SettingsStore | null): AppConfig {
 
   // Resolve all settings
   const port = settingsStore
-    ? parseInt(settingsStore.get("system.port"), 10)
+    ? parseInt(await settingsStore.get("system.port"), 10)
     : parseInt(process.env.MAJEL_PORT || process.env.PORT || "3000", 10);
 
   const geminiApiKey = settingsStore
-    ? settingsStore.get("model.apiKey")
+    ? await settingsStore.get("model.apiKey")
     : process.env.GEMINI_API_KEY || "";
 
   // Lex workspace (special: used by Lex library, needs env var fallback)
@@ -146,6 +146,28 @@ export function resolveConfig(settingsStore: SettingsStore | null): AppConfig {
  * Get a minimal bootstrap config before settings store is available.
  * Used during early initialization.
  */
-export function bootstrapConfig(): AppConfig {
+export async function bootstrapConfig(): Promise<AppConfig> {
   return resolveConfig(null);
+}
+
+/**
+ * Synchronous bootstrap config for early init (no settings store).
+ * Uses only env vars and defaults — no async needed.
+ */
+export function bootstrapConfigSync(): AppConfig {
+  const nodeEnv = process.env.NODE_ENV || "development";
+  const isTest = nodeEnv === "test" || process.env.VITEST === "true";
+  const isDev = nodeEnv !== "production" && !isTest;
+  const logLevel = resolveLogLevel(isTest, isDev);
+  const logPretty = resolveLogPretty(isTest, isDev);
+  return {
+    port: parseInt(process.env.MAJEL_PORT || process.env.PORT || "3000", 10),
+    nodeEnv,
+    isTest,
+    isDev,
+    geminiApiKey: process.env.GEMINI_API_KEY || "",
+    lexWorkspaceRoot: process.env.LEX_WORKSPACE_ROOT || process.cwd(),
+    logLevel,
+    logPretty,
+  };
 }

@@ -14,7 +14,7 @@ import { resolveConfig } from "../config.js";
 export function createSettingsRoutes(appState: AppState): Router {
   const router = Router();
 
-  router.get("/api/settings", (req, res) => {
+  router.get("/api/settings", async (req, res) => {
     if (!appState.settingsStore) {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
@@ -28,17 +28,17 @@ export function createSettingsRoutes(appState: AppState): Router {
       }
       return sendOk(res, {
         category,
-        settings: appState.settingsStore.getByCategory(category),
+        settings: await appState.settingsStore.getByCategory(category),
       });
     }
 
     sendOk(res, {
       categories,
-      settings: appState.settingsStore.getAll(),
+      settings: await appState.settingsStore.getAll(),
     });
   });
 
-  router.patch("/api/settings", (req, res) => {
+  router.patch("/api/settings", async (req, res) => {
     if (!appState.settingsStore) {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
@@ -54,7 +54,7 @@ export function createSettingsRoutes(appState: AppState): Router {
     
     for (const [key, value] of Object.entries(updates)) {
       try {
-        appState.settingsStore.set(key, String(value));
+        await appState.settingsStore.set(key, String(value));
         results.push({ key, status: "updated" });
         if (key.startsWith("fleet.")) fleetConfigChanged = true;
         configChanged = true;
@@ -66,15 +66,15 @@ export function createSettingsRoutes(appState: AppState): Router {
 
     // Re-resolve config after settings change (ADR-005 Phase 3)
     if (configChanged) {
-      appState.config = resolveConfig(appState.settingsStore);
+      appState.config = await resolveConfig(appState.settingsStore);
     }
 
     // Rebuild Gemini engine with updated fleet config so the model sees the new values
     if (fleetConfigChanged && appState.config.geminiApiKey && appState.geminiEngine) {
       appState.geminiEngine = createGeminiEngine(
         appState.config.geminiApiKey,
-        readFleetConfig(appState.settingsStore),
-        readDockBriefing(appState.dockStore),
+        await readFleetConfig(appState.settingsStore),
+        await readDockBriefing(appState.dockStore),
       );
       log.boot.info("gemini engine refreshed with updated fleet config");
     }
@@ -82,17 +82,17 @@ export function createSettingsRoutes(appState: AppState): Router {
     sendOk(res, { results });
   });
 
-  router.delete("/api/settings/:key(*)", (req, res) => {
+  router.delete("/api/settings/:key(*)", async (req, res) => {
     if (!appState.settingsStore) {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
 
     const key = req.params.key;
-    const deleted = appState.settingsStore.delete(key);
+    const deleted = await appState.settingsStore.delete(key);
 
     if (deleted) {
       // Return the new resolved value (env or default)
-      const newValue = appState.settingsStore.get(key);
+      const newValue = await appState.settingsStore.get(key);
       sendOk(res, { key, status: "reset", resolvedValue: newValue });
     } else {
       sendOk(res, { key, status: "not_found", message: "No user override existed" });

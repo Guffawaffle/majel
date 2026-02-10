@@ -6,6 +6,8 @@
  *
  * Reference data is read-only via these routes (populated by wiki ingest).
  * Overlay data is full CRUD — the user's personal relationship to each entity.
+ *
+ * All handlers async for @libsql/client (ADR-018 Phase 1).
  */
 
 import { Router } from "express";
@@ -42,7 +44,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // ── Input validation helpers (ADR-017 hardening) ────────
 
   function validateInt(v: unknown, min: number, max: number): number | null | false {
-    if (v === null || v === undefined) return null; // explicit clear
+    if (v === null || v === undefined) return null;
     if (typeof v === "number") {
       if (!Number.isInteger(v) || v < min || v > max) return false;
       return v;
@@ -66,12 +68,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Reference Catalog — Officers (read-only)
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * GET /api/catalog/officers
-   * List all reference officers, optionally filtered.
-   * Query: ?q=search&rarity=epic&group=Command
-   */
-  router.get("/api/catalog/officers", (req, res) => {
+  router.get("/api/catalog/officers", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const store = appState.referenceStore!;
 
@@ -81,24 +78,17 @@ export function createCatalogRoutes(appState: AppState): Router {
 
     let officers;
     if (q) {
-      officers = store.searchOfficers(q);
-      // Apply additional filters if present
+      officers = await store.searchOfficers(q);
       if (rarity) officers = officers.filter(o => o.rarity === rarity);
       if (group) officers = officers.filter(o => o.groupName === group);
     } else {
-      officers = store.listOfficers({ rarity, groupName: group });
+      officers = await store.listOfficers({ rarity, groupName: group });
     }
 
     sendOk(res, { officers, count: officers.length });
   });
 
-  /**
-   * GET /api/catalog/officers/merged
-   * Officers with their overlay state joined.
-   * Query: ?q=search&rarity=epic&group=Command&ownership=owned&target=true
-   * NOTE: Must be registered BEFORE /api/catalog/officers/:id to avoid param capture.
-   */
-  router.get("/api/catalog/officers/merged", (req, res) => {
+  router.get("/api/catalog/officers/merged", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const refStore = appState.referenceStore!;
     const overlayStore = appState.overlayStore;
@@ -109,26 +99,23 @@ export function createCatalogRoutes(appState: AppState): Router {
     const ownership = typeof req.query.ownership === "string" ? req.query.ownership : undefined;
     const targetFilter = typeof req.query.target === "string" ? req.query.target : undefined;
 
-    // Get reference officers
     let officers;
     if (q) {
-      officers = refStore.searchOfficers(q);
+      officers = await refStore.searchOfficers(q);
       if (rarity) officers = officers.filter(o => o.rarity === rarity);
       if (group) officers = officers.filter(o => o.groupName === group);
     } else {
-      officers = refStore.listOfficers({ rarity, groupName: group });
+      officers = await refStore.listOfficers({ rarity, groupName: group });
     }
 
-    // Build overlay map
-    const overlayMap = new Map<string, ReturnType<NonNullable<typeof overlayStore>["getOfficerOverlay"]>>();
+    const overlayMap = new Map<string, Awaited<ReturnType<NonNullable<typeof overlayStore>["getOfficerOverlay"]>>>();
     if (overlayStore) {
-      const overlays = overlayStore.listOfficerOverlays();
+      const overlays = await overlayStore.listOfficerOverlays();
       for (const ov of overlays) {
         overlayMap.set(ov.refId, ov);
       }
     }
 
-    // Merge
     let merged = officers.map(officer => {
       const ov = overlayMap.get(officer.id);
       return {
@@ -143,10 +130,6 @@ export function createCatalogRoutes(appState: AppState): Router {
       };
     });
 
-    // Apply overlay filters
-    // When both ownership AND target filters are active, use OR (union)
-    // so "Owned + Targeted" shows officers matching either condition.
-    // When only one is active, apply it as a simple filter.
     const hasOwnershipFilter = ownership && isValidOwnership(ownership);
     const hasTargetFilter = targetFilter === "true" || targetFilter === "false";
 
@@ -170,13 +153,9 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, { officers: merged, count: merged.length });
   });
 
-  /**
-   * GET /api/catalog/officers/:id
-   * Get a single reference officer by ID.
-   */
-  router.get("/api/catalog/officers/:id", (req, res) => {
+  router.get("/api/catalog/officers/:id", async (req, res) => {
     if (!requireReferenceStore(res)) return;
-    const officer = appState.referenceStore!.getOfficer(req.params.id);
+    const officer = await appState.referenceStore!.getOfficer(req.params.id);
     if (!officer) return sendFail(res, ErrorCode.NOT_FOUND, `Officer not found: ${req.params.id}`, 404);
     sendOk(res, officer);
   });
@@ -185,12 +164,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Reference Catalog — Ships (read-only)
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * GET /api/catalog/ships
-   * List all reference ships, optionally filtered.
-   * Query: ?q=search&rarity=epic&faction=Federation&class=Explorer
-   */
-  router.get("/api/catalog/ships", (req, res) => {
+  router.get("/api/catalog/ships", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const store = appState.referenceStore!;
 
@@ -201,24 +175,18 @@ export function createCatalogRoutes(appState: AppState): Router {
 
     let ships;
     if (q) {
-      ships = store.searchShips(q);
+      ships = await store.searchShips(q);
       if (rarity) ships = ships.filter(s => s.rarity === rarity);
       if (faction) ships = ships.filter(s => s.faction === faction);
       if (shipClass) ships = ships.filter(s => s.shipClass === shipClass);
     } else {
-      ships = store.listShips({ rarity, faction, shipClass });
+      ships = await store.listShips({ rarity, faction, shipClass });
     }
 
     sendOk(res, { ships, count: ships.length });
   });
 
-  /**
-   * GET /api/catalog/ships/merged
-   * Ships with their overlay state joined.
-   * Query: ?q=search&rarity=epic&faction=Federation&class=Explorer&ownership=owned&target=true
-   * NOTE: Must be registered BEFORE /api/catalog/ships/:id to avoid param capture.
-   */
-  router.get("/api/catalog/ships/merged", (req, res) => {
+  router.get("/api/catalog/ships/merged", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const refStore = appState.referenceStore!;
     const overlayStore = appState.overlayStore;
@@ -232,17 +200,17 @@ export function createCatalogRoutes(appState: AppState): Router {
 
     let ships;
     if (q) {
-      ships = refStore.searchShips(q);
+      ships = await refStore.searchShips(q);
       if (rarity) ships = ships.filter(s => s.rarity === rarity);
       if (faction) ships = ships.filter(s => s.faction === faction);
       if (shipClass) ships = ships.filter(s => s.shipClass === shipClass);
     } else {
-      ships = refStore.listShips({ rarity, faction, shipClass });
+      ships = await refStore.listShips({ rarity, faction, shipClass });
     }
 
-    const overlayMap = new Map<string, ReturnType<NonNullable<typeof overlayStore>["getShipOverlay"]>>();
+    const overlayMap = new Map<string, Awaited<ReturnType<NonNullable<typeof overlayStore>["getShipOverlay"]>>>();
     if (overlayStore) {
-      const overlays = overlayStore.listShipOverlays();
+      const overlays = await overlayStore.listShipOverlays();
       for (const ov of overlays) {
         overlayMap.set(ov.refId, ov);
       }
@@ -262,7 +230,6 @@ export function createCatalogRoutes(appState: AppState): Router {
       };
     });
 
-    // Apply overlay filters (OR when both active, same as officers/merged)
     const hasOwnershipFilter = ownership && isValidOwnership(ownership);
     const hasTargetFilter = targetFilter === "true" || targetFilter === "false";
 
@@ -286,30 +253,17 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, { ships: merged, count: merged.length });
   });
 
-  /**
-   * GET /api/catalog/ships/:id
-   * Get a single reference ship by ID.
-   */
-  router.get("/api/catalog/ships/:id", (req, res) => {
+  router.get("/api/catalog/ships/:id", async (req, res) => {
     if (!requireReferenceStore(res)) return;
-    const ship = appState.referenceStore!.getShip(req.params.id);
+    const ship = await appState.referenceStore!.getShip(req.params.id);
     if (!ship) return sendFail(res, ErrorCode.NOT_FOUND, `Ship not found: ${req.params.id}`, 404);
     sendOk(res, ship);
   });
 
   // ═══════════════════════════════════════════════════════════
-  // Wiki Sync — user-initiated reference data import
-  // Fetches from Fandom Special:Export, parses wikitables,
-  // and bulk-upserts into the reference store. Single request
-  // per entity type — NOT a crawler or scraper.
+  // Wiki Sync
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * POST /api/catalog/sync
-   * Sync reference data from the STFC Fandom Wiki.
-   * Body: { consent: true, officers?: boolean, ships?: boolean }
-   * Response: { officers: {created,updated,total,parsed}, ships: {...}, provenance: {...} }
-   */
   router.post("/api/catalog/sync", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const store = appState.referenceStore!;
@@ -340,13 +294,9 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Catalog Counts & Facets
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * GET /api/catalog/counts
-   * Reference + overlay counts summary.
-   */
-  router.get("/api/catalog/counts", (req, res) => {
-    const refCounts = appState.referenceStore?.counts() ?? { officers: 0, ships: 0 };
-    const overlayCounts = appState.overlayStore?.counts() ?? {
+  router.get("/api/catalog/counts", async (req, res) => {
+    const refCounts = appState.referenceStore ? await appState.referenceStore.counts() : { officers: 0, ships: 0 };
+    const overlayCounts = appState.overlayStore ? await appState.overlayStore.counts() : {
       officers: { total: 0, owned: 0, unowned: 0, unknown: 0, targeted: 0 },
       ships: { total: 0, owned: 0, unowned: 0, unknown: 0, targeted: 0 },
     };
@@ -357,29 +307,21 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Overlay — Officer CRUD
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * PATCH /api/catalog/officers/:id/overlay
-   * Set/update overlay for a single officer.
-   * Body: { ownershipState?, target?, level?, rank?, targetNote?, targetPriority? }
-   */
-  router.patch("/api/catalog/officers/:id/overlay", (req, res) => {
+  router.patch("/api/catalog/officers/:id/overlay", async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const refId = req.params.id;
 
-    // Validate ref exists
-    if (appState.referenceStore && !appState.referenceStore.getOfficer(refId)) {
+    if (appState.referenceStore && !(await appState.referenceStore.getOfficer(refId))) {
       return sendFail(res, ErrorCode.NOT_FOUND, `Reference officer not found: ${refId}`, 404);
     }
 
     const { ownershipState, target, level, rank, power, targetNote, targetPriority } = req.body;
 
-    // Validate ownership state if provided
     if (ownershipState !== undefined && !isValidOwnership(ownershipState)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`, 400);
     }
 
-    // Validate numeric/string fields
     if (level !== undefined) {
       const v = validateInt(level, 1, 200);
       if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "level must be an integer 1–200", 400);
@@ -401,7 +343,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "targetPriority must be 1, 2, or 3", 400);
     }
 
-    const result = overlay.setOfficerOverlay({
+    const result = await overlay.setOfficerOverlay({
       refId,
       ...(ownershipState !== undefined && { ownershipState }),
       ...(target !== undefined && { target: !!target }),
@@ -415,13 +357,9 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, result);
   });
 
-  /**
-   * DELETE /api/catalog/officers/:id/overlay
-   * Remove overlay for a single officer (resets to unknown/no target).
-   */
-  router.delete("/api/catalog/officers/:id/overlay", (req, res) => {
+  router.delete("/api/catalog/officers/:id/overlay", async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const deleted = appState.overlayStore!.deleteOfficerOverlay(req.params.id);
+    const deleted = await appState.overlayStore!.deleteOfficerOverlay(req.params.id);
     sendOk(res, { deleted });
   });
 
@@ -429,17 +367,12 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Overlay — Ship CRUD
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * PATCH /api/catalog/ships/:id/overlay
-   * Set/update overlay for a single ship.
-   * Body: { ownershipState?, target?, tier?, level?, targetNote?, targetPriority? }
-   */
-  router.patch("/api/catalog/ships/:id/overlay", (req, res) => {
+  router.patch("/api/catalog/ships/:id/overlay", async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const refId = req.params.id;
 
-    if (appState.referenceStore && !appState.referenceStore.getShip(refId)) {
+    if (appState.referenceStore && !(await appState.referenceStore.getShip(refId))) {
       return sendFail(res, ErrorCode.NOT_FOUND, `Reference ship not found: ${refId}`, 404);
     }
 
@@ -449,7 +382,6 @@ export function createCatalogRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`, 400);
     }
 
-    // Validate numeric/string fields
     if (tier !== undefined) {
       const v = validateInt(tier, 1, 10);
       if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "tier must be an integer 1–10", 400);
@@ -471,7 +403,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "targetPriority must be 1, 2, or 3", 400);
     }
 
-    const result = overlay.setShipOverlay({
+    const result = await overlay.setShipOverlay({
       refId,
       ...(ownershipState !== undefined && { ownershipState }),
       ...(target !== undefined && { target: !!target }),
@@ -485,13 +417,9 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, result);
   });
 
-  /**
-   * DELETE /api/catalog/ships/:id/overlay
-   * Remove overlay for a single ship.
-   */
-  router.delete("/api/catalog/ships/:id/overlay", (req, res) => {
+  router.delete("/api/catalog/ships/:id/overlay", async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const deleted = appState.overlayStore!.deleteShipOverlay(req.params.id);
+    const deleted = await appState.overlayStore!.deleteShipOverlay(req.params.id);
     sendOk(res, { deleted });
   });
 
@@ -499,12 +427,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Bulk Overlay Operations
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * POST /api/catalog/officers/bulk-overlay
-   * Bulk set ownership or target for multiple officers.
-   * Body: { refIds: string[], ownershipState?: OwnershipState, target?: boolean }
-   */
-  router.post("/api/catalog/officers/bulk-overlay", (req, res) => {
+  router.post("/api/catalog/officers/bulk-overlay", async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const { refIds, ownershipState, target } = req.body;
@@ -518,21 +441,16 @@ export function createCatalogRoutes(appState: AppState): Router {
       if (!isValidOwnership(ownershipState)) {
         return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}`, 400);
       }
-      updated += overlay.bulkSetOfficerOwnership(refIds, ownershipState);
+      updated += await overlay.bulkSetOfficerOwnership(refIds, ownershipState);
     }
     if (target !== undefined) {
-      updated += overlay.bulkSetOfficerTarget(refIds, !!target);
+      updated += await overlay.bulkSetOfficerTarget(refIds, !!target);
     }
 
     sendOk(res, { updated, refIds: refIds.length });
   });
 
-  /**
-   * POST /api/catalog/ships/bulk-overlay
-   * Bulk set ownership or target for multiple ships.
-   * Body: { refIds: string[], ownershipState?: OwnershipState, target?: boolean }
-   */
-  router.post("/api/catalog/ships/bulk-overlay", (req, res) => {
+  router.post("/api/catalog/ships/bulk-overlay", async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const { refIds, ownershipState, target } = req.body;
@@ -546,10 +464,10 @@ export function createCatalogRoutes(appState: AppState): Router {
       if (!isValidOwnership(ownershipState)) {
         return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}`, 400);
       }
-      updated += overlay.bulkSetShipOwnership(refIds, ownershipState);
+      updated += await overlay.bulkSetShipOwnership(refIds, ownershipState);
     }
     if (target !== undefined) {
-      updated += overlay.bulkSetShipTarget(refIds, !!target);
+      updated += await overlay.bulkSetShipTarget(refIds, !!target);
     }
 
     sendOk(res, { updated, refIds: refIds.length });

@@ -14,15 +14,15 @@ export function createCoreRoutes(appState: AppState): Router {
 
   // ─── Health ─────────────────────────────────────────────────
 
-  router.get("/api/health", createTimeoutMiddleware(2000), (_req, res) => {
+  router.get("/api/health", createTimeoutMiddleware(2000), async (_req, res) => {
     sendOk(res, {
       status: appState.startupComplete ? "online" : "initializing",
       gemini: appState.geminiEngine ? "connected" : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
-      dockStore: appState.dockStore ? { active: true, ...appState.dockStore.counts() } : { active: false },
-      referenceStore: appState.referenceStore ? { active: true, ...appState.referenceStore.counts() } : { active: false },
-      overlayStore: appState.overlayStore ? { active: true, ...appState.overlayStore.counts() } : { active: false },
+      dockStore: appState.dockStore ? { active: true, ...await appState.dockStore.counts() } : { active: false },
+      referenceStore: appState.referenceStore ? { active: true, ...await appState.referenceStore.counts() } : { active: false },
+      overlayStore: appState.overlayStore ? { active: true, ...await appState.overlayStore.counts() } : { active: false },
     });
   });
 
@@ -95,7 +95,7 @@ export function createCoreRoutes(appState: AppState): Router {
 
   // ─── Diagnostic ─────────────────────────────────────────────
 
-  router.get("/api/diagnostic", (_req, res) => {
+  router.get("/api/diagnostic", async (_req, res) => {
     const uptimeSeconds = process.uptime();
     const hours = Math.floor(uptimeSeconds / 3600);
     const minutes = Math.floor((uptimeSeconds % 3600) / 60);
@@ -117,25 +117,25 @@ export function createCoreRoutes(appState: AppState): Router {
         if (!appState.memoryService) return { status: "not configured" };
         return { status: "active", frameCount: appState.memoryService.getFrameCount(), dbPath: appState.memoryService.getDbPath() };
       })(),
-      settings: (() => {
+      settings: await (async () => {
         if (!appState.settingsStore) return { status: "not configured" };
-        return { status: "active", userOverrides: appState.settingsStore.countUserOverrides(), dbPath: appState.settingsStore.getDbPath() };
+        return { status: "active", userOverrides: await appState.settingsStore.countUserOverrides(), dbPath: appState.settingsStore.getDbPath() };
       })(),
-      sessions: (() => {
+      sessions: await (async () => {
         if (!appState.sessionStore) return { status: "not configured" };
-        return { status: "active", count: appState.sessionStore.count(), dbPath: appState.sessionStore.getDbPath() };
+        return { status: "active", count: await appState.sessionStore.count(), dbPath: appState.sessionStore.getDbPath() };
       })(),
-      dockStore: (() => {
+      dockStore: await (async () => {
         if (!appState.dockStore) return { status: "not configured" };
-        return { status: "active", ...appState.dockStore.counts(), dbPath: appState.dockStore.getDbPath() };
+        return { status: "active", ...await appState.dockStore.counts(), dbPath: appState.dockStore.getDbPath() };
       })(),
-      referenceStore: (() => {
+      referenceStore: await (async () => {
         if (!appState.referenceStore) return { status: "not configured" };
-        return { status: "active", ...appState.referenceStore.counts(), dbPath: appState.referenceStore.getDbPath() };
+        return { status: "active", ...await appState.referenceStore.counts(), dbPath: appState.referenceStore.getDbPath() };
       })(),
-      overlayStore: (() => {
+      overlayStore: await (async () => {
         if (!appState.overlayStore) return { status: "not configured" };
-        return { status: "active", ...appState.overlayStore.counts(), dbPath: appState.overlayStore.getDbPath() };
+        return { status: "active", ...await appState.overlayStore.counts(), dbPath: appState.overlayStore.getDbPath() };
       })(),
     });
   });

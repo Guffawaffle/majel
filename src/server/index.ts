@@ -46,7 +46,7 @@ import {
 } from "./app-context.js";
 
 // Configuration (ADR-005 Phase 3)
-import { bootstrapConfig, resolveConfig } from "./config.js";
+import { bootstrapConfigSync, resolveConfig } from "./config.js";
 
 // Envelope (ADR-004)
 import { envelopeMiddleware, errorHandler, createTimeoutMiddleware } from "./envelope.js";
@@ -70,7 +70,7 @@ const __dirname = path.dirname(__filename);
 const clientDir = path.resolve(
   __dirname,
   // Use bootstrap config for NODE_ENV check
-  bootstrapConfig().nodeEnv === "production" ? "../../dist/client" : "../client",
+  bootstrapConfigSync().nodeEnv === "production" ? "../../dist/client" : "../client",
 );
 
 // ─── Module-level state ─────────────────────────────────────────
@@ -84,7 +84,7 @@ const state: AppState = {
   referenceStore: null,
   overlayStore: null,
   startupComplete: false,
-  config: bootstrapConfig(), // Initialize with bootstrap config
+  config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
 
 // ─── App Factory ────────────────────────────────────────────────
@@ -144,11 +144,11 @@ async function boot(): Promise<void> {
 
   // 1. Initialize settings store (always — it's local SQLite)
   try {
-    state.settingsStore = createSettingsStore();
+    state.settingsStore = await createSettingsStore();
     log.boot.info("settings store online");
     
     // Re-resolve config now that settings store is available
-    state.config = resolveConfig(state.settingsStore);
+    state.config = await resolveConfig(state.settingsStore);
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "settings store init failed");
   }
@@ -163,16 +163,16 @@ async function boot(): Promise<void> {
 
   // 2b. Initialize session store (always — it's local SQLite)
   try {
-    state.sessionStore = createSessionStore();
-    log.boot.info({ sessions: state.sessionStore.count() }, "session store online");
+    state.sessionStore = await createSessionStore();
+    log.boot.info({ sessions: await state.sessionStore.count() }, "session store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
   }
 
   // 2d. Initialize dock store (shares reference.db)
   try {
-    state.dockStore = createDockStore();
-    const dockCounts = state.dockStore.counts();
+    state.dockStore = await createDockStore();
+    const dockCounts = await state.dockStore.counts();
     log.boot.info({ intents: dockCounts.intents, docks: dockCounts.docks }, "dock store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "dock store init failed");
@@ -180,8 +180,8 @@ async function boot(): Promise<void> {
 
   // 2e. Initialize behavior store (ADR-014 Phase 2 — behavioral rules)
   try {
-    state.behaviorStore = createBehaviorStore();
-    const behaviorCounts = state.behaviorStore.counts();
+    state.behaviorStore = await createBehaviorStore();
+    const behaviorCounts = await state.behaviorStore.counts();
     log.boot.info({ rules: behaviorCounts.total, active: behaviorCounts.active }, "behavior store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "behavior store init failed");
@@ -189,8 +189,8 @@ async function boot(): Promise<void> {
 
   // 2f. Initialize reference store (ADR-015/016 — canonical reference catalog)
   try {
-    state.referenceStore = createReferenceStore();
-    const refCounts = state.referenceStore.counts();
+    state.referenceStore = await createReferenceStore();
+    const refCounts = await state.referenceStore.counts();
     log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
@@ -198,8 +198,8 @@ async function boot(): Promise<void> {
 
   // 2g. Initialize overlay store (ADR-016 — user ownership + targeting)
   try {
-    state.overlayStore = createOverlayStore();
-    const overlayCounts = state.overlayStore.counts();
+    state.overlayStore = await createOverlayStore();
+    const overlayCounts = await state.overlayStore.counts();
     log.boot.info({
       officerOverlays: overlayCounts.officers.total,
       shipOverlays: overlayCounts.ships.total,
@@ -213,11 +213,11 @@ async function boot(): Promise<void> {
 
   // 3. Initialize Gemini engine
   if (geminiApiKey) {
-    const runner = buildMicroRunnerFromState(state);
+    const runner = await buildMicroRunnerFromState(state);
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,
-      readFleetConfig(state.settingsStore),
-      readDockBriefing(state.dockStore),
+      await readFleetConfig(state.settingsStore),
+      await readDockBriefing(state.dockStore),
       runner,
     );
     log.boot.info({ model: "gemini-2.5-flash-lite", microRunner: !!runner }, "gemini engine online");
@@ -265,7 +265,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 // ─── Launch (guarded for test imports) ──────────────────────────
-if (!state.config.isTest) {
+if (!bootstrapConfigSync().isTest) {
   boot().catch((err) => {
     log.boot.fatal({ err: err instanceof Error ? err.message : String(err) }, "fatal startup error");
     process.exit(1);

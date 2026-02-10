@@ -285,14 +285,14 @@ export function createGeminiEngine(
       // ── MicroRunner pipeline (optional) ──────────────────
       if (microRunner) {
         const startTime = Date.now();
-        const { contract, gatedContext, augmentedMessage } = microRunner.prepare(message);
+        const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message);
 
         // Send augmented message (with gated context prepended)
         const result = await session.chatSession.sendMessage(augmentedMessage);
         let responseText = result.response.text();
 
         // Validate response against contract
-        const validation = microRunner.validate(
+        const validation = await microRunner.validate(
           responseText, contract, gatedContext, sessionId, startTime,
         );
         let receipt = validation.receipt;
@@ -305,7 +305,7 @@ export function createGeminiEngine(
           receipt.repairAttempted = true;
 
           // Re-validate the repaired response
-          const revalidation = microRunner.validate(
+          const revalidation = await microRunner.validate(
             responseText, contract, gatedContext, sessionId, startTime,
           );
           receipt.validationResult = revalidation.receipt.validationResult === "pass" ? "repaired" : "fail";

@@ -10,7 +10,7 @@ import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
 import { createOverlayStore, type OverlayStore } from "../src/server/overlay-store.js";
-import { bootstrapConfig } from "../src/server/config.js";
+import { bootstrapConfigSync } from "../src/server/config.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -32,13 +32,13 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     referenceStore: null,
     overlayStore: null,
     startupComplete: true,
-    config: bootstrapConfig(),
+    config: bootstrapConfigSync(),
     ...overrides,
   };
 }
 
-function seedOfficers(store: ReferenceStore) {
-  store.upsertOfficer({
+async function seedOfficers(store: ReferenceStore) {
+  await store.upsertOfficer({
     id: "wiki:officer:100",
     name: "Kirk",
     rarity: "epic",
@@ -52,7 +52,7 @@ function seedOfficers(store: ReferenceStore) {
     sourceRevisionId: null,
     sourceRevisionTimestamp: null,
   });
-  store.upsertOfficer({
+  await store.upsertOfficer({
     id: "wiki:officer:101",
     name: "Spock",
     rarity: "epic",
@@ -66,7 +66,7 @@ function seedOfficers(store: ReferenceStore) {
     sourceRevisionId: null,
     sourceRevisionTimestamp: null,
   });
-  store.upsertOfficer({
+  await store.upsertOfficer({
     id: "wiki:officer:102",
     name: "Uhura",
     rarity: "rare",
@@ -82,8 +82,8 @@ function seedOfficers(store: ReferenceStore) {
   });
 }
 
-function seedShips(store: ReferenceStore) {
-  store.upsertShip({
+async function seedShips(store: ReferenceStore) {
+  await store.upsertShip({
     id: "wiki:ship:200",
     name: "USS Enterprise",
     shipClass: "Explorer",
@@ -97,7 +97,7 @@ function seedShips(store: ReferenceStore) {
     sourceRevisionId: null,
     sourceRevisionTimestamp: null,
   });
-  store.upsertShip({
+  await store.upsertShip({
     id: "wiki:ship:201",
     name: "USS Saladin",
     shipClass: "Interceptor",
@@ -113,16 +113,16 @@ function seedShips(store: ReferenceStore) {
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-catalog-test-"));
   const dbPath = path.join(tmpDir, "reference.db");
-  refStore = createReferenceStore(dbPath);
-  overlayStore = createOverlayStore(dbPath);
+  refStore = await createReferenceStore(dbPath);
+  overlayStore = await createOverlayStore(dbPath);
 });
 
-afterEach(() => {
-  refStore.close();
-  overlayStore.close();
+afterEach(async () => {
+  await refStore.close();
+  await overlayStore.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -141,7 +141,7 @@ describe("GET /api/catalog/officers", () => {
   });
 
   it("lists all officers", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/officers");
     expect(res.status).toBe(200);
@@ -153,7 +153,7 @@ describe("GET /api/catalog/officers", () => {
   });
 
   it("searches officers by name", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/officers?q=kirk");
     expect(res.status).toBe(200);
@@ -162,7 +162,7 @@ describe("GET /api/catalog/officers", () => {
   });
 
   it("filters officers by rarity", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/officers?rarity=rare");
     expect(res.status).toBe(200);
@@ -171,7 +171,7 @@ describe("GET /api/catalog/officers", () => {
   });
 
   it("filters officers by group", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/officers?group=Command");
     expect(res.status).toBe(200);
@@ -188,7 +188,7 @@ describe("GET /api/catalog/officers", () => {
 
 describe("GET /api/catalog/officers/:id", () => {
   it("returns a single officer", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/officers/wiki:officer:100");
     expect(res.status).toBe(200);
@@ -210,7 +210,7 @@ describe("GET /api/catalog/officers/:id", () => {
 
 describe("GET /api/catalog/ships", () => {
   it("lists all ships", async () => {
-    seedShips(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/ships");
     expect(res.status).toBe(200);
@@ -218,7 +218,7 @@ describe("GET /api/catalog/ships", () => {
   });
 
   it("filters ships by faction", async () => {
-    seedShips(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/ships?faction=Federation");
     expect(res.status).toBe(200);
@@ -226,7 +226,7 @@ describe("GET /api/catalog/ships", () => {
   });
 
   it("filters ships by class", async () => {
-    seedShips(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/ships?class=Explorer");
     expect(res.status).toBe(200);
@@ -235,7 +235,7 @@ describe("GET /api/catalog/ships", () => {
   });
 
   it("searches ships by name", async () => {
-    seedShips(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/ships?q=saladin");
     expect(res.status).toBe(200);
@@ -246,7 +246,7 @@ describe("GET /api/catalog/ships", () => {
 
 describe("GET /api/catalog/ships/:id", () => {
   it("returns a single ship", async () => {
-    seedShips(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/ships/wiki:ship:200");
     expect(res.status).toBe(200);
@@ -267,8 +267,8 @@ describe("GET /api/catalog/ships/:id", () => {
 
 describe("GET /api/catalog/counts", () => {
   it("returns reference and overlay counts", async () => {
-    seedOfficers(refStore);
-    seedShips(refStore);
+    await seedOfficers(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/counts");
     expect(res.status).toBe(200);
@@ -293,7 +293,7 @@ describe("GET /api/catalog/counts", () => {
 
 describe("GET /api/catalog/officers/merged", () => {
   it("returns officers with default unowned ownership", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/officers/merged");
     expect(res.status).toBe(200);
@@ -306,9 +306,9 @@ describe("GET /api/catalog/officers/merged", () => {
   });
 
   it("merges overlay state correctly", async () => {
-    seedOfficers(refStore);
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned", target: true });
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", ownershipState: "unowned" });
+    await seedOfficers(refStore);
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned", target: true });
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", ownershipState: "unowned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/officers/merged");
     expect(res.status).toBe(200);
@@ -326,8 +326,8 @@ describe("GET /api/catalog/officers/merged", () => {
   });
 
   it("filters merged by ownership state", async () => {
-    seedOfficers(refStore);
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
+    await seedOfficers(refStore);
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
 
     const res = await request(app).get("/api/catalog/officers/merged?ownership=owned");
@@ -337,8 +337,8 @@ describe("GET /api/catalog/officers/merged", () => {
   });
 
   it("filters merged by target", async () => {
-    seedOfficers(refStore);
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", target: true });
+    await seedOfficers(refStore);
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", target: true });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
 
     const targeted = await request(app).get("/api/catalog/officers/merged?target=true");
@@ -350,10 +350,10 @@ describe("GET /api/catalog/officers/merged", () => {
   });
 
   it("uses OR when both ownership and target filters are active", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     // Kirk is owned (not targeted), Spock is targeted (not owned), Uhura is neither
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", target: true });
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", target: true });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
 
     const res = await request(app).get("/api/catalog/officers/merged?ownership=owned&target=true");
@@ -365,9 +365,9 @@ describe("GET /api/catalog/officers/merged", () => {
   });
 
   it("combines search + overlay filter", async () => {
-    seedOfficers(refStore);
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:102", ownershipState: "owned" });
+    await seedOfficers(refStore);
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:102", ownershipState: "owned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
 
     const res = await request(app).get("/api/catalog/officers/merged?group=Command&ownership=owned");
@@ -379,8 +379,8 @@ describe("GET /api/catalog/officers/merged", () => {
 
 describe("GET /api/catalog/ships/merged", () => {
   it("returns ships with overlay state", async () => {
-    seedShips(refStore);
-    overlayStore.setShipOverlay({ refId: "wiki:ship:200", ownershipState: "owned", target: true });
+    await seedShips(refStore);
+    await overlayStore.setShipOverlay({ refId: "wiki:ship:200", ownershipState: "owned", target: true });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
 
     const res = await request(app).get("/api/catalog/ships/merged");
@@ -393,8 +393,8 @@ describe("GET /api/catalog/ships/merged", () => {
   });
 
   it("filters by ownership and class", async () => {
-    seedShips(refStore);
-    overlayStore.setShipOverlay({ refId: "wiki:ship:200", ownershipState: "owned" });
+    await seedShips(refStore);
+    await overlayStore.setShipOverlay({ refId: "wiki:ship:200", ownershipState: "owned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
 
     const res = await request(app).get("/api/catalog/ships/merged?class=Explorer&ownership=owned");
@@ -410,7 +410,7 @@ describe("GET /api/catalog/ships/merged", () => {
 
 describe("PATCH /api/catalog/officers/:id/overlay", () => {
   it("sets ownership state", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .patch("/api/catalog/officers/wiki:officer:100/overlay")
@@ -420,7 +420,7 @@ describe("PATCH /api/catalog/officers/:id/overlay", () => {
   });
 
   it("sets target flag", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .patch("/api/catalog/officers/wiki:officer:100/overlay")
@@ -430,7 +430,7 @@ describe("PATCH /api/catalog/officers/:id/overlay", () => {
   });
 
   it("rejects invalid ownership state", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .patch("/api/catalog/officers/wiki:officer:100/overlay")
@@ -458,8 +458,8 @@ describe("PATCH /api/catalog/officers/:id/overlay", () => {
 
 describe("DELETE /api/catalog/officers/:id/overlay", () => {
   it("deletes an officer overlay", async () => {
-    seedOfficers(refStore);
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
+    await seedOfficers(refStore);
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
 
     const res = await request(app).delete("/api/catalog/officers/wiki:officer:100/overlay");
@@ -467,7 +467,7 @@ describe("DELETE /api/catalog/officers/:id/overlay", () => {
     expect(res.body.data.deleted).toBe(true);
 
     // Verify it's gone
-    const overlay = overlayStore.getOfficerOverlay("wiki:officer:100");
+    const overlay = await overlayStore.getOfficerOverlay("wiki:officer:100");
     expect(overlay).toBeNull();
   });
 });
@@ -478,7 +478,7 @@ describe("DELETE /api/catalog/officers/:id/overlay", () => {
 
 describe("PATCH /api/catalog/ships/:id/overlay", () => {
   it("sets ship ownership and target", async () => {
-    seedShips(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .patch("/api/catalog/ships/wiki:ship:200/overlay")
@@ -498,8 +498,8 @@ describe("PATCH /api/catalog/ships/:id/overlay", () => {
 
 describe("DELETE /api/catalog/ships/:id/overlay", () => {
   it("deletes a ship overlay", async () => {
-    seedShips(refStore);
-    overlayStore.setShipOverlay({ refId: "wiki:ship:200", ownershipState: "owned" });
+    await seedShips(refStore);
+    await overlayStore.setShipOverlay({ refId: "wiki:ship:200", ownershipState: "owned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
 
     const res = await request(app).delete("/api/catalog/ships/wiki:ship:200/overlay");
@@ -514,7 +514,7 @@ describe("DELETE /api/catalog/ships/:id/overlay", () => {
 
 describe("POST /api/catalog/officers/bulk-overlay", () => {
   it("bulk sets ownership for multiple officers", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .post("/api/catalog/officers/bulk-overlay")
@@ -527,14 +527,14 @@ describe("POST /api/catalog/officers/bulk-overlay", () => {
     expect(res.body.data.refIds).toBe(2);
 
     // Verify
-    const kirk = overlayStore.getOfficerOverlay("wiki:officer:100");
+    const kirk = await overlayStore.getOfficerOverlay("wiki:officer:100");
     expect(kirk?.ownershipState).toBe("owned");
-    const spock = overlayStore.getOfficerOverlay("wiki:officer:101");
+    const spock = await overlayStore.getOfficerOverlay("wiki:officer:101");
     expect(spock?.ownershipState).toBe("owned");
   });
 
   it("bulk sets target for multiple officers", async () => {
-    seedOfficers(refStore);
+    await seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .post("/api/catalog/officers/bulk-overlay")
@@ -565,7 +565,7 @@ describe("POST /api/catalog/officers/bulk-overlay", () => {
 
 describe("POST /api/catalog/ships/bulk-overlay", () => {
   it("bulk sets ownership for multiple ships", async () => {
-    seedShips(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .post("/api/catalog/ships/bulk-overlay")
@@ -576,12 +576,12 @@ describe("POST /api/catalog/ships/bulk-overlay", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.updated).toBeGreaterThan(0);
 
-    const enterprise = overlayStore.getShipOverlay("wiki:ship:200");
+    const enterprise = await overlayStore.getShipOverlay("wiki:ship:200");
     expect(enterprise?.ownershipState).toBe("unowned");
   });
 
   it("bulk sets both ownership and target in one call", async () => {
-    seedShips(refStore);
+    await seedShips(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .post("/api/catalog/ships/bulk-overlay")

@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
-import { bootstrapConfig } from "../src/server/config.js";
+import { bootstrapConfigSync } from "../src/server/config.js";
 import {
   cleanWikitext,
   slugify,
@@ -38,18 +38,18 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     referenceStore: null,
     overlayStore: null,
     startupComplete: true,
-    config: bootstrapConfig(),
+    config: bootstrapConfigSync(),
     ...overrides,
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-wiki-test-"));
-  refStore = createReferenceStore(path.join(tmpDir, "reference.db"));
+  refStore = await createReferenceStore(path.join(tmpDir, "reference.db"));
 });
 
-afterEach(() => {
-  refStore.close();
+afterEach(async () => {
+  await refStore.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -413,14 +413,14 @@ describe("POST /api/catalog/sync", () => {
       expect(d.provenance.ships.pageId).toBe("300");
 
       // Verify data is in the store
-      const officers = refStore.listOfficers();
+      const officers = await refStore.listOfficers();
       expect(officers.length).toBe(4);
       const kirk = officers.find(o => o.name === "Kirk");
       expect(kirk?.id).toBe("wiki:officer:kirk");
       expect(kirk?.captainManeuver).toBe("Inspirational");
       expect(kirk?.source).toBe("stfc-fandom-wiki");
 
-      const ships = refStore.listShips();
+      const ships = await refStore.listShips();
       expect(ships.length).toBe(5);
       const enterprise = ships.find(s => s.name === "USS Enterprise");
       expect(enterprise?.id).toBe("wiki:ship:uss-enterprise");
@@ -453,7 +453,7 @@ describe("POST /api/catalog/sync", () => {
       expect(res.body.data.ships.total).toBe(0);
 
       // Ships should not be fetched
-      expect(refStore.listShips().length).toBe(0);
+      expect((await refStore.listShips()).length).toBe(0);
     } finally {
       globalThis.fetch = originalFetch;
     }

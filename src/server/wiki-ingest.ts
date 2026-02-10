@@ -414,7 +414,7 @@ export async function syncWikiData(
       sourceRevisionTimestamp: provenance.revisionTimestamp,
     }));
 
-    const upsertResult = store.bulkUpsertOfficers(inputs);
+    const upsertResult = await store.bulkUpsertOfficers(inputs);
     result.officers.created = upsertResult.created;
     result.officers.updated = upsertResult.updated;
     result.officers.total = inputs.length;
@@ -447,7 +447,7 @@ export async function syncWikiData(
       sourceRevisionTimestamp: provenance.revisionTimestamp,
     }));
 
-    const upsertResult = store.bulkUpsertShips(inputs);
+    const upsertResult = await store.bulkUpsertShips(inputs);
     result.ships.created = upsertResult.created;
     result.ships.updated = upsertResult.updated;
     result.ships.total = inputs.length;

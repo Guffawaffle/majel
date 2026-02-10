@@ -34,19 +34,19 @@ export interface AppState {
 // ─── Helpers ────────────────────────────────────────────────────
 
 /** Read fleet config from the settings store for model context injection. */
-export function readFleetConfig(store: SettingsStore | null): FleetConfig | null {
+export async function readFleetConfig(store: SettingsStore | null): Promise<FleetConfig | null> {
   if (!store) return null;
   return {
-    opsLevel: store.getTyped("fleet.opsLevel") as number,
-    drydockCount: store.getTyped("fleet.drydockCount") as number,
-    shipHangarSlots: store.getTyped("fleet.shipHangarSlots") as number,
+    opsLevel: await store.getTyped("fleet.opsLevel") as number,
+    drydockCount: await store.getTyped("fleet.drydockCount") as number,
+    shipHangarSlots: await store.getTyped("fleet.shipHangarSlots") as number,
   };
 }
 
 /** Build the dock briefing text for model context injection. Returns null if no docks configured. */
-export function readDockBriefing(dockStore: DockStore | null): string | null {
+export async function readDockBriefing(dockStore: DockStore | null): Promise<string | null> {
   if (!dockStore) return null;
-  const briefing = dockStore.buildBriefing();
+  const briefing = await dockStore.buildBriefing();
   return briefing.totalChars > 0 ? briefing.text : null;
 }
 
@@ -59,34 +59,39 @@ export function readDockBriefing(dockStore: DockStore | null): string | null {
  *
  * Returns null if the reference store isn't available (MicroRunner is optional).
  */
-export function buildMicroRunnerFromState(appState: AppState): MicroRunner | null {
+export async function buildMicroRunnerFromState(appState: AppState): Promise<MicroRunner | null> {
   const referenceStore = appState.referenceStore;
+
+  // Pre-fetch officers into a Map for sync lookup (store methods are now async)
+  const officerMap = new Map<string, ReferenceEntry>();
+  let knownOfficerNames: string[] | undefined;
+  if (referenceStore) {
+    const refCounts = await referenceStore.counts();
+    const allOfficers = refCounts.officers > 0 ? await referenceStore.listOfficers() : [];
+    for (const o of allOfficers) {
+      officerMap.set(o.name.toLowerCase(), {
+        id: o.id,
+        name: o.name,
+        rarity: o.rarity,
+        groupName: o.groupName,
+        source: o.source,
+        importedAt: o.createdAt,
+      });
+    }
+    knownOfficerNames = allOfficers.map((o) => o.name);
+  }
 
   // Build context sources from current state
   const contextSources: ContextSources = {
     hasFleetConfig: !!appState.settingsStore,
-    hasRoster: !!referenceStore && referenceStore.counts().officers > 0,
+    hasRoster: officerMap.size > 0,
     hasDockBriefing: !!appState.dockStore,
-    lookupOfficer: referenceStore
+    lookupOfficer: officerMap.size > 0
       ? (name: string): ReferenceEntry | null => {
-          const match = referenceStore.findOfficerByName(name);
-          if (!match) return null;
-          return {
-            id: match.id,
-            name: match.name,
-            rarity: match.rarity,
-            groupName: match.groupName,
-            source: match.source,
-            importedAt: match.createdAt,
-          };
+          return officerMap.get(name.toLowerCase()) ?? null;
         }
       : undefined,
   };
-
-  // Gather known officer names for the PromptCompiler's keyword matching
-  const knownOfficerNames = referenceStore
-    ? referenceStore.listOfficers().map((o) => o.name)
-    : undefined;
 
   return createMicroRunner({ contextSources, knownOfficerNames, behaviorStore: appState.behaviorStore ?? undefined });
 }

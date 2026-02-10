@@ -10,7 +10,7 @@ import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
 import { createOverlayStore, type OverlayStore } from "../src/server/overlay-store.js";
-import { bootstrapConfig } from "../src/server/config.js";
+import { bootstrapConfigSync } from "../src/server/config.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -32,13 +32,13 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     referenceStore: null,
     overlayStore: null,
     startupComplete: true,
-    config: bootstrapConfig(),
+    config: bootstrapConfigSync(),
     ...overrides,
   };
 }
 
-function seedData(store: ReferenceStore) {
-  store.upsertOfficer({
+async function seedData(store: ReferenceStore) {
+  await store.upsertOfficer({
     id: "wiki:officer:100",
     name: "Kirk",
     rarity: "epic",
@@ -52,7 +52,7 @@ function seedData(store: ReferenceStore) {
     sourceRevisionId: null,
     sourceRevisionTimestamp: null,
   });
-  store.upsertOfficer({
+  await store.upsertOfficer({
     id: "wiki:officer:101",
     name: "Spock",
     rarity: "epic",
@@ -66,7 +66,7 @@ function seedData(store: ReferenceStore) {
     sourceRevisionId: null,
     sourceRevisionTimestamp: null,
   });
-  store.upsertShip({
+  await store.upsertShip({
     id: "wiki:ship:200",
     name: "USS Enterprise",
     shipClass: "Explorer",
@@ -82,16 +82,16 @@ function seedData(store: ReferenceStore) {
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-diag-"));
   const dbPath = path.join(tmpDir, "test-ref.db");
-  refStore = createReferenceStore(dbPath);
-  overlayStore = createOverlayStore(dbPath);
+  refStore = await createReferenceStore(dbPath);
+  overlayStore = await createOverlayStore(dbPath);
 });
 
-afterEach(() => {
-  refStore.close();
-  overlayStore.close();
+afterEach(async () => {
+  await refStore.close();
+  await overlayStore.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -101,7 +101,7 @@ afterEach(() => {
 
 describe("GET /api/diagnostic/schema", () => {
   it("returns table list with columns and row counts", async () => {
-    seedData(refStore);
+    await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/diagnostic/schema");
 
@@ -119,7 +119,7 @@ describe("GET /api/diagnostic/schema", () => {
   });
 
   it("includes indexes", async () => {
-    seedData(refStore);
+    await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/diagnostic/schema");
 
@@ -141,7 +141,7 @@ describe("GET /api/diagnostic/schema", () => {
 
 describe("GET /api/diagnostic/query", () => {
   it("executes a SELECT query and returns rows", async () => {
-    seedData(refStore);
+    await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .get("/api/diagnostic/query")
@@ -168,7 +168,7 @@ describe("GET /api/diagnostic/query", () => {
   });
 
   it("supports WITH (CTE) queries", async () => {
-    seedData(refStore);
+    await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app)
       .get("/api/diagnostic/query")
@@ -207,7 +207,7 @@ describe("GET /api/diagnostic/query", () => {
   it("enforces row limit", async () => {
     // Seed many officers
     for (let i = 0; i < 15; i++) {
-      refStore.upsertOfficer({
+      await refStore.upsertOfficer({
         id: `wiki:officer:${1000 + i}`,
         name: `Officer ${i}`,
         rarity: "common",
@@ -259,7 +259,7 @@ describe("GET /api/diagnostic/query", () => {
 
 describe("GET /api/diagnostic/summary", () => {
   it("returns reference counts and breakdowns", async () => {
-    seedData(refStore);
+    await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/diagnostic/summary");
 
@@ -275,9 +275,9 @@ describe("GET /api/diagnostic/summary", () => {
   });
 
   it("includes overlay breakdown", async () => {
-    seedData(refStore);
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
-    overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", ownershipState: "unowned" });
+    await seedData(refStore);
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
+    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", ownershipState: "unowned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/diagnostic/summary");
 
@@ -288,7 +288,7 @@ describe("GET /api/diagnostic/summary", () => {
   });
 
   it("includes sample data", async () => {
-    seedData(refStore);
+    await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/diagnostic/summary");
 

@@ -29,17 +29,17 @@ describe("generateTimestampTitle", () => {
 describe("SessionStore", () => {
   let store: SessionStore;
 
-  beforeEach(() => {
-    store = createSessionStore(TEST_DB);
+  beforeEach(async () => {
+    store = await createSessionStore(TEST_DB);
   });
 
-  afterEach(() => {
-    store.close();
+  afterEach(async () => {
+    await store.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
-  it("creates a session with default timestamp title", () => {
-    const session = store.create("s1");
+  it("creates a session with default timestamp title", async () => {
+    const session = await store.create("s1");
     expect(session.id).toBe("s1");
     // Title is YYYYMMDD-HHmmss format
     expect(session.title).toMatch(/^\d{8}-\d{6}$/);
@@ -47,17 +47,17 @@ describe("SessionStore", () => {
     expect(session.updatedAt).toBeTruthy();
   });
 
-  it("creates a session with custom title", () => {
-    const session = store.create("s2", "My Chat");
+  it("creates a session with custom title", async () => {
+    const session = await store.create("s2", "My Chat");
     expect(session.title).toBe("My Chat");
   });
 
-  it("retrieves a session with messages", () => {
-    store.create("s1", "Test Session");
-    store.addMessage("s1", "user", "Hello");
-    store.addMessage("s1", "model", "Hi there!");
+  it("retrieves a session with messages", async () => {
+    await store.create("s1", "Test Session");
+    await store.addMessage("s1", "user", "Hello");
+    await store.addMessage("s1", "model", "Hi there!");
 
-    const session = store.get("s1");
+    const session = await store.get("s1");
     expect(session).not.toBeNull();
     expect(session!.title).toBe("Test Session");
     expect(session!.messages).toHaveLength(2);
@@ -67,30 +67,30 @@ describe("SessionStore", () => {
     expect(session!.messages[1].text).toBe("Hi there!");
   });
 
-  it("returns null for nonexistent session", () => {
-    expect(store.get("nope")).toBeNull();
+  it("returns null for nonexistent session", async () => {
+    expect(await store.get("nope")).toBeNull();
   });
 
-  it("auto-creates session on addMessage", () => {
-    store.addMessage("auto-id", "user", "Hello from nowhere");
+  it("auto-creates session on addMessage", async () => {
+    await store.addMessage("auto-id", "user", "Hello from nowhere");
 
-    const session = store.get("auto-id");
+    const session = await store.get("auto-id");
     expect(session).not.toBeNull();
     expect(session!.messages).toHaveLength(1);
     expect(session!.title).toMatch(/^\d{8}-\d{6}$/);
   });
 
   it("lists sessions in reverse chronological order", async () => {
-    store.create("s1", "First");
-    store.addMessage("s1", "user", "First user msg");
+    await store.create("s1", "First");
+    await store.addMessage("s1", "user", "First user msg");
 
     // Small delay so timestamps differ
     await new Promise((r) => setTimeout(r, 5));
 
-    store.create("s2", "Second");
-    store.addMessage("s2", "user", "Second user msg");
+    await store.create("s2", "Second");
+    await store.addMessage("s2", "user", "Second user msg");
 
-    const list = store.list();
+    const list = await store.list();
     expect(list.length).toBe(2);
     // Most recently created comes first
     expect(list[0].id).toBe("s2");
@@ -104,47 +104,47 @@ describe("SessionStore", () => {
     expect(list[0].messageCount).toBe(1);
   });
 
-  it("updates session title", () => {
-    store.create("s1", "Old Title");
-    const updated = store.updateTitle("s1", "New Title");
+  it("updates session title", async () => {
+    await store.create("s1", "Old Title");
+    const updated = await store.updateTitle("s1", "New Title");
     expect(updated).toBe(true);
 
-    const session = store.get("s1");
+    const session = await store.get("s1");
     expect(session!.title).toBe("New Title");
   });
 
-  it("returns false when updating nonexistent session", () => {
-    expect(store.updateTitle("nope", "Title")).toBe(false);
+  it("returns false when updating nonexistent session", async () => {
+    expect(await store.updateTitle("nope", "Title")).toBe(false);
   });
 
-  it("deletes a session and its messages", () => {
-    store.create("s1");
-    store.addMessage("s1", "user", "Hello");
-    store.addMessage("s1", "model", "Hi");
+  it("deletes a session and its messages", async () => {
+    await store.create("s1");
+    await store.addMessage("s1", "user", "Hello");
+    await store.addMessage("s1", "model", "Hi");
 
-    const deleted = store.delete("s1");
+    const deleted = await store.delete("s1");
     expect(deleted).toBe(true);
-    expect(store.get("s1")).toBeNull();
-    expect(store.count()).toBe(0);
+    expect(await store.get("s1")).toBeNull();
+    expect(await store.count()).toBe(0);
   });
 
-  it("returns false when deleting nonexistent session", () => {
-    expect(store.delete("nope")).toBe(false);
+  it("returns false when deleting nonexistent session", async () => {
+    expect(await store.delete("nope")).toBe(false);
   });
 
-  it("counts sessions", () => {
-    expect(store.count()).toBe(0);
-    store.create("s1");
-    store.create("s2");
-    expect(store.count()).toBe(2);
+  it("counts sessions", async () => {
+    expect(await store.count()).toBe(0);
+    await store.create("s1");
+    await store.create("s2");
+    expect(await store.count()).toBe(2);
   });
 
-  it("limits list results", () => {
-    store.create("s1");
-    store.create("s2");
-    store.create("s3");
+  it("limits list results", async () => {
+    await store.create("s1");
+    await store.create("s2");
+    await store.create("s3");
 
-    const limited = store.list(2);
+    const limited = await store.list(2);
     expect(limited).toHaveLength(2);
   });
 
@@ -153,14 +153,14 @@ describe("SessionStore", () => {
   });
 
   it("touches session updated_at", async () => {
-    store.create("s1");
-    const before = store.get("s1")!.updatedAt;
+    await store.create("s1");
+    const before = (await store.get("s1"))!.updatedAt;
 
     // Wait 2ms so ISO timestamp differs
     await new Promise((r) => setTimeout(r, 2));
 
-    store.touch("s1");
-    const after = store.get("s1")!.updatedAt;
+    await store.touch("s1");
+    const after = (await store.get("s1"))!.updatedAt;
 
     expect(after >= before).toBe(true);
   });
