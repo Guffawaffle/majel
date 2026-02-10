@@ -20,7 +20,6 @@ export function createCoreRoutes(appState: AppState): Router {
       gemini: appState.geminiEngine ? "connected" : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
-      fleetStore: appState.fleetStore ? { active: true, ...appState.fleetStore.counts() } : { active: false },
       dockStore: appState.dockStore ? { active: true, ...appState.dockStore.counts() } : { active: false },
       referenceStore: appState.referenceStore ? { active: true, ...appState.referenceStore.counts() } : { active: false },
       overlayStore: appState.overlayStore ? { active: true, ...appState.overlayStore.counts() } : { active: false },
@@ -49,21 +48,6 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "GET", path: "/api/sessions/:id", description: "Get a session with all messages" },
         { method: "PATCH", path: "/api/sessions/:id", description: "Update session title" },
         { method: "DELETE", path: "/api/sessions/:id", description: "Delete a session" },
-        { method: "GET", path: "/api/fleet/ships", description: "List ships" },
-        { method: "POST", path: "/api/fleet/ships", description: "Create a ship" },
-        { method: "GET", path: "/api/fleet/ships/:id", description: "Get a ship with crew" },
-        { method: "PATCH", path: "/api/fleet/ships/:id", description: "Update ship fields" },
-        { method: "DELETE", path: "/api/fleet/ships/:id", description: "Delete a ship" },
-        { method: "GET", path: "/api/fleet/officers", description: "List officers" },
-        { method: "POST", path: "/api/fleet/officers", description: "Create an officer" },
-        { method: "GET", path: "/api/fleet/officers/:id", description: "Get an officer" },
-        { method: "PATCH", path: "/api/fleet/officers/:id", description: "Update officer fields" },
-        { method: "DELETE", path: "/api/fleet/officers/:id", description: "Delete an officer" },
-        { method: "POST", path: "/api/fleet/ships/:id/crew", description: "Assign an officer to a ship" },
-        { method: "DELETE", path: "/api/fleet/ships/:shipId/crew/:officerId", description: "Unassign an officer" },
-        { method: "GET", path: "/api/fleet/log", description: "Fleet activity log" },
-        { method: "POST", path: "/api/fleet/import", description: "Import fleet data from Sheets" },
-        { method: "GET", path: "/api/fleet/counts", description: "Fleet store entity counts" },
         { method: "GET", path: "/api/fleet/intents", description: "List intent catalog" },
         { method: "POST", path: "/api/fleet/intents", description: "Create a custom intent" },
         { method: "DELETE", path: "/api/fleet/intents/:key", description: "Delete a custom intent" },
@@ -140,10 +124,6 @@ export function createCoreRoutes(appState: AppState): Router {
       sessions: (() => {
         if (!appState.sessionStore) return { status: "not configured" };
         return { status: "active", count: appState.sessionStore.count(), dbPath: appState.sessionStore.getDbPath() };
-      })(),
-      fleetStore: (() => {
-        if (!appState.fleetStore) return { status: "not configured" };
-        return { status: "active", ...appState.fleetStore.counts(), dbPath: appState.fleetStore.getDbPath() };
       })(),
       dockStore: (() => {
         if (!appState.dockStore) return { status: "not configured" };

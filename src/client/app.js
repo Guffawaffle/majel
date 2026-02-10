@@ -14,8 +14,8 @@ import * as api from './api.js';
 import * as chat from './chat.js';
 import * as sessions from './sessions.js';
 import * as drydock from './drydock.js';
-import * as fleetManager from './fleet-manager.js';
 import * as catalog from './catalog.js';
+import * as diagnostics from './diagnostics.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -33,10 +33,6 @@ const recallForm = $("#recall-form");
 const recallInput = $("#recall-input");
 const recallResults = $("#recall-results");
 const recallClose = $("#recall-close");
-const diagnosticBtn = $("#diagnostic-btn");
-const diagnosticDialog = $("#diagnostic-dialog");
-const diagnosticClose = $("#diagnostic-close");
-const diagnosticContent = $("#diagnostic-content");
 
 // View switching elements
 const setupGuide = $("#setup-guide");
@@ -44,8 +40,8 @@ const chatArea = $("#chat-area");
 const inputArea = $("#input-area");
 const setupGemini = $("#setup-gemini");
 const drydockArea = $("#drydock-area");
-const fleetManagerArea = $("#fleet-manager-area");
 const catalogArea = $("#catalog-area");
+const diagnosticsArea = $("#diagnostics-area");
 const titleBar = $("#title-bar");
 const titleBarHeading = $("#title-bar-heading");
 const titleBarSubtitle = $("#title-bar-subtitle");
@@ -176,62 +172,22 @@ async function searchRecall(query) {
     }
 }
 
-// ─── Diagnostic ─────────────────────────────────────────────
-function renderDiagnostic(d) {
-    const status = (s) => s === "connected" || s === "active" || s === "loaded"
-        ? `<span class="diag-ok">${s}</span>`
-        : `<span class="diag-warn">${s}</span>`;
+// ─── View Switching & Hash Routing ──────────────────────────
+const VALID_VIEWS = ['chat', 'drydock', 'catalog', 'diagnostics'];
 
-    let html = '<div class="diag-grid">';
-
-    // System
-    html += '<div class="diag-section">';
-    html += '<h4>System</h4>';
-    html += `<div class="diag-row"><span>Version</span><span>${d.system?.version || "?"}</span></div>`;
-    html += `<div class="diag-row"><span>Uptime</span><span>${d.system?.uptime || "?"}</span></div>`;
-    html += `<div class="diag-row"><span>Node</span><span>${d.system?.nodeVersion || "?"}</span></div>`;
-    html += `<div class="diag-row"><span>Timestamp</span><span>${d.system?.timestamp?.slice(0, 19).replace("T", " ") || "?"}</span></div>`;
-    html += '</div>';
-
-    // Gemini
-    html += '<div class="diag-section">';
-    html += '<h4>Gemini Engine</h4>';
-    html += `<div class="diag-row"><span>Status</span>${status(d.gemini?.status)}</div>`;
-    if (d.gemini?.model) html += `<div class="diag-row"><span>Model</span><span>${d.gemini.model}</span></div>`;
-    if (d.gemini?.sessionMessageCount !== undefined) html += `<div class="diag-row"><span>Session msgs</span><span>${d.gemini.sessionMessageCount}</span></div>`;
-    html += '</div>';
-
-    // Memory
-    html += '<div class="diag-section">';
-    html += '<h4>Lex Memory</h4>';
-    html += `<div class="diag-row"><span>Status</span>${status(d.memory?.status)}</div>`;
-    if (d.memory?.frameCount !== undefined) html += `<div class="diag-row"><span>Frames</span><span>${d.memory.frameCount}</span></div>`;
-    html += '</div>';
-
-    // Settings
-    html += '<div class="diag-section">';
-    html += '<h4>Settings Store</h4>';
-    html += `<div class="diag-row"><span>Status</span>${status(d.settings?.status)}</div>`;
-    if (d.settings?.userOverrides !== undefined) html += `<div class="diag-row"><span>Overrides</span><span>${d.settings.userOverrides}</span></div>`;
-    html += '</div>';
-
-    // Fleet
-    html += '<div class="diag-section">';
-    html += '<h4>Fleet Data</h4>';
-    html += `<div class="diag-row"><span>Status</span>${status(d.fleet?.status)}</div>`;
-    if (d.fleet?.totalChars) html += `<div class="diag-row"><span>Size</span><span>${d.fleet.totalChars.toLocaleString()} chars</span></div>`;
-    if (d.fleet?.sections) html += `<div class="diag-row"><span>Sections</span><span>${d.fleet.sections.length}</span></div>`;
-    if (d.fleet?.fetchedAt) html += `<div class="diag-row"><span>Fetched</span><span>${d.fleet.fetchedAt.slice(0, 19).replace("T", " ")}</span></div>`;
-    if (d.fleet?.error) html += `<div class="diag-row"><span>Error</span><span class="diag-warn">${d.fleet.error}</span></div>`;
-    html += '</div>';
-
-    html += '</div>';
-    return html;
-}
-
-// ─── View Switching ─────────────────────────────────────────
 function setActiveNav(view) {
     sidebarNavBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
+}
+
+function updateHash(view) {
+    if (window.location.hash !== `#/${view}`) {
+        history.replaceState(null, '', `#/${view}`);
+    }
+}
+
+function getViewFromHash() {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    return VALID_VIEWS.includes(hash) ? hash : null;
 }
 
 function setTitleBar(icon, heading, subtitle = "") {
@@ -245,8 +201,8 @@ function showSetup(health) {
     chatArea.classList.add("hidden");
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
-    if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
     if (catalogArea) catalogArea.classList.add("hidden");
+    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     if (titleBar) titleBar.classList.add("hidden");
 
     if (health.gemini === "connected") {
@@ -261,10 +217,11 @@ function showChat() {
     chatArea.classList.remove("hidden");
     inputArea.classList.remove("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
-    if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
     if (catalogArea) catalogArea.classList.add("hidden");
+    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("chat");
     setTitleBar("💬", "Chat", "Gemini-powered fleet advisor");
+    updateHash("chat");
 }
 
 function showDrydock() {
@@ -272,23 +229,12 @@ function showDrydock() {
     chatArea.classList.add("hidden");
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.remove("hidden");
-    if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
     if (catalogArea) catalogArea.classList.add("hidden");
+    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("drydock");
     setTitleBar("🔧", "Drydock", "Configure docks, ships & crew");
+    updateHash("drydock");
     drydock.refresh();
-}
-
-function showFleetManager() {
-    setupGuide.classList.add("hidden");
-    chatArea.classList.add("hidden");
-    inputArea.classList.add("hidden");
-    if (drydockArea) drydockArea.classList.add("hidden");
-    if (fleetManagerArea) fleetManagerArea.classList.remove("hidden");
-    if (catalogArea) catalogArea.classList.add("hidden");
-    setActiveNav("fleet");
-    setTitleBar("🚀", "Fleet Roster", "Officers & ships");
-    fleetManager.refresh();
 }
 
 function showCatalog() {
@@ -296,11 +242,32 @@ function showCatalog() {
     chatArea.classList.add("hidden");
     inputArea.classList.add("hidden");
     if (drydockArea) drydockArea.classList.add("hidden");
-    if (fleetManagerArea) fleetManagerArea.classList.add("hidden");
     if (catalogArea) catalogArea.classList.remove("hidden");
+    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("catalog");
     setTitleBar("📋", "Catalog", "Reference data & ownership tracking");
+    updateHash("catalog");
     catalog.refresh();
+}
+
+function showDiagnostics() {
+    setupGuide.classList.add("hidden");
+    chatArea.classList.add("hidden");
+    inputArea.classList.add("hidden");
+    if (drydockArea) drydockArea.classList.add("hidden");
+    if (catalogArea) catalogArea.classList.add("hidden");
+    if (diagnosticsArea) diagnosticsArea.classList.remove("hidden");
+    setActiveNav("diagnostics");
+    setTitleBar("⚡", "Diagnostics", "System health, data summary & query console");
+    updateHash("diagnostics");
+    diagnostics.refresh();
+}
+
+function navigateToView(view) {
+    if (view === 'drydock') { showDrydock(); currentMode = 'drydock'; }
+    else if (view === 'catalog') { showCatalog(); currentMode = 'catalog'; }
+    else if (view === 'diagnostics') { showDiagnostics(); currentMode = 'diagnostics'; }
+    else { showChat(); currentMode = 'chat'; }
 }
 
 // ─── Event Handlers ─────────────────────────────────────────
@@ -309,24 +276,17 @@ historyBtn.addEventListener("click", () => loadHistory());
 // Sidebar navigation
 sidebarNavBtns.forEach(btn => {
     btn.addEventListener("click", () => {
-        const view = btn.dataset.view;
-        if (view === "drydock") {
-            showDrydock();
-            currentMode = "drydock";
-        } else if (view === "fleet") {
-            showFleetManager();
-            currentMode = "fleet";
-        } else if (view === "catalog") {
-            showCatalog();
-            currentMode = "catalog";
-        } else {
-            showChat();
-            currentMode = "chat";
-        }
+        navigateToView(btn.dataset.view);
         // Close sidebar on mobile
         sidebar.classList.remove("open");
         sidebarOverlay.classList.add("hidden");
     });
+});
+
+// Hash-based routing: browser back/forward + refresh
+window.addEventListener('hashchange', () => {
+    const view = getViewFromHash();
+    if (view && view !== currentMode) navigateToView(view);
 });
 
 // Ops level badge click
@@ -364,22 +324,6 @@ recallForm.addEventListener("submit", (e) => {
 
 recallClose.addEventListener("click", () => recallDialog.close());
 
-diagnosticBtn.addEventListener("click", async () => {
-    diagnosticContent.innerHTML = '<p class="diagnostic-loading">Querying subsystems...</p>';
-    diagnosticDialog.showModal();
-    sidebar.classList.remove("open");
-    sidebarOverlay.classList.add("hidden");
-    try {
-        const res = await fetch("/api/diagnostic");
-        const data = (await res.json()).data;
-        diagnosticContent.innerHTML = renderDiagnostic(data);
-    } catch {
-        diagnosticContent.innerHTML = '<p class="diagnostic-error">Failed to reach /api/diagnostic</p>';
-    }
-});
-
-diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
-
 // ─── Init ───────────────────────────────────────────────────
 (async () => {
     // Initialize all modules
@@ -387,8 +331,8 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
     sessions.init();
     await initOpsLevel();
     await drydock.init();
-    await fleetManager.init();
     await catalog.init();
+    await diagnostics.init();
 
     // Initial health check
     const health = await checkHealthAndUpdateUI();
@@ -403,9 +347,15 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
         showSetup(health);
         currentMode = "setup";
     } else {
-        showChat();
-        currentMode = "chat";
-        chatInput.focus();
+        // Restore view from URL hash, default to chat
+        const savedView = getViewFromHash();
+        if (savedView && savedView !== 'chat') {
+            navigateToView(savedView);
+        } else {
+            showChat();
+            currentMode = "chat";
+            chatInput.focus();
+        }
     }
 
     // Poll health every 10s
@@ -418,7 +368,7 @@ diagnosticClose.addEventListener("click", () => diagnosticDialog.close());
             currentMode = "chat";
             chat.addMessage("system", "✅ Configuration detected — Aria is online, Admiral.");
             chatInput.focus();
-        } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "fleet" && currentMode !== "catalog" && h.gemini !== "connected") {
+        } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "catalog" && currentMode !== "diagnostics" && h.gemini !== "connected") {
             showSetup(h);
             currentMode = "setup";
         }

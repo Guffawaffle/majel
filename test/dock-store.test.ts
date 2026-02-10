@@ -10,21 +10,39 @@ import {
   VALID_INTENT_CATEGORIES,
   type DockStore,
 } from "../src/server/dock-store.js";
-import { createFleetStore, type FleetStore } from "../src/server/fleet-store.js";
+import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
 
 const TEST_DB = path.resolve(".test-dock.db");
+
+// ─── Test Helpers: seed reference data ──────────────────────────
+
+const REF_DEFAULTS = {
+  source: "test", sourceUrl: null, sourcePageId: null,
+  sourceRevisionId: null, sourceRevisionTimestamp: null,
+};
+
+function seedShip(store: ReferenceStore, id: string, name: string, shipClass: string, tier = 3) {
+  store.upsertShip({ id, name, shipClass, tier, grade: null, rarity: null, faction: null, ...REF_DEFAULTS });
+}
+
+function seedOfficer(store: ReferenceStore, id: string, name: string, rarity: string, groupName: string) {
+  store.upsertOfficer({ id, name, rarity, groupName, captainManeuver: null, officerAbility: null, belowDeckAbility: null, ...REF_DEFAULTS });
+}
 
 // ─── Intent Catalog ─────────────────────────────────────────────
 
 describe("DockStore — Intent Catalog", () => {
   let store: DockStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
+    refStore = createReferenceStore(TEST_DB);
     store = createDockStore(TEST_DB);
   });
 
   afterEach(() => {
     store.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -129,13 +147,16 @@ describe("DockStore — Intent Catalog", () => {
 
 describe("DockStore — Dock Loadouts", () => {
   let store: DockStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
+    refStore = createReferenceStore(TEST_DB);
     store = createDockStore(TEST_DB);
   });
 
   afterEach(() => {
     store.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -202,8 +223,10 @@ describe("DockStore — Dock Loadouts", () => {
 
 describe("DockStore — Dock Intents", () => {
   let store: DockStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
+    refStore = createReferenceStore(TEST_DB);
     store = createDockStore(TEST_DB);
     store.upsertDock(1, { label: "Grinder" });
     store.upsertDock(3, { label: "Mining" });
@@ -211,6 +234,7 @@ describe("DockStore — Dock Intents", () => {
 
   afterEach(() => {
     store.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -278,26 +302,17 @@ describe("DockStore — Dock Intents", () => {
 
 describe("DockStore — Dock Ships", () => {
   let dockStore: DockStore;
-  let fleetStore: FleetStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
     // Fleet store creates ships table; dock store needs it for FK refs
-    fleetStore = createFleetStore(TEST_DB);
+    refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
 
     // Create test ships
-    fleetStore.createShip({
-      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createShip({
-      id: "franklin", name: "U.S.S. Franklin", tier: 3, shipClass: "Explorer",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createShip({
-      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
-      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
-    });
+    seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
+    seedShip(refStore, "franklin", "U.S.S. Franklin", "Explorer", 3);
+    seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
 
     // Create test docks
     dockStore.upsertDock(1, { label: "Main Grinder" });
@@ -307,7 +322,7 @@ describe("DockStore — Dock Ships", () => {
 
   afterEach(() => {
     dockStore.close();
-    fleetStore.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -344,8 +359,8 @@ describe("DockStore — Dock Ships", () => {
     expect(d2.dockNumber).toBe(2);
   });
 
-  it("rejects ship not in fleet roster", () => {
-    expect(() => dockStore.addDockShip(1, "nonexistent-ship")).toThrow("not found in fleet roster");
+  it("rejects ship not in reference catalog", () => {
+    expect(() => dockStore.addDockShip(1, "nonexistent-ship")).toThrow("not found in reference catalog");
   });
 
   it("auto-creates dock when adding ship to nonexistent dock", () => {
@@ -438,13 +453,16 @@ describe("DockStore — Dock Ships", () => {
 
 describe("DockStore — Diagnostics", () => {
   let store: DockStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
+    refStore = createReferenceStore(TEST_DB);
     store = createDockStore(TEST_DB);
   });
 
   afterEach(() => {
     store.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -464,29 +482,23 @@ describe("DockStore — Diagnostics", () => {
 
 describe("DockStore — Crew Presets", () => {
   let dockStore: DockStore;
-  let fleetStore: FleetStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
-    fleetStore = createFleetStore(TEST_DB);
+    refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
     // Create test ships and officers
-    fleetStore.createShip({
-      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createShip({
-      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
-      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "mccoy", name: "McCoy", rarity: "Rare", level: 40, rank: "Lt Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "stonn", name: "Stonn", rarity: "Common", level: 30, rank: "Lieutenant", groupName: "TOS" });
+    seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
+    seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
+    seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
+    seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
+    seedOfficer(refStore, "mccoy", "McCoy", "Rare", "TOS");
+    seedOfficer(refStore, "stonn", "Stonn", "Common", "TOS");
   });
 
   afterEach(() => {
     dockStore.close();
-    fleetStore.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -513,7 +525,7 @@ describe("DockStore — Crew Presets", () => {
 
   it("rejects preset for nonexistent ship", () => {
     expect(() => dockStore.createPreset({ shipId: "nope", intentKey: "grinding", presetName: "x" }))
-      .toThrow(/not found in fleet roster/);
+      .toThrow(/not found in reference catalog/);
   });
 
   it("rejects preset for nonexistent intent", () => {
@@ -612,23 +624,20 @@ describe("DockStore — Crew Presets", () => {
 
 describe("DockStore — Crew Preset Members", () => {
   let dockStore: DockStore;
-  let fleetStore: FleetStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
-    fleetStore = createFleetStore(TEST_DB);
+    refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
-    fleetStore.createShip({
-      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "mccoy", name: "McCoy", rarity: "Rare", level: 40, rank: "Lt Commander", groupName: "TOS" });
+    seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
+    seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
+    seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
+    seedOfficer(refStore, "mccoy", "McCoy", "Rare", "TOS");
   });
 
   afterEach(() => {
     dockStore.close();
-    fleetStore.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -675,7 +684,7 @@ describe("DockStore — Crew Preset Members", () => {
   it("rejects nonexistent officer", () => {
     const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
     expect(() => dockStore.setPresetMembers(preset.id, [{ officerId: "nope", roleType: "bridge" }]))
-      .toThrow(/not found in roster/);
+      .toThrow(/not found in reference catalog/);
   });
 
   it("rejects invalid roleType", () => {
@@ -707,26 +716,20 @@ describe("DockStore — Crew Preset Members", () => {
 
 describe("DockStore — Officer Conflicts", () => {
   let dockStore: DockStore;
-  let fleetStore: FleetStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
-    fleetStore = createFleetStore(TEST_DB);
+    refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
-    fleetStore.createShip({
-      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createShip({
-      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
-      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
+    seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
+    seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
+    seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
+    seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
   });
 
   afterEach(() => {
     dockStore.close();
-    fleetStore.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -783,26 +786,20 @@ describe("DockStore — Officer Conflicts", () => {
 
 describe("DockStore — Preset Tags", () => {
   let dockStore: DockStore;
-  let fleetStore: FleetStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
-    fleetStore = createFleetStore(TEST_DB);
+    refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
-    fleetStore.createShip({
-      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createShip({
-      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
-      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
+    seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
+    seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
+    seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
+    seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
   });
 
   afterEach(() => {
     dockStore.close();
-    fleetStore.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -904,25 +901,19 @@ describe("DockStore — Preset Tags", () => {
 
 describe("DockStore — Find Presets For Dock", () => {
   let dockStore: DockStore;
-  let fleetStore: FleetStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
-    fleetStore = createFleetStore(TEST_DB);
+    refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
-    fleetStore.createShip({
-      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createShip({
-      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
-      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+    seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
+    seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
+    seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
   });
 
   afterEach(() => {
     dockStore.close();
-    fleetStore.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -986,27 +977,21 @@ describe("DockStore — Find Presets For Dock", () => {
 
 describe("DockStore — Dock Briefing", () => {
   let dockStore: DockStore;
-  let fleetStore: FleetStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
-    fleetStore = createFleetStore(TEST_DB);
+    refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
-    fleetStore.createShip({
-      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createShip({
-      id: "botany-bay", name: "Botany Bay", tier: 2, shipClass: "Survey",
-      status: "ready", role: "mining", roleDetail: null, notes: null, importedFrom: null,
-    });
-    fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "spock", name: "Spock", rarity: "Epic", level: 45, rank: "Commander", groupName: "TOS" });
-    fleetStore.createOfficer({ id: "mccoy", name: "McCoy", rarity: "Rare", level: 40, rank: "Lt Commander", groupName: "TOS" });
+    seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
+    seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
+    seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
+    seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
+    seedOfficer(refStore, "mccoy", "McCoy", "Rare", "TOS");
   });
 
   afterEach(() => {
     dockStore.close();
-    fleetStore.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -1150,7 +1135,6 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     memoryService: null,
     settingsStore: null,
     sessionStore: null,
-    fleetStore: null,
     dockStore: null,
     behaviorStore: null,
     referenceStore: null,
@@ -1162,21 +1146,18 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
 
 describe("Dock API Routes", () => {
   let dockStore: DockStore;
-  let fleetStore: FleetStore;
+  let refStore: ReferenceStore;
 
   beforeEach(() => {
-    fleetStore = createFleetStore(TEST_DB);
+    refStore = createReferenceStore(TEST_DB);
     dockStore = createDockStore(TEST_DB);
     // Create test ships for dock rotation tests
-    fleetStore.createShip({
-      id: "kumari", name: "Kumari", tier: 3, shipClass: "Interceptor",
-      status: "ready", role: "combat", roleDetail: null, notes: null, importedFrom: null,
-    });
+    seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
   });
 
   afterEach(() => {
     dockStore.close();
-    fleetStore.close();
+    refStore.close();
     if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
@@ -1335,7 +1316,7 @@ describe("Dock API Routes", () => {
 
   describe("POST /api/fleet/docks/:num/ships", () => {
     it("adds a ship to dock rotation", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       const res = await request(app)
         .post("/api/fleet/docks/1/ships")
@@ -1357,7 +1338,7 @@ describe("Dock API Routes", () => {
 
   describe("PATCH /api/fleet/docks/:num/ships/:shipId", () => {
     it("sets a ship as active", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       dockStore.addDockShip(1, "kumari");
       const res = await request(app)
@@ -1379,7 +1360,7 @@ describe("Dock API Routes", () => {
 
   describe("DELETE /api/fleet/docks/:num/ships/:shipId", () => {
     it("removes a ship from dock", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       dockStore.addDockShip(1, "kumari");
       const res = await request(app).delete("/api/fleet/docks/1/ships/kumari");
@@ -1398,7 +1379,7 @@ describe("Dock API Routes", () => {
 
   describe("POST /api/fleet/presets", () => {
     it("creates a crew preset", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const res = await request(app)
         .post("/api/fleet/presets")
         .send({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
@@ -1419,7 +1400,7 @@ describe("Dock API Routes", () => {
 
   describe("GET /api/fleet/presets", () => {
     it("lists presets", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       const res = await request(app).get("/api/fleet/presets");
       expect(res.status).toBe(200);
@@ -1428,7 +1409,7 @@ describe("Dock API Routes", () => {
     });
 
     it("filters by shipId", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       const res = await request(app).get("/api/fleet/presets?shipId=kumari");
       expect(res.status).toBe(200);
@@ -1438,7 +1419,7 @@ describe("Dock API Routes", () => {
 
   describe("GET /api/fleet/presets/:id", () => {
     it("returns a preset with members", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       const res = await request(app).get(`/api/fleet/presets/${preset.id}`);
       expect(res.status).toBe(200);
@@ -1455,7 +1436,7 @@ describe("Dock API Routes", () => {
 
   describe("PATCH /api/fleet/presets/:id", () => {
     it("updates a preset", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Old" });
       const res = await request(app)
         .patch(`/api/fleet/presets/${preset.id}`)
@@ -1475,7 +1456,7 @@ describe("Dock API Routes", () => {
 
   describe("DELETE /api/fleet/presets/:id", () => {
     it("deletes a preset", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Del" });
       const res = await request(app).delete(`/api/fleet/presets/${preset.id}`);
       expect(res.status).toBe(200);
@@ -1491,8 +1472,8 @@ describe("Dock API Routes", () => {
 
   describe("PUT /api/fleet/presets/:id/members", () => {
     it("sets preset members", async () => {
-      fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
+      const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
       const res = await request(app)
         .put(`/api/fleet/presets/${preset.id}/members`)
@@ -1503,7 +1484,7 @@ describe("Dock API Routes", () => {
     });
 
     it("rejects non-array members", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
       const res = await request(app)
         .put(`/api/fleet/presets/${preset.id}/members`)
@@ -1595,8 +1576,8 @@ describe("Dock API Routes", () => {
 
   describe("GET /api/fleet/presets?officerId=", () => {
     it("filters presets by officer", async () => {
-      fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
+      const app = createApp(makeState({ dockStore }));
       const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       dockStore.setPresetMembers(p1.id, [{ officerId: "kirk", roleType: "bridge" }]);
       dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "B" });
@@ -1634,7 +1615,7 @@ describe("Dock API Routes", () => {
   describe("GET /api/fleet/docks/:num/cascade-preview", () => {
     it("returns empty preview for dock with no data", async () => {
       dockStore.upsertDock(1, { label: "Empty" });
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/docks/1/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.shipCount).toBe(0);
@@ -1647,7 +1628,7 @@ describe("Dock API Routes", () => {
       dockStore.upsertDock(1, { label: "Test" });
       dockStore.addDockShip(1, "kumari");
       dockStore.setDockIntents(1, ["pvp"]);
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/docks/1/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.shipCount).toBe(1);
@@ -1662,7 +1643,7 @@ describe("Dock API Routes", () => {
       dockStore.upsertDock(1, { label: "Dock 1" });
       dockStore.addDockShip(1, "kumari");
       dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "Arena Build" });
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/ships/kumari/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.dockAssignments.length).toBe(1);
@@ -1672,21 +1653,20 @@ describe("Dock API Routes", () => {
     });
 
     it("returns empty for ship with no references", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/ships/kumari/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.dockAssignments).toEqual([]);
       expect(res.body.data.crewPresets).toEqual([]);
-      expect(res.body.data.crewAssignments).toEqual([]);
     });
   });
 
   describe("GET /api/fleet/officers/:id/cascade-preview", () => {
     it("returns preset memberships for an officer", async () => {
-      fleetStore.createOfficer({ id: "kirk", name: "Kirk", rarity: "Epic", level: 50, rank: "Commander", groupName: "TOS" });
+      seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "Arena Build" });
       dockStore.setPresetMembers(preset.id, [{ officerId: "kirk", roleType: "bridge", slot: "captain" }]);
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/officers/kirk/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.presetMemberships.length).toBe(1);
@@ -1694,11 +1674,10 @@ describe("Dock API Routes", () => {
     });
 
     it("returns empty for officer with no references", async () => {
-      const app = createApp(makeState({ dockStore, fleetStore }));
+      const app = createApp(makeState({ dockStore }));
       const res = await request(app).get("/api/fleet/officers/kirk/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.presetMemberships).toEqual([]);
-      expect(res.body.data.crewAssignments).toEqual([]);
     });
   });
 });

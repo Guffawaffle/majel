@@ -6,8 +6,8 @@
  * SQLite-backed intent catalog, drydock loadout management,
  * and crew preset system.
  *
- * Uses the same fleet.db as fleet-store.ts — accessed via a separate
- * Database handle sharing the same WAL-mode file.
+ * Shares reference.db with reference-store and overlay-store.
+ * Ship/officer FKs point to reference_ships / reference_officers.
  */
 
 import Database from "better-sqlite3";
@@ -220,7 +220,7 @@ const SEED_INTENTS: Array<Pick<Intent, "key" | "label" | "category" | "descripti
 // ─── Implementation ─────────────────────────────────────────
 
 const DB_DIR = path.resolve(".smartergpt", "lex");
-const DB_FILE = path.join(DB_DIR, "fleet.db");
+const DB_FILE = path.join(DB_DIR, "reference.db");
 
 export function createDockStore(dbPath?: string): DockStore {
   const resolvedPath = dbPath || DB_FILE;
@@ -236,27 +236,6 @@ export function createDockStore(dbPath?: string): DockStore {
 
   // ── Schema ──────────────────────────────────────────────
   db.exec(`
-    -- Ensure ships table exists (created by fleet-store, but we need FK refs)
-    CREATE TABLE IF NOT EXISTS ships (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      tier INTEGER,
-      ship_class TEXT,
-      grade INTEGER,
-      rarity TEXT,
-      faction TEXT,
-      combat_profile TEXT,
-      specialty_loop TEXT,
-      status TEXT NOT NULL DEFAULT 'ready',
-      role TEXT,
-      role_detail TEXT,
-      notes TEXT,
-      imported_from TEXT,
-      status_changed_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
     -- Reference catalog of available intents (seeded + user-extensible)
     CREATE TABLE IF NOT EXISTS intent_catalog (
       key TEXT PRIMARY KEY,
@@ -290,7 +269,7 @@ export function createDockStore(dbPath?: string): DockStore {
     CREATE TABLE IF NOT EXISTS dock_ships (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       dock_number INTEGER NOT NULL REFERENCES drydock_loadouts(dock_number) ON DELETE CASCADE,
-      ship_id TEXT NOT NULL REFERENCES ships(id) ON DELETE CASCADE,
+      ship_id TEXT NOT NULL REFERENCES reference_ships(id) ON DELETE CASCADE,
       is_active INTEGER NOT NULL DEFAULT 0,
       sort_order INTEGER NOT NULL DEFAULT 0,
       notes TEXT,
@@ -302,26 +281,10 @@ export function createDockStore(dbPath?: string): DockStore {
     CREATE INDEX IF NOT EXISTS idx_dock_ships_ship ON dock_ships(ship_id);
     CREATE INDEX IF NOT EXISTS idx_dock_ships_dock ON dock_ships(dock_number);
 
-    -- Ensure officers table exists (created by fleet-store, but we need FK refs for presets)
-    CREATE TABLE IF NOT EXISTS officers (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      rarity TEXT,
-      level INTEGER,
-      rank TEXT,
-      group_name TEXT,
-      class_preference TEXT,
-      activity_affinity TEXT,
-      position_preference TEXT,
-      imported_from TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
     -- Saved crew configuration for a ship + intent combo (ADR-010 Phase 2)
     CREATE TABLE IF NOT EXISTS crew_presets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ship_id TEXT NOT NULL REFERENCES ships(id) ON DELETE CASCADE,
+      ship_id TEXT NOT NULL REFERENCES reference_ships(id) ON DELETE CASCADE,
       intent_key TEXT NOT NULL REFERENCES intent_catalog(key) ON DELETE CASCADE,
       preset_name TEXT NOT NULL,
       is_default INTEGER NOT NULL DEFAULT 0,
@@ -334,7 +297,7 @@ export function createDockStore(dbPath?: string): DockStore {
     CREATE TABLE IF NOT EXISTS crew_preset_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       preset_id INTEGER NOT NULL REFERENCES crew_presets(id) ON DELETE CASCADE,
-      officer_id TEXT NOT NULL REFERENCES officers(id) ON DELETE CASCADE,
+      officer_id TEXT NOT NULL REFERENCES reference_officers(id) ON DELETE CASCADE,
       role_type TEXT NOT NULL CHECK (role_type IN ('bridge', 'below_deck')),
       slot TEXT,
       UNIQUE(preset_id, officer_id)
@@ -353,16 +316,14 @@ export function createDockStore(dbPath?: string): DockStore {
     );
     CREATE INDEX IF NOT EXISTS idx_preset_tags_tag ON preset_tags(tag);
 
-    -- Ensure schema_version table exists (may already be created by fleet-store)
-    CREATE TABLE IF NOT EXISTS schema_version (
+    -- Dock-store schema version tracking
+    CREATE TABLE IF NOT EXISTS dock_schema_version (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
     );
-
-    -- Update schema_version for dock-store tables (v2 = Phase 1, v3 = Phase 2, v4 = tags & discovery)
-    INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (2, datetime('now'));
-    INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (3, datetime('now'));
-    INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (4, datetime('now'));
+    INSERT OR IGNORE INTO dock_schema_version (version, applied_at) VALUES (2, datetime('now'));
+    INSERT OR IGNORE INTO dock_schema_version (version, applied_at) VALUES (3, datetime('now'));
+    INSERT OR IGNORE INTO dock_schema_version (version, applied_at) VALUES (4, datetime('now'));
   `);
 
   // ── Seed intents ────────────────────────────────────────
@@ -472,7 +433,7 @@ export function createDockStore(dbPath?: string): DockStore {
               ds.notes, ds.created_at AS createdAt,
               s.name AS shipName
        FROM dock_ships ds
-       JOIN ships s ON ds.ship_id = s.id
+       JOIN reference_ships s ON ds.ship_id = s.id
        WHERE ds.dock_number = ?
        ORDER BY ds.sort_order ASC, s.name ASC`,
     ),
@@ -482,7 +443,7 @@ export function createDockStore(dbPath?: string): DockStore {
               ds.notes, ds.created_at AS createdAt,
               s.name AS shipName
        FROM dock_ships ds
-       JOIN ships s ON ds.ship_id = s.id
+       JOIN reference_ships s ON ds.ship_id = s.id
        WHERE ds.dock_number = ? AND ds.ship_id = ?`,
     ),
     updateDockShipActive: db.prepare(
@@ -509,7 +470,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.created_at AS createdAt, cp.updated_at AS updatedAt,
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_presets cp
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        WHERE cp.id = ?`,
     ),
@@ -519,7 +480,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.created_at AS createdAt, cp.updated_at AS updatedAt,
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_presets cp
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
     ),
@@ -529,7 +490,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.created_at AS createdAt, cp.updated_at AS updatedAt,
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_presets cp
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        WHERE cp.ship_id = ?
        ORDER BY ic.label ASC, cp.preset_name ASC`,
@@ -540,7 +501,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.created_at AS createdAt, cp.updated_at AS updatedAt,
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_presets cp
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        WHERE cp.intent_key = ?
        ORDER BY s.name ASC, cp.preset_name ASC`,
@@ -551,7 +512,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.created_at AS createdAt, cp.updated_at AS updatedAt,
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_presets cp
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        WHERE cp.ship_id = ? AND cp.intent_key = ?
        ORDER BY cp.preset_name ASC`,
@@ -582,7 +543,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cpm.role_type AS roleType, cpm.slot,
               o.name AS officerName
        FROM crew_preset_members cpm
-       JOIN officers o ON cpm.officer_id = o.id
+       JOIN reference_officers o ON cpm.officer_id = o.id
        WHERE cpm.preset_id = ?
        ORDER BY cpm.role_type ASC, cpm.slot ASC`,
     ),
@@ -594,9 +555,9 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.ship_id AS shipId, s.name AS shipName,
               cp.intent_key AS intentKey, ic.label AS intentLabel
        FROM crew_preset_members cpm
-       JOIN officers o ON cpm.officer_id = o.id
+       JOIN reference_officers o ON cpm.officer_id = o.id
        JOIN crew_presets cp ON cpm.preset_id = cp.id
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        WHERE cpm.officer_id IN (
          SELECT officer_id FROM crew_preset_members GROUP BY officer_id HAVING COUNT(DISTINCT preset_id) > 1
@@ -623,7 +584,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.created_at AS createdAt, cp.updated_at AS updatedAt,
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_presets cp
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        JOIN preset_tags pt ON cp.id = pt.preset_id
        WHERE pt.tag = ?
@@ -635,7 +596,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.created_at AS createdAt, cp.updated_at AS updatedAt,
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_presets cp
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        JOIN crew_preset_members cpm ON cp.id = cpm.preset_id
        WHERE cpm.officer_id = ?
@@ -647,7 +608,7 @@ export function createDockStore(dbPath?: string): DockStore {
               cp.created_at AS createdAt, cp.updated_at AS updatedAt,
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_presets cp
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        WHERE cp.ship_id IN (SELECT ship_id FROM dock_ships WHERE dock_number = ?)
          AND cp.intent_key IN (SELECT intent_key FROM dock_intents WHERE dock_number = ?)
@@ -662,7 +623,7 @@ export function createDockStore(dbPath?: string): DockStore {
     ),
     previewDeleteDockShips: db.prepare(
       `SELECT ds.ship_id AS shipId, s.name AS shipName
-       FROM dock_ships ds JOIN ships s ON ds.ship_id = s.id
+       FROM dock_ships ds JOIN reference_ships s ON ds.ship_id = s.id
        WHERE ds.dock_number = ? ORDER BY s.name ASC`,
     ),
     previewDeleteDockIntents: db.prepare(
@@ -689,7 +650,7 @@ export function createDockStore(dbPath?: string): DockStore {
               s.name AS shipName, ic.label AS intentLabel
        FROM crew_preset_members cpm
        JOIN crew_presets cp ON cpm.preset_id = cp.id
-       JOIN ships s ON cp.ship_id = s.id
+       JOIN reference_ships s ON cp.ship_id = s.id
        JOIN intent_catalog ic ON cp.intent_key = ic.key
        WHERE cpm.officer_id = ?
        ORDER BY cp.preset_name ASC`,
@@ -859,7 +820,7 @@ export function createDockStore(dbPath?: string): DockStore {
         throw new Error(`Ship ${shipId} is already assigned to dock ${dockNumber}`);
       }
       if (msg.includes("FOREIGN KEY constraint")) {
-        throw new Error(`Ship ${shipId} not found in fleet roster`);
+        throw new Error(`Ship ${shipId} not found in reference catalog`);
       }
       throw err;
     }
@@ -929,8 +890,8 @@ export function createDockStore(dbPath?: string): DockStore {
       throw new Error("Preset requires shipId, intentKey, and presetName");
     }
     // Validate FKs exist
-    const ship = db.prepare(`SELECT id FROM ships WHERE id = ?`).get(fields.shipId);
-    if (!ship) throw new Error(`Ship ${fields.shipId} not found in fleet roster`);
+    const ship = db.prepare(`SELECT id FROM reference_ships WHERE id = ?`).get(fields.shipId);
+    if (!ship) throw new Error(`Ship ${fields.shipId} not found in reference catalog`);
     const intent = stmts.getIntent.get(fields.intentKey);
     if (!intent) throw new Error(`Intent ${fields.intentKey} not found in catalog`);
 
@@ -1007,8 +968,8 @@ export function createDockStore(dbPath?: string): DockStore {
 
     // Validate all officers exist
     for (const m of members) {
-      const officer = db.prepare(`SELECT id FROM officers WHERE id = ?`).get(m.officerId);
-      if (!officer) throw new Error(`Officer ${m.officerId} not found in roster`);
+      const officer = db.prepare(`SELECT id FROM reference_officers WHERE id = ?`).get(m.officerId);
+      if (!officer) throw new Error(`Officer ${m.officerId} not found in reference catalog`);
       if (m.roleType !== "bridge" && m.roleType !== "below_deck") {
         throw new Error(`Invalid roleType: ${m.roleType}. Must be 'bridge' or 'below_deck'`);
       }
