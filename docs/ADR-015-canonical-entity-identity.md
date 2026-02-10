@@ -225,7 +225,7 @@ Existing data uses slugified name IDs (`khan`, `uss-saladin`). The implementatio
 1. **Rewrite the schema directly.** The `officers` and `ships` tables get `ref_id` columns and namespaced IDs from the start. No `ALTER TABLE`, no migration scripts, no version checks — just the correct `CREATE TABLE`.
 2. **Create `reference_officers` table** alongside the existing roster tables.
 3. **Update `importFromFleetData()`** to mint `roster:officer:<slug>` IDs instead of bare slugs.
-4. **Update the wiki ingest script** to mint `wiki:officer:<pageId>` IDs and write to `reference_officers`.
+4. **Wiki sync module** (`src/server/wiki-ingest.ts`) mints `wiki:officer:<slug>` and `wiki:ship:<slug>` IDs and writes to reference tables.
 5. **Drop and re-import** any test data. There is nothing to preserve.
 
 If anyone has a local `.smartergpt/lex/fleet.db` from development testing, they delete it and re-import. That's the entire migration story.
@@ -242,7 +242,7 @@ If anyone has a local `.smartergpt/lex/fleet.db` from development testing, they 
 
 ### Negative
 - **Two-table model for officers/ships.** Developers must understand "roster officer" vs "reference officer" — more concepts to hold in memory.
-- **Wiki import script needs update.** The ingest script currently uses slugified IDs — must switch to page-ID-based namespaced IDs.
+- **Wiki sync is built-in.** `POST /api/catalog/sync` handles wiki import directly — no external script dependency.
 - **Typeahead UX requires reference data.** If the user hasn't imported wiki data yet, the "pick from reference" flow has nothing to offer — falls back to the custom entry lane.
 
 ### Risks
@@ -253,7 +253,7 @@ If anyone has a local `.smartergpt/lex/fleet.db` from development testing, they 
 | Phase | Scope | Depends On |
 |---|---|---|
 | **Phase 1: Schema** | Rewrite `officers`/`ships` tables with namespaced IDs + `ref_id` column, create `reference_officers` table. No migration — clean break. | This ADR accepted |
-| **Phase 2: Ingest Update** | Wiki ingest script stores provenance in `reference_officers`, uses page-ID-based namespaced IDs | Phase 1 |
+| **Phase 2: Ingest Update** | Wiki sync module stores provenance in reference tables, uses slug-based namespaced IDs | Phase 1 |
 | **Phase 3: Linking** | Auto-link roster entities to reference entities on import, manual link/unlink UI | Phase 2 |
 | **Phase 4: MicroRunner Upgrade** | `lookupOfficer()` resolves via `ref_id` chain, enriched `ReferenceEntry` with full provenance | Phase 2 |
 | **Phase 5: UX — Reference Typeahead** | "Add officer" becomes search-from-reference with prefill, separate custom lane | Phase 3 |
@@ -268,4 +268,5 @@ If anyone has a local `.smartergpt/lex/fleet.db` from development testing, they 
 - [fleet-store.ts](../src/server/fleet-store.ts) — Current `slugify()` ID generation, `officers`/`ships` schema
 - [app-context.ts](../src/server/app-context.ts) — `lookupOfficer()` name-match implementation
 - [micro-runner.ts](../src/server/micro-runner.ts) — `ReferenceEntry` interface, `ContextSources`, T2 provenance
-- [ingest-wiki-officers.mjs](../scripts/ingest-wiki-officers.mjs) — Wiki parser with pageId/revisionId extraction
+- [wiki-ingest.ts](../src/server/wiki-ingest.ts) — Wiki parser with provenance extraction, sync orchestrator
+- [sync-wiki.mjs](../scripts/sync-wiki.mjs) — CLI wrapper for wiki sync

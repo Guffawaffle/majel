@@ -4,7 +4,7 @@
 **Date:** 2026-02-09  
 **Authors:** Guff, Opie (Claude), with legal guidance from Lex
 
-> **Evolution note:** ADR-015 (Canonical Entity Identity) extends this ADR's provenance tracking into a full namespaced ID system. Wiki-imported entities now get `wiki:officer:<pageId>` IDs derived from the MediaWiki page ID (instead of slugified names), and provenance metadata (page ID, revision ID, timestamp) is stored in a dedicated `reference_officers` table. The ingest script's existing provenance extraction becomes the source for these fields.
+> **Evolution note:** ADR-015 (Canonical Entity Identity) extends this ADR's provenance tracking into a full namespaced ID system. Wiki-imported entities now get `wiki:officer:<slug>` and `wiki:ship:<slug>` IDs, with provenance metadata (page ID, revision ID, timestamp) stored in `reference_officers` and `reference_ships` tables. The ingest pipeline is now `src/server/wiki-ingest.ts`, exposed as `POST /api/catalog/sync` (one-click UI button) and `scripts/sync-wiki.mjs` (CLI wrapper). The old `scripts/ingest-wiki-officers.mjs` has been removed.
 
 ## Context
 
@@ -93,25 +93,23 @@ This requires **zero automated access** — the user is the one reading and copy
 
 ### D5: Export Download Script Architecture
 
-The CLI script (`scripts/ingest-wiki-officers.mjs`) becomes a two-mode utility:
+The sync endpoint (`POST /api/catalog/sync`) and CLI wrapper (`scripts/sync-wiki.mjs`) handle wiki data import:
 
 ```
-# Mode 1: Parse a local XML file (user downloaded it themselves)
-node scripts/ingest-wiki-officers.mjs --file export.xml
+# Via UI: Click "Sync Wiki Data" button in the Catalog view
 
-# Mode 2: Parse pasted wikitext from stdin
-cat wikitext.txt | node scripts/ingest-wiki-officers.mjs --stdin
-
-# Mode 3: Fetch via Special:Export (local/dev convenience only)
-node scripts/ingest-wiki-officers.mjs --fetch --consent
+# Via CLI: Trigger the same sync endpoint
+node scripts/sync-wiki.mjs
+node scripts/sync-wiki.mjs --officers-only
+node scripts/sync-wiki.mjs --ships-only
 ```
 
-The `--fetch` mode:
-- Requires explicit `--consent` flag (no silent fetching)
-- Prints attribution notice and Fandom ToS disclaimer
-- Uses a descriptive `User-Agent: Majel/VERSION (STFC Fleet Tool; local use; github.com/Guffawaffle/majel)`
-- Saves the raw XML as a receipt in `.import-receipts/` (gitignored)
+The sync:
+- Requires explicit consent (UI button click / `consent: true` in API)
+- Fetches from Fandom's Special:Export (one request per entity type)
+- Uses a descriptive `User-Agent`
 - Records provenance (page ID, revision ID, timestamp) per imported record
+- Bulk upserts into the reference store (idempotent)
 
 ### D6: No Redistribution of Parsed Data
 
@@ -124,18 +122,18 @@ The import tooling (parser + UI) is the product. The data flows from the wiki th
 
 ## Implementation Plan
 
-### Phase 1: Parser + CLI (this PR)
-- Rewrite `scripts/ingest-wiki-officers.mjs` with all three modes (file, stdin, fetch)
-- XML parser extracts wikitext from MediaWiki export format
-- Wikitext parser handles the `{| class="wikitable"` officer/ship tables  
-- Attribution notice printed on every run
-- `--dry-run` mode for safe testing
-- `.import-receipts/` directory for raw XML storage (gitignored)
+### Phase 1: Parser + Sync (done)
+- `src/server/wiki-ingest.ts` — XML parser, wikitable parsers (officers + ships), sync orchestrator
+- `POST /api/catalog/sync` endpoint with consent gate
+- "Sync Wiki Data" button in Catalog UI with spinner + toast feedback
+- `scripts/sync-wiki.mjs` CLI wrapper
+- Attribution notice in wiki-ingest.ts header
+- Provenance stored per record (pageId, revisionId, revisionTimestamp)
 
-### Phase 2: API Endpoint + UI
-- `POST /api/fleet/import/wiki` accepts raw wikitext body (manual paste path)
-- Fleet Manager gets an "Import from Wiki" button with instructions + paste textarea
-- Sources panel in sidebar shows attribution for imported data
+### Phase 2: API Endpoint + UI (done)
+- `POST /api/catalog/sync` accepts `{ consent: true }` and fetches + parses + upserts
+- Catalog view has "Sync Wiki Data" button with progress feedback
+- Sources panel shows attribution via provenance fields on each record
 
 ### Phase 3: Provenance Tracking
 - Add `source_page`, `source_revision`, `source_timestamp` columns to officers/ships tables
