@@ -23,6 +23,7 @@
  */
 
 import express from "express";
+import cookieParser from "cookie-parser";
 import { IncomingMessage } from "node:http";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +37,7 @@ import { createDockStore } from "./dock-store.js";
 import { createBehaviorStore } from "./behavior-store.js";
 import { createReferenceStore } from "./reference-store.js";
 import { createOverlayStore } from "./overlay-store.js";
+import { createInviteStore } from "./invite-store.js";
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
@@ -59,6 +61,8 @@ import { createSessionRoutes } from "./routes/sessions.js";
 import { createDockRoutes } from "./routes/docks.js";
 import { createCatalogRoutes } from "./routes/catalog.js";
 import { createDiagnosticQueryRoutes } from "./routes/diagnostic-query.js";
+import { createAuthRoutes } from "./routes/auth.js";
+import { createAdminRoutes } from "./routes/admin.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -83,6 +87,7 @@ const state: AppState = {
   behaviorStore: null,
   referenceStore: null,
   overlayStore: null,
+  inviteStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -97,6 +102,9 @@ export function createApp(appState: AppState): express.Express {
   
   // Body parser with size limit (ADR-005 Phase 4)
   app.use(express.json({ limit: '100kb' }));
+
+  // Cookie parser (ADR-018 Phase 2 — tenant cookies)
+  app.use(cookieParser());
 
   // Structured HTTP request logging
   app.use(
@@ -119,8 +127,8 @@ export function createApp(appState: AppState): express.Express {
   app.use(express.static(clientDir));
 
   // ─── Mount route modules ──────────────────────────────────
-  app.use(createCoreRoutes(appState));
-  app.use(createChatRoutes(appState));
+  app.use(createCoreRoutes(appState));  app.use(createAuthRoutes(appState));
+  app.use(createAdminRoutes(appState));  app.use(createChatRoutes(appState));
   app.use(createSettingsRoutes(appState));
   app.use(createSessionRoutes(appState));
   app.use(createDockRoutes(appState));
@@ -208,6 +216,15 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "overlay store init failed");
   }
 
+  // 2h. Initialize invite store (ADR-018 Phase 2 — auth & invites)
+  try {
+    state.inviteStore = await createInviteStore();
+    const codes = await state.inviteStore.listCodes();
+    log.boot.info({ codes: codes.length, authEnabled: state.config.authEnabled }, "invite store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "invite store init failed");
+  }
+
   // Resolve config from settings store
   const { geminiApiKey } = state.config;
 
@@ -251,6 +268,9 @@ async function shutdown(): Promise<void> {
   }
   if (state.overlayStore) {
     state.overlayStore.close();
+  }
+  if (state.inviteStore) {
+    state.inviteStore.close();
   }
   if (state.referenceStore) {
     state.referenceStore.close();

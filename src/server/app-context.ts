@@ -13,6 +13,7 @@ import type { DockStore } from "./dock-store.js";
 import type { BehaviorStore } from "./behavior-store.js";
 import type { ReferenceStore } from "./reference-store.js";
 import type { OverlayStore } from "./overlay-store.js";
+import type { InviteStore } from "./invite-store.js";
 import type { AppConfig } from "./config.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./micro-runner.js";
 
@@ -27,6 +28,7 @@ export interface AppState {
   behaviorStore: BehaviorStore | null;
   referenceStore: ReferenceStore | null;
   overlayStore: OverlayStore | null;
+  inviteStore: InviteStore | null;
   startupComplete: boolean;
   config: AppConfig;
 }

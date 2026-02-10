@@ -10,9 +10,12 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { getCategories } from "../settings.js";
 import { createGeminiEngine } from "../gemini.js";
 import { resolveConfig } from "../config.js";
+import { requireVisitor } from "../auth.js";
 
 export function createSettingsRoutes(appState: AppState): Router {
   const router = Router();
+  const visitor = requireVisitor(appState);
+  router.use("/api/settings", visitor);
 
   router.get("/api/settings", async (req, res) => {
     if (!appState.settingsStore) {

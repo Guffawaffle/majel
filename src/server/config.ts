@@ -42,6 +42,14 @@ export interface AppConfig {
   /** Lex workspace root directory */
   lexWorkspaceRoot: string;
 
+  // ── Auth (ADR-018 Phase 2) ──────────────────────────────────
+  /** Admin bearer token — if empty, auth is disabled (local/demo mode) */
+  adminToken: string;
+  /** Secret used for invite code HMAC generation */
+  inviteSecret: string;
+  /** Whether auth is enforced (true when adminToken is set) */
+  authEnabled: boolean;
+
   // ── Logging ─────────────────────────────────────────────────
   /** Log level (silent, debug, info, warn, error) */
   logLevel: string;
@@ -130,6 +138,10 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
   const logLevel = resolveLogLevel(isTest, isDev);
   const logPretty = resolveLogPretty(isTest, isDev);
 
+  // Auth config (env-only — not user-configurable)
+  const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
+  const inviteSecret = process.env.MAJEL_INVITE_SECRET || "";
+
   return {
     port,
     nodeEnv,
@@ -137,6 +149,9 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
     isDev,
     geminiApiKey,
     lexWorkspaceRoot,
+    adminToken,
+    inviteSecret,
+    authEnabled: adminToken.length > 0,
     logLevel,
     logPretty,
   };
@@ -160,6 +175,8 @@ export function bootstrapConfigSync(): AppConfig {
   const isDev = nodeEnv !== "production" && !isTest;
   const logLevel = resolveLogLevel(isTest, isDev);
   const logPretty = resolveLogPretty(isTest, isDev);
+  const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
+  const inviteSecret = process.env.MAJEL_INVITE_SECRET || "";
   return {
     port: parseInt(process.env.MAJEL_PORT || process.env.PORT || "3000", 10),
     nodeEnv,
@@ -167,6 +184,9 @@ export function bootstrapConfigSync(): AppConfig {
     isDev,
     geminiApiKey: process.env.GEMINI_API_KEY || "",
     lexWorkspaceRoot: process.env.LEX_WORKSPACE_ROOT || process.cwd(),
+    adminToken,
+    inviteSecret,
+    authEnabled: adminToken.length > 0,
     logLevel,
     logPretty,
   };

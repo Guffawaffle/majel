@@ -13,6 +13,7 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { requireVisitor, requireAdmiral } from "../auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../overlay-store.js";
 import { syncWikiData } from "../wiki-ingest.js";
 
@@ -264,7 +265,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Wiki Sync
   // ═══════════════════════════════════════════════════════════
 
-  router.post("/api/catalog/sync", async (req, res) => {
+  router.post("/api/catalog/sync", requireAdmiral(appState), async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const store = appState.referenceStore!;
 
@@ -307,7 +308,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Overlay — Officer CRUD
   // ═══════════════════════════════════════════════════════════
 
-  router.patch("/api/catalog/officers/:id/overlay", async (req, res) => {
+  router.patch("/api/catalog/officers/:id/overlay", requireVisitor(appState), async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const refId = req.params.id;
@@ -357,7 +358,7 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, result);
   });
 
-  router.delete("/api/catalog/officers/:id/overlay", async (req, res) => {
+  router.delete("/api/catalog/officers/:id/overlay", requireVisitor(appState), async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const deleted = await appState.overlayStore!.deleteOfficerOverlay(req.params.id);
     sendOk(res, { deleted });
@@ -367,7 +368,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Overlay — Ship CRUD
   // ═══════════════════════════════════════════════════════════
 
-  router.patch("/api/catalog/ships/:id/overlay", async (req, res) => {
+  router.patch("/api/catalog/ships/:id/overlay", requireVisitor(appState), async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const refId = req.params.id;
@@ -417,7 +418,7 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, result);
   });
 
-  router.delete("/api/catalog/ships/:id/overlay", async (req, res) => {
+  router.delete("/api/catalog/ships/:id/overlay", requireVisitor(appState), async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const deleted = await appState.overlayStore!.deleteShipOverlay(req.params.id);
     sendOk(res, { deleted });
@@ -427,7 +428,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Bulk Overlay Operations
   // ═══════════════════════════════════════════════════════════
 
-  router.post("/api/catalog/officers/bulk-overlay", async (req, res) => {
+  router.post("/api/catalog/officers/bulk-overlay", requireVisitor(appState), async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const { refIds, ownershipState, target } = req.body;
@@ -450,7 +451,7 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, { updated, refIds: refIds.length });
   });
 
-  router.post("/api/catalog/ships/bulk-overlay", async (req, res) => {
+  router.post("/api/catalog/ships/bulk-overlay", requireVisitor(appState), async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const { refIds, ownershipState, target } = req.body;

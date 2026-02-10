@@ -14,6 +14,7 @@ import { Router } from "express";
 import { openDatabase, type Client } from "../db.js";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { requireAdmiral } from "../auth.js";
 
 // ─── Safety ─────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ function isSafeQuery(sql: string): boolean {
 
 export function createDiagnosticQueryRoutes(appState: AppState): Router {
   const router = Router();
+  router.use("/api/diagnostic", requireAdmiral(appState));
 
   /**
    * Get a client to the reference DB.
