@@ -120,13 +120,27 @@ export function createCatalogRoutes(appState: AppState): Router {
     });
 
     // Apply overlay filters
-    if (ownership && isValidOwnership(ownership)) {
-      merged = merged.filter(o => o.ownershipState === ownership);
-    }
-    if (targetFilter === "true") {
-      merged = merged.filter(o => o.target);
-    } else if (targetFilter === "false") {
-      merged = merged.filter(o => !o.target);
+    // When both ownership AND target filters are active, use OR (union)
+    // so "Owned + Targeted" shows officers matching either condition.
+    // When only one is active, apply it as a simple filter.
+    const hasOwnershipFilter = ownership && isValidOwnership(ownership);
+    const hasTargetFilter = targetFilter === "true" || targetFilter === "false";
+
+    if (hasOwnershipFilter && hasTargetFilter) {
+      const ownershipMatch = (o: (typeof merged)[0]) => o.ownershipState === ownership;
+      const targetMatch = targetFilter === "true"
+        ? (o: (typeof merged)[0]) => o.target
+        : (o: (typeof merged)[0]) => !o.target;
+      merged = merged.filter(o => ownershipMatch(o) || targetMatch(o));
+    } else {
+      if (hasOwnershipFilter) {
+        merged = merged.filter(o => o.ownershipState === ownership);
+      }
+      if (targetFilter === "true") {
+        merged = merged.filter(o => o.target);
+      } else if (targetFilter === "false") {
+        merged = merged.filter(o => !o.target);
+      }
     }
 
     sendOk(res, { officers: merged, count: merged.length });
@@ -223,13 +237,25 @@ export function createCatalogRoutes(appState: AppState): Router {
       };
     });
 
-    if (ownership && isValidOwnership(ownership)) {
-      merged = merged.filter(s => s.ownershipState === ownership);
-    }
-    if (targetFilter === "true") {
-      merged = merged.filter(s => s.target);
-    } else if (targetFilter === "false") {
-      merged = merged.filter(s => !s.target);
+    // Apply overlay filters (OR when both active, same as officers/merged)
+    const hasOwnershipFilter = ownership && isValidOwnership(ownership);
+    const hasTargetFilter = targetFilter === "true" || targetFilter === "false";
+
+    if (hasOwnershipFilter && hasTargetFilter) {
+      const ownershipMatch = (s: (typeof merged)[0]) => s.ownershipState === ownership;
+      const targetMatch = targetFilter === "true"
+        ? (s: (typeof merged)[0]) => s.target
+        : (s: (typeof merged)[0]) => !s.target;
+      merged = merged.filter(s => ownershipMatch(s) || targetMatch(s));
+    } else {
+      if (hasOwnershipFilter) {
+        merged = merged.filter(s => s.ownershipState === ownership);
+      }
+      if (targetFilter === "true") {
+        merged = merged.filter(s => s.target);
+      } else if (targetFilter === "false") {
+        merged = merged.filter(s => !s.target);
+      }
     }
 
     sendOk(res, { ships: merged, count: merged.length });
