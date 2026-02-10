@@ -1,6 +1,6 @@
 # ADR-016: Catalog-Overlay Model — Reference Catalog as Primary, Sheets Removed
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** 2026-02-09  
 **Authors:** Guff, Lex (ChatGPT advisor), Opie (Claude)
 
@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS officer_overlay (
   target INTEGER NOT NULL DEFAULT 0,       -- boolean: user is targeting this officer
   level INTEGER,                            -- user's current level for this officer
   rank TEXT,                                -- user's unlock rank (T1, T2, etc.)
+  power INTEGER,                            -- user's current power (added by ADR-017)
   target_note TEXT,                         -- optional: "need for Borg armadas"
   target_priority INTEGER,                  -- optional: 1=high, 2=medium, 3=low
   updated_at TEXT NOT NULL
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS ship_overlay (
   target INTEGER NOT NULL DEFAULT 0,
   tier INTEGER,                             -- user's current tier
   level INTEGER,                            -- user's ship level
+  power INTEGER,                            -- user's current power (added by ADR-017)
   target_note TEXT,
   target_priority INTEGER,
   updated_at TEXT NOT NULL
@@ -239,6 +241,12 @@ The fleet-store's `officers` and `ships` tables are replaced by `reference_offic
 | **Phase 4: MicroRunner Overlay Gating** | ContextGate filters T2 injection by overlay state, receipts include overlay context | Phase 3 |
 | **Phase 5: Advanced Overlay** | Target notes/priority, "recently changed" surface, community overlay sharing | Phase 4 |
 
+## Evolution Notes
+
+> **2025-07-18:** Phases 1 and 2 are complete. D7 (Sheets removal) and D8 (fleet-data retirement) are fully executed — the files are deleted, dependencies removed, and all 14+ references cleaned up. ADR-017 extends the overlay schema with a `power INTEGER` column on both tables. The overlay `set` methods are now wrapped in transactions to prevent TOCTOU races, and PATCH route handlers validate all numeric/string fields server-side.
+>
+> D3's catalog default was initially set to `'owned'` per this ADR, then reverted to `'all'` because ADR-017's Fleet tab now fills the "owned items view" role — making the duplicate default confusing.
+
 ## References
 
 - **ADR-006** — Open Alpha Strategy (zero backwards compatibility policy)
@@ -246,6 +254,6 @@ The fleet-store's `officers` and `ships` tables are replaced by `reference_offic
 - **ADR-013** — Wiki Data Import (reference catalog ingest pipeline)
 - **ADR-014** — MicroRunner (context gating, overlay-aware injection)
 - **ADR-015** — Canonical Entity Identity (namespaced IDs, reference table schema)
-- [sheets.ts](../src/server/sheets.ts) — Google Sheets OAuth + fetch (to be removed)
-- [fleet-data.ts](../src/server/fleet-data.ts) — FleetData model (to be retired)
-- [fleet-store.ts](../src/server/fleet-store.ts) — Current officers/ships tables (to be restructured)
+- [sheets.ts](../src/server/sheets.ts) — ~~Google Sheets OAuth + fetch~~ (removed per D7)
+- [fleet-data.ts](../src/server/fleet-data.ts) — ~~FleetData model~~ (retired per D8)
+- [fleet-store.ts](../src/server/fleet-store.ts) — ~~Officers/ships tables~~ (replaced by reference-store + overlay-store)

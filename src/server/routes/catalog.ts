@@ -39,6 +39,29 @@ export function createCatalogRoutes(appState: AppState): Router {
     return typeof v === "string" && VALID_OWNERSHIP_STATES.includes(v as OwnershipState);
   }
 
+  // ── Input validation helpers (ADR-017 hardening) ────────
+
+  function validateInt(v: unknown, min: number, max: number): number | null | false {
+    if (v === null || v === undefined) return null; // explicit clear
+    if (typeof v === "number") {
+      if (!Number.isInteger(v) || v < min || v > max) return false;
+      return v;
+    }
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < min || n > max) return false;
+      return n;
+    }
+    return false;
+  }
+
+  function validateString(v: unknown, maxLen: number): string | null | false {
+    if (v === null || v === undefined) return null;
+    if (typeof v !== "string") return false;
+    if (v.length > maxLen) return false;
+    return v;
+  }
+
   // ═══════════════════════════════════════════════════════════
   // Reference Catalog — Officers (read-only)
   // ═══════════════════════════════════════════════════════════
@@ -356,6 +379,28 @@ export function createCatalogRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`, 400);
     }
 
+    // Validate numeric/string fields
+    if (level !== undefined) {
+      const v = validateInt(level, 1, 200);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "level must be an integer 1–200", 400);
+    }
+    if (rank !== undefined) {
+      const v = validateString(rank, 50);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "rank must be a string (max 50 chars)", 400);
+    }
+    if (power !== undefined) {
+      const v = validateInt(power, 0, 999_999_999);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "power must be an integer 0–999999999", 400);
+    }
+    if (targetNote !== undefined) {
+      const v = validateString(targetNote, 500);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "targetNote must be a string (max 500 chars)", 400);
+    }
+    if (targetPriority !== undefined) {
+      const v = validateInt(targetPriority, 1, 3);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "targetPriority must be 1, 2, or 3", 400);
+    }
+
     const result = overlay.setOfficerOverlay({
       refId,
       ...(ownershipState !== undefined && { ownershipState }),
@@ -402,6 +447,28 @@ export function createCatalogRoutes(appState: AppState): Router {
 
     if (ownershipState !== undefined && !isValidOwnership(ownershipState)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`, 400);
+    }
+
+    // Validate numeric/string fields
+    if (tier !== undefined) {
+      const v = validateInt(tier, 1, 10);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "tier must be an integer 1–10", 400);
+    }
+    if (level !== undefined) {
+      const v = validateInt(level, 1, 200);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "level must be an integer 1–200", 400);
+    }
+    if (power !== undefined) {
+      const v = validateInt(power, 0, 999_999_999);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "power must be an integer 0–999999999", 400);
+    }
+    if (targetNote !== undefined) {
+      const v = validateString(targetNote, 500);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "targetNote must be a string (max 500 chars)", 400);
+    }
+    if (targetPriority !== undefined) {
+      const v = validateInt(targetPriority, 1, 3);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "targetPriority must be 1, 2, or 3", 400);
     }
 
     const result = overlay.setShipOverlay({

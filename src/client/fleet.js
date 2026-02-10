@@ -86,7 +86,7 @@ function sortItems(items) {
 
 function computeStats(items) {
     const count = items.length;
-    const withLevel = items.filter(i => i.userLevel);
+    const withLevel = items.filter(i => i.userLevel != null && i.userLevel > 0);
     const avgLevel = withLevel.length > 0
         ? Math.round(withLevel.reduce((s, i) => s + i.userLevel, 0) / withLevel.length)
         : 0;
@@ -310,6 +310,9 @@ function bindEvents() {
     }
 
     // Inline field editing with debounced save
+    // Capture activeTab at bind time to prevent stale-closure data corruption
+    // if the user switches tabs before the 600ms debounce fires.
+    const boundTab = activeTab;
     area.querySelectorAll('.fleet-input').forEach(input => {
         input.addEventListener('input', (e) => {
             const id = e.target.dataset.id;
@@ -320,12 +323,12 @@ function bindEvents() {
             const key = `${id}:${field}`;
             if (saveTimers[key]) clearTimeout(saveTimers[key]);
             saveTimers[key] = setTimeout(() => {
-                saveField(id, field, rawValue);
+                saveField(id, field, rawValue, boundTab);
                 delete saveTimers[key];
             }, 600);
         });
 
-        // Save immediately on blur
+        // Save immediately on blur (cancel pending debounce to avoid double-fire)
         input.addEventListener('blur', (e) => {
             const id = e.target.dataset.id;
             const field = e.target.dataset.field;
@@ -334,8 +337,9 @@ function bindEvents() {
             if (saveTimers[key]) {
                 clearTimeout(saveTimers[key]);
                 delete saveTimers[key];
+                // Only save on blur if there was a pending debounce (user was typing)
+                saveField(id, field, rawValue, boundTab);
             }
-            saveField(id, field, rawValue);
         });
 
         // Enter to move to next row's same field
@@ -346,7 +350,7 @@ function bindEvents() {
                 const field = e.target.dataset.field;
                 const nextRow = row?.nextElementSibling;
                 if (nextRow) {
-                    const nextInput = nextRow.querySelector(`.fleet-input[data-field="${field}"]`);
+                    const nextInput = nextRow.querySelector(`.fleet-input[data-field="${CSS.escape(field)}"]`);
                     if (nextInput) nextInput.focus();
                 }
             }
@@ -356,25 +360,31 @@ function bindEvents() {
 
 // ─── Save Field ─────────────────────────────────────────────
 
-async function saveField(id, field, rawValue) {
-    const isOfficer = activeTab === 'officers';
+async function saveField(id, field, rawValue, tab) {
+    const isOfficer = tab === 'officers';
     const setFn = isOfficer ? api.setOfficerOverlay : api.setShipOverlay;
 
     let value;
     if (field === 'rank') {
         value = rawValue || null;
     } else {
-        // Numeric fields: level, tier, power
+        // Numeric fields: level, tier, power — validate and clamp
         value = rawValue ? parseInt(rawValue, 10) : null;
         if (value !== null && isNaN(value)) value = null;
+        if (value !== null) {
+            // Enforce sane ranges matching server-side validation
+            if (field === 'level') value = Math.max(1, Math.min(200, value));
+            else if (field === 'tier') value = Math.max(1, Math.min(10, value));
+            else if (field === 'power') value = Math.max(0, Math.min(999_999_999, value));
+        }
     }
 
     const overlay = { [field]: value };
 
     try {
         await setFn(id, overlay);
-        // Flash save indicator
-        const input = document.querySelector(`.fleet-input[data-id="${id}"][data-field="${field}"]`);
+        // Flash save indicator (use data-attribute selector to handle IDs with special chars)
+        const input = document.querySelector(`.fleet-input[data-id="${CSS.escape(id)}"][data-field="${CSS.escape(field)}"]`);
         if (input) {
             input.classList.add('fleet-saved');
             setTimeout(() => input.classList.remove('fleet-saved'), 800);
@@ -392,7 +402,7 @@ async function saveField(id, field, rawValue) {
         }
     } catch (err) {
         console.error(`Failed to save ${field} for ${id}:`, err);
-        const input = document.querySelector(`.fleet-input[data-id="${id}"][data-field="${field}"]`);
+        const input = document.querySelector(`.fleet-input[data-id="${CSS.escape(id)}"][data-field="${CSS.escape(field)}"]`);
         if (input) {
             input.classList.add('fleet-save-error');
             setTimeout(() => input.classList.remove('fleet-save-error'), 1500);

@@ -1,8 +1,10 @@
 # ADR-007: Fleet Management — Dry Dock, Crew Assignments, and Model-Writable Data
 
-**Status:** Proposed  
+**Status:** Superseded by ADR-015, ADR-016, ADR-017  
 **Date:** 2026-02-08  
 **Authors:** Guff, Majel (Gemini advisor), Opie (Claude)
+
+> **Evolution (2025-07-18):** This ADR's data architecture (fleet.db, officers/ships tables, crew_assignments, Sheets-as-import) was superseded by the Catalog-Overlay model introduced in ADR-015 (canonical entity identity), ADR-016 (reference catalog + overlay, full Sheets removal), and ADR-017 (Fleet tab + power column). Entity data now lives in `reference_officers`/`reference_ships` (wiki-imported), user state in `officer_overlay`/`ship_overlay` (in reference.db), and fleet management UI is `src/client/fleet.js`. The API surface moved from `/api/fleet/*` to `/api/catalog/*`. Tool-use/function-calling (Phase C) and drag-and-drop crew assignment remain future work. This ADR is preserved for historical context.
 
 ## Context
 
