@@ -53,9 +53,11 @@ ALTER TABLE ship_overlay ADD COLUMN power INTEGER;
 
 The overlay types, prepared statements, and merge endpoints all need updating to include `power`.
 
-### D3: Catalog Defaults to "Owned" Filter
+### D3: Catalog Defaults to "All" Filter
 
-Once a user has marked items as owned, the Catalog's default ownership filter should be `'owned'` instead of `'all'`. This makes the most common workflow (browsing your collection) the default, while still being one click away from seeing everything.
+> **Evolution (2025-07-18):** Originally defaulted Catalog to `'owned'`. Reverted to `'all'` in the same release because Fleet now serves as the dedicated owned-items view, making the duplicate default confusing and redundant. Catalog returns to its role as a reference browser showing everything.
+
+The Catalog ownership filter defaults to `'all'`, showing the full reference catalog. Fleet handles the "owned items only" view. One click on the ownership filter still narrows to owned/unowned.
 
 ### D4: Fleet Tab UI Sections
 
@@ -95,9 +97,12 @@ Eventually: split into purpose-specific DBs when complexity warrants it:
 
 | DB | Contains | When |
 |----|----------|------|
-| `reference.db` | Wiki-imported ships + officers (read-only reference data) | Now |
-| `player.db` | Overlays, timers, player settings, progression tracking | When timer system arrives |
-| `loadout.db` | Docks, dock_ships, dock_intents, crew_presets, preset_members | When dock system grows |
+| `reference.db` | Wiki-imported ships + officers (read-only reference data) + overlays + docks | Now |
+| `settings.db` | User preferences and configuration | Now |
+| `chat.db` | Session/conversation history | Now |
+| `behavior.db` | Behavioral rules, Beta-Binomial correction model | Now |
+| `player.db` | Timers, player settings, progression tracking | When timer system arrives |
+| `loadout.db` | Docks split out when dock system grows | Future |
 
 Not splitting yet — the current single-file approach is perfectly fine for a single-user app. Document the direction for when it matters.
 
@@ -113,7 +118,7 @@ Not splitting yet — the current single-file approach is perfectly fine for a s
 ### Negative
 - Fifth view adds complexity to the view switching system (minor — well-patterned)
 - `power` ALTER TABLE is a one-off migration (acceptable at this project age)
-- Catalog defaulting to "owned" may confuse first-time users with no data (mitigated: only when overlay has owned items)
+- ~~Catalog defaulting to "owned" may confuse first-time users~~ — resolved by reverting to `'all'` default
 
 ### Risks
 - Inline editing UX needs to feel snappy — debounce saves, optimistic UI updates
@@ -122,13 +127,13 @@ Not splitting yet — the current single-file approach is perfectly fine for a s
 ## Implementation Plan
 
 1. ✅ Write ADR-017 (this document)
-2. Add `power` column to overlay tables + types + statements
-3. Update merged endpoints to include `power` in response
-4. Set Catalog default filter to `'owned'`
-5. Create `fleet.js` client module
-6. Wire Fleet into app shell (VALID_VIEWS, sidebar, DOM, routing)
-7. Implement inline editing for level/rank/tier/power
-8. Test suite + commit + push
+2. ✅ Add `power` column to overlay tables + types + statements
+3. ✅ Update merged endpoints to include `power` in response
+4. ✅ Set Catalog default filter to `'owned'` → reverted to `'all'` (see D3 evolution note)
+5. ✅ Create `fleet.js` client module (~430 lines)
+6. ✅ Wire Fleet into app shell (VALID_VIEWS, sidebar, DOM, routing)
+7. ✅ Implement inline editing for level/rank/tier/power
+8. ✅ Test suite (512 tests) + commit `028cb27` + hardening pass (input validation, TOCTOU fix, stale-closure fix)
 
 ## References
 

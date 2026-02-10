@@ -293,22 +293,26 @@ export function createOverlayStore(dbPath?: string): OverlayStore {
     },
 
     setOfficerOverlay(input: SetOfficerOverlayInput): OfficerOverlay {
-      const now = new Date().toISOString();
-      // Merge with existing overlay if it exists
-      const existing = stmts.getOfficerOverlay.get(input.refId) as RawOfficerOverlay | undefined;
-      const ownershipState = input.ownershipState ?? existing?.ownershipState ?? "unknown";
-      const target = input.target !== undefined ? (input.target ? 1 : 0) : (existing?.target ?? 0);
-      const level = input.level !== undefined ? input.level : (existing?.level ?? null);
-      const rank = input.rank !== undefined ? input.rank : (existing?.rank ?? null);
-      const power = input.power !== undefined ? input.power : (existing?.power ?? null);
-      const targetNote = input.targetNote !== undefined ? input.targetNote : (existing?.targetNote ?? null);
-      const targetPriority = input.targetPriority !== undefined ? input.targetPriority : (existing?.targetPriority ?? null);
+      // Transaction prevents TOCTOU race between read-existing and upsert
+      const txn = db.transaction(() => {
+        const now = new Date().toISOString();
+        // Merge with existing overlay if it exists
+        const existing = stmts.getOfficerOverlay.get(input.refId) as RawOfficerOverlay | undefined;
+        const ownershipState = input.ownershipState ?? existing?.ownershipState ?? "unknown";
+        const target = input.target !== undefined ? (input.target ? 1 : 0) : (existing?.target ?? 0);
+        const level = input.level !== undefined ? input.level : (existing?.level ?? null);
+        const rank = input.rank !== undefined ? input.rank : (existing?.rank ?? null);
+        const power = input.power !== undefined ? input.power : (existing?.power ?? null);
+        const targetNote = input.targetNote !== undefined ? input.targetNote : (existing?.targetNote ?? null);
+        const targetPriority = input.targetPriority !== undefined ? input.targetPriority : (existing?.targetPriority ?? null);
 
-      stmts.upsertOfficerOverlay.run(
-        input.refId, ownershipState, target, level, rank, power, targetNote, targetPriority, now,
-      );
-      log.fleet.debug({ refId: input.refId, ownershipState, target: target === 1 }, "officer overlay set");
-      return normalizeOfficerOverlay(stmts.getOfficerOverlay.get(input.refId) as RawOfficerOverlay);
+        stmts.upsertOfficerOverlay.run(
+          input.refId, ownershipState, target, level, rank, power, targetNote, targetPriority, now,
+        );
+        log.fleet.debug({ refId: input.refId, ownershipState, target: target === 1 }, "officer overlay set");
+        return normalizeOfficerOverlay(stmts.getOfficerOverlay.get(input.refId) as RawOfficerOverlay);
+      });
+      return txn();
     },
 
     listOfficerOverlays(filters?: { ownershipState?: OwnershipState; target?: boolean }): OfficerOverlay[] {
@@ -330,21 +334,25 @@ export function createOverlayStore(dbPath?: string): OverlayStore {
     },
 
     setShipOverlay(input: SetShipOverlayInput): ShipOverlay {
-      const now = new Date().toISOString();
-      const existing = stmts.getShipOverlay.get(input.refId) as RawShipOverlay | undefined;
-      const ownershipState = input.ownershipState ?? existing?.ownershipState ?? "unknown";
-      const target = input.target !== undefined ? (input.target ? 1 : 0) : (existing?.target ?? 0);
-      const tier = input.tier !== undefined ? input.tier : (existing?.tier ?? null);
-      const level = input.level !== undefined ? input.level : (existing?.level ?? null);
-      const power = input.power !== undefined ? input.power : (existing?.power ?? null);
-      const targetNote = input.targetNote !== undefined ? input.targetNote : (existing?.targetNote ?? null);
-      const targetPriority = input.targetPriority !== undefined ? input.targetPriority : (existing?.targetPriority ?? null);
+      // Transaction prevents TOCTOU race between read-existing and upsert
+      const txn = db.transaction(() => {
+        const now = new Date().toISOString();
+        const existing = stmts.getShipOverlay.get(input.refId) as RawShipOverlay | undefined;
+        const ownershipState = input.ownershipState ?? existing?.ownershipState ?? "unknown";
+        const target = input.target !== undefined ? (input.target ? 1 : 0) : (existing?.target ?? 0);
+        const tier = input.tier !== undefined ? input.tier : (existing?.tier ?? null);
+        const level = input.level !== undefined ? input.level : (existing?.level ?? null);
+        const power = input.power !== undefined ? input.power : (existing?.power ?? null);
+        const targetNote = input.targetNote !== undefined ? input.targetNote : (existing?.targetNote ?? null);
+        const targetPriority = input.targetPriority !== undefined ? input.targetPriority : (existing?.targetPriority ?? null);
 
-      stmts.upsertShipOverlay.run(
-        input.refId, ownershipState, target, tier, level, power, targetNote, targetPriority, now,
-      );
-      log.fleet.debug({ refId: input.refId, ownershipState, target: target === 1 }, "ship overlay set");
-      return normalizeShipOverlay(stmts.getShipOverlay.get(input.refId) as RawShipOverlay);
+        stmts.upsertShipOverlay.run(
+          input.refId, ownershipState, target, tier, level, power, targetNote, targetPriority, now,
+        );
+        log.fleet.debug({ refId: input.refId, ownershipState, target: target === 1 }, "ship overlay set");
+        return normalizeShipOverlay(stmts.getShipOverlay.get(input.refId) as RawShipOverlay);
+      });
+      return txn();
     },
 
     listShipOverlays(filters?: { ownershipState?: OwnershipState; target?: boolean }): ShipOverlay[] {

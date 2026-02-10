@@ -18,7 +18,7 @@ let officers = [];
 let ships = [];
 let activeTab = 'officers'; // 'officers' | 'ships'
 let searchQuery = '';
-let filters = { ownership: 'owned', target: 'all', rarity: '', group: '', faction: '', class: '' };
+let filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
 let counts = { reference: { officers: 0, ships: 0 }, overlay: {} };
 let undoStack = []; // { type, refIds, previousStates }
 let loading = false;
@@ -340,7 +340,7 @@ function bindEvents() {
             activeTab = btn.dataset.tab;
             searchQuery = '';
             letterFilter = '';
-            filters = { ownership: 'owned', target: 'all', rarity: '', group: '', faction: '', class: '' };
+            filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
             undoStack = [];
             refresh();
         });
@@ -411,7 +411,7 @@ function bindEvents() {
         btn.addEventListener('click', () => {
             searchQuery = '';
             letterFilter = '';
-            filters = { ownership: 'owned', target: 'all', rarity: '', group: '', faction: '', class: '' };
+            filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
             refresh();
         });
     });
