@@ -1,6 +1,6 @@
 # Majel — Developer Setup Guide
 
-Step-by-step setup for all Majel dependencies. You'll need about 5 minutes.
+Step-by-step setup for Majel. You'll need about 2 minutes.
 
 ---
 
@@ -32,142 +32,90 @@ If you see JSON with model names, the key works.
 
 ### Cost
 
-Gemini 2.5 Flash-Lite: ~$0.075 per million input tokens. A typical session with a 500-row roster uses ~30K tokens = **less than $0.01 per session**.
+Gemini 2.5 Flash: ~$0.075 per million input tokens. A typical session uses ~30K tokens = **less than $0.01 per session**.
 
 ---
 
-## 2. Google Sheets OAuth (Optional — 5 minutes)
-
-This connects Majel to your STFC roster spreadsheet. **Skip this if you just want to test chat** — Majel works without it.
-
-### The Big Picture
-
-You need three things:
-- **A Google Cloud project** with the Sheets API enabled
-- **An OAuth client** (a `credentials.json` file)
-- **Your spreadsheet ID** from the URL
-
-### Step-by-Step
-
-#### 2a. Enable the Google Sheets API
-
-1. Go to **[Google Cloud Console → APIs & Services](https://console.cloud.google.com/apis/dashboard)**
-2. Select your project (if you created "Majel" in AI Studio, it should already exist — look for project ID `375180256352` or whatever yours is)
-3. Click **"+ ENABLE APIS AND SERVICES"** at the top
-4. Search for **"Google Sheets API"**
-5. Click it → Click **"Enable"**
-
-#### 2b. Configure the OAuth Consent Screen
-
-> **You must do this before creating credentials.** It only takes a minute.
-
-1. In the left sidebar, click **[OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent)**
-2. If prompted for user type, select **"External"** → Click **Create**
-3. Fill in:
-   - **App name:** `Majel`
-   - **User support email:** your email
-   - **Developer contact email:** your email
-4. Click **"Save and Continue"**
-5. **Scopes** — click "Add or Remove Scopes", search for `spreadsheets.readonly`, check it, click **Update** → **Save and Continue**
-6. **Test users** — click **"Add Users"**, add your Google email → **Save and Continue**
-7. Click **"Back to Dashboard"**
-
-#### 2c. Create the OAuth Client ID
-
-1. In the left sidebar, click **[Credentials](https://console.cloud.google.com/apis/credentials)**
-2. Click **"+ CREATE CREDENTIALS"** at the top
-3. Select **"OAuth client ID"**
-4. **Application type:** Select **"Desktop app"**
-5. **Name:** `Majel` (or anything)
-6. Click **"Create"**
-7. A dialog shows your Client ID and Secret — click **"DOWNLOAD JSON"**
-8. Save the file as **`credentials.json`** in `/srv/majel/`
+## 2. Configure .env
 
 ```bash
-# Move it to the right place
-mv ~/Downloads/client_secret_*.json /srv/majel/credentials.json
+cp .env.example .env
 ```
 
-#### 2d. Get Your Spreadsheet ID
-
-Your spreadsheet URL looks like:
-```
-https://docs.google.com/spreadsheets/d/1aBcDeFgHiJkLmNoPqRsTuVwXyZ/edit
-                                       └──────── THIS PART ────────┘
-```
-
-Copy that ID and add it to `.env`:
-```env
-MAJEL_SPREADSHEET_ID=1aBcDeFgHiJkLmNoPqRsTuVwXyZ
-MAJEL_SHEET_RANGE=Sheet1!A1:Z1000
-```
-
-#### 2e. First Run — OAuth Consent
-
-When you start Majel with Sheets configured, it will print:
-```
-🔐 OAuth required. Open this URL in a browser:
-   https://accounts.google.com/o/oauth2/auth?...
-```
-
-1. Open that URL
-2. Sign in with the same Google account
-3. Click through "This app isn't verified" → "Continue" (it's your own app)
-4. Grant read-only access to Sheets
-5. You'll see "✅ Majel authorized!" — close the tab
-6. A `token.json` is cached — you won't need to do this again
-
----
-
-## 3. Configure .env
-
-Your final `.env` should look like this:
+Your `.env` should look like:
 
 ```env
-# === ISOLATION (Lex uses its own DB, not your global one) ===
-LEX_WORKSPACE_ROOT=/srv/majel
-
 # === Gemini (Required) ===
 GEMINI_API_KEY=AIzaSy...your-actual-key
 
-# === Google Sheets (Optional) ===
-MAJEL_SPREADSHEET_ID=1aBcDeFgHiJkLmNoPqRsTuVwXyZ
-MAJEL_SHEET_RANGE=Sheet1!A1:Z1000
-
-# === Server ===
+# === Server (Optional) ===
 MAJEL_PORT=3000
+
+# === Isolation (Lex uses its own DB, not your global one) ===
+LEX_WORKSPACE_ROOT=/srv/majel
 ```
+
+That's it — only `GEMINI_API_KEY` is required.
 
 ---
 
-## 4. Run
+## 3. Install & Run
 
 ```bash
 cd /srv/majel
+npm install
 npm run dev
 ```
 
-Open http://localhost:3000 — you should see the chat interface.
+Open http://localhost:3000 — you should see the LCARS-themed UI with five tabs: Chat, Catalog, Fleet, Drydock, and Diagnostics.
+
+### First-Time Data
+
+The Catalog starts empty. Click **"Sync from Wiki"** in the Catalog view to import officers and ships from the STFC Fandom wiki. This populates the reference store that all other views draw from.
+
+---
+
+## 4. Scripts Reference
+
+```bash
+npm run dev          # Development server with hot reload
+npm run build        # Compile TypeScript + copy static assets
+npm start            # Production server (from dist/)
+npm test             # Run 512 tests via Vitest
+npm run local-ci     # Full CI: typecheck + coverage + build
+npm run health       # Curl the health endpoint
+npm run dev:bg       # Run in background (logs to logs/dev.log)
+npm run dev:stop     # Stop background server
+npm run dev:wipe     # Wipe reference.db (forces full re-sync)
+```
 
 ---
 
 ## Troubleshooting
 
-### "credentials.json not found"
-Download the OAuth client JSON from [Google Cloud → Credentials](https://console.cloud.google.com/apis/credentials) and save it as `/srv/majel/credentials.json`.
+### "GEMINI_API_KEY is not set"
+Create a `.env` file from the example and add your API key (see Step 1).
 
-### OAuth says "This app isn't verified"
-Expected — it's your personal app. Click "Advanced" → "Go to Majel (unsafe)". This is safe since you own the OAuth client.
-
-### "Access blocked: This app's request is invalid"
-The OAuth consent screen redirect URI doesn't match. Make sure your OAuth client type is **"Desktop app"**, not "Web application".
-
-### Roster loads but shows "No data found"
-Check `MAJEL_SHEET_RANGE` — the default `Sheet1!A1:Z1000` assumes your data is on the first sheet. Adjust if your sheet has a different name.
-
-### Token expired
-Delete `token.json` and restart — Majel will re-run the OAuth flow.
+### SQLite build errors on install
+Majel uses `better-sqlite3`, which requires a native build step. Ensure you have build tools:
 ```bash
-rm /srv/majel/token.json
+# Ubuntu/Debian
+sudo apt-get install build-essential python3
+
+# macOS
+xcode-select --install
+```
+
+If tests fail with SQLite errors after a Node.js upgrade, try:
+```bash
+npm run rebuild-sqlite   # or: npm rebuild better-sqlite3
+```
+
+### Port already in use
+```bash
+npm run kill    # Frees port 3000 (or whatever MAJEL_PORT is set to)
 npm run dev
 ```
+
+### Wiki sync fails
+The sync scrapes the STFC Fandom wiki. If it fails, check your network connection. The sync is idempotent — safe to retry.
