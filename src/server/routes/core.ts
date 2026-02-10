@@ -101,6 +101,10 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "POST", path: "/api/catalog/officers/bulk-overlay", description: "Bulk set officer overlays" },
         { method: "POST", path: "/api/catalog/ships/bulk-overlay", description: "Bulk set ship overlays" },
         { method: "POST", path: "/api/catalog/sync", description: "Sync reference data from STFC wiki" },
+        // ── Diagnostic Query (AI Tool) ──
+        { method: "GET", path: "/api/diagnostic/schema", description: "DB schema introspection (tables, columns, indexes)" },
+        { method: "GET", path: "/api/diagnostic/query", description: "Execute read-only SQL (AI consumption)" },
+        { method: "GET", path: "/api/diagnostic/summary", description: "Pre-built reference + overlay summary" },
       ],
     });
   });

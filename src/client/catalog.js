@@ -93,10 +93,12 @@ function render() {
     `;
     bindEvents();
 
-    // Re-focus search if it was focused before
+    // Always re-focus search after render if we have an active query or search was focused
     const searchInput = area.querySelector('.cat-search');
-    if (searchInput && document.activeElement?.classList?.contains('cat-search')) {
+    if (searchInput && searchWasFocused) {
         searchInput.focus();
+        // Restore cursor position to end
+        searchInput.selectionStart = searchInput.selectionEnd = searchInput.value.length;
     }
 }
 
@@ -146,7 +148,6 @@ function renderFilterChips() {
         { value: 'all', label: 'All' },
         { value: 'owned', label: '✓ Owned' },
         { value: 'unowned', label: '✗ Unowned' },
-        { value: 'unknown', label: '? Unknown' },
     ];
     const targetOpts = [
         { value: 'all', label: 'Any' },
@@ -214,7 +215,7 @@ function renderOfficerCard(o) {
             </div>
             <div class="cat-card-overlay">
                 <button class="cat-own-btn ${owned ? 'active' : ''}" data-action="toggle-owned" data-id="${esc(o.id)}" title="Toggle owned">
-                    ${owned ? '✓ Owned' : unowned ? '✗ Not Owned' : '? Unknown'}
+                    ${owned ? '✓ Owned' : '✗ Not Owned'}
                 </button>
                 <button class="cat-target-btn ${targeted ? 'active' : ''}" data-action="toggle-target" data-id="${esc(o.id)}" title="Toggle target">
                     ${targeted ? '🎯 Targeted' : '○ Target'}
@@ -246,7 +247,7 @@ function renderShipCard(s) {
             </div>
             <div class="cat-card-overlay">
                 <button class="cat-own-btn ${owned ? 'active' : ''}" data-action="toggle-owned" data-id="${esc(s.id)}" title="Toggle owned">
-                    ${owned ? '✓ Owned' : unowned ? '✗ Not Owned' : '? Unknown'}
+                    ${owned ? '✓ Owned' : '✗ Not Owned'}
                 </button>
                 <button class="cat-target-btn ${targeted ? 'active' : ''}" data-action="toggle-target" data-id="${esc(s.id)}" title="Toggle target">
                     ${targeted ? '🎯 Targeted' : '○ Target'}
@@ -282,6 +283,7 @@ function renderUndoBar() {
 // ─── Event Binding ──────────────────────────────────────────
 
 let searchDebounce = null;
+let searchWasFocused = false;
 
 function bindEvents() {
     const area = $("#catalog-area");
@@ -301,7 +303,11 @@ function bindEvents() {
     // Search input with debounce
     const searchInput = area.querySelector('.cat-search');
     if (searchInput) {
+        // Track focus state for re-focus after render
+        searchInput.addEventListener('focus', () => { searchWasFocused = true; });
+        searchInput.addEventListener('blur', () => { searchWasFocused = false; });
         searchInput.addEventListener('input', (e) => {
+            searchWasFocused = true; // Keep focused during typing
             clearTimeout(searchDebounce);
             searchDebounce = setTimeout(() => {
                 searchQuery = e.target.value.trim();
@@ -354,7 +360,7 @@ function bindEvents() {
         });
     });
 
-    // Single item: toggle ownership (cycles: unknown → owned → unowned → unknown)
+    // Single item: toggle ownership (binary: unowned ↔ owned)
     area.querySelectorAll('[data-action="toggle-owned"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -363,8 +369,7 @@ function bindEvents() {
             const item = items.find(i => i.id === id);
             if (!item) return;
 
-            const cycle = { unknown: 'owned', owned: 'unowned', unowned: 'unknown' };
-            const next = cycle[item.ownershipState] || 'owned';
+            const next = item.ownershipState === 'owned' ? 'unowned' : 'owned';
 
             const setFn = activeTab === 'officers' ? api.setOfficerOverlay : api.setShipOverlay;
             await setFn(id, { ownershipState: next });

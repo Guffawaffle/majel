@@ -110,7 +110,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       const ov = overlayMap.get(officer.id);
       return {
         ...officer,
-        ownershipState: ov?.ownershipState ?? "unknown" as OwnershipState,
+        ownershipState: ov?.ownershipState ?? "unowned" as OwnershipState,
         target: ov?.target ?? false,
         userLevel: ov?.level ?? null,
         userRank: ov?.rank ?? null,
@@ -214,7 +214,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       const ov = overlayMap.get(ship.id);
       return {
         ...ship,
-        ownershipState: ov?.ownershipState ?? "unknown" as OwnershipState,
+        ownershipState: ov?.ownershipState ?? "unowned" as OwnershipState,
         target: ov?.target ?? false,
         userTier: ov?.tier ?? null,
         userLevel: ov?.level ?? null,
