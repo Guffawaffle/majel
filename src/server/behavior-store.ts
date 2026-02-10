@@ -4,7 +4,7 @@
  * Majel — STFC Fleet Intelligence System
  * Named in honor of Majel Barrett-Roddenberry (1932–2008)
  *
- * libSQL-backed behavioral rule storage with Bayesian confidence scoring.
+ * PostgreSQL-backed behavioral rule storage with Bayesian confidence scoring.
  * Rules govern HOW Aria answers (tone, format, source citation habits),
  * NOT what she believes about STFC meta.
  *
@@ -12,11 +12,10 @@
  * no code imported). Uses a Beta-Binomial model for confidence scoring.
  *
  * See ADR-014 "Behavioral Rules" section for design rationale.
- * Migrated from better-sqlite3 to @libsql/client in ADR-018 Phase 1.
+ * Migrated to PostgreSQL in ADR-018 Phase 3.
  */
 
-import { openDatabase, initSchema, type Client } from "./db.js";
-import * as path from "node:path";
+import { initSchema, type Pool } from "./db.js";
 import { log } from "./logger.js";
 import type { TaskType } from "./micro-runner.js";
 
@@ -118,12 +117,12 @@ const SCHEMA_STATEMENTS = [
     id            TEXT PRIMARY KEY,
     text          TEXT NOT NULL,
     task_type     TEXT,
-    alpha         REAL NOT NULL DEFAULT ${PRIOR_ALPHA},
-    beta          REAL NOT NULL DEFAULT ${PRIOR_BETA},
+    alpha         DOUBLE PRECISION NOT NULL DEFAULT ${PRIOR_ALPHA},
+    beta          DOUBLE PRECISION NOT NULL DEFAULT ${PRIOR_BETA},
     observation_count INTEGER NOT NULL DEFAULT 0,
     severity      TEXT NOT NULL DEFAULT 'should',
-    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS idx_behavior_rules_task_type
     ON behavior_rules(task_type)`,
@@ -134,42 +133,38 @@ const SCHEMA_STATEMENTS = [
 const SQL = {
   insert: `
     INSERT INTO behavior_rules (id, text, task_type, alpha, beta, observation_count, severity, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
   `,
-  getById: `SELECT * FROM behavior_rules WHERE id = ?`,
-  listAll: `SELECT * FROM behavior_rules ORDER BY (alpha * 1.0 / (alpha + beta)) DESC`,
+  getById: `SELECT * FROM behavior_rules WHERE id = $1`,
+  listAll: `SELECT * FROM behavior_rules ORDER BY (alpha / (alpha + beta)) DESC`,
   getByTaskType: `
     SELECT * FROM behavior_rules
-    WHERE (task_type IS NULL OR task_type = ?)
-      AND observation_count >= ?
-      AND (alpha * 1.0 / (alpha + beta)) >= ?
-    ORDER BY (alpha * 1.0 / (alpha + beta)) DESC
+    WHERE (task_type IS NULL OR task_type = $1)
+      AND observation_count >= $2
+      AND (alpha / (alpha + beta)) >= $3
+    ORDER BY (alpha / (alpha + beta)) DESC
   `,
   update: `
     UPDATE behavior_rules
-    SET alpha = ?, beta = ?, observation_count = ?, updated_at = ?
-    WHERE id = ?
+    SET alpha = $1, beta = $2, observation_count = $3, updated_at = $4
+    WHERE id = $5
   `,
-  deleteById: `DELETE FROM behavior_rules WHERE id = ?`,
+  deleteById: `DELETE FROM behavior_rules WHERE id = $1`,
   countAll: `SELECT COUNT(*) as total FROM behavior_rules`,
   countActive: `
     SELECT COUNT(*) as active FROM behavior_rules
-    WHERE observation_count >= ?
-      AND (alpha * 1.0 / (alpha + beta)) >= ?
+    WHERE observation_count >= $1
+      AND (alpha / (alpha + beta)) >= $2
   `,
 };
 
 // ─── Implementation ─────────────────────────────────────────
 
 /**
- * Create a BehaviorStore backed by libSQL.
- *
- * @param dbPath — Path to the database file. Defaults to data/behavior.db.
+ * Create a BehaviorStore backed by PostgreSQL.
  */
-export async function createBehaviorStore(dbPath?: string): Promise<BehaviorStore> {
-  const resolvedPath = dbPath ?? path.resolve("data", "behavior.db");
-  const client = openDatabase(resolvedPath);
-  await initSchema(client, SCHEMA_STATEMENTS);
+export async function createBehaviorStore(pool: Pool): Promise<BehaviorStore> {
+  await initSchema(pool, SCHEMA_STATEMENTS);
 
   // ── Row Mapping ─────────────────────────────────────────
 
@@ -200,16 +195,13 @@ export async function createBehaviorStore(dbPath?: string): Promise<BehaviorStor
 
   return {
     async getRules(taskType: TaskType): Promise<BehaviorRule[]> {
-      const result = await client.execute({
-        sql: SQL.getByTaskType,
-        args: [taskType, MIN_OBSERVATIONS, MIN_CONFIDENCE],
-      });
-      return result.rows.map((row) => rowToRule(row as unknown as Record<string, unknown>));
+      const result = await pool.query(SQL.getByTaskType, [taskType, MIN_OBSERVATIONS, MIN_CONFIDENCE]);
+      return result.rows.map((row) => rowToRule(row as Record<string, unknown>));
     },
 
     async recordCorrection(ruleId: string, polarity: 1 | -1): Promise<BehaviorRule | null> {
-      const result = await client.execute({ sql: SQL.getById, args: [ruleId] });
-      const row = result.rows[0] as unknown as Record<string, unknown> | undefined;
+      const result = await pool.query(SQL.getById, [ruleId]);
+      const row = result.rows[0] as Record<string, unknown> | undefined;
       if (!row) return null;
 
       const rule = rowToRule(row);
@@ -223,10 +215,7 @@ export async function createBehaviorStore(dbPath?: string): Promise<BehaviorStor
       rule.observationCount += 1;
       rule.updatedAt = now;
 
-      await client.execute({
-        sql: SQL.update,
-        args: [rule.alpha, rule.beta, rule.observationCount, now, rule.id],
-      });
+      await pool.query(SQL.update, [rule.alpha, rule.beta, rule.observationCount, now, rule.id]);
 
       log.gemini.debug({
         ruleId: rule.id,
@@ -259,9 +248,7 @@ export async function createBehaviorStore(dbPath?: string): Promise<BehaviorStor
         updatedAt: now,
       };
 
-      await client.execute({
-        sql: SQL.insert,
-        args: [
+      await pool.query(SQL.insert, [
           rule.id,
           rule.text,
           rule.scope.taskType ?? null,
@@ -271,8 +258,7 @@ export async function createBehaviorStore(dbPath?: string): Promise<BehaviorStor
           rule.severity,
           rule.createdAt,
           rule.updatedAt,
-        ],
-      });
+        ]);
 
       log.gemini.debug({
         ruleId: id,
@@ -285,19 +271,19 @@ export async function createBehaviorStore(dbPath?: string): Promise<BehaviorStor
     },
 
     async getRule(id: string): Promise<BehaviorRule | null> {
-      const result = await client.execute({ sql: SQL.getById, args: [id] });
-      const row = result.rows[0] as unknown as Record<string, unknown> | undefined;
+      const result = await pool.query(SQL.getById, [id]);
+      const row = result.rows[0] as Record<string, unknown> | undefined;
       return row ? rowToRule(row) : null;
     },
 
     async listRules(): Promise<BehaviorRule[]> {
-      const result = await client.execute(SQL.listAll);
-      return result.rows.map((row) => rowToRule(row as unknown as Record<string, unknown>));
+      const result = await pool.query(SQL.listAll);
+      return result.rows.map((row) => rowToRule(row as Record<string, unknown>));
     },
 
     async deleteRule(id: string): Promise<boolean> {
-      const result = await client.execute({ sql: SQL.deleteById, args: [id] });
-      return result.rowsAffected > 0;
+      const result = await pool.query(SQL.deleteById, [id]);
+      return (result.rowCount ?? 0) > 0;
     },
 
     confidence: computeConfidence,
@@ -305,17 +291,14 @@ export async function createBehaviorStore(dbPath?: string): Promise<BehaviorStor
     isActive: checkActive,
 
     close(): void {
-      client.close();
+      // Pool lifecycle managed externally
     },
 
     async counts(): Promise<{ total: number; active: number; inactive: number }> {
-      const totalResult = await client.execute(SQL.countAll);
-      const total = (totalResult.rows[0] as unknown as { total: number }).total;
-      const activeResult = await client.execute({
-        sql: SQL.countActive,
-        args: [MIN_OBSERVATIONS, MIN_CONFIDENCE],
-      });
-      const active = (activeResult.rows[0] as unknown as { active: number }).active;
+      const totalResult = await pool.query(SQL.countAll);
+      const total = Number((totalResult.rows[0] as { total: string | number }).total);
+      const activeResult = await pool.query(SQL.countActive, [MIN_OBSERVATIONS, MIN_CONFIDENCE]);
+      const active = Number((activeResult.rows[0] as { active: string | number }).active);
       return { total, active, inactive: total - active };
     },
   };

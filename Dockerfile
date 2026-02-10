@@ -1,11 +1,6 @@
 # ── Stage 1: Build ────────────────────────────────────────────
 FROM node:22-slim AS builder
 
-# @libsql/client uses better-sqlite3-multiple-ciphers which needs native compilation
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 make g++ && \
-    rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Install deps first (layer cache)
@@ -20,13 +15,9 @@ RUN npm run build
 # ── Stage 2: Production ──────────────────────────────────────
 FROM node:22-slim AS production
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 make g++ && \
-    rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
-# Production deps only
+# Production deps only (pg is pure JS — no native build tools needed)
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
@@ -37,12 +28,8 @@ COPY --from=builder /app/dist ./dist
 COPY legacy/ legacy/
 COPY docs/ docs/
 
-# Data directory for SQLite databases
-RUN mkdir -p /app/data
-
 ENV NODE_ENV=production
 ENV MAJEL_PORT=8080
-ENV LEX_WORKSPACE_ROOT=/app/data
 
 EXPOSE 8080
 

@@ -38,6 +38,7 @@ import { createBehaviorStore } from "./behavior-store.js";
 import { createReferenceStore } from "./reference-store.js";
 import { createOverlayStore } from "./overlay-store.js";
 import { createInviteStore } from "./invite-store.js";
+import { createPool } from "./db.js";
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
@@ -79,6 +80,7 @@ const clientDir = path.resolve(
 
 // ─── Module-level state ─────────────────────────────────────────
 const state: AppState = {
+  pool: null,
   geminiEngine: null,
   memoryService: null,
   settingsStore: null,
@@ -150,9 +152,14 @@ export function createApp(appState: AppState): express.Express {
 async function boot(): Promise<void> {
   log.boot.info("Majel initializing");
 
-  // 1. Initialize settings store (always — it's local SQLite)
+  // 0. Create PostgreSQL connection pool
+  const pool = createPool(state.config.databaseUrl);
+  state.pool = pool;
+  log.boot.info({ url: state.config.databaseUrl.replace(/\/\/.*@/, "//<redacted>@") }, "database pool created");
+
+  // 1. Initialize settings store
   try {
-    state.settingsStore = await createSettingsStore();
+    state.settingsStore = await createSettingsStore(pool);
     log.boot.info("settings store online");
     
     // Re-resolve config now that settings store is available
@@ -169,44 +176,44 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "lex memory init failed");
   }
 
-  // 2b. Initialize session store (always — it's local SQLite)
+  // 2b. Initialize session store
   try {
-    state.sessionStore = await createSessionStore();
+    state.sessionStore = await createSessionStore(pool);
     log.boot.info({ sessions: await state.sessionStore.count() }, "session store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
   }
 
-  // 2d. Initialize dock store (shares reference.db)
+  // 2d. Initialize dock store (shares tables with reference)
   try {
-    state.dockStore = await createDockStore();
+    state.dockStore = await createDockStore(pool);
     const dockCounts = await state.dockStore.counts();
     log.boot.info({ intents: dockCounts.intents, docks: dockCounts.docks }, "dock store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "dock store init failed");
   }
 
-  // 2e. Initialize behavior store (ADR-014 Phase 2 — behavioral rules)
+  // 2e. Initialize behavior store
   try {
-    state.behaviorStore = await createBehaviorStore();
+    state.behaviorStore = await createBehaviorStore(pool);
     const behaviorCounts = await state.behaviorStore.counts();
     log.boot.info({ rules: behaviorCounts.total, active: behaviorCounts.active }, "behavior store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "behavior store init failed");
   }
 
-  // 2f. Initialize reference store (ADR-015/016 — canonical reference catalog)
+  // 2f. Initialize reference store
   try {
-    state.referenceStore = await createReferenceStore();
+    state.referenceStore = await createReferenceStore(pool);
     const refCounts = await state.referenceStore.counts();
     log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
   }
 
-  // 2g. Initialize overlay store (ADR-016 — user ownership + targeting)
+  // 2g. Initialize overlay store
   try {
-    state.overlayStore = await createOverlayStore();
+    state.overlayStore = await createOverlayStore(pool);
     const overlayCounts = await state.overlayStore.counts();
     log.boot.info({
       officerOverlays: overlayCounts.officers.total,
@@ -216,9 +223,9 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "overlay store init failed");
   }
 
-  // 2h. Initialize invite store (ADR-018 Phase 2 — auth & invites)
+  // 2h. Initialize invite store
   try {
-    state.inviteStore = await createInviteStore();
+    state.inviteStore = await createInviteStore(pool);
     const codes = await state.inviteStore.listCodes();
     log.boot.info({ codes: codes.length, authEnabled: state.config.authEnabled }, "invite store online");
   } catch (err) {
@@ -254,29 +261,20 @@ async function boot(): Promise<void> {
 // ─── Graceful Shutdown ──────────────────────────────────────────
 async function shutdown(): Promise<void> {
   log.boot.info("Majel offline. Live long and prosper.");
-  if (state.settingsStore) {
-    state.settingsStore.close();
-  }
-  if (state.sessionStore) {
-    state.sessionStore.close();
-  }
-  if (state.dockStore) {
-    state.dockStore.close();
-  }
-  if (state.behaviorStore) {
-    state.behaviorStore.close();
-  }
-  if (state.overlayStore) {
-    state.overlayStore.close();
-  }
-  if (state.inviteStore) {
-    state.inviteStore.close();
-  }
-  if (state.referenceStore) {
-    state.referenceStore.close();
-  }
+  // Close all store handles (no-ops since pool is shared)
+  state.settingsStore?.close();
+  state.sessionStore?.close();
+  state.dockStore?.close();
+  state.behaviorStore?.close();
+  state.overlayStore?.close();
+  state.inviteStore?.close();
+  state.referenceStore?.close();
   if (state.memoryService) {
     await state.memoryService.close();
+  }
+  // Drain the connection pool
+  if (state.pool) {
+    await state.pool.end();
   }
   process.exit(0);
 }

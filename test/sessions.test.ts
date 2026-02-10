@@ -2,16 +2,13 @@
  * sessions.test.ts — Chat Session Store Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 import {
   createSessionStore,
   generateTimestampTitle,
   type SessionStore,
 } from "../src/server/sessions.js";
-
-const TEST_DB = path.resolve(".test-sessions.db");
 
 describe("generateTimestampTitle", () => {
   it("formats date as YYYYMMDD-HHmmss", () => {
@@ -26,17 +23,19 @@ describe("generateTimestampTitle", () => {
   });
 });
 
+let pool: Pool;
+
 describe("SessionStore", () => {
   let store: SessionStore;
 
+  beforeAll(() => { pool = createTestPool(); });
+
   beforeEach(async () => {
-    store = await createSessionStore(TEST_DB);
+    await cleanDatabase(pool);
+    store = await createSessionStore(pool);
   });
 
-  afterEach(async () => {
-    await store.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
-  });
+  afterAll(async () => { await pool.end(); });
 
   it("creates a session with default timestamp title", async () => {
     const session = await store.create("s1");
@@ -146,10 +145,6 @@ describe("SessionStore", () => {
 
     const limited = await store.list(2);
     expect(limited).toHaveLength(2);
-  });
-
-  it("reports db path", () => {
-    expect(store.getDbPath()).toBe(TEST_DB);
   });
 
   it("touches session updated_at", async () => {

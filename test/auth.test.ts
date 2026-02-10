@@ -9,20 +9,27 @@
  *   - Admin routes: invite CRUD, session management
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import express from "express";
 import cookieParser from "cookie-parser";
 import request from "supertest";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { createInviteStore, type InviteStore } from "../src/server/invite-store.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import { bootstrapConfigSync, type AppConfig } from "../src/server/config.js";
 import { envelopeMiddleware, sendOk, sendFail, ErrorCode } from "../src/server/envelope.js";
 import { requireAdmiral, requireVisitor, TENANT_COOKIE } from "../src/server/auth.js";
 import type { AppState as AppStateType } from "../src/server/app-context.js";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
-const TEST_DB = path.resolve(".test-auth.db");
+let pool: Pool;
+
+beforeAll(() => {
+  pool = createTestPool();
+});
+
+afterAll(async () => {
+  await pool.end();
+});
 const ADMIN_TOKEN = "test-admiral-token-12345";
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -148,12 +155,8 @@ describe("Auth — requireVisitor", () => {
   let inviteStore: InviteStore;
 
   beforeEach(async () => {
-    inviteStore = await createInviteStore(TEST_DB);
-  });
-
-  afterEach(() => {
-    inviteStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+    await cleanDatabase(pool);
+    inviteStore = await createInviteStore(pool);
   });
 
   it("rejects unauthenticated request", async () => {
@@ -215,12 +218,8 @@ describe("Auth Routes", () => {
   let inviteStore: InviteStore;
 
   beforeEach(async () => {
-    inviteStore = await createInviteStore(TEST_DB);
-  });
-
-  afterEach(() => {
-    inviteStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+    await cleanDatabase(pool);
+    inviteStore = await createInviteStore(pool);
   });
 
   describe("POST /api/auth/redeem", () => {
@@ -348,12 +347,8 @@ describe("Admin Routes", () => {
   let inviteStore: InviteStore;
 
   beforeEach(async () => {
-    inviteStore = await createInviteStore(TEST_DB);
-  });
-
-  afterEach(() => {
-    inviteStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+    await cleanDatabase(pool);
+    inviteStore = await createInviteStore(pool);
   });
 
   const authConfig = () => makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true });
@@ -458,12 +453,8 @@ describe("Route Protection (auth enforced)", () => {
   let inviteStore: InviteStore;
 
   beforeEach(async () => {
-    inviteStore = await createInviteStore(TEST_DB);
-  });
-
-  afterEach(() => {
-    inviteStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+    await cleanDatabase(pool);
+    inviteStore = await createInviteStore(pool);
   });
 
   const authConfig = () => makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true });

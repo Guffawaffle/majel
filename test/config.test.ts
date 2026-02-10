@@ -5,34 +5,34 @@
  * Tests runtime re-resolution after settings changes
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import * as fs from "node:fs";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import * as path from "node:path";
-import * as os from "node:os";
 import { resolveConfig, bootstrapConfigSync } from "../src/server/config.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/settings.js";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-let tmpDir: string;
+let pool: Pool;
 let store: SettingsStore;
 let originalEnv: NodeJS.ProcessEnv;
 
-async function freshStore(): Promise<SettingsStore> {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-config-test-"));
-  const dbPath = path.join(tmpDir, "settings.db");
-  return createSettingsStore(dbPath);
-}
+beforeAll(() => {
+  pool = createTestPool();
+});
+
+afterAll(async () => {
+  await pool.end();
+});
 
 beforeEach(async () => {
   // Save original env
   originalEnv = { ...process.env };
-  store = await freshStore();
+  await cleanDatabase(pool);
+  store = await createSettingsStore(pool);
 });
 
 afterEach(async () => {
-  await store.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
   // Restore env
   process.env = originalEnv;
 });
@@ -315,14 +315,16 @@ describe("config isolation", () => {
     try {
       // Search for process.env in src/ excluding allowed files
       // Allowed: config.ts, logger.ts (bootstrap), gemini.ts (test detection), 
-      //          settings.ts (internal resolution), memory.ts (Lex API contract)
+      //          settings.ts (internal resolution), memory.ts (Lex API contract),
+      //          db.ts (DATABASE_URL fallback)
       const result = execSync(
         'grep -rn "process\\.env" --include="*.ts" src/ | ' +
         'grep -v "src/server/config.ts" | ' +
         'grep -v "src/server/logger.ts" | ' +
         'grep -v "src/server/gemini.ts" | ' +
         'grep -v "src/server/settings.ts" | ' +
-        'grep -v "src/server/memory.ts"',
+        'grep -v "src/server/memory.ts" | ' +
+        'grep -v "src/server/db.ts"',
         { encoding: 'utf-8', cwd: path.resolve(__dirname, '..') }
       );
       

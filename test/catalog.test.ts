@@ -5,21 +5,22 @@
  * Uses real SQLite stores (reference + overlay) in temp directories.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
 import { createOverlayStore, type OverlayStore } from "../src/server/overlay-store.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 
-let tmpDir: string;
+let pool: Pool;
 let refStore: ReferenceStore;
 let overlayStore: OverlayStore;
+
+beforeAll(() => { pool = createTestPool(); });
+afterAll(async () => { await pool.end(); });
 
 function makeState(overrides: Partial<AppState> = {}): AppState {
   return {
@@ -115,16 +116,9 @@ async function seedShips(store: ReferenceStore) {
 }
 
 beforeEach(async () => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-catalog-test-"));
-  const dbPath = path.join(tmpDir, "reference.db");
-  refStore = await createReferenceStore(dbPath);
-  overlayStore = await createOverlayStore(dbPath);
-});
-
-afterEach(async () => {
-  await refStore.close();
-  await overlayStore.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  await cleanDatabase(pool);
+  refStore = await createReferenceStore(pool);
+  overlayStore = await createOverlayStore(pool);
 });
 
 // ═══════════════════════════════════════════════════════════

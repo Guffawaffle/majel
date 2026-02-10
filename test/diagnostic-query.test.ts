@@ -5,24 +5,23 @@
  * read-only SQL queries, and canned summary.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
 import { createOverlayStore, type OverlayStore } from "../src/server/overlay-store.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 
-let tmpDir: string;
+let pool: Pool;
 let refStore: ReferenceStore;
 let overlayStore: OverlayStore;
 
 function makeState(overrides: Partial<AppState> = {}): AppState {
   return {
+    pool: null,
     geminiEngine: null,
     memoryService: null,
     settingsStore: null,
@@ -83,17 +82,18 @@ async function seedData(store: ReferenceStore) {
   });
 }
 
-beforeEach(async () => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-diag-"));
-  const dbPath = path.join(tmpDir, "test-ref.db");
-  refStore = await createReferenceStore(dbPath);
-  overlayStore = await createOverlayStore(dbPath);
+beforeAll(() => {
+  pool = createTestPool();
 });
 
-afterEach(async () => {
-  await refStore.close();
-  await overlayStore.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+beforeEach(async () => {
+  await cleanDatabase(pool);
+  refStore = await createReferenceStore(pool);
+  overlayStore = await createOverlayStore(pool);
+});
+
+afterAll(async () => {
+  await pool.end();
 });
 
 // ═════════════════════════════════════════════════════════════
@@ -103,7 +103,7 @@ afterEach(async () => {
 describe("GET /api/diagnostic/schema", () => {
   it("returns table list with columns and row counts", async () => {
     await seedData(refStore);
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app).get("/api/diagnostic/schema");
 
     expect(res.status).toBe(200);
@@ -121,7 +121,7 @@ describe("GET /api/diagnostic/schema", () => {
 
   it("includes indexes", async () => {
     await seedData(refStore);
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app).get("/api/diagnostic/schema");
 
     const officers = res.body.data.tables.find((t: { table: string }) => t.table === "reference_officers");
@@ -143,7 +143,7 @@ describe("GET /api/diagnostic/schema", () => {
 describe("GET /api/diagnostic/query", () => {
   it("executes a SELECT query and returns rows", async () => {
     await seedData(refStore);
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app)
       .get("/api/diagnostic/query")
       .query({ sql: "SELECT id, name, rarity FROM reference_officers ORDER BY name" });
@@ -158,11 +158,11 @@ describe("GET /api/diagnostic/query", () => {
     expect(res.body.data.durationMs).toBeTypeOf("number");
   });
 
-  it("supports PRAGMA queries", async () => {
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+  it("supports information_schema queries", async () => {
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app)
       .get("/api/diagnostic/query")
-      .query({ sql: "PRAGMA table_info('reference_officers')" });
+      .query({ sql: "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'reference_officers'" });
 
     expect(res.status).toBe(200);
     expect(res.body.data.rows.length).toBeGreaterThan(0);
@@ -170,17 +170,17 @@ describe("GET /api/diagnostic/query", () => {
 
   it("supports WITH (CTE) queries", async () => {
     await seedData(refStore);
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app)
       .get("/api/diagnostic/query")
       .query({ sql: "WITH counts AS (SELECT COUNT(*) AS c FROM reference_officers) SELECT c FROM counts" });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.rows[0].c).toBe(2);
+    expect(res.body.data.rows[0].c).toBe("2");
   });
 
   it("rejects non-SELECT statements", async () => {
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
 
     const dangerous = [
       "INSERT INTO reference_officers (id, name, source, license, attribution, created_at, updated_at) VALUES ('x','x','x','x','x','x','x')",
@@ -199,7 +199,7 @@ describe("GET /api/diagnostic/query", () => {
   });
 
   it("requires sql parameter", async () => {
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app).get("/api/diagnostic/query");
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("MISSING_PARAM");
@@ -224,7 +224,7 @@ describe("GET /api/diagnostic/query", () => {
       });
     }
 
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app)
       .get("/api/diagnostic/query")
       .query({ sql: "SELECT * FROM reference_officers", limit: "5" });
@@ -236,7 +236,7 @@ describe("GET /api/diagnostic/query", () => {
   });
 
   it("returns SQL error for malformed queries", async () => {
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app)
       .get("/api/diagnostic/query")
       .query({ sql: "SELECT * FROM nonexistent_table" });
@@ -261,7 +261,7 @@ describe("GET /api/diagnostic/query", () => {
 describe("GET /api/diagnostic/summary", () => {
   it("returns reference counts and breakdowns", async () => {
     await seedData(refStore);
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app).get("/api/diagnostic/summary");
 
     expect(res.status).toBe(200);
@@ -279,7 +279,7 @@ describe("GET /api/diagnostic/summary", () => {
     await seedData(refStore);
     await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
     await overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", ownershipState: "unowned" });
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app).get("/api/diagnostic/summary");
 
     const overlay = res.body.data.overlay;
@@ -290,7 +290,7 @@ describe("GET /api/diagnostic/summary", () => {
 
   it("includes sample data", async () => {
     await seedData(refStore);
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await request(app).get("/api/diagnostic/summary");
 
     expect(res.body.data.samples.officers).toBeInstanceOf(Array);

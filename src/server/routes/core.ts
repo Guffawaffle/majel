@@ -119,23 +119,23 @@ export function createCoreRoutes(appState: AppState): Router {
       })(),
       settings: await (async () => {
         if (!appState.settingsStore) return { status: "not configured" };
-        return { status: "active", userOverrides: await appState.settingsStore.countUserOverrides(), dbPath: appState.settingsStore.getDbPath() };
+        return { status: "active", userOverrides: await appState.settingsStore.countUserOverrides() };
       })(),
       sessions: await (async () => {
         if (!appState.sessionStore) return { status: "not configured" };
-        return { status: "active", count: await appState.sessionStore.count(), dbPath: appState.sessionStore.getDbPath() };
+        return { status: "active", count: await appState.sessionStore.count() };
       })(),
       dockStore: await (async () => {
         if (!appState.dockStore) return { status: "not configured" };
-        return { status: "active", ...await appState.dockStore.counts(), dbPath: appState.dockStore.getDbPath() };
+        return { status: "active", ...await appState.dockStore.counts() };
       })(),
       referenceStore: await (async () => {
         if (!appState.referenceStore) return { status: "not configured" };
-        return { status: "active", ...await appState.referenceStore.counts(), dbPath: appState.referenceStore.getDbPath() };
+        return { status: "active", ...await appState.referenceStore.counts() };
       })(),
       overlayStore: await (async () => {
         if (!appState.overlayStore) return { status: "not configured" };
-        return { status: "active", ...await appState.overlayStore.counts(), dbPath: appState.overlayStore.getDbPath() };
+        return { status: "active", ...await appState.overlayStore.counts() };
       })(),
     });
   });

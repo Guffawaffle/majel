@@ -3,20 +3,19 @@
  *
  * Majel — STFC Fleet Intelligence System
  *
- * libSQL-backed intent catalog, drydock loadout management,
- * and crew preset system. Shares reference.db with reference-store
- * and overlay-store.
+ * PostgreSQL-backed intent catalog, drydock loadout management,
+ * and crew preset system. Shares the PostgreSQL database with
+ * reference-store and overlay-store.
  *
  * Types & seed data: dock-types.ts
  * Briefing builder:  dock-briefing.ts
  *
- * Migrated from better-sqlite3 to @libsql/client in ADR-018 Phase 1.
+ * Migrated from @libsql/client to pg (PostgreSQL) in ADR-018 Phase 3.
  */
 
-import { openDatabase, type Client } from "./db.js";
+import { initSchema, withTransaction, type Pool, type PoolClient } from "./db.js";
 import { buildDockBriefing } from "./dock-briefing.js";
 import { log } from "./logger.js";
-import * as path from "node:path";
 
 import type {
   Intent,
@@ -89,7 +88,6 @@ interface DockStore {
 
   buildBriefing(): Promise<DockBriefing>;
 
-  getDbPath(): string;
   counts(): Promise<{ intents: number; docks: number; dockShips: number; presets: number; presetMembers: number; tags: number }>;
   close(): void;
 }
@@ -103,17 +101,17 @@ const SCHEMA_STATEMENTS = [
     category TEXT NOT NULL,
     description TEXT,
     icon TEXT,
-    is_builtin INTEGER NOT NULL DEFAULT 1,
+    is_builtin BOOLEAN NOT NULL DEFAULT TRUE,
     sort_order INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS drydock_loadouts (
     dock_number INTEGER PRIMARY KEY CHECK (dock_number >= 1),
     label TEXT,
     notes TEXT,
     priority INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS dock_intents (
     dock_number INTEGER NOT NULL REFERENCES drydock_loadouts(dock_number) ON DELETE CASCADE,
@@ -121,30 +119,30 @@ const SCHEMA_STATEMENTS = [
     PRIMARY KEY (dock_number, intent_key)
   )`,
   `CREATE TABLE IF NOT EXISTS dock_ships (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     dock_number INTEGER NOT NULL REFERENCES drydock_loadouts(dock_number) ON DELETE CASCADE,
     ship_id TEXT NOT NULL REFERENCES reference_ships(id) ON DELETE CASCADE,
-    is_active INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT FALSE,
     sort_order INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
-    created_at TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
     UNIQUE(dock_number, ship_id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_dock_intents_key ON dock_intents(intent_key)`,
   `CREATE INDEX IF NOT EXISTS idx_dock_ships_ship ON dock_ships(ship_id)`,
   `CREATE INDEX IF NOT EXISTS idx_dock_ships_dock ON dock_ships(dock_number)`,
   `CREATE TABLE IF NOT EXISTS crew_presets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     ship_id TEXT NOT NULL REFERENCES reference_ships(id) ON DELETE CASCADE,
     intent_key TEXT NOT NULL REFERENCES intent_catalog(key) ON DELETE CASCADE,
     preset_name TEXT NOT NULL,
-    is_default INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     UNIQUE(ship_id, intent_key, preset_name)
   )`,
   `CREATE TABLE IF NOT EXISTS crew_preset_members (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     preset_id INTEGER NOT NULL REFERENCES crew_presets(id) ON DELETE CASCADE,
     officer_id TEXT NOT NULL REFERENCES reference_officers(id) ON DELETE CASCADE,
     role_type TEXT NOT NULL CHECK (role_type IN ('bridge', 'below_deck')),
@@ -163,97 +161,96 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_preset_tags_tag ON preset_tags(tag)`,
 ];
 
-const INTENT_COLS = `key, label, category, description, icon, is_builtin AS isBuiltin, sort_order AS sortOrder, created_at AS createdAt`;
-const DOCK_COLS = `dock_number AS dockNumber, label, notes, priority, created_at AS createdAt, updated_at AS updatedAt`;
-const DOCK_SHIP_COLS = `ds.id, ds.dock_number AS dockNumber, ds.ship_id AS shipId, ds.is_active AS isActive, ds.sort_order AS sortOrder, ds.notes, ds.created_at AS createdAt, s.name AS shipName`;
-const PRESET_COLS = `cp.id, cp.ship_id AS shipId, cp.intent_key AS intentKey, cp.preset_name AS presetName, cp.is_default AS isDefault, cp.created_at AS createdAt, cp.updated_at AS updatedAt, s.name AS shipName, ic.label AS intentLabel`;
-const MEMBER_COLS = `cpm.id, cpm.preset_id AS presetId, cpm.officer_id AS officerId, cpm.role_type AS roleType, cpm.slot, o.name AS officerName`;
+const INTENT_COLS = `key, label, category, description, icon, is_builtin AS "isBuiltin", sort_order AS "sortOrder", created_at AS "createdAt"`;
+const DOCK_COLS = `dock_number AS "dockNumber", label, notes, priority, created_at AS "createdAt", updated_at AS "updatedAt"`;
+const DOCK_SHIP_COLS = `ds.id, ds.dock_number AS "dockNumber", ds.ship_id AS "shipId", ds.is_active AS "isActive", ds.sort_order AS "sortOrder", ds.notes, ds.created_at AS "createdAt", s.name AS "shipName"`;
+const PRESET_COLS = `cp.id, cp.ship_id AS "shipId", cp.intent_key AS "intentKey", cp.preset_name AS "presetName", cp.is_default AS "isDefault", cp.created_at AS "createdAt", cp.updated_at AS "updatedAt", s.name AS "shipName", ic.label AS "intentLabel"`;
+const MEMBER_COLS = `cpm.id, cpm.preset_id AS "presetId", cpm.officer_id AS "officerId", cpm.role_type AS "roleType", cpm.slot, o.name AS "officerName"`;
 
 const SQL = {
   // Intents
   listIntents: `SELECT ${INTENT_COLS} FROM intent_catalog ORDER BY sort_order ASC, label ASC`,
-  listIntentsByCategory: `SELECT ${INTENT_COLS} FROM intent_catalog WHERE category = ? ORDER BY sort_order ASC, label ASC`,
-  getIntent: `SELECT ${INTENT_COLS} FROM intent_catalog WHERE key = ?`,
-  insertIntent: `INSERT INTO intent_catalog (key, label, category, description, icon, is_builtin, sort_order, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'))`,
-  deleteIntent: `DELETE FROM intent_catalog WHERE key = ? AND is_builtin = 0`,
+  listIntentsByCategory: `SELECT ${INTENT_COLS} FROM intent_catalog WHERE category = $1 ORDER BY sort_order ASC, label ASC`,
+  getIntent: `SELECT ${INTENT_COLS} FROM intent_catalog WHERE key = $1`,
+  insertIntent: `INSERT INTO intent_catalog (key, label, category, description, icon, is_builtin, sort_order, created_at) VALUES ($1, $2, $3, $4, $5, FALSE, $6, NOW())`,
+  deleteIntent: `DELETE FROM intent_catalog WHERE key = $1 AND is_builtin = FALSE`,
   maxSortOrder: `SELECT MAX(sort_order) AS m FROM intent_catalog`,
-  seedIntent: `INSERT OR IGNORE INTO intent_catalog (key, label, category, description, icon, is_builtin, sort_order, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, datetime('now'))`,
+  seedIntent: `INSERT INTO intent_catalog (key, label, category, description, icon, is_builtin, sort_order, created_at) VALUES ($1, $2, $3, $4, $5, TRUE, $6, NOW()) ON CONFLICT DO NOTHING`,
 
   // Docks
   listDocks: `SELECT ${DOCK_COLS} FROM drydock_loadouts ORDER BY dock_number ASC`,
-  getDock: `SELECT ${DOCK_COLS} FROM drydock_loadouts WHERE dock_number = ?`,
-  upsertDock: `INSERT INTO drydock_loadouts (dock_number, label, notes, priority, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
-    ON CONFLICT(dock_number) DO UPDATE SET label = COALESCE(excluded.label, drydock_loadouts.label), notes = COALESCE(excluded.notes, drydock_loadouts.notes), priority = COALESCE(excluded.priority, drydock_loadouts.priority), updated_at = datetime('now')`,
-  deleteDock: `DELETE FROM drydock_loadouts WHERE dock_number = ?`,
+  getDock: `SELECT ${DOCK_COLS} FROM drydock_loadouts WHERE dock_number = $1`,
+  upsertDock: `INSERT INTO drydock_loadouts (dock_number, label, notes, priority, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())
+    ON CONFLICT(dock_number) DO UPDATE SET label = COALESCE(excluded.label, drydock_loadouts.label), notes = COALESCE(excluded.notes, drydock_loadouts.notes), priority = COALESCE(excluded.priority, drydock_loadouts.priority), updated_at = NOW()`,
+  deleteDock: `DELETE FROM drydock_loadouts WHERE dock_number = $1`,
   nextDockNumber: `SELECT COALESCE(MAX(dock_number), 0) + 1 AS next FROM drydock_loadouts`,
 
   // Dock Intents
-  clearDockIntents: `DELETE FROM dock_intents WHERE dock_number = ?`,
-  insertDockIntent: `INSERT INTO dock_intents (dock_number, intent_key) VALUES (?, ?)`,
-  getDockIntents: `SELECT ${INTENT_COLS} FROM dock_intents di JOIN intent_catalog ic ON di.intent_key = ic.key WHERE di.dock_number = ? ORDER BY ic.sort_order ASC`,
+  clearDockIntents: `DELETE FROM dock_intents WHERE dock_number = $1`,
+  insertDockIntent: `INSERT INTO dock_intents (dock_number, intent_key) VALUES ($1, $2)`,
+  getDockIntents: `SELECT ${INTENT_COLS} FROM dock_intents di JOIN intent_catalog ic ON di.intent_key = ic.key WHERE di.dock_number = $1 ORDER BY ic.sort_order ASC`,
 
   // Dock Ships
-  insertDockShip: `INSERT INTO dock_ships (dock_number, ship_id, is_active, sort_order, notes, created_at) VALUES (?, ?, 0, ?, ?, datetime('now'))`,
-  deleteDockShip: `DELETE FROM dock_ships WHERE dock_number = ? AND ship_id = ?`,
-  getDockShips: `SELECT ${DOCK_SHIP_COLS} FROM dock_ships ds JOIN reference_ships s ON ds.ship_id = s.id WHERE ds.dock_number = ? ORDER BY ds.sort_order ASC, s.name ASC`,
-  getDockShip: `SELECT ${DOCK_SHIP_COLS} FROM dock_ships ds JOIN reference_ships s ON ds.ship_id = s.id WHERE ds.dock_number = ? AND ds.ship_id = ?`,
-  maxDockShipSort: `SELECT MAX(sort_order) AS m FROM dock_ships WHERE dock_number = ?`,
-  updateDockShipActive: `UPDATE dock_ships SET is_active = ? WHERE dock_number = ? AND ship_id = ?`,
-  updateDockShipSort: `UPDATE dock_ships SET sort_order = ? WHERE dock_number = ? AND ship_id = ?`,
-  updateDockShipNotes: `UPDATE dock_ships SET notes = ? WHERE dock_number = ? AND ship_id = ?`,
-  clearDockShipActive: `UPDATE dock_ships SET is_active = 0 WHERE dock_number = ?`,
+  insertDockShip: `INSERT INTO dock_ships (dock_number, ship_id, is_active, sort_order, notes, created_at) VALUES ($1, $2, FALSE, $3, $4, NOW())`,
+  deleteDockShip: `DELETE FROM dock_ships WHERE dock_number = $1 AND ship_id = $2`,
+  getDockShips: `SELECT ${DOCK_SHIP_COLS} FROM dock_ships ds JOIN reference_ships s ON ds.ship_id = s.id WHERE ds.dock_number = $1 ORDER BY ds.sort_order ASC, s.name ASC`,
+  getDockShip: `SELECT ${DOCK_SHIP_COLS} FROM dock_ships ds JOIN reference_ships s ON ds.ship_id = s.id WHERE ds.dock_number = $1 AND ds.ship_id = $2`,
+  maxDockShipSort: `SELECT MAX(sort_order) AS m FROM dock_ships WHERE dock_number = $1`,
+  updateDockShipActive: `UPDATE dock_ships SET is_active = $1 WHERE dock_number = $2 AND ship_id = $3`,
+  updateDockShipSort: `UPDATE dock_ships SET sort_order = $1 WHERE dock_number = $2 AND ship_id = $3`,
+  updateDockShipNotes: `UPDATE dock_ships SET notes = $1 WHERE dock_number = $2 AND ship_id = $3`,
+  clearDockShipActive: `UPDATE dock_ships SET is_active = FALSE WHERE dock_number = $1`,
 
   // Crew Presets
-  insertPreset: `INSERT INTO crew_presets (ship_id, intent_key, preset_name, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
-  getPreset: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.id = ?`,
+  insertPreset: `INSERT INTO crew_presets (ship_id, intent_key, preset_name, is_default, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING id`,
+  getPreset: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.id = $1`,
   listPresets: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
-  listPresetsByShip: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.ship_id = ? ORDER BY ic.label ASC, cp.preset_name ASC`,
-  listPresetsByIntent: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.intent_key = ? ORDER BY s.name ASC, cp.preset_name ASC`,
-  listPresetsByShipAndIntent: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.ship_id = ? AND cp.intent_key = ? ORDER BY cp.preset_name ASC`,
-  listPresetsByTag: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key JOIN preset_tags pt ON cp.id = pt.preset_id WHERE pt.tag = ? ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
-  listPresetsByOfficer: `SELECT DISTINCT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key JOIN crew_preset_members cpm ON cp.id = cpm.preset_id WHERE cpm.officer_id = ? ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
-  updatePresetName: `UPDATE crew_presets SET preset_name = ?, updated_at = datetime('now') WHERE id = ?`,
-  updatePresetDefault: `UPDATE crew_presets SET is_default = ?, updated_at = datetime('now') WHERE id = ?`,
-  clearPresetDefaults: `UPDATE crew_presets SET is_default = 0, updated_at = datetime('now') WHERE ship_id = ? AND intent_key = ? AND id != ?`,
-  deletePreset: `DELETE FROM crew_presets WHERE id = ?`,
+  listPresetsByShip: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.ship_id = $1 ORDER BY ic.label ASC, cp.preset_name ASC`,
+  listPresetsByIntent: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.intent_key = $1 ORDER BY s.name ASC, cp.preset_name ASC`,
+  listPresetsByShipAndIntent: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.ship_id = $1 AND cp.intent_key = $2 ORDER BY cp.preset_name ASC`,
+  listPresetsByTag: `SELECT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key JOIN preset_tags pt ON cp.id = pt.preset_id WHERE pt.tag = $1 ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
+  listPresetsByOfficer: `SELECT DISTINCT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key JOIN crew_preset_members cpm ON cp.id = cpm.preset_id WHERE cpm.officer_id = $1 ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
+  updatePresetName: `UPDATE crew_presets SET preset_name = $1, updated_at = NOW() WHERE id = $2`,
+  updatePresetDefault: `UPDATE crew_presets SET is_default = $1, updated_at = NOW() WHERE id = $2`,
+  clearPresetDefaults: `UPDATE crew_presets SET is_default = FALSE, updated_at = NOW() WHERE ship_id = $1 AND intent_key = $2 AND id != $3`,
+  deletePreset: `DELETE FROM crew_presets WHERE id = $1`,
 
   // Crew Preset Members
-  clearPresetMembers: `DELETE FROM crew_preset_members WHERE preset_id = ?`,
-  insertPresetMember: `INSERT INTO crew_preset_members (preset_id, officer_id, role_type, slot) VALUES (?, ?, ?, ?)`,
-  getPresetMembers: `SELECT ${MEMBER_COLS} FROM crew_preset_members cpm JOIN reference_officers o ON cpm.officer_id = o.id WHERE cpm.preset_id = ? ORDER BY cpm.role_type ASC, cpm.slot ASC`,
+  clearPresetMembers: `DELETE FROM crew_preset_members WHERE preset_id = $1`,
+  insertPresetMember: `INSERT INTO crew_preset_members (preset_id, officer_id, role_type, slot) VALUES ($1, $2, $3, $4)`,
+  getPresetMembers: `SELECT ${MEMBER_COLS} FROM crew_preset_members cpm JOIN reference_officers o ON cpm.officer_id = o.id WHERE cpm.preset_id = $1 ORDER BY cpm.role_type ASC, cpm.slot ASC`,
 
   // Officer Conflicts
-  officerConflicts: `SELECT cpm.officer_id AS officerId, o.name AS officerName, cp.id AS presetId, cp.preset_name AS presetName, cp.ship_id AS shipId, s.name AS shipName, cp.intent_key AS intentKey, ic.label AS intentLabel
+  officerConflicts: `SELECT cpm.officer_id AS "officerId", o.name AS "officerName", cp.id AS "presetId", cp.preset_name AS "presetName", cp.ship_id AS "shipId", s.name AS "shipName", cp.intent_key AS "intentKey", ic.label AS "intentLabel"
     FROM crew_preset_members cpm JOIN reference_officers o ON cpm.officer_id = o.id JOIN crew_presets cp ON cpm.preset_id = cp.id JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key
     WHERE cpm.officer_id IN (SELECT officer_id FROM crew_preset_members GROUP BY officer_id HAVING COUNT(DISTINCT preset_id) > 1)
     ORDER BY o.name ASC, s.name ASC`,
-  shipDockNumbers: `SELECT dock_number FROM dock_ships WHERE ship_id = ?`,
+  shipDockNumbers: `SELECT dock_number FROM dock_ships WHERE ship_id = $1`,
 
   // Tags
-  getPresetTags: `SELECT tag FROM preset_tags WHERE preset_id = ? ORDER BY tag ASC`,
-  clearPresetTags: `DELETE FROM preset_tags WHERE preset_id = ?`,
-  insertPresetTag: `INSERT OR IGNORE INTO preset_tags (preset_id, tag) VALUES (?, ?)`,
+  getPresetTags: `SELECT tag FROM preset_tags WHERE preset_id = $1 ORDER BY tag ASC`,
+  clearPresetTags: `DELETE FROM preset_tags WHERE preset_id = $1`,
+  insertPresetTag: `INSERT INTO preset_tags (preset_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
   listAllTags: `SELECT DISTINCT tag FROM preset_tags ORDER BY tag ASC`,
 
   // Discovery
   findPresetsForDock: `SELECT DISTINCT ${PRESET_COLS} FROM crew_presets cp JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key
-    WHERE cp.ship_id IN (SELECT ship_id FROM dock_ships WHERE dock_number = ?)
-    AND cp.intent_key IN (SELECT intent_key FROM dock_intents WHERE dock_number = ?)
+    WHERE cp.ship_id IN (SELECT ship_id FROM dock_ships WHERE dock_number = $1)
+    AND cp.intent_key IN (SELECT intent_key FROM dock_intents WHERE dock_number = $1)
     ORDER BY s.name ASC, ic.label ASC, cp.preset_name ASC`,
 
   // Cascade Previews
-  previewDeleteDock: `SELECT (SELECT COUNT(*) FROM dock_ships WHERE dock_number = ?) AS shipCount, (SELECT COUNT(*) FROM dock_intents WHERE dock_number = ?) AS intentCount`,
-  previewDeleteDockShips: `SELECT ds.ship_id AS shipId, s.name AS shipName FROM dock_ships ds JOIN reference_ships s ON ds.ship_id = s.id WHERE ds.dock_number = ? ORDER BY s.name ASC`,
-  previewDeleteDockIntents: `SELECT di.intent_key AS key, ic.label FROM dock_intents di JOIN intent_catalog ic ON di.intent_key = ic.key WHERE di.dock_number = ? ORDER BY ic.label ASC`,
-  previewDeleteShipFromDocks: `SELECT ds.dock_number AS dockNumber, dl.label AS dockLabel FROM dock_ships ds JOIN drydock_loadouts dl ON ds.dock_number = dl.dock_number WHERE ds.ship_id = ? ORDER BY ds.dock_number ASC`,
-  previewDeleteShipPresets: `SELECT cp.id, cp.preset_name AS presetName, ic.label AS intentLabel FROM crew_presets cp JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.ship_id = ? ORDER BY cp.preset_name ASC`,
-  previewDeleteOfficerFromPresets: `SELECT cp.id AS presetId, cp.preset_name AS presetName, s.name AS shipName, ic.label AS intentLabel
-    FROM crew_preset_members cpm JOIN crew_presets cp ON cpm.preset_id = cp.id JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cpm.officer_id = ? ORDER BY cp.preset_name ASC`,
+  previewDeleteDock: `SELECT (SELECT COUNT(*) FROM dock_ships WHERE dock_number = $1) AS "shipCount", (SELECT COUNT(*) FROM dock_intents WHERE dock_number = $1) AS "intentCount"`,
+  previewDeleteDockShips: `SELECT ds.ship_id AS "shipId", s.name AS "shipName" FROM dock_ships ds JOIN reference_ships s ON ds.ship_id = s.id WHERE ds.dock_number = $1 ORDER BY s.name ASC`,
+  previewDeleteDockIntents: `SELECT di.intent_key AS key, ic.label FROM dock_intents di JOIN intent_catalog ic ON di.intent_key = ic.key WHERE di.dock_number = $1 ORDER BY ic.label ASC`,
+  previewDeleteShipFromDocks: `SELECT ds.dock_number AS "dockNumber", dl.label AS "dockLabel" FROM dock_ships ds JOIN drydock_loadouts dl ON ds.dock_number = dl.dock_number WHERE ds.ship_id = $1 ORDER BY ds.dock_number ASC`,
+  previewDeleteShipPresets: `SELECT cp.id, cp.preset_name AS "presetName", ic.label AS "intentLabel" FROM crew_presets cp JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cp.ship_id = $1 ORDER BY cp.preset_name ASC`,
+  previewDeleteOfficerFromPresets: `SELECT cp.id AS "presetId", cp.preset_name AS "presetName", s.name AS "shipName", ic.label AS "intentLabel"
+    FROM crew_preset_members cpm JOIN crew_presets cp ON cpm.preset_id = cp.id JOIN reference_ships s ON cp.ship_id = s.id JOIN intent_catalog ic ON cp.intent_key = ic.key WHERE cpm.officer_id = $1 ORDER BY cp.preset_name ASC`,
 
   // FK validation
-  shipExists: `SELECT id FROM reference_ships WHERE id = ?`,
-  officerExists: `SELECT id FROM reference_officers WHERE id = ?`,
-  lastInsertRowid: `SELECT last_insert_rowid() AS id`,
+  shipExists: `SELECT id FROM reference_ships WHERE id = $1`,
+  officerExists: `SELECT id FROM reference_officers WHERE id = $1`,
 
   // Counts
   countIntents: `SELECT COUNT(*) AS count FROM intent_catalog`,
@@ -266,76 +263,61 @@ const SQL = {
 
 // ─── Helpers ────────────────────────────────────────────────
 
-const DB_DIR = path.resolve(".smartergpt", "lex");
-const DB_FILE = path.join(DB_DIR, "reference.db");
-
-function fixBool<T extends Record<string, unknown>>(row: T, ...keys: string[]): T {
-  const out = { ...row };
+function fixBool<T extends object>(row: T, ...keys: string[]): T {
+  const out: Record<string, unknown> = { ...(row as Record<string, unknown>) };
   for (const k of keys) {
-    if (k in out) (out as Record<string, unknown>)[k] = Boolean(out[k]);
+    if (k in out) out[k] = Boolean(out[k]);
   }
-  return out;
+  return out as unknown as T;
 }
 
-type Row = Record<string, unknown>;
+// pg rows are untyped at runtime; Record<string, any> allows safe casts to interfaces
+type Row = Record<string, any>;
 
 // ─── Implementation ─────────────────────────────────────────
 
-export async function createDockStore(dbPath?: string): Promise<DockStore> {
-  const resolvedPath = dbPath || DB_FILE;
-  const client = openDatabase(resolvedPath);
-
-  // WAL + busy_timeout must run outside any transaction
-  await client.execute("PRAGMA journal_mode = WAL");
-  await client.execute("PRAGMA busy_timeout = 5000");
-
+export async function createDockStore(pool: Pool): Promise<DockStore> {
   // Schema init
-  await client.batch(
-    [
-      { sql: "PRAGMA foreign_keys = ON", args: [] },
-      ...SCHEMA_STATEMENTS.map((s) => ({ sql: s, args: [] as never[] })),
-    ],
-    "write",
-  );
+  await initSchema(pool, SCHEMA_STATEMENTS);
 
   // Seed builtin intents
-  const seedBatch = SEED_INTENTS.map((i) => ({
-    sql: SQL.seedIntent,
-    args: [i.key, i.label, i.category, i.description, i.icon, i.sortOrder] as unknown[],
-  }));
-  await client.batch(seedBatch, "write");
+  await withTransaction(pool, async (client) => {
+    for (const i of SEED_INTENTS) {
+      await client.query(SQL.seedIntent, [i.key, i.label, i.category, i.description, i.icon, i.sortOrder]);
+    }
+  });
 
-  log.fleet.debug({ dbPath: resolvedPath }, "dock store initialized");
+  log.fleet.debug("dock store initialized");
 
   // ── Preset Resolution Helper ──────────────────────────
 
   async function resolvePreset(row: Row | undefined): Promise<CrewPresetWithMembers | null> {
     if (!row) return null;
-    const preset = fixBool(row as unknown as CrewPreset, "isDefault");
-    const membersRes = await client.execute({ sql: SQL.getPresetMembers, args: [preset.id] });
-    const members = membersRes.rows as unknown as CrewPresetMember[];
-    const tagsRes = await client.execute({ sql: SQL.getPresetTags, args: [preset.id] });
-    const tags = (tagsRes.rows as unknown as { tag: string }[]).map((r) => r.tag);
+    const preset = fixBool(row as CrewPreset, "isDefault");
+    const membersRes = await pool.query(SQL.getPresetMembers, [preset.id]);
+    const members = membersRes.rows as CrewPresetMember[];
+    const tagsRes = await pool.query(SQL.getPresetTags, [preset.id]);
+    const tags = (tagsRes.rows as { tag: string }[]).map((r) => r.tag);
     return { ...preset, members, tags };
   }
 
   // ── Dock Context Helper ───────────────────────────────
 
   async function resolveDockContext(dock: DockLoadout): Promise<DockWithContext> {
-    const intentsRes = await client.execute({ sql: SQL.getDockIntents, args: [dock.dockNumber] });
-    const intents = (intentsRes.rows as unknown as Intent[]).map((r) => fixBool(r, "isBuiltin"));
-    const shipsRes = await client.execute({ sql: SQL.getDockShips, args: [dock.dockNumber] });
-    const ships = (shipsRes.rows as unknown as DockShip[]).map((r) => fixBool(r, "isActive"));
+    const intentsRes = await pool.query(SQL.getDockIntents, [dock.dockNumber]);
+    const intents = (intentsRes.rows as Intent[]).map((r) => fixBool(r, "isBuiltin"));
+    const shipsRes = await pool.query(SQL.getDockShips, [dock.dockNumber]);
+    const ships = (shipsRes.rows as DockShip[]).map((r) => fixBool(r, "isActive"));
     return { ...dock, intents, ships };
   }
 
   // ── Auto-create dock helper ───────────────────────────
 
-  async function ensureDock(dockNumber: number, conn?: { execute: typeof client.execute }): Promise<void> {
-    const db = conn ?? client;
-    const res = await db.execute({ sql: SQL.getDock, args: [dockNumber] });
+  async function ensureDock(dockNumber: number, conn?: { query: typeof pool.query }): Promise<void> {
+    const db = conn ?? pool;
+    const res = await db.query(SQL.getDock, [dockNumber]);
     if (res.rows.length === 0) {
-      await db.execute({ sql: SQL.upsertDock, args: [dockNumber, null, null, 0] });
+      await db.query(SQL.upsertDock, [dockNumber, null, null, 0]);
     }
   }
 
@@ -344,14 +326,14 @@ export async function createDockStore(dbPath?: string): Promise<DockStore> {
 
     async listIntents(filters?) {
       const res = filters?.category
-        ? await client.execute({ sql: SQL.listIntentsByCategory, args: [filters.category] })
-        : await client.execute(SQL.listIntents);
-      return (res.rows as unknown as Intent[]).map((r) => fixBool(r, "isBuiltin"));
+        ? await pool.query(SQL.listIntentsByCategory, [filters.category])
+        : await pool.query(SQL.listIntents);
+      return (res.rows as Intent[]).map((r) => fixBool(r, "isBuiltin"));
     },
 
     async getIntent(key) {
-      const res = await client.execute({ sql: SQL.getIntent, args: [key] });
-      const row = res.rows[0] as unknown as Intent | undefined;
+      const res = await pool.query(SQL.getIntent, [key]);
+      const row = res.rows[0] as Intent | undefined;
       return row ? fixBool(row, "isBuiltin") : null;
     },
 
@@ -360,229 +342,220 @@ export async function createDockStore(dbPath?: string): Promise<DockStore> {
       if (!VALID_INTENT_CATEGORIES.includes(intent.category as IntentCategory)) {
         throw new Error(`Invalid category: ${intent.category}. Valid: ${VALID_INTENT_CATEGORIES.join(", ")}`);
       }
-      const maxRes = await client.execute(SQL.maxSortOrder);
-      const maxSort = (maxRes.rows[0] as unknown as { m: number | null }).m || 0;
-      await client.execute({
-        sql: SQL.insertIntent,
-        args: [intent.key, intent.label, intent.category, intent.description ?? null, intent.icon ?? null, Math.max(maxSort + 1, 100)],
-      });
+      const maxRes = await pool.query(SQL.maxSortOrder);
+      const maxSort = (maxRes.rows[0] as { m: number | null }).m || 0;
+      await pool.query(SQL.insertIntent, [intent.key, intent.label, intent.category, intent.description ?? null, intent.icon ?? null, Math.max(maxSort + 1, 100)]);
       return (await store.getIntent(intent.key))!;
     },
 
     async deleteIntent(key) {
-      const res = await client.execute({ sql: SQL.deleteIntent, args: [key] });
-      return res.rowsAffected > 0;
+      const res = await pool.query(SQL.deleteIntent, [key]);
+      return (res.rowCount ?? 0) > 0;
     },
 
     // ── Docks ───────────────────────────────────────────
 
     async listDocks() {
-      const res = await client.execute(SQL.listDocks);
-      const docks = res.rows as unknown as DockLoadout[];
+      const res = await pool.query(SQL.listDocks);
+      const docks = res.rows as DockLoadout[];
       return Promise.all(docks.map(resolveDockContext));
     },
 
     async getDock(dockNumber) {
-      const res = await client.execute({ sql: SQL.getDock, args: [dockNumber] });
-      const dock = res.rows[0] as unknown as DockLoadout | undefined;
+      const res = await pool.query(SQL.getDock, [dockNumber]);
+      const dock = res.rows[0] as DockLoadout | undefined;
       return dock ? resolveDockContext(dock) : null;
     },
 
     async upsertDock(dockNumber, fields) {
       if (dockNumber < 1) throw new Error("Dock number must be a positive integer");
-      await client.execute({ sql: SQL.upsertDock, args: [dockNumber, fields.label ?? null, fields.notes ?? null, fields.priority ?? 0] });
-      const res = await client.execute({ sql: SQL.getDock, args: [dockNumber] });
-      return res.rows[0] as unknown as DockLoadout;
+      await pool.query(SQL.upsertDock, [dockNumber, fields.label ?? null, fields.notes ?? null, fields.priority ?? 0]);
+      const res = await pool.query(SQL.getDock, [dockNumber]);
+      return res.rows[0] as DockLoadout;
     },
 
     async deleteDock(dockNumber) {
-      const res = await client.execute({ sql: SQL.deleteDock, args: [dockNumber] });
-      return res.rowsAffected > 0;
+      const res = await pool.query(SQL.deleteDock, [dockNumber]);
+      return (res.rowCount ?? 0) > 0;
     },
 
     async nextDockNumber() {
-      const res = await client.execute(SQL.nextDockNumber);
-      return (res.rows[0] as unknown as { next: number }).next;
+      const res = await pool.query(SQL.nextDockNumber);
+      return (res.rows[0] as { next: number }).next;
     },
 
     // ── Dock Intents ────────────────────────────────────
 
     async setDockIntents(dockNumber, intentKeys) {
-      const tx = await client.transaction("write");
-      try {
-        await ensureDock(dockNumber, tx);
+      await withTransaction(pool, async (client) => {
+        await ensureDock(dockNumber, client);
         for (const key of intentKeys) {
-          const check = await tx.execute({ sql: SQL.getIntent, args: [key] });
+          const check = await client.query(SQL.getIntent, [key]);
           if (check.rows.length === 0) throw new Error(`Unknown intent key: ${key}`);
         }
-        await tx.execute({ sql: SQL.clearDockIntents, args: [dockNumber] });
+        await client.query(SQL.clearDockIntents, [dockNumber]);
         for (const key of intentKeys) {
-          await tx.execute({ sql: SQL.insertDockIntent, args: [dockNumber, key] });
+          await client.query(SQL.insertDockIntent, [dockNumber, key]);
         }
-        await tx.commit();
-      } catch (e) { await tx.rollback(); throw e; }
+      });
     },
 
     async getDockIntents(dockNumber) {
-      const res = await client.execute({ sql: SQL.getDockIntents, args: [dockNumber] });
-      return (res.rows as unknown as Intent[]).map((r) => fixBool(r, "isBuiltin"));
+      const res = await pool.query(SQL.getDockIntents, [dockNumber]);
+      return (res.rows as Intent[]).map((r) => fixBool(r, "isBuiltin"));
     },
 
     // ── Dock Ships ──────────────────────────────────────
 
     async addDockShip(dockNumber, shipId, options?) {
       await ensureDock(dockNumber);
-      const sortRes = await client.execute({ sql: SQL.maxDockShipSort, args: [dockNumber] });
-      const maxSort = (sortRes.rows[0] as unknown as { m: number | null }).m ?? -1;
+      const sortRes = await pool.query(SQL.maxDockShipSort, [dockNumber]);
+      const maxSort = (sortRes.rows[0] as { m: number | null }).m ?? -1;
       try {
-        await client.execute({ sql: SQL.insertDockShip, args: [dockNumber, shipId, maxSort + 1, options?.notes ?? null] });
+        await pool.query(SQL.insertDockShip, [dockNumber, shipId, maxSort + 1, options?.notes ?? null]);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("UNIQUE")) throw new Error(`Ship ${shipId} is already assigned to dock ${dockNumber}`);
-        if (msg.includes("FOREIGN KEY")) throw new Error(`Ship ${shipId} not found in reference catalog`);
+        if (msg.includes("UNIQUE") || msg.includes("unique") || msg.includes("duplicate key")) throw new Error(`Ship ${shipId} is already assigned to dock ${dockNumber}`);
+        if (msg.includes("FOREIGN KEY") || msg.includes("foreign key") || msg.includes("violates foreign key")) throw new Error(`Ship ${shipId} not found in reference catalog`);
         throw err;
       }
-      const res = await client.execute({ sql: SQL.getDockShip, args: [dockNumber, shipId] });
-      return fixBool(res.rows[0] as unknown as DockShip, "isActive");
+      const res = await pool.query(SQL.getDockShip, [dockNumber, shipId]);
+      return fixBool(res.rows[0] as DockShip, "isActive");
     },
 
     async removeDockShip(dockNumber, shipId) {
-      const res = await client.execute({ sql: SQL.deleteDockShip, args: [dockNumber, shipId] });
-      return res.rowsAffected > 0;
+      const res = await pool.query(SQL.deleteDockShip, [dockNumber, shipId]);
+      return (res.rowCount ?? 0) > 0;
     },
 
     async updateDockShip(dockNumber, shipId, fields) {
-      const tx = await client.transaction("write");
-      try {
-        const existRes = await tx.execute({ sql: SQL.getDockShip, args: [dockNumber, shipId] });
-        if (existRes.rows.length === 0) { await tx.commit(); return null; }
+      return await withTransaction(pool, async (client) => {
+        const existRes = await client.query(SQL.getDockShip, [dockNumber, shipId]);
+        if (existRes.rows.length === 0) return null;
 
         if (fields.isActive !== undefined) {
-          if (fields.isActive) await tx.execute({ sql: SQL.clearDockShipActive, args: [dockNumber] });
-          await tx.execute({ sql: SQL.updateDockShipActive, args: [fields.isActive ? 1 : 0, dockNumber, shipId] });
+          if (fields.isActive) await client.query(SQL.clearDockShipActive, [dockNumber]);
+          await client.query(SQL.updateDockShipActive, [fields.isActive, dockNumber, shipId]);
         }
         if (fields.sortOrder !== undefined) {
-          await tx.execute({ sql: SQL.updateDockShipSort, args: [fields.sortOrder, dockNumber, shipId] });
+          await client.query(SQL.updateDockShipSort, [fields.sortOrder, dockNumber, shipId]);
         }
         if (fields.notes !== undefined) {
-          await tx.execute({ sql: SQL.updateDockShipNotes, args: [fields.notes, dockNumber, shipId] });
+          await client.query(SQL.updateDockShipNotes, [fields.notes, dockNumber, shipId]);
         }
-        const finalRes = await tx.execute({ sql: SQL.getDockShip, args: [dockNumber, shipId] });
-        await tx.commit();
-        return fixBool(finalRes.rows[0] as unknown as DockShip, "isActive");
-      } catch (e) { await tx.rollback(); throw e; }
+        const finalRes = await client.query(SQL.getDockShip, [dockNumber, shipId]);
+        return fixBool(finalRes.rows[0] as DockShip, "isActive");
+      });
     },
 
     async getDockShips(dockNumber) {
-      const res = await client.execute({ sql: SQL.getDockShips, args: [dockNumber] });
-      return (res.rows as unknown as DockShip[]).map((r) => fixBool(r, "isActive"));
+      const res = await pool.query(SQL.getDockShips, [dockNumber]);
+      return (res.rows as DockShip[]).map((r) => fixBool(r, "isActive"));
     },
 
     // ── Crew Presets ────────────────────────────────────
 
     async createPreset(fields) {
       if (!fields.shipId || !fields.intentKey || !fields.presetName) throw new Error("Preset requires shipId, intentKey, and presetName");
-      const shipCheck = await client.execute({ sql: SQL.shipExists, args: [fields.shipId] });
+      const shipCheck = await pool.query(SQL.shipExists, [fields.shipId]);
       if (shipCheck.rows.length === 0) throw new Error(`Ship ${fields.shipId} not found in reference catalog`);
-      const intentCheck = await client.execute({ sql: SQL.getIntent, args: [fields.intentKey] });
+      const intentCheck = await pool.query(SQL.getIntent, [fields.intentKey]);
       if (intentCheck.rows.length === 0) throw new Error(`Intent ${fields.intentKey} not found in catalog`);
 
-      const isDefault = fields.isDefault ? 1 : 0;
+      const isDefault = fields.isDefault ?? false;
+      let insertRes;
       try {
-        await client.execute({ sql: SQL.insertPreset, args: [fields.shipId, fields.intentKey, fields.presetName, isDefault] });
+        insertRes = await pool.query(SQL.insertPreset, [fields.shipId, fields.intentKey, fields.presetName, isDefault]);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("UNIQUE")) throw new Error(`Preset "${fields.presetName}" already exists for ${fields.shipId} + ${fields.intentKey}`);
+        if (msg.includes("UNIQUE") || msg.includes("unique") || msg.includes("duplicate key")) throw new Error(`Preset "${fields.presetName}" already exists for ${fields.shipId} + ${fields.intentKey}`);
         throw err;
       }
-      const idRes = await client.execute(SQL.lastInsertRowid);
-      const id = Number((idRes.rows[0] as unknown as { id: number | bigint }).id);
+      const id = Number(insertRes.rows[0].id);
 
       if (isDefault) {
-        await client.execute({ sql: SQL.clearPresetDefaults, args: [fields.shipId, fields.intentKey, id] });
+        await pool.query(SQL.clearPresetDefaults, [fields.shipId, fields.intentKey, id]);
       }
 
-      const presetRes = await client.execute({ sql: SQL.getPreset, args: [id] });
-      return (await resolvePreset(presetRes.rows[0] as unknown as Row))!;
+      const presetRes = await pool.query(SQL.getPreset, [id]);
+      return (await resolvePreset(presetRes.rows[0] as Row))!;
     },
 
     async getPreset(id) {
-      const res = await client.execute({ sql: SQL.getPreset, args: [id] });
-      return resolvePreset(res.rows[0] as unknown as Row | undefined);
+      const res = await pool.query(SQL.getPreset, [id]);
+      return resolvePreset(res.rows[0] as Row | undefined);
     },
 
     async listPresets(filters?) {
       let res;
       if (filters?.tag) {
-        res = await client.execute({ sql: SQL.listPresetsByTag, args: [filters.tag] });
+        res = await pool.query(SQL.listPresetsByTag, [filters.tag]);
       } else if (filters?.officerId) {
-        res = await client.execute({ sql: SQL.listPresetsByOfficer, args: [filters.officerId] });
+        res = await pool.query(SQL.listPresetsByOfficer, [filters.officerId]);
       } else if (filters?.shipId && filters?.intentKey) {
-        res = await client.execute({ sql: SQL.listPresetsByShipAndIntent, args: [filters.shipId, filters.intentKey] });
+        res = await pool.query(SQL.listPresetsByShipAndIntent, [filters.shipId, filters.intentKey]);
       } else if (filters?.shipId) {
-        res = await client.execute({ sql: SQL.listPresetsByShip, args: [filters.shipId] });
+        res = await pool.query(SQL.listPresetsByShip, [filters.shipId]);
       } else if (filters?.intentKey) {
-        res = await client.execute({ sql: SQL.listPresetsByIntent, args: [filters.intentKey] });
+        res = await pool.query(SQL.listPresetsByIntent, [filters.intentKey]);
       } else {
-        res = await client.execute(SQL.listPresets);
+        res = await pool.query(SQL.listPresets);
       }
       const presets = await Promise.all(
-        (res.rows as unknown as Row[]).map((r) => resolvePreset(r)),
+        (res.rows as Row[]).map((r) => resolvePreset(r)),
       );
       return presets.filter(Boolean) as CrewPresetWithMembers[];
     },
 
     async updatePreset(id, fields) {
-      const existRes = await client.execute({ sql: SQL.getPreset, args: [id] });
-      const existing = existRes.rows[0] as unknown as CrewPreset | undefined;
+      const existRes = await pool.query(SQL.getPreset, [id]);
+      const existing = existRes.rows[0] as CrewPreset | undefined;
       if (!existing) return null;
 
       if (fields.presetName !== undefined) {
-        await client.execute({ sql: SQL.updatePresetName, args: [fields.presetName, id] });
+        await pool.query(SQL.updatePresetName, [fields.presetName, id]);
       }
       if (fields.isDefault !== undefined) {
-        await client.execute({ sql: SQL.updatePresetDefault, args: [fields.isDefault ? 1 : 0, id] });
+        await pool.query(SQL.updatePresetDefault, [fields.isDefault, id]);
         if (fields.isDefault) {
-          await client.execute({ sql: SQL.clearPresetDefaults, args: [existing.shipId, existing.intentKey, id] });
+          await pool.query(SQL.clearPresetDefaults, [existing.shipId, existing.intentKey, id]);
         }
       }
-      const presetRes = await client.execute({ sql: SQL.getPreset, args: [id] });
-      return resolvePreset(presetRes.rows[0] as unknown as Row);
+      const presetRes = await pool.query(SQL.getPreset, [id]);
+      return resolvePreset(presetRes.rows[0] as Row);
     },
 
     async deletePreset(id) {
-      const res = await client.execute({ sql: SQL.deletePreset, args: [id] });
-      return res.rowsAffected > 0;
+      const res = await pool.query(SQL.deletePreset, [id]);
+      return (res.rowCount ?? 0) > 0;
     },
 
     async setPresetMembers(presetId, members) {
-      const tx = await client.transaction("write");
-      try {
-        const presetCheck = await tx.execute({ sql: SQL.getPreset, args: [presetId] });
+      await withTransaction(pool, async (client) => {
+        const presetCheck = await client.query(SQL.getPreset, [presetId]);
         if (presetCheck.rows.length === 0) throw new Error(`Preset ${presetId} not found`);
 
         for (const m of members) {
-          const offCheck = await tx.execute({ sql: SQL.officerExists, args: [m.officerId] });
+          const offCheck = await client.query(SQL.officerExists, [m.officerId]);
           if (offCheck.rows.length === 0) throw new Error(`Officer ${m.officerId} not found in reference catalog`);
           if (m.roleType !== "bridge" && m.roleType !== "below_deck") throw new Error(`Invalid roleType: ${m.roleType}`);
         }
 
-        await tx.execute({ sql: SQL.clearPresetMembers, args: [presetId] });
+        await client.query(SQL.clearPresetMembers, [presetId]);
         for (const m of members) {
-          await tx.execute({ sql: SQL.insertPresetMember, args: [presetId, m.officerId, m.roleType, m.slot ?? null] });
+          await client.query(SQL.insertPresetMember, [presetId, m.officerId, m.roleType, m.slot ?? null]);
         }
-        await tx.commit();
-      } catch (e) { await tx.rollback(); throw e; }
+      });
 
-      const res = await client.execute({ sql: SQL.getPresetMembers, args: [presetId] });
-      return res.rows as unknown as CrewPresetMember[];
+      const res = await pool.query(SQL.getPresetMembers, [presetId]);
+      return res.rows as CrewPresetMember[];
     },
 
     // ── Officer Conflicts ───────────────────────────────
 
     async getOfficerConflicts() {
-      const res = await client.execute(SQL.officerConflicts);
-      const rows = res.rows as unknown as Array<{
+      const res = await pool.query(SQL.officerConflicts);
+      const rows = res.rows as Array<{
         officerId: string; officerName: string; presetId: number; presetName: string;
         shipId: string; shipName: string; intentKey: string; intentLabel: string;
       }>;
@@ -594,8 +567,8 @@ export async function createDockStore(dbPath?: string): Promise<DockStore> {
           conflict = { officerId: row.officerId, officerName: row.officerName, appearances: [] };
           byOfficer.set(row.officerId, conflict);
         }
-        const dockRes = await client.execute({ sql: SQL.shipDockNumbers, args: [row.shipId] });
-        const dockNumbers = (dockRes.rows as unknown as { dock_number: number }[]).map((d) => d.dock_number);
+        const dockRes = await pool.query(SQL.shipDockNumbers, [row.shipId]);
+        const dockNumbers = (dockRes.rows as { dock_number: number }[]).map((d) => d.dock_number);
         conflict.appearances.push({
           presetId: row.presetId, presetName: row.presetName,
           shipId: row.shipId, shipName: row.shipName,
@@ -609,31 +582,29 @@ export async function createDockStore(dbPath?: string): Promise<DockStore> {
     // ── Tags & Discovery ────────────────────────────────
 
     async setPresetTags(presetId, tags) {
-      const tx = await client.transaction("write");
-      try {
-        const check = await tx.execute({ sql: SQL.getPreset, args: [presetId] });
+      await withTransaction(pool, async (client) => {
+        const check = await client.query(SQL.getPreset, [presetId]);
         if (check.rows.length === 0) throw new Error(`Preset ${presetId} not found`);
-        await tx.execute({ sql: SQL.clearPresetTags, args: [presetId] });
+        await client.query(SQL.clearPresetTags, [presetId]);
         for (const tag of tags) {
           const normalized = tag.trim().toLowerCase();
-          if (normalized) await tx.execute({ sql: SQL.insertPresetTag, args: [presetId, normalized] });
+          if (normalized) await client.query(SQL.insertPresetTag, [presetId, normalized]);
         }
-        await tx.commit();
-      } catch (e) { await tx.rollback(); throw e; }
+      });
 
-      const res = await client.execute({ sql: SQL.getPresetTags, args: [presetId] });
-      return (res.rows as unknown as { tag: string }[]).map((r) => r.tag);
+      const res = await pool.query(SQL.getPresetTags, [presetId]);
+      return (res.rows as { tag: string }[]).map((r) => r.tag);
     },
 
     async listAllTags() {
-      const res = await client.execute(SQL.listAllTags);
-      return (res.rows as unknown as { tag: string }[]).map((r) => r.tag);
+      const res = await pool.query(SQL.listAllTags);
+      return (res.rows as { tag: string }[]).map((r) => r.tag);
     },
 
     async findPresetsForDock(dockNumber) {
-      const res = await client.execute({ sql: SQL.findPresetsForDock, args: [dockNumber, dockNumber] });
+      const res = await pool.query(SQL.findPresetsForDock, [dockNumber]);
       const presets = await Promise.all(
-        (res.rows as unknown as Row[]).map((r) => resolvePreset(r)),
+        (res.rows as Row[]).map((r) => resolvePreset(r)),
       );
       return presets.filter(Boolean) as CrewPresetWithMembers[];
     },
@@ -641,31 +612,31 @@ export async function createDockStore(dbPath?: string): Promise<DockStore> {
     // ── Cascade Previews ────────────────────────────────
 
     async previewDeleteDock(dockNumber) {
-      const countsRes = await client.execute({ sql: SQL.previewDeleteDock, args: [dockNumber, dockNumber] });
-      const counts = countsRes.rows[0] as unknown as { shipCount: number; intentCount: number };
-      const shipsRes = await client.execute({ sql: SQL.previewDeleteDockShips, args: [dockNumber] });
-      const intentsRes = await client.execute({ sql: SQL.previewDeleteDockIntents, args: [dockNumber] });
+      const countsRes = await pool.query(SQL.previewDeleteDock, [dockNumber]);
+      const counts = countsRes.rows[0] as { shipCount: string; intentCount: string };
+      const shipsRes = await pool.query(SQL.previewDeleteDockShips, [dockNumber]);
+      const intentsRes = await pool.query(SQL.previewDeleteDockIntents, [dockNumber]);
       return {
-        ships: shipsRes.rows as unknown as { shipId: string; shipName: string }[],
-        intents: intentsRes.rows as unknown as { key: string; label: string }[],
-        shipCount: counts.shipCount,
-        intentCount: counts.intentCount,
+        ships: shipsRes.rows as { shipId: string; shipName: string }[],
+        intents: intentsRes.rows as { key: string; label: string }[],
+        shipCount: Number(counts.shipCount),
+        intentCount: Number(counts.intentCount),
       };
     },
 
     async previewDeleteShip(shipId) {
-      const dockRes = await client.execute({ sql: SQL.previewDeleteShipFromDocks, args: [shipId] });
-      const presetRes = await client.execute({ sql: SQL.previewDeleteShipPresets, args: [shipId] });
+      const dockRes = await pool.query(SQL.previewDeleteShipFromDocks, [shipId]);
+      const presetRes = await pool.query(SQL.previewDeleteShipPresets, [shipId]);
       return {
-        dockAssignments: dockRes.rows as unknown as { dockNumber: number; dockLabel: string }[],
-        presets: presetRes.rows as unknown as { id: number; presetName: string; intentLabel: string }[],
+        dockAssignments: dockRes.rows as { dockNumber: number; dockLabel: string }[],
+        presets: presetRes.rows as { id: number; presetName: string; intentLabel: string }[],
       };
     },
 
     async previewDeleteOfficer(officerId) {
-      const res = await client.execute({ sql: SQL.previewDeleteOfficerFromPresets, args: [officerId] });
+      const res = await pool.query(SQL.previewDeleteOfficerFromPresets, [officerId]);
       return {
-        presetMemberships: res.rows as unknown as { presetId: number; presetName: string; shipName: string; intentLabel: string }[],
+        presetMemberships: res.rows as { presetId: number; presetName: string; shipName: string; intentLabel: string }[],
       };
     },
 
@@ -674,10 +645,8 @@ export async function createDockStore(dbPath?: string): Promise<DockStore> {
     async buildBriefing() {
       const docks = await store.listDocks();
       const conflicts = await store.getOfficerConflicts();
-      // Sync wrapper around the async listPresets (briefing builder expects sync for now)
-      // For the briefing we pre-fetch all presets and filter locally
-      const allPresetsRes = await client.execute(SQL.listPresets);
-      const allPresetRows = allPresetsRes.rows as unknown as Row[];
+      const allPresetsRes = await pool.query(SQL.listPresets);
+      const allPresetRows = allPresetsRes.rows as Row[];
       const allPresets: CrewPresetWithMembers[] = [];
       for (const row of allPresetRows) {
         const p = await resolvePreset(row);
@@ -691,22 +660,20 @@ export async function createDockStore(dbPath?: string): Promise<DockStore> {
 
     // ── Diagnostics ─────────────────────────────────────
 
-    getDbPath: () => resolvedPath,
-
     async counts() {
       const [i, d, ds, p, pm, t] = await Promise.all([
-        client.execute(SQL.countIntents),
-        client.execute(SQL.countDocks),
-        client.execute(SQL.countDockShips),
-        client.execute(SQL.countPresets),
-        client.execute(SQL.countPresetMembers),
-        client.execute(SQL.countTags),
+        pool.query(SQL.countIntents),
+        pool.query(SQL.countDocks),
+        pool.query(SQL.countDockShips),
+        pool.query(SQL.countPresets),
+        pool.query(SQL.countPresetMembers),
+        pool.query(SQL.countTags),
       ]);
-      const c = (r: { rows: unknown[] }) => (r.rows[0] as { count: number }).count;
+      const c = (r: { rows: unknown[] }) => Number((r.rows[0] as { count: number }).count);
       return { intents: c(i), docks: c(d), dockShips: c(ds), presets: c(p), presetMembers: c(pm), tags: c(t) };
     },
 
-    close: () => client.close(),
+    close: () => { /* pool managed externally */ },
   };
 
   return store;

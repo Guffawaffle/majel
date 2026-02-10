@@ -5,16 +5,14 @@
  * Mocks Gemini and Lex to test route logic in isolation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import type { GeminiEngine } from "../src/server/gemini.js";
 import type { MemoryService, Frame } from "../src/server/memory.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/settings.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -64,6 +62,7 @@ function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
 
 function makeState(overrides: Partial<AppState> = {}): AppState {
   return {
+    pool: null,
     geminiEngine: null,
     memoryService: null,
     settingsStore: null,
@@ -78,6 +77,18 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     ...overrides,
   };
 }
+
+// ─── Pool lifecycle ─────────────────────────────────────────────
+
+let pool: Pool;
+
+beforeAll(() => {
+  pool = createTestPool();
+});
+
+afterAll(async () => {
+  await pool.end();
+});
 
 // ─── GET /api/health ────────────────────────────────────────────
 
@@ -502,17 +513,11 @@ describe("edge cases", () => {
 // ─── Settings API ───────────────────────────────────────────────
 
 describe("settings API", () => {
-  let settingsDir: string;
   let settingsStore: SettingsStore;
 
   beforeEach(async () => {
-    settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-api-settings-"));
-    settingsStore = await createSettingsStore(path.join(settingsDir, "settings.db"));
-  });
-
-  afterEach(async () => {
-    await settingsStore.close();
-    fs.rmSync(settingsDir, { recursive: true, force: true });
+    await cleanDatabase(pool);
+    settingsStore = await createSettingsStore(pool);
   });
 
   describe("GET /api/settings", () => {
@@ -698,15 +703,12 @@ describe("GET /api/diagnostic", () => {
   });
 
   it("reports settings status with override count when active", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-diag-"));
-    const store = await createSettingsStore(path.join(tmpDir, "settings.db"));
+    await cleanDatabase(pool);
+    const store = await createSettingsStore(pool);
     await store.set("display.admiralName", "TestAdmiral");
     const app = createApp(makeState({ settingsStore: store }));
     const res = await request(app).get("/api/diagnostic");
     expect(res.body.data.settings.status).toBe("active");
     expect(res.body.data.settings.userOverrides).toBe(1);
-    expect(res.body.data.settings.dbPath).toBeDefined();
-    await store.close();
-    fs.rmSync(tmpDir, { recursive: true });
   });
 });

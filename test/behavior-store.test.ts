@@ -5,10 +5,8 @@
  * correction feedback loop, and MicroRunner integration.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 import {
   createBehaviorStore,
   type BehaviorStore,
@@ -21,13 +19,8 @@ import { createMicroRunner, type ContextSources } from "../src/server/micro-runn
 
 // ─── Test Helpers ───────────────────────────────────────────
 
-let tmpDir: string;
+let pool: Pool;
 let store: BehaviorStore;
-
-async function makeStore(): Promise<BehaviorStore> {
-  const dbPath = path.join(tmpDir, `behavior-${Date.now()}.db`);
-  return createBehaviorStore(dbPath);
-}
 
 function makeContextSources(overrides: Partial<ContextSources> = {}): ContextSources {
   return {
@@ -40,15 +33,14 @@ function makeContextSources(overrides: Partial<ContextSources> = {}): ContextSou
 
 // ─── Setup & Teardown ───────────────────────────────────────
 
+beforeAll(() => { pool = createTestPool(); });
+
 beforeEach(async () => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-behavior-test-"));
-  store = await makeStore();
+  await cleanDatabase(pool);
+  store = await createBehaviorStore(pool);
 });
 
-afterEach(async () => {
-  await store.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-});
+afterAll(async () => { await pool.end(); });
 
 // ─── Behavioral Rules Store ─────────────────────────────────
 

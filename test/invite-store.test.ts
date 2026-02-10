@@ -2,25 +2,27 @@
  * invite-store.test.ts — Invite Code & Tenant Session Store Tests (ADR-018 Phase 2)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createInviteStore, type InviteStore } from "../src/server/invite-store.js";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
-const TEST_DB = path.resolve(".test-invite.db");
-
+let pool: Pool;
 let store: InviteStore;
 
 // ─── Lifecycle ──────────────────────────────────────────────────
 
+beforeAll(() => {
+  pool = createTestPool();
+});
+
+afterAll(async () => {
+  await pool.end();
+});
+
 describe("InviteStore", () => {
   beforeEach(async () => {
-    store = await createInviteStore(TEST_DB);
-  });
-
-  afterEach(() => {
-    store.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+    await cleanDatabase(pool);
+    store = await createInviteStore(pool);
   });
 
   // ─── Invite Codes ──────────────────────────────────────────
@@ -195,8 +197,8 @@ describe("InviteStore", () => {
   // ─── Store Lifecycle ───────────────────────────────────────
 
   describe("Lifecycle", () => {
-    it("returns the database path", () => {
-      expect(store.getDbPath()).toBe(TEST_DB);
+    it("is connected to a pool", () => {
+      expect(store).toBeTruthy();
     });
   });
 });

@@ -1,83 +1,83 @@
 /**
- * db.ts — Database connection helper (ADR-018 Phase 1)
+ * db.ts — PostgreSQL connection layer (ADR-018 Phase 3)
  *
  * Majel — STFC Fleet Intelligence System
  * Named in honor of Majel Barrett-Roddenberry (1932–2008)
  *
- * Thin wrapper around @libsql/client for creating database connections.
- * Uses file: URLs in local mode, libsql: URLs for Turso cloud.
+ * Pool-based wrapper around `pg`. All stores share a single Pool
+ * created at boot time and passed to each store factory.
  *
  * Pattern:
- *   const client = openDatabase("/path/to/db.db");
- *   await initSchema(client, [...statements]);
- *   // ...use client.execute(), client.batch(), client.transaction()...
- *   client.close();
+ *   const pool = createPool();
+ *   const store = await createSettingsStore(pool);
+ *   // ...
+ *   await pool.end();
  */
 
-import { createClient, type Client, type InStatement, type ResultSet, type Transaction } from "@libsql/client";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import pg from "pg";
+const { Pool } = pg;
+type Pool = pg.Pool;
+type PoolClient = pg.PoolClient;
+type QueryResult = pg.QueryResult;
 
-export type { Client, ResultSet, Transaction, InStatement };
+export type { Pool, PoolClient, QueryResult };
 
 /**
- * Open a database connection.
+ * Create a connection pool.
  *
- * @param dbPath — File path (e.g. "data/behavior.db") or URL (e.g. "libsql://...").
- *                 File paths are automatically converted to file: URLs.
- *                 Directories are created if they don't exist.
- * @param opts   — Optional: { authToken } for Turso cloud connections.
+ * @param connectionString — Postgres URL. Falls back to DATABASE_URL env var,
+ *                           then to local dev default.
  */
-export function openDatabase(
-  dbPath: string,
-  opts?: { authToken?: string },
-): Client {
-  let url: string;
+export function createPool(connectionString?: string): Pool {
+  const url =
+    connectionString ||
+    process.env.DATABASE_URL ||
+    "postgres://majel:majel@localhost:5432/majel";
 
-  if (dbPath.startsWith("libsql://") || dbPath.startsWith("file:")) {
-    url = dbPath;
-  } else {
-    // Local file path — ensure directory exists, convert to file: URL
-    const resolved = path.resolve(dbPath);
-    const dir = path.dirname(resolved);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    url = `file:${resolved}`;
-  }
-
-  return createClient({
-    url,
-    authToken: opts?.authToken,
-  });
+  return new Pool({ connectionString: url });
 }
 
 /**
- * Initialize database schema from an array of SQL statements.
- * Runs as a write batch (atomic). Also enables foreign keys and WAL mode.
- * WAL must be set outside the transaction since SQLite forbids mode changes mid-txn.
+ * Run a sequence of DDL statements inside a single transaction.
+ * Used by stores during schema initialization.
  */
 export async function initSchema(
-  client: Client,
+  pool: Pool,
   statements: string[],
 ): Promise<void> {
-  // WAL and busy_timeout must run outside any transaction
-  await client.execute("PRAGMA journal_mode = WAL");
-  await client.execute("PRAGMA busy_timeout = 5000");
-  const batch: string[] = [
-    "PRAGMA foreign_keys = ON",
-    ...statements,
-  ];
-  await client.batch(batch, "write");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const stmt of statements) {
+      await client.query(stmt);
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 /**
- * Split a multi-statement SQL string into individual statements.
- * Useful for porting existing SCHEMA constants.
+ * Execute a callback inside a transaction.
+ * Commits on success, rolls back on error.
  */
-export function splitStatements(sql: string): string[] {
-  return sql
-    .split(";")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+export async function withTransaction<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
 }

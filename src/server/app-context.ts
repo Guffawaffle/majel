@@ -15,11 +15,13 @@ import type { ReferenceStore } from "./reference-store.js";
 import type { OverlayStore } from "./overlay-store.js";
 import type { InviteStore } from "./invite-store.js";
 import type { AppConfig } from "./config.js";
+import type { Pool } from "./db.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./micro-runner.js";
 
 // ─── App State ──────────────────────────────────────────────────
 
 export interface AppState {
+  pool: Pool | null;
   geminiEngine: GeminiEngine | null;
   memoryService: MemoryService | null;
   settingsStore: SettingsStore | null;
