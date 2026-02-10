@@ -293,15 +293,15 @@ describe("GET /api/catalog/counts", () => {
 // ═══════════════════════════════════════════════════════════
 
 describe("GET /api/catalog/officers/merged", () => {
-  it("returns officers with default unknown ownership", async () => {
+  it("returns officers with default unowned ownership", async () => {
     seedOfficers(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
     const res = await request(app).get("/api/catalog/officers/merged");
     expect(res.status).toBe(200);
     expect(res.body.data.count).toBe(3);
-    // All should have unknown ownership by default
+    // All should have unowned ownership by default
     for (const o of res.body.data.officers) {
-      expect(o.ownershipState).toBe("unknown");
+      expect(o.ownershipState).toBe("unowned");
       expect(o.target).toBe(false);
     }
   });
@@ -323,7 +323,7 @@ describe("GET /api/catalog/officers/merged", () => {
     expect(spock.target).toBe(false);
 
     const uhura = res.body.data.officers.find((o: { id: string }) => o.id === "wiki:officer:102");
-    expect(uhura.ownershipState).toBe("unknown");
+    expect(uhura.ownershipState).toBe("unowned");
   });
 
   it("filters merged by ownership state", async () => {
