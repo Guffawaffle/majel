@@ -45,7 +45,7 @@ describe("SETTINGS_SCHEMA", () => {
   });
 
   it("has sensible categories", () => {
-    const validCats = ["sheets", "display", "model", "system", "fleet"];
+    const validCats = ["display", "model", "system", "fleet"];
     for (const def of SETTINGS_SCHEMA) {
       expect(validCats).toContain(def.category);
     }
@@ -61,9 +61,9 @@ describe("SETTINGS_SCHEMA", () => {
 
 describe("getSettingDef", () => {
   it("returns definition for known key", () => {
-    const def = getSettingDef("sheets.spreadsheetId");
+    const def = getSettingDef("display.admiralName");
     expect(def).toBeDefined();
-    expect(def!.category).toBe("sheets");
+    expect(def!.category).toBe("display");
   });
 
   it("returns undefined for unknown key", () => {
@@ -74,7 +74,6 @@ describe("getSettingDef", () => {
 describe("getCategories", () => {
   it("returns all known categories", () => {
     const cats = getCategories();
-    expect(cats).toContain("sheets");
     expect(cats).toContain("display");
     expect(cats).toContain("model");
     expect(cats).toContain("system");
@@ -90,7 +89,7 @@ describe("settings store: get/set/delete", () => {
   });
 
   it("returns empty string for unset string settings with empty default", () => {
-    const value = store.get("sheets.spreadsheetId");
+    const value = store.get("model.apiKey");
     expect(value).toBe("");
   });
 
@@ -141,36 +140,36 @@ describe("settings store: get/set/delete", () => {
 
 describe("settings store: env var fallback", () => {
   it("falls back to env var when no user value set", () => {
-    const originalEnv = process.env.MAJEL_SPREADSHEET_ID;
-    process.env.MAJEL_SPREADSHEET_ID = "env-spreadsheet-id";
+    const originalEnv = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "env-api-key";
 
     // Create a fresh store to pick up the env
     const envStore = freshStore();
-    const value = envStore.get("sheets.spreadsheetId");
-    expect(value).toBe("env-spreadsheet-id");
+    const value = envStore.get("model.apiKey");
+    expect(value).toBe("env-api-key");
     envStore.close();
 
     // Restore
     if (originalEnv !== undefined) {
-      process.env.MAJEL_SPREADSHEET_ID = originalEnv;
+      process.env.GEMINI_API_KEY = originalEnv;
     } else {
-      delete process.env.MAJEL_SPREADSHEET_ID;
+      delete process.env.GEMINI_API_KEY;
     }
   });
 
   it("user value wins over env var", () => {
-    const originalEnv = process.env.MAJEL_SPREADSHEET_ID;
-    process.env.MAJEL_SPREADSHEET_ID = "env-value";
+    const originalEnv = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "env-value";
 
     const envStore = freshStore();
-    envStore.set("sheets.spreadsheetId", "user-value");
-    expect(envStore.get("sheets.spreadsheetId")).toBe("user-value");
+    envStore.set("model.apiKey", "user-value");
+    expect(envStore.get("model.apiKey")).toBe("user-value");
     envStore.close();
 
     if (originalEnv !== undefined) {
-      process.env.MAJEL_SPREADSHEET_ID = originalEnv;
+      process.env.GEMINI_API_KEY = originalEnv;
     } else {
-      delete process.env.MAJEL_SPREADSHEET_ID;
+      delete process.env.GEMINI_API_KEY;
     }
   });
 });

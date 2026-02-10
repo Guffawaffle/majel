@@ -231,22 +231,10 @@ export function createFleetRoutes(appState: AppState): Router {
     sendOk(res, { entries, count: entries.length });
   });
 
-  // ─── Fleet Import ──────────────────────────────────────────
+  // ─── Fleet Import (deprecated — use wiki ingest + reference-store) ──
 
   router.post("/api/fleet/import", (_req, res) => {
-    if (!appState.fleetStore) {
-      return sendFail(res, ErrorCode.FLEET_STORE_NOT_AVAILABLE, "Fleet store not available", 503);
-    }
-    if (!appState.fleetData) {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "No fleet data loaded from Sheets. Hit /api/roster first.");
-    }
-    try {
-      const result = appState.fleetStore.importFromFleetData(appState.fleetData);
-      sendOk(res, { status: "imported", ...result });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sendFail(res, ErrorCode.INTERNAL_ERROR, message, 500);
-    }
+    return sendFail(res, ErrorCode.MISSING_PARAM, "Sheets import removed (ADR-016). Use wiki ingest to populate the reference catalog.", 410);
   });
 
   // ─── Fleet Counts ──────────────────────────────────────────

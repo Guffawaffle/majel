@@ -1,21 +1,13 @@
 /**
  * routes/core.ts — Core infrastructure routes.
  *
- * Health, API discovery, diagnostic, and roster refresh.
+ * Health, API discovery, and diagnostic.
  */
 
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
-import {
-  readFleetConfig,
-  readDockBriefing,
-} from "../app-context.js";
 import { log } from "../logger.js";
-import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
-import { hasCredentials, fetchFleetData, parseTabMapping, type MultiTabConfig } from "../sheets.js";
-import { createGeminiEngine } from "../gemini.js";
-import { hasFleetData, fleetDataSummary } from "../fleet-data.js";
-import { resolveConfig } from "../config.js";
+import { sendOk, createTimeoutMiddleware } from "../envelope.js";
 
 export function createCoreRoutes(appState: AppState): Router {
   const router = Router();
@@ -25,15 +17,13 @@ export function createCoreRoutes(appState: AppState): Router {
   router.get("/api/health", createTimeoutMiddleware(2000), (_req, res) => {
     sendOk(res, {
       status: appState.startupComplete ? "online" : "initializing",
-      fleet: hasFleetData(appState.fleetData)
-        ? { loaded: true, ...fleetDataSummary(appState.fleetData!) }
-        : { loaded: false, error: appState.rosterError },
       gemini: appState.geminiEngine ? "connected" : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
       fleetStore: appState.fleetStore ? { active: true, ...appState.fleetStore.counts() } : { active: false },
       dockStore: appState.dockStore ? { active: true, ...appState.dockStore.counts() } : { active: false },
-      credentials: hasCredentials(),
+      referenceStore: appState.referenceStore ? { active: true, ...appState.referenceStore.counts() } : { active: false },
+      overlayStore: appState.overlayStore ? { active: true, ...appState.overlayStore.counts() } : { active: false },
     });
   });
 
@@ -49,7 +39,6 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "GET", path: "/api", description: "API discovery (this endpoint)" },
         { method: "GET", path: "/api/health", description: "Fast health check" },
         { method: "GET", path: "/api/diagnostic", description: "Deep subsystem status" },
-        { method: "GET", path: "/api/roster", description: "Fetch/refresh fleet data from Google Sheets" },
         { method: "POST", path: "/api/chat", description: "Send a message, get a Gemini response" },
         { method: "GET", path: "/api/history", description: "Conversation history (session + Lex)" },
         { method: "GET", path: "/api/recall", description: "Search Lex memory by meaning" },
@@ -133,9 +122,6 @@ export function createCoreRoutes(appState: AppState): Router {
         if (!appState.sessionStore) return { status: "not configured" };
         return { status: "active", count: appState.sessionStore.count(), dbPath: appState.sessionStore.getDbPath() };
       })(),
-      fleet: hasFleetData(appState.fleetData)
-        ? { status: "loaded", ...fleetDataSummary(appState.fleetData!), fetchedAt: appState.fleetData!.fetchedAt, spreadsheetId: appState.fleetData!.spreadsheetId }
-        : { status: appState.rosterError ? "error" : "not loaded", error: appState.rosterError || undefined },
       fleetStore: (() => {
         if (!appState.fleetStore) return { status: "not configured" };
         return { status: "active", ...appState.fleetStore.counts(), dbPath: appState.fleetStore.getDbPath() };
@@ -144,37 +130,15 @@ export function createCoreRoutes(appState: AppState): Router {
         if (!appState.dockStore) return { status: "not configured" };
         return { status: "active", ...appState.dockStore.counts(), dbPath: appState.dockStore.getDbPath() };
       })(),
-      sheets: { credentialsPresent: hasCredentials() },
+      referenceStore: (() => {
+        if (!appState.referenceStore) return { status: "not configured" };
+        return { status: "active", ...appState.referenceStore.counts(), dbPath: appState.referenceStore.getDbPath() };
+      })(),
+      overlayStore: (() => {
+        if (!appState.overlayStore) return { status: "not configured" };
+        return { status: "active", ...appState.overlayStore.counts(), dbPath: appState.overlayStore.getDbPath() };
+      })(),
     });
-  });
-
-  // ─── Roster Refresh ─────────────────────────────────────────
-
-  router.get("/api/roster", createTimeoutMiddleware(60000), async (_req, res) => {
-    const { spreadsheetId, tabMapping, geminiApiKey } = appState.config;
-    
-    if (!spreadsheetId) {
-      return sendFail(res, ErrorCode.SHEETS_NOT_CONFIGURED, "MAJEL_SPREADSHEET_ID not configured");
-    }
-
-    try {
-      const tabMappingConfig = parseTabMapping(tabMapping);
-      const config: MultiTabConfig = { spreadsheetId, tabMapping: tabMappingConfig };
-      appState.fleetData = await fetchFleetData(config);
-      appState.rosterError = null;
-
-      if (geminiApiKey) {
-        appState.geminiEngine = createGeminiEngine(
-          geminiApiKey, appState.fleetData, readFleetConfig(appState.settingsStore), readDockBriefing(appState.dockStore),
-        );
-      }
-
-      sendOk(res, { loaded: true, ...fleetDataSummary(appState.fleetData) });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      appState.rosterError = message;
-      sendFail(res, ErrorCode.SHEETS_ERROR, message, 500);
-    }
   });
 
   return router;

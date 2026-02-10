@@ -18,7 +18,6 @@ import {
   type ChatSession,
   type SafetySetting,
 } from "@google/generative-ai";
-import { type FleetData, hasFleetData, getSections } from "./fleet-data.js";
 import { log } from "./logger.js";
 import { type MicroRunner, VALIDATION_DISCLAIMER } from "./micro-runner.js";
 
@@ -60,21 +59,13 @@ const SAFETY_SETTINGS: SafetySetting[] = [
  * 1. IDENTITY first — who Majel is, always
  * 2. AUTHORITY LADDER — how to rank sources (injected data > reference packs > training)
  * 3. HARD BOUNDARIES — what to never fabricate
- * 4. CONTEXT — fleet data injected as supplementary intel, labeled by section
+ * 4. CONTEXT — reference catalog + overlay data injected via MicroRunner context gating
  * 5. Never restrict discussion topics — but never present uncertain knowledge as authoritative
- *
- * Accepts either structured FleetData or a raw CSV string for backward compat.
  */
 export function buildSystemPrompt(
-  fleetData: FleetData | string | null,
   fleetConfig?: FleetConfig | null,
   dockBriefing?: string | null,
 ): string {
-  // Normalize: if given a raw CSV string, treat as legacy single-section
-  const hasData =
-    typeof fleetData === "string"
-      ? fleetData && !fleetData.startsWith("No roster data") && !fleetData.startsWith("No data found")
-      : hasFleetData(fleetData);
 
   // ── Layer 1: Identity ─────────────────────────────────────────
   let prompt = `You are Aria, the Fleet Intelligence System aboard Admiral Guff's flagship.
@@ -128,7 +119,7 @@ OPERATING RULES:
 4. CORRECTIONS ARE WELCOME — If the Admiral corrects you, accept it. "Good catch, Admiral. Let me reconsider."
 
 ARCHITECTURE (general description only):
-You run on ${MODEL_NAME} (Google Gemini). Your supporting systems include conversation memory (Lex), a settings store (SQLite), and Google Sheets integration for fleet data import.
+You run on ${MODEL_NAME} (Google Gemini). Your supporting systems include conversation memory (Lex), a settings store (SQLite), a reference catalog (wiki-imported officers/ships), and a user overlay (ownership, targeting, levels).
 You CANNOT inspect your own subsystems at runtime — you don't know current memory frame counts, connection status, or settings values unless they're in your context. For live diagnostics, direct the Admiral to /api/health.
 If asked how your systems work, describe them generally. Do not claim implementation specifics you haven't been given.
 
@@ -160,72 +151,16 @@ ${dockBriefing}
 `;
   }
 
-  // ── Layer 3: Context injection (fleet data) ────────────────────
-  if (hasData) {
-    if (typeof fleetData === "string") {
-      // Legacy CSV string path
-      prompt += `FLEET INTELLIGENCE — IMPORTED ROSTER DATA:
-Below is Admiral Guff's STFC officer roster in CSV format, imported from Google Sheets. Data reflects the state at import time.
-
-When answering roster-specific questions:
-- Cite exact stats from the CSV when relevant (level, power, abilities). Prefix with "Your roster shows..." or "According to your data..."
-- Combine roster data WITH your training knowledge — e.g. "Your Kirk is level 15, and based on my game knowledge he pairs best with Spock and Bones for the Enterprise."
-- If an officer IS in the roster, lead with their actual stats, then supplement with strategy.
-- If an officer is NOT in the roster, say so EXPLICITLY: "I don't see [officer] in your roster" — then discuss them from training knowledge.
-- NEVER claim an officer is in the roster unless you can see their row below.
-
---- BEGIN ROSTER DATA ---
-${fleetData}
---- END ROSTER DATA ---
+  // ── Layer 3: Reference catalog architecture note ────────────
+  // Actual reference data + overlay context is injected per-message
+  // by the MicroRunner's ContextGate, not in the system prompt.
+  prompt += `FLEET INTELLIGENCE — REFERENCE CATALOG:
+This installation uses a wiki-imported reference catalog with a user overlay model.
+- The reference catalog contains canonical officer/ship data imported from the STFC wiki.
+- The user's ownership state, targeting, and levels are stored as a thin overlay on catalog entries.
+- When reference data or overlay state is available for a query, it will be injected into the conversation context by the MicroRunner pipeline. Look for labeled [REFERENCE] and [OVERLAY] blocks in user messages.
+- If no reference data is injected, the catalog may not be populated yet. Guide the Admiral to import wiki data first.
 `;
-    } else if (fleetData) {
-      // Structured FleetData path
-      prompt += `FLEET INTELLIGENCE — IMPORTED DATA FROM ADMIRAL GUFF'S ACCOUNT:
-Below is fleet data from the Admiral's STFC account, imported from Google Sheets at ${fleetData.fetchedAt}. Data reflects the state at import time — it may not reflect in-game changes made since then.
-
-General guidance:
-- When asked about something IN the data, lead with exact stats and cite the source: "Your roster shows..." / "According to your fleet data..."
-- When asked about something NOT in the data, say so explicitly: "I don't see that in your fleet data" — then discuss from training knowledge.
-- NEVER claim data exists below that you cannot actually see.
-- Cross-reference between sections when useful (e.g. which officers best crew which ships).
-`;
-
-      // Inject officer sections
-      const officerSections = getSections(fleetData, "officers");
-      for (const section of officerSections) {
-        prompt += `
---- BEGIN OFFICERS: ${section.label.toUpperCase()} (${section.rowCount} officers) ---
-${section.csv}
---- END OFFICERS: ${section.label.toUpperCase()} ---
-`;
-      }
-
-      // Inject ship sections
-      const shipSections = getSections(fleetData, "ships");
-      for (const section of shipSections) {
-        prompt += `
---- BEGIN SHIPS: ${section.label.toUpperCase()} (${section.rowCount} ships) ---
-${section.csv}
---- END SHIPS: ${section.label.toUpperCase()} ---
-`;
-      }
-
-      // Inject custom sections
-      const customSections = getSections(fleetData, "custom");
-      for (const section of customSections) {
-        prompt += `
---- BEGIN ${section.label.toUpperCase()} (${section.rowCount} rows) ---
-${section.csv}
---- END ${section.label.toUpperCase()} ---
-`;
-      }
-    }
-  } else {
-    prompt += `FLEET INTELLIGENCE STATUS:
-No fleet data is currently connected. The Admiral can connect their Google Sheets via the UI.
-You can still discuss STFC strategy, Star Trek lore, crew compositions, and other topics using your training knowledge (with appropriate uncertainty signals for patch-sensitive specifics). If asked about their specific roster, let them know it's not connected yet.
-`;
-  }
 
   return prompt;
 }
@@ -270,7 +205,6 @@ interface SessionState {
  */
 export function createGeminiEngine(
   apiKey: string,
-  fleetData: FleetData | string | null,
   fleetConfig?: FleetConfig | null,
   dockBriefing?: string | null,
   microRunner?: MicroRunner | null,
@@ -279,7 +213,7 @@ export function createGeminiEngine(
 
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
-    systemInstruction: buildSystemPrompt(fleetData, fleetConfig, dockBriefing),
+    systemInstruction: buildSystemPrompt(fleetConfig, dockBriefing),
     safetySettings: SAFETY_SETTINGS,
   });
 
@@ -287,11 +221,10 @@ export function createGeminiEngine(
 
   log.gemini.debug({
     model: MODEL_NAME,
-    hasFleetData: typeof fleetData === "string" ? fleetData.length > 0 : hasFleetData(fleetData),
     hasFleetConfig: !!fleetConfig,
     hasDockBriefing: !!dockBriefing,
     hasMicroRunner: !!microRunner,
-    promptLen: buildSystemPrompt(fleetData, fleetConfig, dockBriefing).length,
+    promptLen: buildSystemPrompt(fleetConfig, dockBriefing).length,
   }, "init");
 
   /** Get or create a session by ID */

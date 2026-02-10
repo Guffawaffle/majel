@@ -28,7 +28,7 @@ import { log } from "./logger.js";
  */
 export interface SettingDef {
   key: string;
-  category: "sheets" | "display" | "model" | "system" | "fleet";
+  category: "display" | "model" | "system" | "fleet";
   label: string;
   description: string;
   type: "string" | "number" | "boolean" | "json";
@@ -44,36 +44,6 @@ export interface SettingDef {
 }
 
 export const SETTINGS_SCHEMA: SettingDef[] = [
-  // ── Sheets ──────────────────────────────────────────────────
-  {
-    key: "sheets.spreadsheetId",
-    category: "sheets",
-    label: "Spreadsheet ID",
-    description: "Google Sheets spreadsheet ID for fleet data.",
-    type: "string",
-    default: "",
-    envVar: "MAJEL_SPREADSHEET_ID",
-  },
-  {
-    key: "sheets.tabMapping",
-    category: "sheets",
-    label: "Tab Mapping",
-    description:
-      'Maps sheet tab names to data types. Format: "TabName:type,Tab2:type2". Types: officers, ships, custom.',
-    type: "string",
-    default: "",
-    envVar: "MAJEL_TAB_MAPPING",
-  },
-  {
-    key: "sheets.range",
-    category: "sheets",
-    label: "Sheet Range (legacy)",
-    description: "Cell range for legacy single-tab fetch.",
-    type: "string",
-    default: "Sheet1!A1:Z1000",
-    envVar: "MAJEL_SHEET_RANGE",
-  },
-
   // ── Display ─────────────────────────────────────────────────
   {
     key: "display.admiralName",

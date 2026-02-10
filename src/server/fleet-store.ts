@@ -14,7 +14,6 @@ import Database from "better-sqlite3";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { log } from "./logger.js";
-import type { FleetData, FleetSection } from "./fleet-data.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -173,9 +172,6 @@ export interface FleetStore {
       totalAssignments: number;
     };
   };
-
-  // ── Import ────────────────────────────────────────────
-  importFromFleetData(fleetData: FleetData): { ships: number; officers: number; skipped: number };
 
   // ── Diagnostics ───────────────────────────────────────
   getDbPath(): string;
@@ -800,116 +796,6 @@ export function createFleetStore(dbPath?: string): FleetStore {
           totalAssignments: bridgeCrew + specialistCrew,
         },
       };
-    },
-
-    // ── Import ────────────────────────────────────────────
-
-    importFromFleetData(fleetData: FleetData) {
-      let shipsImported = 0;
-      let officersImported = 0;
-      let skipped = 0;
-
-      const importSection = (section: FleetSection) => {
-        if (section.rows.length < 2) return; // Need header + at least 1 data row
-
-        const headers = section.headers.map((h) => h.toLowerCase().trim());
-        const nameCol = headers.findIndex((h) => h === "name" || h === "officer" || h === "ship");
-        if (nameCol === -1) {
-          log.fleet.debug({ label: section.label, headers }, "no name column found, skipping section");
-          return;
-        }
-
-        // Try to find common columns
-        const tierCol = headers.findIndex((h) => h === "tier" || h === "level" || h === "stars");
-        const classCol = headers.findIndex((h) => h === "class" || h === "type" || h === "ship class");
-        const rarityCol = headers.findIndex((h) => h === "rarity" || h === "quality");
-        const levelCol = headers.findIndex((h) => h === "level" || h === "lvl");
-        const rankCol = headers.findIndex((h) => h === "rank");
-        const groupCol = headers.findIndex((h) => h === "group" || h === "division" || h === "department");
-
-        for (let i = 1; i < section.rows.length; i++) {
-          const row = section.rows[i];
-          const name = (row[nameCol] || "").trim();
-          if (!name) continue;
-
-          const id = slugify(name);
-
-          if (section.type === "ships") {
-            // Check if already exists
-            if (stmts.shipExists.get(id)) {
-              // Update imported fields only, preserve operational state
-              const now = new Date().toISOString();
-              const tier = tierCol >= 0 ? parseInt(row[tierCol], 10) || null : null;
-              const shipClass = classCol >= 0 ? (row[classCol] || "").trim() || null : null;
-              db.prepare(
-                `UPDATE ships SET name = ?, tier = COALESCE(?, tier), ship_class = COALESCE(?, ship_class),
-                 imported_from = ?, updated_at = ? WHERE id = ?`,
-              ).run(name, tier, shipClass, section.label, now, id);
-              skipped++;
-            } else {
-              store.createShip({
-                id,
-                name,
-                tier: tierCol >= 0 ? parseInt(row[tierCol], 10) || null : null,
-                shipClass: classCol >= 0 ? (row[classCol] || "").trim() || null : null,
-                grade: null,
-                rarity: null,
-                faction: null,
-                combatProfile: null,
-                specialtyLoop: null,
-                status: "ready",
-                role: null,
-                roleDetail: null,
-                notes: null,
-                importedFrom: section.label,
-              });
-              shipsImported++;
-            }
-          } else if (section.type === "officers") {
-            if (stmts.officerExists.get(id)) {
-              const now = new Date().toISOString();
-              const rarity = rarityCol >= 0 ? (row[rarityCol] || "").trim() || null : null;
-              const level = levelCol >= 0 ? parseInt(row[levelCol], 10) || null : null;
-              const rank = rankCol >= 0 ? (row[rankCol] || "").trim() || null : null;
-              const group = groupCol >= 0 ? (row[groupCol] || "").trim() || null : null;
-              db.prepare(
-                `UPDATE officers SET name = ?, rarity = COALESCE(?, rarity), level = COALESCE(?, level),
-                 rank = COALESCE(?, rank), group_name = COALESCE(?, group_name),
-                 imported_from = ?, updated_at = ? WHERE id = ?`,
-              ).run(name, rarity, level, rank, group, section.label, now, id);
-              skipped++;
-            } else {
-              store.createOfficer({
-                id,
-                name,
-                rarity: rarityCol >= 0 ? (row[rarityCol] || "").trim() || null : null,
-                level: levelCol >= 0 ? parseInt(row[levelCol], 10) || null : null,
-                rank: rankCol >= 0 ? (row[rankCol] || "").trim() || null : null,
-                groupName: groupCol >= 0 ? (row[groupCol] || "").trim() || null : null,
-                classPreference: null,
-                activityAffinity: null,
-                positionPreference: null,
-                importedFrom: section.label,
-              });
-              officersImported++;
-            }
-          }
-        }
-      };
-
-      const txn = db.transaction(() => {
-        for (const section of fleetData.sections) {
-          importSection(section);
-        }
-      });
-      txn();
-
-      log.fleet.info(
-        { shipsImported, officersImported, skipped },
-        "fleet data imported from sheets",
-      );
-
-      return { ships: shipsImported, officers: officersImported, skipped };
     },
 
     // ── Diagnostics ───────────────────────────────────────

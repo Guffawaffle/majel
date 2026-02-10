@@ -38,14 +38,6 @@ export interface AppConfig {
   /** Gemini API key for LLM access */
   geminiApiKey: string;
 
-  // ── Google Sheets ───────────────────────────────────────────
-  /** Google Sheets spreadsheet ID */
-  spreadsheetId: string;
-  /** Tab mapping for multi-tab roster */
-  tabMapping: string;
-  /** Legacy sheet range */
-  sheetRange: string;
-
   // ── Lex Memory ──────────────────────────────────────────────
   /** Lex workspace root directory */
   lexWorkspaceRoot: string;
@@ -131,18 +123,6 @@ export function resolveConfig(settingsStore: SettingsStore | null): AppConfig {
     ? settingsStore.get("model.apiKey")
     : process.env.GEMINI_API_KEY || "";
 
-  const spreadsheetId = settingsStore
-    ? settingsStore.get("sheets.spreadsheetId")
-    : process.env.MAJEL_SPREADSHEET_ID || "";
-
-  const tabMapping = settingsStore
-    ? settingsStore.get("sheets.tabMapping")
-    : process.env.MAJEL_TAB_MAPPING || "";
-
-  const sheetRange = settingsStore
-    ? settingsStore.get("sheets.range")
-    : process.env.MAJEL_SHEET_RANGE || "Sheet1!A1:Z1000";
-
   // Lex workspace (special: used by Lex library, needs env var fallback)
   const lexWorkspaceRoot = process.env.LEX_WORKSPACE_ROOT || process.cwd();
 
@@ -156,9 +136,6 @@ export function resolveConfig(settingsStore: SettingsStore | null): AppConfig {
     isTest,
     isDev,
     geminiApiKey,
-    spreadsheetId,
-    tabMapping,
-    sheetRange,
     lexWorkspaceRoot,
     logLevel,
     logPretty,
