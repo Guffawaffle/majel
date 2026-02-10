@@ -9,6 +9,7 @@
     "start": "node --import dotenv/config dist/server/index.js",
     "dev": "MAJEL_LOG_PRETTY=true tsx watch --import dotenv/config src/server/index.ts",
     "dev:fresh": "npm run kill --silent; npm run dev",
+    "dev:wipe": "rm -rf .smartergpt/lex/reference.db .smartergpt/lex/reference.db-wal .smartergpt/lex/reference.db-shm && echo '🗑️ reference.db wiped (overlay + dock data cleared)'",
     "dev:bg": "npm run kill --silent; mkdir -p logs && MAJEL_LOG_PRETTY=true npm run dev > logs/dev.log 2>&1 & echo $! > .dev.pid && echo 'Majel running in background (PID: '$(cat .dev.pid)')' && echo '  Logs: npm run dev:log'",
     "dev:log": "tail -f logs/dev.log",
     "dev:stop": "npm run kill --silent; rm -f .dev.pid; echo 'Majel stopped'",

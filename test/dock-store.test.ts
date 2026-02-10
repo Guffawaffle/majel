@@ -1163,10 +1163,10 @@ describe("Dock API Routes", () => {
 
   // ── Intents ─────────────────────────────────────────────
 
-  describe("GET /api/fleet/intents", () => {
+  describe("GET /api/dock/intents", () => {
     it("returns all intents", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/intents");
+      const res = await request(app).get("/api/dock/intents");
       expect(res.status).toBe(200);
       expect(res.body.data.intents.length).toBeGreaterThanOrEqual(21);
       expect(res.body.data.count).toBeGreaterThanOrEqual(21);
@@ -1174,29 +1174,29 @@ describe("Dock API Routes", () => {
 
     it("filters by category", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/intents?category=mining");
+      const res = await request(app).get("/api/dock/intents?category=mining");
       expect(res.status).toBe(200);
       expect(res.body.data.intents.every((i: { category: string }) => i.category === "mining")).toBe(true);
     });
 
     it("rejects invalid category", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/intents?category=bogus");
+      const res = await request(app).get("/api/dock/intents?category=bogus");
       expect(res.status).toBe(400);
     });
 
     it("returns 503 when dock store unavailable", async () => {
       const app = createApp(makeState());
-      const res = await request(app).get("/api/fleet/intents");
+      const res = await request(app).get("/api/dock/intents");
       expect(res.status).toBe(503);
     });
   });
 
-  describe("POST /api/fleet/intents", () => {
+  describe("POST /api/dock/intents", () => {
     it("creates a custom intent", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app)
-        .post("/api/fleet/intents")
+        .post("/api/dock/intents")
         .send({ key: "custom-scout", label: "Scouting", category: "custom" });
       expect(res.status).toBe(201);
       expect(res.body.data.key).toBe("custom-scout");
@@ -1206,24 +1206,24 @@ describe("Dock API Routes", () => {
     it("rejects missing fields", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app)
-        .post("/api/fleet/intents")
+        .post("/api/dock/intents")
         .send({ key: "x" });
       expect(res.status).toBe(400);
     });
   });
 
-  describe("DELETE /api/fleet/intents/:key", () => {
+  describe("DELETE /api/dock/intents/:key", () => {
     it("deletes a custom intent", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.createIntent({ key: "custom-del", label: "Del", category: "custom", description: null, icon: null });
-      const res = await request(app).delete("/api/fleet/intents/custom-del");
+      const res = await request(app).delete("/api/dock/intents/custom-del");
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe("deleted");
     });
 
     it("rejects deleting builtin intent", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).delete("/api/fleet/intents/mining-gas");
+      const res = await request(app).delete("/api/dock/intents/mining-gas");
       expect(res.status).toBe(400);
       expect(res.body.error.message).toMatch(/built-in/i);
     });
@@ -1231,11 +1231,11 @@ describe("Dock API Routes", () => {
 
   // ── Docks ───────────────────────────────────────────────
 
-  describe("PUT /api/fleet/docks/:num", () => {
+  describe("PUT /api/dock/docks/:num", () => {
     it("creates a dock", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app)
-        .put("/api/fleet/docks/1")
+        .put("/api/dock/docks/1")
         .send({ label: "Main Grinder", priority: 3 });
       expect(res.status).toBe(200);
       expect(res.body.data.dockNumber).toBe(1);
@@ -1244,17 +1244,17 @@ describe("Dock API Routes", () => {
 
     it("rejects invalid dock number", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).put("/api/fleet/docks/0").send({ label: "Bad" });
+      const res = await request(app).put("/api/dock/docks/0").send({ label: "Bad" });
       expect(res.status).toBe(400);
     });
   });
 
-  describe("GET /api/fleet/docks", () => {
+  describe("GET /api/dock/docks", () => {
     it("lists docks with context", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       dockStore.upsertDock(2, { label: "Mining" });
-      const res = await request(app).get("/api/fleet/docks");
+      const res = await request(app).get("/api/dock/docks");
       expect(res.status).toBe(200);
       expect(res.body.data.docks.length).toBe(2);
       expect(res.body.data.docks[0]).toHaveProperty("intents");
@@ -1262,27 +1262,27 @@ describe("Dock API Routes", () => {
     });
   });
 
-  describe("GET /api/fleet/docks/:num", () => {
+  describe("GET /api/dock/docks/:num", () => {
     it("returns a dock with context", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
-      const res = await request(app).get("/api/fleet/docks/1");
+      const res = await request(app).get("/api/dock/docks/1");
       expect(res.status).toBe(200);
       expect(res.body.data.label).toBe("Grinder");
     });
 
     it("returns 404 for nonexistent dock", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/docks/5");
+      const res = await request(app).get("/api/dock/docks/5");
       expect(res.status).toBe(404);
     });
   });
 
-  describe("DELETE /api/fleet/docks/:num", () => {
+  describe("DELETE /api/dock/docks/:num", () => {
     it("deletes a dock", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Temp" });
-      const res = await request(app).delete("/api/fleet/docks/1");
+      const res = await request(app).delete("/api/dock/docks/1");
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe("deleted");
     });
@@ -1290,12 +1290,12 @@ describe("Dock API Routes", () => {
 
   // ── Dock Intents ────────────────────────────────────────
 
-  describe("PUT /api/fleet/docks/:num/intents", () => {
+  describe("PUT /api/dock/docks/:num/intents", () => {
     it("sets dock intents", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       const res = await request(app)
-        .put("/api/fleet/docks/1/intents")
+        .put("/api/dock/docks/1/intents")
         .send({ intents: ["grinding", "pvp"] });
       expect(res.status).toBe(200);
       expect(res.body.data.intents.length).toBe(2);
@@ -1306,7 +1306,7 @@ describe("Dock API Routes", () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       const res = await request(app)
-        .put("/api/fleet/docks/1/intents")
+        .put("/api/dock/docks/1/intents")
         .send({ intents: "grinding" });
       expect(res.status).toBe(400);
     });
@@ -1314,12 +1314,12 @@ describe("Dock API Routes", () => {
 
   // ── Dock Ships ──────────────────────────────────────────
 
-  describe("POST /api/fleet/docks/:num/ships", () => {
+  describe("POST /api/dock/docks/:num/ships", () => {
     it("adds a ship to dock rotation", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       const res = await request(app)
-        .post("/api/fleet/docks/1/ships")
+        .post("/api/dock/docks/1/ships")
         .send({ shipId: "kumari" });
       expect(res.status).toBe(201);
       expect(res.body.data.shipId).toBe("kumari");
@@ -1330,19 +1330,19 @@ describe("Dock API Routes", () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       const res = await request(app)
-        .post("/api/fleet/docks/1/ships")
+        .post("/api/dock/docks/1/ships")
         .send({});
       expect(res.status).toBe(400);
     });
   });
 
-  describe("PATCH /api/fleet/docks/:num/ships/:shipId", () => {
+  describe("PATCH /api/dock/docks/:num/ships/:shipId", () => {
     it("sets a ship as active", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       dockStore.addDockShip(1, "kumari");
       const res = await request(app)
-        .patch("/api/fleet/docks/1/ships/kumari")
+        .patch("/api/dock/docks/1/ships/kumari")
         .send({ isActive: true });
       expect(res.status).toBe(200);
       expect(res.body.data.isActive).toBe(true);
@@ -1352,36 +1352,36 @@ describe("Dock API Routes", () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       const res = await request(app)
-        .patch("/api/fleet/docks/1/ships/kumari")
+        .patch("/api/dock/docks/1/ships/kumari")
         .send({ isActive: true });
       expect(res.status).toBe(404);
     });
   });
 
-  describe("DELETE /api/fleet/docks/:num/ships/:shipId", () => {
+  describe("DELETE /api/dock/docks/:num/ships/:shipId", () => {
     it("removes a ship from dock", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
       dockStore.addDockShip(1, "kumari");
-      const res = await request(app).delete("/api/fleet/docks/1/ships/kumari");
+      const res = await request(app).delete("/api/dock/docks/1/ships/kumari");
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe("removed");
     });
 
     it("returns 404 for non-assigned ship", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).delete("/api/fleet/docks/1/ships/kumari");
+      const res = await request(app).delete("/api/dock/docks/1/ships/kumari");
       expect(res.status).toBe(404);
     });
   });
 
   // ── Crew Presets ────────────────────────────────────────
 
-  describe("POST /api/fleet/presets", () => {
+  describe("POST /api/dock/presets", () => {
     it("creates a crew preset", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app)
-        .post("/api/fleet/presets")
+        .post("/api/dock/presets")
         .send({ shipId: "kumari", intentKey: "grinding", presetName: "Grind Crew" });
       expect(res.status).toBe(201);
       expect(res.body.data.shipId).toBe("kumari");
@@ -1392,17 +1392,17 @@ describe("Dock API Routes", () => {
     it("rejects missing fields", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app)
-        .post("/api/fleet/presets")
+        .post("/api/dock/presets")
         .send({ shipId: "kumari" });
       expect(res.status).toBe(400);
     });
   });
 
-  describe("GET /api/fleet/presets", () => {
+  describe("GET /api/dock/presets", () => {
     it("lists presets", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
-      const res = await request(app).get("/api/fleet/presets");
+      const res = await request(app).get("/api/dock/presets");
       expect(res.status).toBe(200);
       expect(res.body.data.presets.length).toBe(1);
       expect(res.body.data.count).toBe(1);
@@ -1411,17 +1411,17 @@ describe("Dock API Routes", () => {
     it("filters by shipId", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
-      const res = await request(app).get("/api/fleet/presets?shipId=kumari");
+      const res = await request(app).get("/api/dock/presets?shipId=kumari");
       expect(res.status).toBe(200);
       expect(res.body.data.presets.length).toBe(1);
     });
   });
 
-  describe("GET /api/fleet/presets/:id", () => {
+  describe("GET /api/dock/presets/:id", () => {
     it("returns a preset with members", async () => {
       const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
-      const res = await request(app).get(`/api/fleet/presets/${preset.id}`);
+      const res = await request(app).get(`/api/dock/presets/${preset.id}`);
       expect(res.status).toBe(200);
       expect(res.body.data.presetName).toBe("A");
       expect(res.body.data.members).toEqual([]);
@@ -1429,17 +1429,17 @@ describe("Dock API Routes", () => {
 
     it("returns 404 for nonexistent preset", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/presets/999");
+      const res = await request(app).get("/api/dock/presets/999");
       expect(res.status).toBe(404);
     });
   });
 
-  describe("PATCH /api/fleet/presets/:id", () => {
+  describe("PATCH /api/dock/presets/:id", () => {
     it("updates a preset", async () => {
       const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Old" });
       const res = await request(app)
-        .patch(`/api/fleet/presets/${preset.id}`)
+        .patch(`/api/dock/presets/${preset.id}`)
         .send({ presetName: "New" });
       expect(res.status).toBe(200);
       expect(res.body.data.presetName).toBe("New");
@@ -1448,35 +1448,35 @@ describe("Dock API Routes", () => {
     it("returns 404 for nonexistent preset", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app)
-        .patch("/api/fleet/presets/999")
+        .patch("/api/dock/presets/999")
         .send({ presetName: "x" });
       expect(res.status).toBe(404);
     });
   });
 
-  describe("DELETE /api/fleet/presets/:id", () => {
+  describe("DELETE /api/dock/presets/:id", () => {
     it("deletes a preset", async () => {
       const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Del" });
-      const res = await request(app).delete(`/api/fleet/presets/${preset.id}`);
+      const res = await request(app).delete(`/api/dock/presets/${preset.id}`);
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe("deleted");
     });
 
     it("returns 404 for nonexistent preset", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).delete("/api/fleet/presets/999");
+      const res = await request(app).delete("/api/dock/presets/999");
       expect(res.status).toBe(404);
     });
   });
 
-  describe("PUT /api/fleet/presets/:id/members", () => {
+  describe("PUT /api/dock/presets/:id/members", () => {
     it("sets preset members", async () => {
       seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
       const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
       const res = await request(app)
-        .put(`/api/fleet/presets/${preset.id}/members`)
+        .put(`/api/dock/presets/${preset.id}/members`)
         .send({ members: [{ officerId: "kirk", roleType: "bridge", slot: "captain" }] });
       expect(res.status).toBe(200);
       expect(res.body.data.members.length).toBe(1);
@@ -1487,7 +1487,7 @@ describe("Dock API Routes", () => {
       const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
       const res = await request(app)
-        .put(`/api/fleet/presets/${preset.id}/members`)
+        .put(`/api/dock/presets/${preset.id}/members`)
         .send({ members: "kirk" });
       expect(res.status).toBe(400);
     });
@@ -1495,11 +1495,11 @@ describe("Dock API Routes", () => {
 
   // ── Computed Endpoints ──────────────────────────────────
 
-  describe("GET /api/fleet/docks/summary", () => {
+  describe("GET /api/dock/docks/summary", () => {
     it("returns a dock briefing", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
-      const res = await request(app).get("/api/fleet/docks/summary");
+      const res = await request(app).get("/api/dock/docks/summary");
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveProperty("statusLines");
       expect(res.body.data).toHaveProperty("text");
@@ -1507,10 +1507,10 @@ describe("Dock API Routes", () => {
     });
   });
 
-  describe("GET /api/fleet/docks/conflicts", () => {
+  describe("GET /api/dock/docks/conflicts", () => {
     it("returns officer conflicts", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/docks/conflicts");
+      const res = await request(app).get("/api/dock/docks/conflicts");
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveProperty("conflicts");
       expect(res.body.data).toHaveProperty("count");
@@ -1519,12 +1519,12 @@ describe("Dock API Routes", () => {
 
   // ── Tags & Discovery Endpoints ──────────────────────────
 
-  describe("PUT /api/fleet/presets/:id/tags", () => {
+  describe("PUT /api/dock/presets/:id/tags", () => {
     it("sets tags on a preset", async () => {
       const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
       const res = await request(app)
-        .put(`/api/fleet/presets/${preset.id}/tags`)
+        .put(`/api/dock/presets/${preset.id}/tags`)
         .send({ tags: ["meta", "event"] });
       expect(res.status).toBe(200);
       expect(res.body.data.tags).toEqual(["event", "meta"]);
@@ -1535,7 +1535,7 @@ describe("Dock API Routes", () => {
       const app = createApp(makeState({ dockStore }));
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Crew" });
       const res = await request(app)
-        .put(`/api/fleet/presets/${preset.id}/tags`)
+        .put(`/api/dock/presets/${preset.id}/tags`)
         .send({ tags: "meta" });
       expect(res.status).toBe(400);
     });
@@ -1543,52 +1543,52 @@ describe("Dock API Routes", () => {
     it("returns 400 for non-existent preset", async () => {
       const app = createApp(makeState({ dockStore }));
       const res = await request(app)
-        .put("/api/fleet/presets/999/tags")
+        .put("/api/dock/presets/999/tags")
         .send({ tags: ["meta"] });
       expect(res.status).toBe(400);
     });
   });
 
-  describe("GET /api/fleet/tags", () => {
+  describe("GET /api/dock/tags", () => {
     it("lists all unique tags", async () => {
       const app = createApp(makeState({ dockStore }));
       const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       dockStore.setPresetTags(p1.id, ["meta", "event"]);
-      const res = await request(app).get("/api/fleet/tags");
+      const res = await request(app).get("/api/dock/tags");
       expect(res.status).toBe(200);
       expect(res.body.data.tags).toEqual(["event", "meta"]);
       expect(res.body.data.count).toBe(2);
     });
   });
 
-  describe("GET /api/fleet/presets?tag=", () => {
+  describe("GET /api/dock/presets?tag=", () => {
     it("filters presets by tag", async () => {
       const app = createApp(makeState({ dockStore }));
       const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       dockStore.setPresetTags(p1.id, ["meta"]);
       dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "B" });
-      const res = await request(app).get("/api/fleet/presets?tag=meta");
+      const res = await request(app).get("/api/dock/presets?tag=meta");
       expect(res.status).toBe(200);
       expect(res.body.data.count).toBe(1);
       expect(res.body.data.presets[0].presetName).toBe("A");
     });
   });
 
-  describe("GET /api/fleet/presets?officerId=", () => {
+  describe("GET /api/dock/presets?officerId=", () => {
     it("filters presets by officer", async () => {
       seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
       const app = createApp(makeState({ dockStore }));
       const p1 = dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "A" });
       dockStore.setPresetMembers(p1.id, [{ officerId: "kirk", roleType: "bridge" }]);
       dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "B" });
-      const res = await request(app).get("/api/fleet/presets?officerId=kirk");
+      const res = await request(app).get("/api/dock/presets?officerId=kirk");
       expect(res.status).toBe(200);
       expect(res.body.data.count).toBe(1);
       expect(res.body.data.presets[0].presetName).toBe("A");
     });
   });
 
-  describe("GET /api/fleet/docks/:num/presets", () => {
+  describe("GET /api/dock/docks/:num/presets", () => {
     it("finds presets relevant to a dock", async () => {
       const app = createApp(makeState({ dockStore }));
       dockStore.upsertDock(1, { label: "Grinder" });
@@ -1596,7 +1596,7 @@ describe("Dock API Routes", () => {
       dockStore.addDockShip(1, "kumari");
       dockStore.createPreset({ shipId: "kumari", intentKey: "grinding", presetName: "Match" });
       dockStore.createPreset({ shipId: "kumari", intentKey: "mining-gas", presetName: "No Match" });
-      const res = await request(app).get("/api/fleet/docks/1/presets");
+      const res = await request(app).get("/api/dock/docks/1/presets");
       expect(res.status).toBe(200);
       expect(res.body.data.dockNumber).toBe(1);
       expect(res.body.data.count).toBe(1);
@@ -1605,18 +1605,18 @@ describe("Dock API Routes", () => {
 
     it("returns 400 for invalid dock number", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/docks/0/presets");
+      const res = await request(app).get("/api/dock/docks/0/presets");
       expect(res.status).toBe(400);
     });
   });
 
   // ── Cascade Preview Routes ──────────────────────────────
 
-  describe("GET /api/fleet/docks/:num/cascade-preview", () => {
+  describe("GET /api/dock/docks/:num/cascade-preview", () => {
     it("returns empty preview for dock with no data", async () => {
       dockStore.upsertDock(1, { label: "Empty" });
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/docks/1/cascade-preview");
+      const res = await request(app).get("/api/dock/docks/1/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.shipCount).toBe(0);
       expect(res.body.data.intentCount).toBe(0);
@@ -1629,7 +1629,7 @@ describe("Dock API Routes", () => {
       dockStore.addDockShip(1, "kumari");
       dockStore.setDockIntents(1, ["pvp"]);
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/docks/1/cascade-preview");
+      const res = await request(app).get("/api/dock/docks/1/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.shipCount).toBe(1);
       expect(res.body.data.intentCount).toBe(1);
@@ -1638,13 +1638,13 @@ describe("Dock API Routes", () => {
     });
   });
 
-  describe("GET /api/fleet/ships/:id/cascade-preview", () => {
+  describe("GET /api/dock/ships/:id/cascade-preview", () => {
     it("returns dock assignments and presets for a ship", async () => {
       dockStore.upsertDock(1, { label: "Dock 1" });
       dockStore.addDockShip(1, "kumari");
       dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "Arena Build" });
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/ships/kumari/cascade-preview");
+      const res = await request(app).get("/api/dock/ships/kumari/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.dockAssignments.length).toBe(1);
       expect(res.body.data.dockAssignments[0].dockLabel).toBe("Dock 1");
@@ -1654,20 +1654,20 @@ describe("Dock API Routes", () => {
 
     it("returns empty for ship with no references", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/ships/kumari/cascade-preview");
+      const res = await request(app).get("/api/dock/ships/kumari/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.dockAssignments).toEqual([]);
       expect(res.body.data.crewPresets).toEqual([]);
     });
   });
 
-  describe("GET /api/fleet/officers/:id/cascade-preview", () => {
+  describe("GET /api/dock/officers/:id/cascade-preview", () => {
     it("returns preset memberships for an officer", async () => {
       seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
       const preset = dockStore.createPreset({ shipId: "kumari", intentKey: "pvp", presetName: "Arena Build" });
       dockStore.setPresetMembers(preset.id, [{ officerId: "kirk", roleType: "bridge", slot: "captain" }]);
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/officers/kirk/cascade-preview");
+      const res = await request(app).get("/api/dock/officers/kirk/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.presetMemberships.length).toBe(1);
       expect(res.body.data.presetMemberships[0].presetName).toBe("Arena Build");
@@ -1675,7 +1675,7 @@ describe("Dock API Routes", () => {
 
     it("returns empty for officer with no references", async () => {
       const app = createApp(makeState({ dockStore }));
-      const res = await request(app).get("/api/fleet/officers/kirk/cascade-preview");
+      const res = await request(app).get("/api/dock/officers/kirk/cascade-preview");
       expect(res.status).toBe(200);
       expect(res.body.data.presetMemberships).toEqual([]);
     });

@@ -15,7 +15,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Intents ────────────────────────────────────────────
 
-  router.get("/api/fleet/intents", (req, res) => {
+  router.get("/api/dock/intents", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -27,7 +27,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, { intents, count: intents.length });
   });
 
-  router.post("/api/fleet/intents", (req, res) => {
+  router.post("/api/dock/intents", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -44,7 +44,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.delete("/api/fleet/intents/:key", (req, res) => {
+  router.delete("/api/dock/intents/:key", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -62,7 +62,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Docks ──────────────────────────────────────────────
 
-  router.get("/api/fleet/docks", (req, res) => {
+  router.get("/api/dock/docks", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -72,14 +72,14 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Computed Endpoints (must be before :num to avoid param matching) ──
 
-  router.get("/api/fleet/docks/next-number", (req, res) => {
+  router.get("/api/dock/docks/next-number", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     sendOk(res, { nextDockNumber: appState.dockStore.nextDockNumber() });
   });
 
-  router.get("/api/fleet/docks/summary", (req, res) => {
+  router.get("/api/dock/docks/summary", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -87,7 +87,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, briefing);
   });
 
-  router.get("/api/fleet/docks/conflicts", (req, res) => {
+  router.get("/api/dock/docks/conflicts", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -95,7 +95,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, { conflicts, count: conflicts.length });
   });
 
-  router.get("/api/fleet/docks/:num", (req, res) => {
+  router.get("/api/dock/docks/:num", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -110,7 +110,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, dock);
   });
 
-  router.put("/api/fleet/docks/:num", (req, res) => {
+  router.put("/api/dock/docks/:num", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -128,7 +128,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.delete("/api/fleet/docks/:num", (req, res) => {
+  router.delete("/api/dock/docks/:num", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -145,7 +145,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Cascade Previews ──────────────────────────────────
 
-  router.get("/api/fleet/docks/:num/cascade-preview", (req, res) => {
+  router.get("/api/dock/docks/:num/cascade-preview", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -157,7 +157,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, { dockNumber: num, ...preview });
   });
 
-  router.get("/api/fleet/ships/:id/cascade-preview", (req, res) => {
+  router.get("/api/dock/ships/:id/cascade-preview", (req, res) => {
     const dockStore = appState.dockStore;
     if (!dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
@@ -171,7 +171,7 @@ export function createDockRoutes(appState: AppState): Router {
     });
   });
 
-  router.get("/api/fleet/officers/:id/cascade-preview", (req, res) => {
+  router.get("/api/dock/officers/:id/cascade-preview", (req, res) => {
     const dockStore = appState.dockStore;
     if (!dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
@@ -186,7 +186,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Dock Intents ───────────────────────────────────────
 
-  router.put("/api/fleet/docks/:num/intents", (req, res) => {
+  router.put("/api/dock/docks/:num/intents", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -210,7 +210,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Dock Ships ─────────────────────────────────────────
 
-  router.post("/api/fleet/docks/:num/ships", (req, res) => {
+  router.post("/api/dock/docks/:num/ships", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -231,7 +231,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.delete("/api/fleet/docks/:num/ships/:shipId", (req, res) => {
+  router.delete("/api/dock/docks/:num/ships/:shipId", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -246,7 +246,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, { dockNumber: num, shipId: req.params.shipId, status: "removed" });
   });
 
-  router.patch("/api/fleet/docks/:num/ships/:shipId", (req, res) => {
+  router.patch("/api/dock/docks/:num/ships/:shipId", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -269,7 +269,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Crew Presets ───────────────────────────────────────
 
-  router.get("/api/fleet/presets", (req, res) => {
+  router.get("/api/dock/presets", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -284,7 +284,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, { presets, count: presets.length });
   });
 
-  router.get("/api/fleet/presets/:id", (req, res) => {
+  router.get("/api/dock/presets/:id", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -299,7 +299,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, preset);
   });
 
-  router.post("/api/fleet/presets", (req, res) => {
+  router.post("/api/dock/presets", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -316,7 +316,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.patch("/api/fleet/presets/:id", (req, res) => {
+  router.patch("/api/dock/presets/:id", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -337,7 +337,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.delete("/api/fleet/presets/:id", (req, res) => {
+  router.delete("/api/dock/presets/:id", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -352,7 +352,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, { id, status: "deleted" });
   });
 
-  router.put("/api/fleet/presets/:id/members", (req, res) => {
+  router.put("/api/dock/presets/:id/members", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -375,7 +375,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Tags & Discovery ─────────────────────────────────────
 
-  router.get("/api/fleet/tags", (req, res) => {
+  router.get("/api/dock/tags", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -383,7 +383,7 @@ export function createDockRoutes(appState: AppState): Router {
     sendOk(res, { tags, count: tags.length });
   });
 
-  router.put("/api/fleet/presets/:id/tags", (req, res) => {
+  router.put("/api/dock/presets/:id/tags", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -404,7 +404,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.get("/api/fleet/docks/:num/presets", (req, res) => {
+  router.get("/api/dock/docks/:num/presets", (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }

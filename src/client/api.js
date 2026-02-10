@@ -169,14 +169,14 @@ export async function loadFleetSettings() {
     }
 }
 
-// ─── Drydock / Fleet APIs ───────────────────────────────────
+// ─── Drydock / Dock APIs ────────────────────────────────────
 
 /**
  * Fetch all drydock loadouts
  * @returns {Promise<Array>} Array of dock objects
  */
 export async function fetchDocks() {
-    const res = await fetch("/api/fleet/docks");
+    const res = await fetch("/api/dock/docks");
     const env = await res.json();
     return env.data?.docks || [];
 }
@@ -187,7 +187,7 @@ export async function fetchDocks() {
  * @returns {Promise<Object|null>} Dock detail or null
  */
 export async function fetchDock(num) {
-    const res = await fetch(`/api/fleet/docks/${num}`);
+    const res = await fetch(`/api/dock/docks/${num}`);
     if (!res.ok) return null;
     const env = await res.json();
     return env.data?.dock || null;
@@ -200,7 +200,7 @@ export async function fetchDock(num) {
  * @returns {Promise<Object>} Updated dock
  */
 export async function updateDock(num, fields) {
-    const res = await fetch(`/api/fleet/docks/${num}`, {
+    const res = await fetch(`/api/dock/docks/${num}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
@@ -215,7 +215,7 @@ export async function updateDock(num, fields) {
  * @returns {Promise<Object>}
  */
 export async function deleteDock(num) {
-    const res = await fetch(`/api/fleet/docks/${num}`, {
+    const res = await fetch(`/api/dock/docks/${num}`, {
         method: "DELETE",
     });
     const env = await res.json();
@@ -228,7 +228,7 @@ export async function deleteDock(num) {
  * @returns {Promise<Object>} - { ships, intents, shipCount, intentCount }
  */
 export async function previewDeleteDock(num) {
-    const res = await fetch(`/api/fleet/docks/${num}/cascade-preview`);
+    const res = await fetch(`/api/dock/docks/${num}/cascade-preview`);
     const env = await res.json();
     return env.data || {};
 }
@@ -239,7 +239,7 @@ export async function previewDeleteDock(num) {
  * @returns {Promise<Object>} - { dockAssignments, crewPresets, crewAssignments }
  */
 export async function previewDeleteShip(id) {
-    const res = await fetch(`/api/fleet/ships/${id}/cascade-preview`);
+    const res = await fetch(`/api/dock/ships/${encodeURIComponent(id)}/cascade-preview`);
     const env = await res.json();
     return env.data || {};
 }
@@ -250,7 +250,7 @@ export async function previewDeleteShip(id) {
  * @returns {Promise<Object>} - { presetMemberships, crewAssignments }
  */
 export async function previewDeleteOfficer(id) {
-    const res = await fetch(`/api/fleet/officers/${id}/cascade-preview`);
+    const res = await fetch(`/api/dock/officers/${encodeURIComponent(id)}/cascade-preview`);
     const env = await res.json();
     return env.data || {};
 }
@@ -260,7 +260,7 @@ export async function previewDeleteOfficer(id) {
  * @returns {Promise<number>}
  */
 export async function fetchNextDockNumber() {
-    const res = await fetch("/api/fleet/docks/next-number");
+    const res = await fetch("/api/dock/docks/next-number");
     const env = await res.json();
     return env.data?.nextDockNumber || 1;
 }
@@ -272,7 +272,7 @@ export async function fetchNextDockNumber() {
  * @returns {Promise<Object>}
  */
 export async function saveDockIntents(num, intents) {
-    const res = await fetch(`/api/fleet/docks/${num}/intents`, {
+    const res = await fetch(`/api/dock/docks/${num}/intents`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intents }),
@@ -289,10 +289,10 @@ export async function saveDockIntents(num, intents) {
  * @returns {Promise<Object>}
  */
 export async function addDockShip(num, shipId, isActive = false) {
-    const res = await fetch(`/api/fleet/docks/${num}/ships`, {
+    const res = await fetch(`/api/dock/docks/${num}/ships`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ship_id: shipId, is_active: isActive ? 1 : 0 }),
+        body: JSON.stringify({ shipId, isActive }),
     });
     const env = await res.json();
     return { ok: res.ok, data: env.data, error: env.error };
@@ -305,7 +305,7 @@ export async function addDockShip(num, shipId, isActive = false) {
  * @returns {Promise<Object>}
  */
 export async function removeDockShip(num, shipId) {
-    const res = await fetch(`/api/fleet/docks/${num}/ships/${shipId}`, {
+    const res = await fetch(`/api/dock/docks/${num}/ships/${encodeURIComponent(shipId)}`, {
         method: "DELETE",
     });
     const env = await res.json();
@@ -319,10 +319,10 @@ export async function removeDockShip(num, shipId) {
  * @returns {Promise<Object>}
  */
 export async function setActiveShip(num, shipId) {
-    const res = await fetch(`/api/fleet/docks/${num}/ships/${shipId}`, {
+    const res = await fetch(`/api/dock/docks/${num}/ships/${encodeURIComponent(shipId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: 1 }),
+        body: JSON.stringify({ isActive: true }),
     });
     const env = await res.json();
     return { ok: res.ok, data: env.data, error: env.error };
@@ -333,7 +333,7 @@ export async function setActiveShip(num, shipId) {
  * @returns {Promise<Array>} Array of intent objects
  */
 export async function fetchIntents() {
-    const res = await fetch("/api/fleet/intents");
+    const res = await fetch("/api/dock/intents");
     const env = await res.json();
     return env.data?.intents || [];
 }
@@ -343,7 +343,7 @@ export async function fetchIntents() {
  * @returns {Promise<Array>} Array of ship objects
  */
 export async function fetchShips() {
-    const res = await fetch("/api/catalog/ships");
+    const res = await fetch("/api/catalog/ships/merged");
     const env = await res.json();
     return env.data?.ships || [];
 }
@@ -353,7 +353,7 @@ export async function fetchShips() {
  * @returns {Promise<Array>} Array of officer objects
  */
 export async function fetchOfficers() {
-    const res = await fetch("/api/catalog/officers");
+    const res = await fetch("/api/catalog/officers/merged");
     const env = await res.json();
     return env.data?.officers || [];
 }
@@ -363,7 +363,7 @@ export async function fetchOfficers() {
  * @returns {Promise<Object>} Conflicts data
  */
 export async function fetchConflicts() {
-    const res = await fetch("/api/fleet/docks/conflicts");
+    const res = await fetch("/api/dock/docks/conflicts");
     const env = await res.json();
     return env.data || {};
 }
@@ -373,7 +373,7 @@ export async function fetchConflicts() {
  * @returns {Promise<Array>} Dock summaries
  */
 export async function fetchDockSummary() {
-    const res = await fetch("/api/fleet/docks/summary");
+    const res = await fetch("/api/dock/docks/summary");
     const env = await res.json();
     return env.data?.summary || [];
 }
