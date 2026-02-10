@@ -142,9 +142,12 @@ Three tiers, progressively gated:
 | **2** | Auth middleware + invite codes | `requireVisitor`, `requireAdmiral` middleware. Invite code CRUD. Tenant cookie. Demo mode env flag. | Phase 1 |
 | **3** | Tenant isolation | Per-tenant store resolution. Shared reference store. Tenant lifecycle (create on invite, expire after N days). | Phase 2 |
 | **4** | Cloud Run deployment | Turso remote DBs, embedded replicas, Cloud Run config, `gcloud run deploy` script. | Phase 3 |
-| **5** | Polish | Rate limiting on AI endpoints. Visitor analytics. Tenant cleanup cron. | Phase 4 |
+| **5** | Reference data seeding | Ship reference DB with wiki data. Public GET endpoints for reference data per wiki license (attribution). Admin/CLI tool to refresh reference data from wiki source. | Phase 4 |
+| **6** | Polish | Rate limiting on AI endpoints. Visitor analytics. Tenant cleanup cron. | Phase 5 |
 
 **Each phase produces a working, tested commit.** No partial states, no "we'll fix it in Phase N."
+
+> **Note (Phase 5 context):** Once deployed, the first operational priority is seeding the Turso reference DB with wiki data and exposing public GET endpoints that satisfy the wiki's license terms (typically attribution + making the data available). After that, we need an admin or CLI mechanism to keep reference data current — whether that's a `/api/admin/sync` endpoint, a CLI command, or a scheduled job. Details TBD but the goal is: *deployed Majel ships with data, not an empty catalog.*
 
 ## Consequences
 
