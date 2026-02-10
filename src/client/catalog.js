@@ -1,0 +1,492 @@
+/**
+ * catalog.js — Reference Catalog Grid (ADR-016 Phase 2)
+ *
+ * Majel — STFC Fleet Intelligence System
+ *
+ * Full-screen catalog view with search, filters, and overlay management.
+ * Design goals from ADR-016 D4:
+ * - Search-first: global search bar with instant filter
+ * - Keyboard-friendly: rapid-fire "search → mark → search → mark"
+ * - Bulk actions: mark visible as owned/unowned, toggle targets
+ * - Undo support for bulk actions
+ */
+
+import * as api from './api.js';
+
+// ─── State ──────────────────────────────────────────────────
+let officers = [];
+let ships = [];
+let activeTab = 'officers'; // 'officers' | 'ships'
+let searchQuery = '';
+let filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
+let counts = { reference: { officers: 0, ships: 0 }, overlay: {} };
+let undoStack = []; // { type, refIds, previousStates }
+let loading = false;
+
+const $ = (sel) => document.querySelector(sel);
+
+// ─── Public API ─────────────────────────────────────────────
+
+export async function init() {
+    const area = $("#catalog-area");
+    if (!area) return;
+    await refresh();
+}
+
+export async function refresh() {
+    if (loading) return;
+    loading = true;
+    try {
+        const filterArgs = buildFilterArgs();
+        const [officerData, shipData, countData] = await Promise.all([
+            api.fetchCatalogOfficers(filterArgs),
+            api.fetchCatalogShips(filterArgs),
+            api.fetchCatalogCounts(),
+        ]);
+        officers = officerData;
+        ships = shipData;
+        counts = countData;
+        render();
+    } catch (err) {
+        console.error("Catalog refresh failed:", err);
+        const area = $("#catalog-area");
+        if (area) area.innerHTML = `<div class="cat-error">Failed to load catalog: ${err.message}</div>`;
+    } finally {
+        loading = false;
+    }
+}
+
+// ─── Filter Arguments ───────────────────────────────────────
+
+function buildFilterArgs() {
+    const args = {};
+    if (searchQuery) args.q = searchQuery;
+    if (filters.ownership !== 'all') args.ownership = filters.ownership;
+    if (filters.target === 'targeted') args.target = 'true';
+    if (filters.target === 'not-targeted') args.target = 'false';
+    if (filters.rarity) args.rarity = filters.rarity;
+    if (filters.group) args.group = filters.group;
+    if (filters.faction) args.faction = filters.faction;
+    if (filters.class) args.class = filters.class;
+    return args;
+}
+
+// ─── Rendering ──────────────────────────────────────────────
+
+function render() {
+    const area = $("#catalog-area");
+    if (!area) return;
+
+    const items = activeTab === 'officers' ? officers : ships;
+    const refCount = activeTab === 'officers' ? counts.reference.officers : counts.reference.ships;
+
+    area.innerHTML = `
+        ${renderTabBar()}
+        ${renderToolbar(refCount)}
+        ${renderFilterChips()}
+        ${renderBulkActions(items)}
+        <div class="cat-grid" role="grid">
+            ${items.length === 0 ? renderEmpty() : renderGrid(items)}
+        </div>
+        ${undoStack.length > 0 ? renderUndoBar() : ''}
+    `;
+    bindEvents();
+
+    // Re-focus search if it was focused before
+    const searchInput = area.querySelector('.cat-search');
+    if (searchInput && document.activeElement?.classList?.contains('cat-search')) {
+        searchInput.focus();
+    }
+}
+
+function renderTabBar() {
+    const oCount = counts.reference.officers || 0;
+    const sCount = counts.reference.ships || 0;
+    const oOverlay = counts.overlay?.officers || {};
+    const sOverlay = counts.overlay?.ships || {};
+    return `
+        <div class="cat-tabs">
+            <button class="cat-tab ${activeTab === 'officers' ? 'active' : ''}" data-tab="officers">
+                Officers <span class="cat-tab-count">${oCount}</span>
+                ${oOverlay.owned ? `<span class="cat-tab-owned">${oOverlay.owned} owned</span>` : ''}
+            </button>
+            <button class="cat-tab ${activeTab === 'ships' ? 'active' : ''}" data-tab="ships">
+                Ships <span class="cat-tab-count">${sCount}</span>
+                ${sOverlay.owned ? `<span class="cat-tab-owned">${sOverlay.owned} owned</span>` : ''}
+            </button>
+        </div>
+    `;
+}
+
+function renderToolbar(totalRef) {
+    const noun = activeTab === 'officers' ? 'officer' : 'ship';
+    const items = activeTab === 'officers' ? officers : ships;
+    return `
+        <div class="cat-toolbar">
+            <div class="cat-search-wrap">
+                <svg class="cat-search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                <input type="text" class="cat-search" placeholder="Search ${noun}s..." value="${esc(searchQuery)}" data-action="search" autofocus />
+                ${searchQuery ? '<button class="cat-search-clear" data-action="clear-search" title="Clear search">✕</button>' : ''}
+            </div>
+            <span class="cat-result-count">${items.length}${totalRef ? ` / ${totalRef}` : ''}</span>
+        </div>
+    `;
+}
+
+function renderFilterChips() {
+    const ownershipOpts = [
+        { value: 'all', label: 'All' },
+        { value: 'owned', label: '✓ Owned' },
+        { value: 'unowned', label: '✗ Unowned' },
+        { value: 'unknown', label: '? Unknown' },
+    ];
+    const targetOpts = [
+        { value: 'all', label: 'Any' },
+        { value: 'targeted', label: '🎯 Targeted' },
+        { value: 'not-targeted', label: 'Not targeted' },
+    ];
+
+    return `
+        <div class="cat-filters">
+            <div class="cat-filter-group">
+                <span class="cat-filter-label">Ownership:</span>
+                ${ownershipOpts.map(o => `
+                    <button class="cat-chip ${filters.ownership === o.value ? 'active' : ''}"
+                            data-action="filter-ownership" data-value="${o.value}">${o.label}</button>
+                `).join('')}
+            </div>
+            <div class="cat-filter-group">
+                <span class="cat-filter-label">Target:</span>
+                ${targetOpts.map(o => `
+                    <button class="cat-chip ${filters.target === o.value ? 'active' : ''}"
+                            data-action="filter-target" data-value="${o.value}">${o.label}</button>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderBulkActions(items) {
+    if (items.length === 0) return '';
+    return `
+        <div class="cat-bulk">
+            <span class="cat-bulk-label">Visible (${items.length}):</span>
+            <button class="cat-bulk-btn" data-action="bulk-owned" title="Mark all visible as Owned">✓ Mark Owned</button>
+            <button class="cat-bulk-btn" data-action="bulk-unowned" title="Mark all visible as Unowned">✗ Mark Unowned</button>
+            <button class="cat-bulk-btn" data-action="bulk-target" title="Toggle target on all visible">🎯 Toggle Target</button>
+        </div>
+    `;
+}
+
+function renderGrid(items) {
+    if (activeTab === 'officers') {
+        return items.map(o => renderOfficerCard(o)).join('');
+    } else {
+        return items.map(s => renderShipCard(s)).join('');
+    }
+}
+
+function renderOfficerCard(o) {
+    const owned = o.ownershipState === 'owned';
+    const unowned = o.ownershipState === 'unowned';
+    const unknown = o.ownershipState === 'unknown';
+    const targeted = o.target;
+
+    return `
+        <div class="cat-card ${owned ? 'cat-owned' : ''} ${unowned ? 'cat-unowned' : ''} ${targeted ? 'cat-targeted' : ''}"
+             data-id="${esc(o.id)}" tabindex="0" role="row">
+            <div class="cat-card-header">
+                <span class="cat-card-name">${esc(o.name)}</span>
+                ${o.rarity ? `<span class="cat-badge rarity-${(o.rarity || '').toLowerCase()}">${esc(o.rarity)}</span>` : ''}
+                ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
+            </div>
+            <div class="cat-card-abilities">
+                ${o.captainManeuver ? `<div class="cat-ability"><span class="cat-ability-label">CM:</span> ${esc(o.captainManeuver)}</div>` : ''}
+                ${o.officerAbility ? `<div class="cat-ability"><span class="cat-ability-label">OA:</span> ${esc(o.officerAbility)}</div>` : ''}
+            </div>
+            <div class="cat-card-overlay">
+                <button class="cat-own-btn ${owned ? 'active' : ''}" data-action="toggle-owned" data-id="${esc(o.id)}" title="Toggle owned">
+                    ${owned ? '✓ Owned' : unowned ? '✗ Not Owned' : '? Unknown'}
+                </button>
+                <button class="cat-target-btn ${targeted ? 'active' : ''}" data-action="toggle-target" data-id="${esc(o.id)}" title="Toggle target">
+                    ${targeted ? '🎯 Targeted' : '○ Target'}
+                </button>
+                ${o.userLevel ? `<span class="cat-user-level">Lv ${o.userLevel}</span>` : ''}
+                ${o.userRank ? `<span class="cat-user-rank">${esc(o.userRank)}</span>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function renderShipCard(s) {
+    const owned = s.ownershipState === 'owned';
+    const unowned = s.ownershipState === 'unowned';
+    const targeted = s.target;
+
+    return `
+        <div class="cat-card ${owned ? 'cat-owned' : ''} ${unowned ? 'cat-unowned' : ''} ${targeted ? 'cat-targeted' : ''}"
+             data-id="${esc(s.id)}" tabindex="0" role="row">
+            <div class="cat-card-header">
+                <span class="cat-card-name">${esc(s.name)}</span>
+                ${s.rarity ? `<span class="cat-badge rarity-${(s.rarity || '').toLowerCase()}">${esc(s.rarity)}</span>` : ''}
+                ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
+                ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
+            </div>
+            <div class="cat-card-meta">
+                ${s.grade ? `<span>Grade ${s.grade}</span>` : ''}
+                ${s.tier ? `<span>T${s.tier}</span>` : ''}
+            </div>
+            <div class="cat-card-overlay">
+                <button class="cat-own-btn ${owned ? 'active' : ''}" data-action="toggle-owned" data-id="${esc(s.id)}" title="Toggle owned">
+                    ${owned ? '✓ Owned' : unowned ? '✗ Not Owned' : '? Unknown'}
+                </button>
+                <button class="cat-target-btn ${targeted ? 'active' : ''}" data-action="toggle-target" data-id="${esc(s.id)}" title="Toggle target">
+                    ${targeted ? '🎯 Targeted' : '○ Target'}
+                </button>
+                ${s.userTier ? `<span class="cat-user-level">T${s.userTier}</span>` : ''}
+                ${s.userLevel ? `<span class="cat-user-level">Lv ${s.userLevel}</span>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function renderEmpty() {
+    if (searchQuery || filters.ownership !== 'all' || filters.target !== 'all') {
+        return `<div class="cat-empty"><p>No ${activeTab} match your filters.</p>
+                <button class="cat-clear-filters" data-action="clear-all-filters">Clear all filters</button></div>`;
+    }
+    return `<div class="cat-empty">
+        <p>No ${activeTab} in the reference catalog yet.</p>
+        <p class="hint">Import reference data using the wiki ingest script to populate the catalog.</p>
+    </div>`;
+}
+
+function renderUndoBar() {
+    const last = undoStack[undoStack.length - 1];
+    return `
+        <div class="cat-undo-bar">
+            <span>Updated ${last.count} ${activeTab}</span>
+            <button class="cat-undo-btn" data-action="undo">↩ Undo</button>
+        </div>
+    `;
+}
+
+// ─── Event Binding ──────────────────────────────────────────
+
+let searchDebounce = null;
+
+function bindEvents() {
+    const area = $("#catalog-area");
+    if (!area) return;
+
+    // Tab switching
+    area.querySelectorAll('.cat-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            activeTab = btn.dataset.tab;
+            searchQuery = '';
+            filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
+            undoStack = [];
+            refresh();
+        });
+    });
+
+    // Search input with debounce
+    const searchInput = area.querySelector('.cat-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(() => {
+                searchQuery = e.target.value.trim();
+                refresh();
+            }, 200);
+        });
+        // Keep focus on search for rapid-fire workflow
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                searchQuery = '';
+                searchInput.value = '';
+                refresh();
+            }
+        });
+    }
+
+    // Clear search
+    area.querySelectorAll('[data-action="clear-search"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            searchQuery = '';
+            refresh();
+            // Re-focus search after clear
+            setTimeout(() => {
+                const s = area.querySelector('.cat-search');
+                if (s) s.focus();
+            }, 50);
+        });
+    });
+
+    // Filter chips
+    area.querySelectorAll('[data-action="filter-ownership"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            filters.ownership = btn.dataset.value;
+            refresh();
+        });
+    });
+    area.querySelectorAll('[data-action="filter-target"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            filters.target = btn.dataset.value;
+            refresh();
+        });
+    });
+
+    // Clear all filters
+    area.querySelectorAll('[data-action="clear-all-filters"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            searchQuery = '';
+            filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
+            refresh();
+        });
+    });
+
+    // Single item: toggle ownership (cycles: unknown → owned → unowned → unknown)
+    area.querySelectorAll('[data-action="toggle-owned"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.id;
+            const items = activeTab === 'officers' ? officers : ships;
+            const item = items.find(i => i.id === id);
+            if (!item) return;
+
+            const cycle = { unknown: 'owned', owned: 'unowned', unowned: 'unknown' };
+            const next = cycle[item.ownershipState] || 'owned';
+
+            const setFn = activeTab === 'officers' ? api.setOfficerOverlay : api.setShipOverlay;
+            await setFn(id, { ownershipState: next });
+            await refresh();
+        });
+    });
+
+    // Single item: toggle target
+    area.querySelectorAll('[data-action="toggle-target"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.id;
+            const items = activeTab === 'officers' ? officers : ships;
+            const item = items.find(i => i.id === id);
+            if (!item) return;
+
+            const setFn = activeTab === 'officers' ? api.setOfficerOverlay : api.setShipOverlay;
+            await setFn(id, { target: !item.target });
+            await refresh();
+        });
+    });
+
+    // Bulk actions
+    area.querySelectorAll('[data-action="bulk-owned"]').forEach(btn => {
+        btn.addEventListener('click', () => bulkAction('owned'));
+    });
+    area.querySelectorAll('[data-action="bulk-unowned"]').forEach(btn => {
+        btn.addEventListener('click', () => bulkAction('unowned'));
+    });
+    area.querySelectorAll('[data-action="bulk-target"]').forEach(btn => {
+        btn.addEventListener('click', () => bulkToggleTarget());
+    });
+
+    // Undo
+    area.querySelectorAll('[data-action="undo"]').forEach(btn => {
+        btn.addEventListener('click', () => performUndo());
+    });
+
+    // Keyboard navigation on cards
+    area.querySelectorAll('.cat-card').forEach(card => {
+        card.addEventListener('keydown', (e) => {
+            if (e.key === ' ' || e.key === 'Enter') {
+                // Toggle ownership
+                e.preventDefault();
+                const ownBtn = card.querySelector('[data-action="toggle-owned"]');
+                if (ownBtn) ownBtn.click();
+            } else if (e.key === 't' || e.key === 'T') {
+                // Toggle target
+                e.preventDefault();
+                const tgtBtn = card.querySelector('[data-action="toggle-target"]');
+                if (tgtBtn) tgtBtn.click();
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const next = card.nextElementSibling;
+                if (next?.classList.contains('cat-card')) next.focus();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prev = card.previousElementSibling;
+                if (prev?.classList.contains('cat-card')) prev.focus();
+            }
+        });
+    });
+}
+
+// ─── Bulk Operations ────────────────────────────────────────
+
+async function bulkAction(ownershipState) {
+    const items = activeTab === 'officers' ? officers : ships;
+    if (items.length === 0) return;
+
+    // Save previous states for undo
+    const previousStates = items.map(i => ({ id: i.id, ownershipState: i.ownershipState }));
+    const refIds = items.map(i => i.id);
+
+    const bulkFn = activeTab === 'officers' ? api.bulkSetOfficerOverlay : api.bulkSetShipOverlay;
+    await bulkFn(refIds, { ownershipState });
+
+    undoStack.push({ type: 'ownership', refIds, previousStates, count: refIds.length, tab: activeTab });
+    await refresh();
+}
+
+async function bulkToggleTarget() {
+    const items = activeTab === 'officers' ? officers : ships;
+    if (items.length === 0) return;
+
+    // If any are not targeted, target them all; otherwise untarget all
+    const anyNotTargeted = items.some(i => !i.target);
+    const target = anyNotTargeted;
+
+    const previousStates = items.map(i => ({ id: i.id, target: i.target }));
+    const refIds = items.map(i => i.id);
+
+    const bulkFn = activeTab === 'officers' ? api.bulkSetOfficerOverlay : api.bulkSetShipOverlay;
+    await bulkFn(refIds, { target });
+
+    undoStack.push({ type: 'target', refIds, previousStates, count: refIds.length, tab: activeTab });
+    await refresh();
+}
+
+async function performUndo() {
+    if (undoStack.length === 0) return;
+    const action = undoStack.pop();
+
+    const bulkFn = action.tab === 'officers' ? api.bulkSetOfficerOverlay : api.bulkSetShipOverlay;
+
+    if (action.type === 'ownership') {
+        // Restore each item's previous ownership state individually
+        // Group by state to minimize API calls
+        const byState = {};
+        for (const prev of action.previousStates) {
+            if (!byState[prev.ownershipState]) byState[prev.ownershipState] = [];
+            byState[prev.ownershipState].push(prev.id);
+        }
+        for (const [state, ids] of Object.entries(byState)) {
+            await bulkFn(ids, { ownershipState: state });
+        }
+    } else if (action.type === 'target') {
+        // Restore each item's previous target state
+        const targeted = action.previousStates.filter(p => p.target).map(p => p.id);
+        const untargeted = action.previousStates.filter(p => !p.target).map(p => p.id);
+        if (targeted.length > 0) await bulkFn(targeted, { target: true });
+        if (untargeted.length > 0) await bulkFn(untargeted, { target: false });
+    }
+
+    await refresh();
+}
+
+// ─── Helpers ────────────────────────────────────────────────
+
+function esc(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}

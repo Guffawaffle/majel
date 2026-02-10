@@ -86,6 +86,20 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "GET", path: "/api/fleet/docks/:num/presets", description: "Find presets for a dock" },
         { method: "GET", path: "/api/fleet/docks/summary", description: "Computed dock briefing" },
         { method: "GET", path: "/api/fleet/docks/conflicts", description: "Officer conflict report" },
+        // ── Catalog (ADR-016) ──
+        { method: "GET", path: "/api/catalog/officers", description: "List reference officers" },
+        { method: "GET", path: "/api/catalog/officers/:id", description: "Get a reference officer" },
+        { method: "GET", path: "/api/catalog/officers/merged", description: "Officers with overlay state" },
+        { method: "GET", path: "/api/catalog/ships", description: "List reference ships" },
+        { method: "GET", path: "/api/catalog/ships/:id", description: "Get a reference ship" },
+        { method: "GET", path: "/api/catalog/ships/merged", description: "Ships with overlay state" },
+        { method: "GET", path: "/api/catalog/counts", description: "Reference + overlay counts" },
+        { method: "PATCH", path: "/api/catalog/officers/:id/overlay", description: "Set officer overlay" },
+        { method: "DELETE", path: "/api/catalog/officers/:id/overlay", description: "Reset officer overlay" },
+        { method: "PATCH", path: "/api/catalog/ships/:id/overlay", description: "Set ship overlay" },
+        { method: "DELETE", path: "/api/catalog/ships/:id/overlay", description: "Reset ship overlay" },
+        { method: "POST", path: "/api/catalog/officers/bulk-overlay", description: "Bulk set officer overlays" },
+        { method: "POST", path: "/api/catalog/ships/bulk-overlay", description: "Bulk set ship overlays" },
       ],
     });
   });

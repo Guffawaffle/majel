@@ -21,6 +21,9 @@
       <button class="sidebar-nav-btn" data-view="fleet">
         <span class="icon">🚀</span> Fleet
       </button>
+      <button class="sidebar-nav-btn" data-view="catalog">
+        <span class="icon">📋</span> Catalog
+      </button>
 
       <div class="sidebar-section-label">Tools</div>
       <button id="new-chat-btn" class="sidebar-nav-btn">
@@ -31,9 +34,6 @@
       </button>
       <button id="recall-btn" class="sidebar-nav-btn">
         <span class="icon">🧠</span> Memory Recall
-      </button>
-      <button id="refresh-roster-btn" class="sidebar-nav-btn">
-        <span class="icon">🔄</span> Refresh Roster
       </button>
       <button id="diagnostic-btn" class="sidebar-nav-btn">
         <span class="icon">⚡</span> Diagnostic
@@ -55,7 +55,7 @@
           <button id="ops-level-global" class="ops-sidebar" title="Click to edit Ops Level">
             OPS <span id="ops-level-value">—</span>
           </button>
-          <span id="roster-status" class="roster-badge"></span>
+
         </div>
       </div>
     </nav>
@@ -96,27 +96,6 @@
             </ol>
             <pre>GEMINI_API_KEY=AIzaSy...your-key-here</pre>
             <p class="hint">💡 No Google Cloud project needed — AI Studio generates the key directly.</p>
-          </div>
-
-          <div class="setup-section" id="setup-sheets">
-            <h3>2. Google Sheets <span class="optional-badge">Optional</span></h3>
-            <p>Connect your STFC roster spreadsheet for fleet queries. Skip this if you just want to test chat.</p>
-            <details>
-              <summary>Show setup steps</summary>
-              <ol>
-                <li>Go to <a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noopener">Google Cloud Console → APIs</a></li>
-                <li>Select your project, click <strong>"+ ENABLE APIS AND SERVICES"</strong>, search <strong>"Google Sheets API"</strong>, enable it</li>
-                <li>Go to <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">OAuth consent screen</a> → External → fill in app name ("Ariadne"), your email, add <code>spreadsheets.readonly</code> scope, add yourself as test user</li>
-                <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a> → <strong>"+ CREATE CREDENTIALS"</strong> → <strong>"OAuth client ID"</strong> → type: <strong>Desktop app</strong></li>
-                <li>Click <strong>"DOWNLOAD JSON"</strong> → save as <code>credentials.json</code> in <code>/srv/majel/</code></li>
-                <li>Get your spreadsheet ID from the URL:<br/>
-                  <code>https://docs.google.com/spreadsheets/d/<strong>[THIS-ID]</strong>/edit</code></li>
-                <li>Add to <code>.env</code>:</li>
-              </ol>
-              <pre>MAJEL_SPREADSHEET_ID=your-spreadsheet-id
-MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
-              <p class="hint">📄 Full walkthrough: see <a href="https://github.com" target="_blank">docs/SETUP.md</a></p>
-            </details>
           </div>
 
           <div class="setup-section" id="setup-restart">
@@ -176,6 +155,9 @@ MAJEL_SHEET_RANGE=Sheet1!A1:Z1000</pre>
 
       <!-- Fleet Manager Area (hidden by default) -->
       <section id="fleet-manager-area" class="fleet-manager-area hidden"></section>
+
+      <!-- Catalog Area (hidden by default) -->
+      <section id="catalog-area" class="catalog-area hidden"></section>
     </div>
 
     <!-- Recall Dialog -->
