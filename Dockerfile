@@ -1,7 +1,7 @@
 # ── Stage 1: Build ────────────────────────────────────────────
 FROM node:22-slim AS builder
 
-# better-sqlite3 needs native compilation
+# @libsql/client uses better-sqlite3-multiple-ciphers which needs native compilation
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
     rm -rf /var/lib/apt/lists/*

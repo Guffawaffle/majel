@@ -3,7 +3,7 @@
  *
  * Majel — STFC Fleet Intelligence System
  *
- * SQLite-backed key/value store for user-configurable settings.
+ * libSQL-backed key/value store for user-configurable settings.
  * Lives alongside Lex memory in .smartergpt/lex/settings.db.
  *
  * Priority chain for runtime config:
@@ -13,10 +13,11 @@
  *
  * Settings are typed, validated, and have defaults. The UI can
  * read/write them via /api/settings endpoints.
+ *
+ * Migrated from better-sqlite3 to @libsql/client in ADR-018 Phase 1.
  */
 
-import Database from "better-sqlite3";
-import * as fs from "node:fs";
+import { openDatabase, type Client } from "./db.js";
 import * as path from "node:path";
 import { log } from "./logger.js";
 
@@ -147,38 +148,56 @@ const SCHEMA_MAP = new Map<string, SettingDef>(
   SETTINGS_SCHEMA.map((s) => [s.key, s])
 );
 
+// ─── SQL ────────────────────────────────────────────────────────
+
+const SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`,
+];
+
+const SQL = {
+  get: `SELECT value FROM settings WHERE key = ?`,
+  set: `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  del: `DELETE FROM settings WHERE key = ?`,
+  all: `SELECT key, value FROM settings`,
+  count: `SELECT COUNT(*) AS count FROM settings`,
+};
+
 // ─── Settings Store ─────────────────────────────────────────────
 
 export interface SettingsStore {
   /** Get a single setting's resolved value (user → env → default). */
-  get(key: string): string;
+  get(key: string): Promise<string>;
 
   /** Get a setting parsed to its native type. */
-  getTyped(key: string): string | number | boolean | unknown;
+  getTyped(key: string): Promise<string | number | boolean | unknown>;
 
   /** Set a user-level setting. */
-  set(key: string, value: string): void;
+  set(key: string, value: string): Promise<void>;
 
   /** Delete a user-level setting (reverts to env/default). */
-  delete(key: string): boolean;
+  delete(key: string): Promise<boolean>;
 
   /** Get all settings with their resolved values and metadata. */
-  getAll(): SettingEntry[];
+  getAll(): Promise<SettingEntry[]>;
 
   /** Get all settings in a specific category. */
-  getByCategory(category: string): SettingEntry[];
+  getByCategory(category: string): Promise<SettingEntry[]>;
 
   /** Export all user-set values as a flat object. */
-  exportUserValues(): Record<string, string>;
+  exportUserValues(): Promise<Record<string, string>>;
 
   /** Import multiple settings at once. */
-  importValues(values: Record<string, string>): void;
+  importValues(values: Record<string, string>): Promise<void>;
 
   /** Close the database. */
   close(): void;
 
   /** Count how many settings have user-level overrides. */
-  countUserOverrides(): number;
+  countUserOverrides(): Promise<number>;
 
   /** Get the database file path. */
   getDbPath(): string;
@@ -195,50 +214,31 @@ export interface SettingEntry {
   sensitive: boolean;
 }
 
-/**
- * Resolve the default DB path: .smartergpt/lex/settings.db
- * Colocated with Lex memory, git-ignored via .smartergpt/
- */
-function defaultDbPath(): string {
-  const dir = path.resolve(".smartergpt", "lex");
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  return path.join(dir, "settings.db");
-}
+// ─── Implementation ─────────────────────────────────────────────
+
+const DB_DIR = path.resolve(".smartergpt", "lex");
+const DB_FILE = path.join(DB_DIR, "settings.db");
 
 /**
- * Create a settings store backed by SQLite.
+ * Create a settings store backed by libSQL.
  */
-export function createSettingsStore(dbPath?: string): SettingsStore {
-  const resolvedPath = dbPath ?? defaultDbPath();
-  const db = new Database(resolvedPath);
+export async function createSettingsStore(dbPath?: string): Promise<SettingsStore> {
+  const resolvedPath = dbPath ?? DB_FILE;
+  const client = openDatabase(resolvedPath);
 
-  // WAL mode for concurrent reads during server operation
-  db.pragma("journal_mode = WAL");
-
-  // Create table if needed
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key   TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-
-  const stmtGet = db.prepare("SELECT value FROM settings WHERE key = ?");
-  const stmtSet = db.prepare(
-    "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+  // Schema init (batch)
+  await client.batch(
+    SCHEMA_STATEMENTS.map((s) => ({ sql: s, args: [] })),
+    "write",
   );
-  const stmtDel = db.prepare("DELETE FROM settings WHERE key = ?");
-  const stmtAll = db.prepare("SELECT key, value FROM settings");
 
   /**
    * Resolve a setting: user DB → env var → schema default.
    */
-  function resolve(key: string): { value: string; source: "user" | "env" | "default" } {
+  async function resolve(key: string): Promise<{ value: string; source: "user" | "env" | "default" }> {
     // 1. User setting (DB)
-    const row = stmtGet.get(key) as { value: string } | undefined;
+    const result = await client.execute({ sql: SQL.get, args: [key] });
+    const row = result.rows[0] as unknown as { value: string } | undefined;
     if (row) {
       return { value: row.value, source: "user" };
     }
@@ -269,52 +269,55 @@ export function createSettingsStore(dbPath?: string): SettingsStore {
     }
   }
 
+  /** Validate a setting value against its schema. Throws on invalid. */
+  function validate(key: string, value: string): SettingDef {
+    if (!SCHEMA_MAP.has(key)) {
+      throw new Error(`Unknown setting: ${key}`);
+    }
+    const def = SCHEMA_MAP.get(key)!;
+    if (def.type === "number" && isNaN(Number(value))) {
+      throw new Error(`Setting ${key} must be a number, got: ${value}`);
+    }
+    if (def.type === "number" && def.min !== undefined && Number(value) < def.min) {
+      throw new Error(`Setting ${key} minimum is ${def.min}, got: ${value}`);
+    }
+    if (def.type === "number" && def.max !== undefined && Number(value) > def.max) {
+      throw new Error(`Setting ${key} maximum is ${def.max}, got: ${value}`);
+    }
+    if (def.type === "boolean" && !["true", "false", "1", "0"].includes(value)) {
+      throw new Error(`Setting ${key} must be a boolean, got: ${value}`);
+    }
+    return def;
+  }
+
   return {
-    get(key: string): string {
-      return resolve(key).value;
+    async get(key: string): Promise<string> {
+      return (await resolve(key)).value;
     },
 
-    getTyped(key: string): string | number | boolean | unknown {
-      const { value } = resolve(key);
+    async getTyped(key: string): Promise<string | number | boolean | unknown> {
+      const { value } = await resolve(key);
       const def = SCHEMA_MAP.get(key);
       return def ? toTyped(value, def.type) : value;
     },
 
-    set(key: string, value: string): void {
-      // Validate key exists in schema
-      if (!SCHEMA_MAP.has(key)) {
-        throw new Error(`Unknown setting: ${key}`);
-      }
-
-      // Basic type validation
-      const def = SCHEMA_MAP.get(key)!;
-      if (def.type === "number" && isNaN(Number(value))) {
-        throw new Error(`Setting ${key} must be a number, got: ${value}`);
-      }
-      if (def.type === "number" && def.min !== undefined && Number(value) < def.min) {
-        throw new Error(`Setting ${key} minimum is ${def.min}, got: ${value}`);
-      }
-      if (def.type === "number" && def.max !== undefined && Number(value) > def.max) {
-        throw new Error(`Setting ${key} maximum is ${def.max}, got: ${value}`);
-      }
-      if (def.type === "boolean" && !["true", "false", "1", "0"].includes(value)) {
-        throw new Error(`Setting ${key} must be a boolean, got: ${value}`);
-      }
-
-      stmtSet.run(key, value);
+    async set(key: string, value: string): Promise<void> {
+      const def = validate(key, value);
+      await client.execute({ sql: SQL.set, args: [key, value] });
       log.settings.debug({ key, value: def.sensitive ? "[REDACTED]" : value }, "set");
     },
 
-    delete(key: string): boolean {
-      const result = stmtDel.run(key);
-      log.settings.debug({ key, deleted: result.changes > 0 }, "delete");
-      return result.changes > 0;
+    async delete(key: string): Promise<boolean> {
+      const result = await client.execute({ sql: SQL.del, args: [key] });
+      log.settings.debug({ key, deleted: result.rowsAffected > 0 }, "delete");
+      return result.rowsAffected > 0;
     },
 
-    getAll(): SettingEntry[] {
-      return SETTINGS_SCHEMA.map((def) => {
-        const { value, source } = resolve(def.key);
-        return {
+    async getAll(): Promise<SettingEntry[]> {
+      const entries: SettingEntry[] = [];
+      for (const def of SETTINGS_SCHEMA) {
+        const { value, source } = await resolve(def.key);
+        entries.push({
           key: def.key,
           value: def.sensitive ? "••••••••" : value,
           source,
@@ -323,41 +326,55 @@ export function createSettingsStore(dbPath?: string): SettingsStore {
           description: def.description,
           type: def.type,
           sensitive: def.sensitive ?? false,
-        };
-      });
-    },
-
-    getByCategory(category: string): SettingEntry[] {
-      return this.getAll().filter((e) => e.category === category);
-    },
-
-    exportUserValues(): Record<string, string> {
-      const rows = stmtAll.all() as Array<{ key: string; value: string }>;
-      const result: Record<string, string> = {};
-      for (const row of rows) {
-        result[row.key] = row.value;
+        });
       }
-      return result;
+      return entries;
     },
 
-    importValues(values: Record<string, string>): void {
-      const tx = db.transaction(() => {
-        for (const [key, value] of Object.entries(values)) {
-          if (SCHEMA_MAP.has(key)) {
-            this.set(key, value);
-          }
+    async getByCategory(category: string): Promise<SettingEntry[]> {
+      return (await this.getAll()).filter((e) => e.category === category);
+    },
+
+    async exportUserValues(): Promise<Record<string, string>> {
+      const result = await client.execute(SQL.all);
+      const out: Record<string, string> = {};
+      for (const row of result.rows) {
+        const r = row as unknown as { key: string; value: string };
+        out[r.key] = r.value;
+      }
+      return out;
+    },
+
+    async importValues(values: Record<string, string>): Promise<void> {
+      // Validate all settings first (throws before any writes)
+      const valid: Array<[string, string]> = [];
+      for (const [key, value] of Object.entries(values)) {
+        if (SCHEMA_MAP.has(key)) {
+          validate(key, value);
+          valid.push([key, value]);
         }
-      });
-      tx();
+      }
+
+      // Write in a transaction
+      const tx = await client.transaction("write");
+      try {
+        for (const [key, value] of valid) {
+          await tx.execute({ sql: SQL.set, args: [key, value] });
+        }
+        await tx.commit();
+      } catch (e) {
+        await tx.rollback();
+        throw e;
+      }
     },
 
     close(): void {
-      db.close();
+      client.close();
     },
 
-    countUserOverrides(): number {
-      const row = db.prepare("SELECT COUNT(*) as count FROM settings").get() as { count: number };
-      return row.count;
+    async countUserOverrides(): Promise<number> {
+      const result = await client.execute(SQL.count);
+      return (result.rows[0] as unknown as { count: number }).count;
     },
 
     getDbPath(): string {

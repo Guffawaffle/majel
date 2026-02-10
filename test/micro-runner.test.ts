@@ -437,12 +437,12 @@ describe("VALIDATION_DISCLAIMER", () => {
 
 describe("createMicroRunner", () => {
   describe("prepare()", () => {
-    it("compiles, gates, and augments in one call", () => {
+    it("compiles, gates, and augments in one call", async () => {
       const lookup = makeOfficerLookup([KHAN]);
       const ctx = makeContextSources({ hasRoster: true, lookupOfficer: lookup });
       const runner = createMicroRunner({ contextSources: ctx, knownOfficerNames: ["Khan"] });
 
-      const { contract, gatedContext, augmentedMessage } = runner.prepare("Tell me about Khan");
+      const { contract, gatedContext, augmentedMessage } = await runner.prepare("Tell me about Khan");
 
       expect(contract.taskType).toBe("reference_lookup");
       expect(gatedContext.contextBlock).toContain("Officer \"Khan\"");
@@ -450,11 +450,11 @@ describe("createMicroRunner", () => {
       expect(augmentedMessage).toContain("Tell me about Khan");
     });
 
-    it("passes through strategy_general without context block", () => {
+    it("passes through strategy_general without context block", async () => {
       const ctx = makeContextSources();
       const runner = createMicroRunner({ contextSources: ctx });
 
-      const { contract, gatedContext, augmentedMessage } = runner.prepare("How do armadas work?");
+      const { contract, gatedContext, augmentedMessage } = await runner.prepare("How do armadas work?");
 
       expect(contract.taskType).toBe("strategy_general");
       expect(gatedContext.contextBlock).toBeNull();
@@ -463,12 +463,12 @@ describe("createMicroRunner", () => {
   });
 
   describe("validate()", () => {
-    it("returns needsRepair=false when validation passes", () => {
+    it("returns needsRepair=false when validation passes", async () => {
       const ctx = makeContextSources();
       const runner = createMicroRunner({ contextSources: ctx });
-      const { contract, gatedContext } = runner.prepare("How do armadas work?");
+      const { contract, gatedContext } = await runner.prepare("How do armadas work?");
 
-      const result = runner.validate(
+      const result = await runner.validate(
         "Armadas are cooperative fleet battles...",
         contract,
         gatedContext,
@@ -481,12 +481,12 @@ describe("createMicroRunner", () => {
       expect(result.receipt.validationResult).toBe("pass");
     });
 
-    it("returns needsRepair=true with repair prompt when validation fails", () => {
+    it("returns needsRepair=true with repair prompt when validation fails", async () => {
       const ctx = makeContextSources({ hasRoster: true });
       const runner = createMicroRunner({ contextSources: ctx, knownOfficerNames: ["Khan"] });
-      const { contract, gatedContext } = runner.prepare("Tell me about Khan");
+      const { contract, gatedContext } = await runner.prepare("Tell me about Khan");
 
-      const result = runner.validate(
+      const result = await runner.validate(
         "Khan has level 40 with power 1.2M and does +25% damage to all enemies.",
         contract,
         gatedContext,
@@ -499,13 +499,13 @@ describe("createMicroRunner", () => {
       expect(result.receipt.validationResult).toBe("fail");
     });
 
-    it("produces a receipt with correct structure", () => {
+    it("produces a receipt with correct structure", async () => {
       const lookup = makeOfficerLookup([KHAN]);
       const ctx = makeContextSources({ hasRoster: true, lookupOfficer: lookup });
       const runner = createMicroRunner({ contextSources: ctx, knownOfficerNames: ["Khan"] });
-      const { contract, gatedContext } = runner.prepare("Tell me about Khan");
+      const { contract, gatedContext } = await runner.prepare("Tell me about Khan");
 
-      const result = runner.validate(
+      const result = await runner.validate(
         "According to the imported reference data, Khan is an augment officer.",
         contract,
         gatedContext,

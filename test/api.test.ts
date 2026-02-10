@@ -11,7 +11,7 @@ import { createApp, type AppState } from "../src/server/index.js";
 import type { GeminiEngine } from "../src/server/gemini.js";
 import type { MemoryService, Frame } from "../src/server/memory.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/settings.js";
-import { bootstrapConfig } from "../src/server/config.js";
+import { bootstrapConfigSync } from "../src/server/config.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -73,7 +73,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     referenceStore: null,
     overlayStore: null,
     startupComplete: false,
-    config: bootstrapConfig(),
+    config: bootstrapConfigSync(),
     ...overrides,
   };
 }
@@ -504,13 +504,13 @@ describe("settings API", () => {
   let settingsDir: string;
   let settingsStore: SettingsStore;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-api-settings-"));
-    settingsStore = createSettingsStore(path.join(settingsDir, "settings.db"));
+    settingsStore = await createSettingsStore(path.join(settingsDir, "settings.db"));
   });
 
-  afterEach(() => {
-    settingsStore.close();
+  afterEach(async () => {
+    await settingsStore.close();
     fs.rmSync(settingsDir, { recursive: true, force: true });
   });
 
@@ -560,7 +560,7 @@ describe("settings API", () => {
         .send({ "display.admiralName": "Guff" });
       expect(res.status).toBe(200);
       expect(res.body.data.results[0]).toEqual({ key: "display.admiralName", status: "updated" });
-      expect(settingsStore.get("display.admiralName")).toBe("Guff");
+      expect(await settingsStore.get("display.admiralName")).toBe("Guff");
     });
 
     it("reports errors for invalid keys", async () => {
@@ -599,7 +599,7 @@ describe("settings API", () => {
     });
 
     it("resets a user-set value", async () => {
-      settingsStore.set("display.admiralName", "Guff");
+      await settingsStore.set("display.admiralName", "Guff");
       const app = createApp(makeState({ settingsStore }));
       const res = await request(app).delete("/api/settings/display.admiralName");
       expect(res.status).toBe(200);
@@ -698,14 +698,14 @@ describe("GET /api/diagnostic", () => {
 
   it("reports settings status with override count when active", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-diag-"));
-    const store = createSettingsStore(path.join(tmpDir, "settings.db"));
-    store.set("display.admiralName", "TestAdmiral");
+    const store = await createSettingsStore(path.join(tmpDir, "settings.db"));
+    await store.set("display.admiralName", "TestAdmiral");
     const app = createApp(makeState({ settingsStore: store }));
     const res = await request(app).get("/api/diagnostic");
     expect(res.body.data.settings.status).toBe("active");
     expect(res.body.data.settings.userOverrides).toBe(1);
     expect(res.body.data.settings.dbPath).toBeDefined();
-    store.close();
+    await store.close();
     fs.rmSync(tmpDir, { recursive: true });
   });
 });

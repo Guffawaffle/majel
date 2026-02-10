@@ -4,7 +4,7 @@
  * Majel — STFC Fleet Intelligence System
  * Named in honor of Majel Barrett-Roddenberry (1932–2008)
  *
- * SQLite-backed behavioral rule storage with Bayesian confidence scoring.
+ * libSQL-backed behavioral rule storage with Bayesian confidence scoring.
  * Rules govern HOW Aria answers (tone, format, source citation habits),
  * NOT what she believes about STFC meta.
  *
@@ -12,10 +12,10 @@
  * no code imported). Uses a Beta-Binomial model for confidence scoring.
  *
  * See ADR-014 "Behavioral Rules" section for design rationale.
+ * Migrated from better-sqlite3 to @libsql/client in ADR-018 Phase 1.
  */
 
-import Database from "better-sqlite3";
-import * as fs from "node:fs";
+import { openDatabase, initSchema, type Client } from "./db.js";
 import * as path from "node:path";
 import { log } from "./logger.js";
 import type { TaskType } from "./micro-runner.js";
@@ -61,13 +61,13 @@ export interface BehaviorStore {
    * Retrieve active rules matching a task type, sorted by confidence descending.
    * Only returns rules that meet the activation threshold.
    */
-  getRules(taskType: TaskType): BehaviorRule[];
+  getRules(taskType: TaskType): Promise<BehaviorRule[]>;
 
   /**
    * Record feedback: the Admiral corrected Aria → adjust rule confidence.
    * polarity +1 = rule was helpful (increase α), -1 = rule was wrong (increase β).
    */
-  recordCorrection(ruleId: string, polarity: 1 | -1): BehaviorRule | null;
+  recordCorrection(ruleId: string, polarity: 1 | -1): Promise<BehaviorRule | null>;
 
   /**
    * Create a new behavioral rule with the skeptical prior.
@@ -77,22 +77,22 @@ export interface BehaviorStore {
     text: string,
     severity: RuleSeverity,
     taskType?: TaskType,
-  ): BehaviorRule;
+  ): Promise<BehaviorRule>;
 
   /**
    * Get a specific rule by ID.
    */
-  getRule(id: string): BehaviorRule | null;
+  getRule(id: string): Promise<BehaviorRule | null>;
 
   /**
    * List all rules (including inactive ones below threshold).
    */
-  listRules(): BehaviorRule[];
+  listRules(): Promise<BehaviorRule[]>;
 
   /**
    * Delete a rule.
    */
-  deleteRule(id: string): boolean;
+  deleteRule(id: string): Promise<boolean>;
 
   /**
    * Compute confidence for a rule: α / (α + β).
@@ -108,13 +108,13 @@ export interface BehaviorStore {
   close(): void;
 
   /** Get rule counts by state. */
-  counts(): { total: number; active: number; inactive: number };
+  counts(): Promise<{ total: number; active: number; inactive: number }>;
 }
 
 // ─── Schema ─────────────────────────────────────────────────
 
-const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS behavior_rules (
+const SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS behavior_rules (
     id            TEXT PRIMARY KEY,
     text          TEXT NOT NULL,
     task_type     TEXT,
@@ -124,80 +124,52 @@ const SCHEMA = `
     severity      TEXT NOT NULL DEFAULT 'should',
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_behavior_rules_task_type
+    ON behavior_rules(task_type)`,
+];
 
-  CREATE INDEX IF NOT EXISTS idx_behavior_rules_task_type
-    ON behavior_rules(task_type);
-`;
+// ─── SQL Queries ────────────────────────────────────────────
+
+const SQL = {
+  insert: `
+    INSERT INTO behavior_rules (id, text, task_type, alpha, beta, observation_count, severity, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  getById: `SELECT * FROM behavior_rules WHERE id = ?`,
+  listAll: `SELECT * FROM behavior_rules ORDER BY (alpha * 1.0 / (alpha + beta)) DESC`,
+  getByTaskType: `
+    SELECT * FROM behavior_rules
+    WHERE (task_type IS NULL OR task_type = ?)
+      AND observation_count >= ?
+      AND (alpha * 1.0 / (alpha + beta)) >= ?
+    ORDER BY (alpha * 1.0 / (alpha + beta)) DESC
+  `,
+  update: `
+    UPDATE behavior_rules
+    SET alpha = ?, beta = ?, observation_count = ?, updated_at = ?
+    WHERE id = ?
+  `,
+  deleteById: `DELETE FROM behavior_rules WHERE id = ?`,
+  countAll: `SELECT COUNT(*) as total FROM behavior_rules`,
+  countActive: `
+    SELECT COUNT(*) as active FROM behavior_rules
+    WHERE observation_count >= ?
+      AND (alpha * 1.0 / (alpha + beta)) >= ?
+  `,
+};
 
 // ─── Implementation ─────────────────────────────────────────
 
 /**
- * Create a BehaviorStore backed by SQLite.
+ * Create a BehaviorStore backed by libSQL.
  *
- * @param dbPath — Path to the SQLite database file. Defaults to data/behavior.db.
+ * @param dbPath — Path to the database file. Defaults to data/behavior.db.
  */
-export function createBehaviorStore(dbPath?: string): BehaviorStore {
+export async function createBehaviorStore(dbPath?: string): Promise<BehaviorStore> {
   const resolvedPath = dbPath ?? path.resolve("data", "behavior.db");
-
-  // Ensure directory exists
-  const dir = path.dirname(resolvedPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  const db = new Database(resolvedPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  db.exec(SCHEMA);
-
-  // ── Prepared Statements ─────────────────────────────────
-
-  const stmts = {
-    insert: db.prepare(`
-      INSERT INTO behavior_rules (id, text, task_type, alpha, beta, observation_count, severity, created_at, updated_at)
-      VALUES (@id, @text, @taskType, @alpha, @beta, @observationCount, @severity, @createdAt, @updatedAt)
-    `),
-
-    getById: db.prepare(`
-      SELECT * FROM behavior_rules WHERE id = ?
-    `),
-
-    listAll: db.prepare(`
-      SELECT * FROM behavior_rules ORDER BY (alpha * 1.0 / (alpha + beta)) DESC
-    `),
-
-    getByTaskType: db.prepare(`
-      SELECT * FROM behavior_rules
-      WHERE (task_type IS NULL OR task_type = ?)
-        AND observation_count >= ?
-        AND (alpha * 1.0 / (alpha + beta)) >= ?
-      ORDER BY (alpha * 1.0 / (alpha + beta)) DESC
-    `),
-
-    update: db.prepare(`
-      UPDATE behavior_rules
-      SET alpha = @alpha,
-          beta = @beta,
-          observation_count = @observationCount,
-          updated_at = @updatedAt
-      WHERE id = @id
-    `),
-
-    deleteById: db.prepare(`
-      DELETE FROM behavior_rules WHERE id = ?
-    `),
-
-    countAll: db.prepare(`
-      SELECT COUNT(*) as total FROM behavior_rules
-    `),
-
-    countActive: db.prepare(`
-      SELECT COUNT(*) as active FROM behavior_rules
-      WHERE observation_count >= ?
-        AND (alpha * 1.0 / (alpha + beta)) >= ?
-    `),
-  };
+  const client = openDatabase(resolvedPath);
+  await initSchema(client, SCHEMA_STATEMENTS);
 
   // ── Row Mapping ─────────────────────────────────────────
 
@@ -227,17 +199,17 @@ export function createBehaviorStore(dbPath?: string): BehaviorStore {
   // ── Store Implementation ────────────────────────────────
 
   return {
-    getRules(taskType: TaskType): BehaviorRule[] {
-      const rows = stmts.getByTaskType.all(
-        taskType,
-        MIN_OBSERVATIONS,
-        MIN_CONFIDENCE,
-      ) as Record<string, unknown>[];
-      return rows.map(rowToRule);
+    async getRules(taskType: TaskType): Promise<BehaviorRule[]> {
+      const result = await client.execute({
+        sql: SQL.getByTaskType,
+        args: [taskType, MIN_OBSERVATIONS, MIN_CONFIDENCE],
+      });
+      return result.rows.map((row) => rowToRule(row as unknown as Record<string, unknown>));
     },
 
-    recordCorrection(ruleId: string, polarity: 1 | -1): BehaviorRule | null {
-      const row = stmts.getById.get(ruleId) as Record<string, unknown> | undefined;
+    async recordCorrection(ruleId: string, polarity: 1 | -1): Promise<BehaviorRule | null> {
+      const result = await client.execute({ sql: SQL.getById, args: [ruleId] });
+      const row = result.rows[0] as unknown as Record<string, unknown> | undefined;
       if (!row) return null;
 
       const rule = rowToRule(row);
@@ -251,12 +223,9 @@ export function createBehaviorStore(dbPath?: string): BehaviorStore {
       rule.observationCount += 1;
       rule.updatedAt = now;
 
-      stmts.update.run({
-        id: rule.id,
-        alpha: rule.alpha,
-        beta: rule.beta,
-        observationCount: rule.observationCount,
-        updatedAt: now,
+      await client.execute({
+        sql: SQL.update,
+        args: [rule.alpha, rule.beta, rule.observationCount, now, rule.id],
       });
 
       log.gemini.debug({
@@ -271,12 +240,12 @@ export function createBehaviorStore(dbPath?: string): BehaviorStore {
       return rule;
     },
 
-    createRule(
+    async createRule(
       id: string,
       text: string,
       severity: RuleSeverity = "should",
       taskType?: TaskType,
-    ): BehaviorRule {
+    ): Promise<BehaviorRule> {
       const now = new Date().toISOString();
       const rule: BehaviorRule = {
         id,
@@ -290,16 +259,19 @@ export function createBehaviorStore(dbPath?: string): BehaviorStore {
         updatedAt: now,
       };
 
-      stmts.insert.run({
-        id: rule.id,
-        text: rule.text,
-        taskType: rule.scope.taskType ?? null,
-        alpha: rule.alpha,
-        beta: rule.beta,
-        observationCount: rule.observationCount,
-        severity: rule.severity,
-        createdAt: rule.createdAt,
-        updatedAt: rule.updatedAt,
+      await client.execute({
+        sql: SQL.insert,
+        args: [
+          rule.id,
+          rule.text,
+          rule.scope.taskType ?? null,
+          rule.alpha,
+          rule.beta,
+          rule.observationCount,
+          rule.severity,
+          rule.createdAt,
+          rule.updatedAt,
+        ],
       });
 
       log.gemini.debug({
@@ -312,19 +284,20 @@ export function createBehaviorStore(dbPath?: string): BehaviorStore {
       return rule;
     },
 
-    getRule(id: string): BehaviorRule | null {
-      const row = stmts.getById.get(id) as Record<string, unknown> | undefined;
+    async getRule(id: string): Promise<BehaviorRule | null> {
+      const result = await client.execute({ sql: SQL.getById, args: [id] });
+      const row = result.rows[0] as unknown as Record<string, unknown> | undefined;
       return row ? rowToRule(row) : null;
     },
 
-    listRules(): BehaviorRule[] {
-      const rows = stmts.listAll.all() as Record<string, unknown>[];
-      return rows.map(rowToRule);
+    async listRules(): Promise<BehaviorRule[]> {
+      const result = await client.execute(SQL.listAll);
+      return result.rows.map((row) => rowToRule(row as unknown as Record<string, unknown>));
     },
 
-    deleteRule(id: string): boolean {
-      const result = stmts.deleteById.run(id);
-      return result.changes > 0;
+    async deleteRule(id: string): Promise<boolean> {
+      const result = await client.execute({ sql: SQL.deleteById, args: [id] });
+      return result.rowsAffected > 0;
     },
 
     confidence: computeConfidence,
@@ -332,12 +305,17 @@ export function createBehaviorStore(dbPath?: string): BehaviorStore {
     isActive: checkActive,
 
     close(): void {
-      db.close();
+      client.close();
     },
 
-    counts(): { total: number; active: number; inactive: number } {
-      const total = (stmts.countAll.get() as { total: number }).total;
-      const active = (stmts.countActive.get(MIN_OBSERVATIONS, MIN_CONFIDENCE) as { active: number }).active;
+    async counts(): Promise<{ total: number; active: number; inactive: number }> {
+      const totalResult = await client.execute(SQL.countAll);
+      const total = (totalResult.rows[0] as unknown as { total: number }).total;
+      const activeResult = await client.execute({
+        sql: SQL.countActive,
+        args: [MIN_OBSERVATIONS, MIN_CONFIDENCE],
+      });
+      const active = (activeResult.rows[0] as unknown as { active: number }).active;
       return { total, active, inactive: total - active };
     },
   };

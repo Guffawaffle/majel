@@ -38,8 +38,8 @@ export function createChatRoutes(appState: AppState): Router {
 
       // Persist both messages to session store
       if (appState.sessionStore) {
-        appState.sessionStore.addMessage(sessionId, "user", message);
-        appState.sessionStore.addMessage(sessionId, "model", answer);
+        await appState.sessionStore.addMessage(sessionId, "user", message);
+        await appState.sessionStore.addMessage(sessionId, "model", answer);
       }
 
       sendOk(res, { answer });

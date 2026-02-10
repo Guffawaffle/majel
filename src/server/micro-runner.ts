@@ -485,11 +485,11 @@ export interface MicroRunner {
    * Returns the compiled contract, gated context, and an augmented message
    * ready to send to the model.
    */
-  prepare(message: string): {
+  prepare(message: string): Promise<{
     contract: TaskContract;
     gatedContext: GatedContext;
     augmentedMessage: string;
-  };
+  }>;
 
   /**
    * Validate a model response and produce a receipt.
@@ -501,12 +501,12 @@ export interface MicroRunner {
     gatedContext: GatedContext,
     sessionId: string,
     startTime: number,
-  ): {
+  ): Promise<{
     validatedResponse: string;
     needsRepair: boolean;
     repairPrompt: string | null;
     receipt: MicroRunnerReceipt;
-  };
+  }>;
 
   /**
    * Finalize after a repair pass (or when no repair was needed).
@@ -523,12 +523,12 @@ export interface MicroRunner {
  */
 export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
   return {
-    prepare(message: string) {
+    async prepare(message: string) {
       const contract = compileTask(message, config.contextSources, config.knownOfficerNames);
 
       // Phase 2: Inject active behavioral rules into the contract
       if (config.behaviorStore) {
-        const activeRules = config.behaviorStore.getRules(contract.taskType);
+        const activeRules = await config.behaviorStore.getRules(contract.taskType);
         for (const rule of activeRules) {
           // Prepend severity prefix for the model
           const prefix = rule.severity === "must" ? "MUST:" : rule.severity === "should" ? "SHOULD:" : "STYLE:";
@@ -542,7 +542,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       return { contract, gatedContext: gated, augmentedMessage };
     },
 
-    validate(
+    async validate(
       response: string,
       contract: TaskContract,
       gatedContext: GatedContext,
@@ -554,7 +554,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
 
       // Collect which behavioral rules contributed
       const behavioralRulesApplied = config.behaviorStore
-        ? config.behaviorStore.getRules(contract.taskType).map((r) => r.id)
+        ? (await config.behaviorStore.getRules(contract.taskType)).map((r) => r.id)
         : [];
 
       const receipt: MicroRunnerReceipt = {

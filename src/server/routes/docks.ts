@@ -3,6 +3,8 @@
  *
  * Intent catalog CRUD, dock loadout management, dock ship rotation,
  * crew preset CRUD, conflict detection, and dock briefing.
+ *
+ * All handlers async for @libsql/client (ADR-018 Phase 1).
  */
 
 import { Router } from "express";
@@ -15,7 +17,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Intents ────────────────────────────────────────────
 
-  router.get("/api/dock/intents", (req, res) => {
+  router.get("/api/dock/intents", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -23,11 +25,11 @@ export function createDockRoutes(appState: AppState): Router {
     if (category && !VALID_INTENT_CATEGORIES.includes(category as never)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid category. Valid: ${VALID_INTENT_CATEGORIES.join(", ")}`);
     }
-    const intents = appState.dockStore.listIntents(category ? { category } : undefined);
+    const intents = await appState.dockStore.listIntents(category ? { category } : undefined);
     sendOk(res, { intents, count: intents.length });
   });
 
-  router.post("/api/dock/intents", (req, res) => {
+  router.post("/api/dock/intents", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -36,7 +38,7 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing required fields: key, label, category");
     }
     try {
-      const intent = appState.dockStore.createIntent({ key, label, category, description: description ?? null, icon: icon ?? null });
+      const intent = await appState.dockStore.createIntent({ key, label, category, description: description ?? null, icon: icon ?? null });
       sendOk(res, intent, 201);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -44,14 +46,14 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.delete("/api/dock/intents/:key", (req, res) => {
+  router.delete("/api/dock/intents/:key", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
-    const deleted = appState.dockStore.deleteIntent(req.params.key);
+    const deleted = await appState.dockStore.deleteIntent(req.params.key);
     if (!deleted) {
       // Could be builtin or not found
-      const intent = appState.dockStore.getIntent(req.params.key);
+      const intent = await appState.dockStore.getIntent(req.params.key);
       if (intent?.isBuiltin) {
         return sendFail(res, ErrorCode.BUILTIN_IMMUTABLE, "Cannot delete built-in intents");
       }
@@ -62,40 +64,40 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Docks ──────────────────────────────────────────────
 
-  router.get("/api/dock/docks", (req, res) => {
+  router.get("/api/dock/docks", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
-    const docks = appState.dockStore.listDocks();
+    const docks = await appState.dockStore.listDocks();
     sendOk(res, { docks, count: docks.length });
   });
 
   // ─── Computed Endpoints (must be before :num to avoid param matching) ──
 
-  router.get("/api/dock/docks/next-number", (req, res) => {
+  router.get("/api/dock/docks/next-number", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
-    sendOk(res, { nextDockNumber: appState.dockStore.nextDockNumber() });
+    sendOk(res, { nextDockNumber: await appState.dockStore.nextDockNumber() });
   });
 
-  router.get("/api/dock/docks/summary", (req, res) => {
+  router.get("/api/dock/docks/summary", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
-    const briefing = appState.dockStore.buildBriefing();
+    const briefing = await appState.dockStore.buildBriefing();
     sendOk(res, briefing);
   });
 
-  router.get("/api/dock/docks/conflicts", (req, res) => {
+  router.get("/api/dock/docks/conflicts", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
-    const conflicts = appState.dockStore.getOfficerConflicts();
+    const conflicts = await appState.dockStore.getOfficerConflicts();
     sendOk(res, { conflicts, count: conflicts.length });
   });
 
-  router.get("/api/dock/docks/:num", (req, res) => {
+  router.get("/api/dock/docks/:num", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -103,14 +105,14 @@ export function createDockRoutes(appState: AppState): Router {
     if (isNaN(num) || num < 1) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
-    const dock = appState.dockStore.getDock(num);
+    const dock = await appState.dockStore.getDock(num);
     if (!dock) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Dock not found", 404);
     }
     sendOk(res, dock);
   });
 
-  router.put("/api/dock/docks/:num", (req, res) => {
+  router.put("/api/dock/docks/:num", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -120,7 +122,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
     try {
       const { label, notes, priority } = req.body;
-      const dock = appState.dockStore.upsertDock(num, { label, notes, priority });
+      const dock = await appState.dockStore.upsertDock(num, { label, notes, priority });
       sendOk(res, dock);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -128,7 +130,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.delete("/api/dock/docks/:num", (req, res) => {
+  router.delete("/api/dock/docks/:num", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -136,7 +138,7 @@ export function createDockRoutes(appState: AppState): Router {
     if (isNaN(num) || num < 1) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
-    const deleted = appState.dockStore.deleteDock(num);
+    const deleted = await appState.dockStore.deleteDock(num);
     if (!deleted) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Dock not found", 404);
     }
@@ -145,7 +147,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Cascade Previews ──────────────────────────────────
 
-  router.get("/api/dock/docks/:num/cascade-preview", (req, res) => {
+  router.get("/api/dock/docks/:num/cascade-preview", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -153,17 +155,17 @@ export function createDockRoutes(appState: AppState): Router {
     if (isNaN(num) || num < 1) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
-    const preview = appState.dockStore.previewDeleteDock(num);
+    const preview = await appState.dockStore.previewDeleteDock(num);
     sendOk(res, { dockNumber: num, ...preview });
   });
 
-  router.get("/api/dock/ships/:id/cascade-preview", (req, res) => {
+  router.get("/api/dock/ships/:id/cascade-preview", async (req, res) => {
     const dockStore = appState.dockStore;
     if (!dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const id = req.params.id;
-    const dockPreview = dockStore.previewDeleteShip(id);
+    const dockPreview = await dockStore.previewDeleteShip(id);
     sendOk(res, {
       shipId: id,
       dockAssignments: dockPreview.dockAssignments,
@@ -171,13 +173,13 @@ export function createDockRoutes(appState: AppState): Router {
     });
   });
 
-  router.get("/api/dock/officers/:id/cascade-preview", (req, res) => {
+  router.get("/api/dock/officers/:id/cascade-preview", async (req, res) => {
     const dockStore = appState.dockStore;
     if (!dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
     const id = req.params.id;
-    const dockPreview = dockStore.previewDeleteOfficer(id);
+    const dockPreview = await dockStore.previewDeleteOfficer(id);
     sendOk(res, {
       officerId: id,
       presetMemberships: dockPreview.presetMemberships,
@@ -186,7 +188,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Dock Intents ───────────────────────────────────────
 
-  router.put("/api/dock/docks/:num/intents", (req, res) => {
+  router.put("/api/dock/docks/:num/intents", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -199,8 +201,8 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Body must contain 'intents' array of intent keys");
     }
     try {
-      appState.dockStore.setDockIntents(num, intents);
-      const resolved = appState.dockStore.getDockIntents(num);
+      await appState.dockStore.setDockIntents(num, intents);
+      const resolved = await appState.dockStore.getDockIntents(num);
       sendOk(res, { dockNumber: num, intents: resolved, count: resolved.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -210,7 +212,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Dock Ships ─────────────────────────────────────────
 
-  router.post("/api/dock/docks/:num/ships", (req, res) => {
+  router.post("/api/dock/docks/:num/ships", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -223,7 +225,7 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing required field: shipId");
     }
     try {
-      const dockShip = appState.dockStore.addDockShip(num, shipId, { notes });
+      const dockShip = await appState.dockStore.addDockShip(num, shipId, { notes });
       sendOk(res, dockShip, 201);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -231,7 +233,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.delete("/api/dock/docks/:num/ships/:shipId", (req, res) => {
+  router.delete("/api/dock/docks/:num/ships/:shipId", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -239,14 +241,14 @@ export function createDockRoutes(appState: AppState): Router {
     if (isNaN(num) || num < 1) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
-    const removed = appState.dockStore.removeDockShip(num, req.params.shipId);
+    const removed = await appState.dockStore.removeDockShip(num, req.params.shipId);
     if (!removed) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Ship not assigned to this dock", 404);
     }
     sendOk(res, { dockNumber: num, shipId: req.params.shipId, status: "removed" });
   });
 
-  router.patch("/api/dock/docks/:num/ships/:shipId", (req, res) => {
+  router.patch("/api/dock/docks/:num/ships/:shipId", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -256,7 +258,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
     try {
       const { isActive, sortOrder, notes } = req.body;
-      const updated = appState.dockStore.updateDockShip(num, req.params.shipId, { isActive, sortOrder, notes });
+      const updated = await appState.dockStore.updateDockShip(num, req.params.shipId, { isActive, sortOrder, notes });
       if (!updated) {
         return sendFail(res, ErrorCode.NOT_FOUND, "Ship not assigned to this dock", 404);
       }
@@ -269,7 +271,7 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Crew Presets ───────────────────────────────────────
 
-  router.get("/api/dock/presets", (req, res) => {
+  router.get("/api/dock/presets", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -278,13 +280,13 @@ export function createDockRoutes(appState: AppState): Router {
     const tag = req.query.tag as string | undefined;
     const officerId = req.query.officerId as string | undefined;
     const hasFilters = shipId || intentKey || tag || officerId;
-    const presets = appState.dockStore.listPresets(
+    const presets = await appState.dockStore.listPresets(
       hasFilters ? { shipId, intentKey, tag, officerId } : undefined,
     );
     sendOk(res, { presets, count: presets.length });
   });
 
-  router.get("/api/dock/presets/:id", (req, res) => {
+  router.get("/api/dock/presets/:id", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -292,14 +294,14 @@ export function createDockRoutes(appState: AppState): Router {
     if (isNaN(id)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid preset ID");
     }
-    const preset = appState.dockStore.getPreset(id);
+    const preset = await appState.dockStore.getPreset(id);
     if (!preset) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Preset not found", 404);
     }
     sendOk(res, preset);
   });
 
-  router.post("/api/dock/presets", (req, res) => {
+  router.post("/api/dock/presets", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -308,7 +310,7 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing required fields: shipId, intentKey, presetName");
     }
     try {
-      const preset = appState.dockStore.createPreset({ shipId, intentKey, presetName, isDefault });
+      const preset = await appState.dockStore.createPreset({ shipId, intentKey, presetName, isDefault });
       sendOk(res, preset, 201);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -316,7 +318,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.patch("/api/dock/presets/:id", (req, res) => {
+  router.patch("/api/dock/presets/:id", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -326,7 +328,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
     try {
       const { presetName, isDefault } = req.body;
-      const updated = appState.dockStore.updatePreset(id, { presetName, isDefault });
+      const updated = await appState.dockStore.updatePreset(id, { presetName, isDefault });
       if (!updated) {
         return sendFail(res, ErrorCode.NOT_FOUND, "Preset not found", 404);
       }
@@ -337,7 +339,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.delete("/api/dock/presets/:id", (req, res) => {
+  router.delete("/api/dock/presets/:id", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -345,14 +347,14 @@ export function createDockRoutes(appState: AppState): Router {
     if (isNaN(id)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid preset ID");
     }
-    const deleted = appState.dockStore.deletePreset(id);
+    const deleted = await appState.dockStore.deletePreset(id);
     if (!deleted) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Preset not found", 404);
     }
     sendOk(res, { id, status: "deleted" });
   });
 
-  router.put("/api/dock/presets/:id/members", (req, res) => {
+  router.put("/api/dock/presets/:id/members", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -365,7 +367,7 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Body must contain 'members' array");
     }
     try {
-      const result = appState.dockStore.setPresetMembers(id, members);
+      const result = await appState.dockStore.setPresetMembers(id, members);
       sendOk(res, { presetId: id, members: result, count: result.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -375,15 +377,15 @@ export function createDockRoutes(appState: AppState): Router {
 
   // ─── Tags & Discovery ─────────────────────────────────────
 
-  router.get("/api/dock/tags", (req, res) => {
+  router.get("/api/dock/tags", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
-    const tags = appState.dockStore.listAllTags();
+    const tags = await appState.dockStore.listAllTags();
     sendOk(res, { tags, count: tags.length });
   });
 
-  router.put("/api/dock/presets/:id/tags", (req, res) => {
+  router.put("/api/dock/presets/:id/tags", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -396,7 +398,7 @@ export function createDockRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Body must contain 'tags' array");
     }
     try {
-      const result = appState.dockStore.setPresetTags(id, tags);
+      const result = await appState.dockStore.setPresetTags(id, tags);
       sendOk(res, { presetId: id, tags: result, count: result.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -404,7 +406,7 @@ export function createDockRoutes(appState: AppState): Router {
     }
   });
 
-  router.get("/api/dock/docks/:num/presets", (req, res) => {
+  router.get("/api/dock/docks/:num/presets", async (req, res) => {
     if (!appState.dockStore) {
       return sendFail(res, ErrorCode.DOCK_STORE_NOT_AVAILABLE, "Dock store not available", 503);
     }
@@ -412,7 +414,7 @@ export function createDockRoutes(appState: AppState): Router {
     if (isNaN(num) || num < 1) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be a positive integer");
     }
-    const presets = appState.dockStore.findPresetsForDock(num);
+    const presets = await appState.dockStore.findPresetsForDock(num);
     sendOk(res, { dockNumber: num, presets, count: presets.length });
   });
 
