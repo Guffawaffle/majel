@@ -42,6 +42,10 @@ export interface AppConfig {
   /** Lex workspace root directory */
   lexWorkspaceRoot: string;
 
+  // ── Database (ADR-018 Phase 3) ───────────────────────────────
+  /** PostgreSQL connection URL */
+  databaseUrl: string;
+
   // ── Auth (ADR-018 Phase 2) ──────────────────────────────────
   /** Admin bearer token — if empty, auth is disabled (local/demo mode) */
   adminToken: string;
@@ -58,21 +62,6 @@ export interface AppConfig {
 }
 
 // ─── Resolution Helpers ─────────────────────────────────────────
-
-/**
- * Resolve a setting using priority chain: user override → env var → default.
- */
-function resolveSetting(
-  key: string,
-  settingsStore: SettingsStore | null
-): string {
-  if (settingsStore) {
-    return settingsStore.get(key);
-  }
-  // Fallback when no settings store (during bootstrap)
-  // Settings store internally handles env var → default fallback
-  return "";
-}
 
 /**
  * Resolve log level from environment.
@@ -142,6 +131,9 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
   const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
   const inviteSecret = process.env.MAJEL_INVITE_SECRET || "";
 
+  // Database URL (env-only)
+  const databaseUrl = process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel";
+
   return {
     port,
     nodeEnv,
@@ -149,6 +141,7 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
     isDev,
     geminiApiKey,
     lexWorkspaceRoot,
+    databaseUrl,
     adminToken,
     inviteSecret,
     authEnabled: adminToken.length > 0,
@@ -184,6 +177,7 @@ export function bootstrapConfigSync(): AppConfig {
     isDev,
     geminiApiKey: process.env.GEMINI_API_KEY || "",
     lexWorkspaceRoot: process.env.LEX_WORKSPACE_ROOT || process.cwd(),
+    databaseUrl: process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel",
     adminToken,
     inviteSecret,
     authEnabled: adminToken.length > 0,

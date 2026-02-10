@@ -4,10 +4,8 @@
  * Uses temp SQLite databases per test to avoid state leaks.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 import {
   createSettingsStore,
   SETTINGS_SCHEMA,
@@ -18,23 +16,17 @@ import {
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-let tmpDir: string;
+let pool: Pool;
 let store: SettingsStore;
 
-async function freshStore(): Promise<SettingsStore> {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-settings-"));
-  const dbPath = path.join(tmpDir, "settings.db");
-  return createSettingsStore(dbPath);
-}
+beforeAll(() => { pool = createTestPool(); });
 
 beforeEach(async () => {
-  store = await freshStore();
+  await cleanDatabase(pool);
+  store = await createSettingsStore(pool);
 });
 
-afterEach(async () => {
-  await store.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-});
+afterAll(async () => { await pool.end(); });
 
 // ─── Schema ─────────────────────────────────────────────────────
 
@@ -144,10 +136,9 @@ describe("settings store: env var fallback", () => {
     process.env.GEMINI_API_KEY = "env-api-key";
 
     // Create a fresh store to pick up the env
-    const envStore = await freshStore();
+    const envStore = await createSettingsStore(pool);
     const value = await envStore.get("model.apiKey");
     expect(value).toBe("env-api-key");
-    await envStore.close();
 
     // Restore
     if (originalEnv !== undefined) {
@@ -161,10 +152,9 @@ describe("settings store: env var fallback", () => {
     const originalEnv = process.env.GEMINI_API_KEY;
     process.env.GEMINI_API_KEY = "env-value";
 
-    const envStore = await freshStore();
+    const envStore = await createSettingsStore(pool);
     await envStore.set("model.apiKey", "user-value");
     expect(await envStore.get("model.apiKey")).toBe("user-value");
-    await envStore.close();
 
     if (originalEnv !== undefined) {
       process.env.GEMINI_API_KEY = originalEnv;
@@ -285,11 +275,10 @@ describe("settings store: export/import", () => {
     const exported = await store.exportUserValues();
 
     // New store
-    const store2 = await freshStore();
+    const store2 = await createSettingsStore(pool);
     await store2.importValues(exported);
 
     expect(await store2.get("display.admiralName")).toBe("Janeway");
     expect(await store2.get("model.temperature")).toBe("0.3");
-    await store2.close();
   });
 });

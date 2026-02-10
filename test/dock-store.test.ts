@@ -2,17 +2,18 @@
  * dock-store.test.ts — Drydock Loadout Data Layer Tests (ADR-010 Phases 1 & 2)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import {
   createDockStore,
   VALID_INTENT_CATEGORIES,
   type DockStore,
 } from "../src/server/dock-store.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
-const TEST_DB = path.resolve(".test-dock.db");
+let pool: Pool;
+beforeAll(() => { pool = createTestPool(); });
+afterAll(async () => { await pool.end(); });
 
 // ─── Test Helpers: seed reference data ──────────────────────────
 
@@ -36,14 +37,9 @@ describe("DockStore — Intent Catalog", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    store = await createDockStore(TEST_DB);
-  });
-
-  afterEach(() => {
-    store.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    store = await createDockStore(pool);
   });
 
   it("seeds builtin intents on first create", async () => {
@@ -150,14 +146,9 @@ describe("DockStore — Dock Loadouts", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    store = await createDockStore(TEST_DB);
-  });
-
-  afterEach(() => {
-    store.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    store = await createDockStore(pool);
   });
 
   it("creates a dock via upsert", async () => {
@@ -226,16 +217,11 @@ describe("DockStore — Dock Intents", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    store = await createDockStore(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    store = await createDockStore(pool);
     await store.upsertDock(1, { label: "Grinder" });
     await store.upsertDock(3, { label: "Mining" });
-  });
-
-  afterEach(() => {
-    store.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   it("assigns intents to a dock", async () => {
@@ -305,9 +291,10 @@ describe("DockStore — Dock Ships", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
+    await cleanDatabase(pool);
     // Reference store creates ships table; dock store needs it for FK refs
-    refStore = await createReferenceStore(TEST_DB);
-    dockStore = await createDockStore(TEST_DB);
+    refStore = await createReferenceStore(pool);
+    dockStore = await createDockStore(pool);
 
     // Create test ships
     await seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
@@ -318,12 +305,6 @@ describe("DockStore — Dock Ships", () => {
     await dockStore.upsertDock(1, { label: "Main Grinder" });
     await dockStore.upsertDock(2, { label: "Hostile Swapper" });
     await dockStore.upsertDock(3, { label: "Raw Mining" });
-  });
-
-  afterEach(() => {
-    dockStore.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   it("adds a ship to a dock rotation", async () => {
@@ -456,14 +437,9 @@ describe("DockStore — Diagnostics", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    store = await createDockStore(TEST_DB);
-  });
-
-  afterEach(() => {
-    store.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    store = await createDockStore(pool);
   });
 
   it("counts entities correctly", async () => {
@@ -473,8 +449,8 @@ describe("DockStore — Diagnostics", () => {
     expect(counts.dockShips).toBe(0);
   });
 
-  it("reports database path", () => {
-    expect(store.getDbPath()).toBe(TEST_DB);
+  it("reports store is truthy", () => {
+    expect(store).toBeTruthy();
   });
 });
 
@@ -485,8 +461,9 @@ describe("DockStore — Crew Presets", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    dockStore = await createDockStore(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    dockStore = await createDockStore(pool);
     // Create test ships and officers
     await seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
     await seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
@@ -494,12 +471,6 @@ describe("DockStore — Crew Presets", () => {
     await seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
     await seedOfficer(refStore, "mccoy", "McCoy", "Rare", "TOS");
     await seedOfficer(refStore, "stonn", "Stonn", "Common", "TOS");
-  });
-
-  afterEach(() => {
-    dockStore.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   it("creates a crew preset", async () => {
@@ -627,18 +598,13 @@ describe("DockStore — Crew Preset Members", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    dockStore = await createDockStore(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    dockStore = await createDockStore(pool);
     await seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
     await seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
     await seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
     await seedOfficer(refStore, "mccoy", "McCoy", "Rare", "TOS");
-  });
-
-  afterEach(() => {
-    dockStore.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   it("sets preset members", async () => {
@@ -719,18 +685,13 @@ describe("DockStore — Officer Conflicts", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    dockStore = await createDockStore(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    dockStore = await createDockStore(pool);
     await seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
     await seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
     await seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
     await seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
-  });
-
-  afterEach(() => {
-    dockStore.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   it("returns empty when no conflicts", async () => {
@@ -789,18 +750,13 @@ describe("DockStore — Preset Tags", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    dockStore = await createDockStore(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    dockStore = await createDockStore(pool);
     await seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
     await seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
     await seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
     await seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
-  });
-
-  afterEach(() => {
-    dockStore.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   it("sets and retrieves tags for a preset", async () => {
@@ -904,17 +860,12 @@ describe("DockStore — Find Presets For Dock", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    dockStore = await createDockStore(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    dockStore = await createDockStore(pool);
     await seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
     await seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
     await seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
-  });
-
-  afterEach(() => {
-    dockStore.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   it("finds presets matching a dock's ships and intents", async () => {
@@ -980,19 +931,14 @@ describe("DockStore — Dock Briefing", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    dockStore = await createDockStore(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    dockStore = await createDockStore(pool);
     await seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
     await seedShip(refStore, "botany-bay", "Botany Bay", "Survey", 2);
     await seedOfficer(refStore, "kirk", "Kirk", "Epic", "TOS");
     await seedOfficer(refStore, "spock", "Spock", "Epic", "TOS");
     await seedOfficer(refStore, "mccoy", "McCoy", "Rare", "TOS");
-  });
-
-  afterEach(() => {
-    dockStore.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   it("returns empty briefing when no docks exist", async () => {
@@ -1152,16 +1098,11 @@ describe("Dock API Routes", () => {
   let refStore: ReferenceStore;
 
   beforeEach(async () => {
-    refStore = await createReferenceStore(TEST_DB);
-    dockStore = await createDockStore(TEST_DB);
+    await cleanDatabase(pool);
+    refStore = await createReferenceStore(pool);
+    dockStore = await createDockStore(pool);
     // Create test ships for dock rotation tests
     await seedShip(refStore, "kumari", "Kumari", "Interceptor", 3);
-  });
-
-  afterEach(() => {
-    dockStore.close();
-    refStore.close();
-    if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
   });
 
   // ── Intents ─────────────────────────────────────────────

@@ -23,6 +23,8 @@ export default defineConfig({
     },
     // Isolate tests to avoid module state leaks
     pool: "forks",
+    // All test files share one PG database; disable file parallelism to avoid table conflicts
+    fileParallelism: false,
     testTimeout: 10000,
   },
 });

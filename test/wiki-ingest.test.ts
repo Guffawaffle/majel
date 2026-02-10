@@ -5,7 +5,7 @@
  * and the POST /api/catalog/sync endpoint with mocked fetch.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
@@ -20,11 +20,11 @@ import {
 } from "../src/server/wiki-ingest.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 
-let tmpDir: string;
+let pool: Pool;
 let refStore: ReferenceStore;
 
 function makeState(overrides: Partial<AppState> = {}): AppState {
@@ -44,14 +44,12 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
   };
 }
 
-beforeEach(async () => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "majel-wiki-test-"));
-  refStore = await createReferenceStore(path.join(tmpDir, "reference.db"));
-});
+beforeAll(() => { pool = createTestPool(); });
+afterAll(async () => { await pool.end(); });
 
-afterEach(async () => {
-  await refStore.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+beforeEach(async () => {
+  await cleanDatabase(pool);
+  refStore = await createReferenceStore(pool);
 });
 
 // ─── Fixture Data ───────────────────────────────────────────

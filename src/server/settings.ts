@@ -3,8 +3,7 @@
  *
  * Majel — STFC Fleet Intelligence System
  *
- * libSQL-backed key/value store for user-configurable settings.
- * Lives alongside Lex memory in .smartergpt/lex/settings.db.
+ * PostgreSQL-backed key/value store for user-configurable settings.
  *
  * Priority chain for runtime config:
  *   1. User setting (this store)  ← highest
@@ -14,11 +13,10 @@
  * Settings are typed, validated, and have defaults. The UI can
  * read/write them via /api/settings endpoints.
  *
- * Migrated from better-sqlite3 to @libsql/client in ADR-018 Phase 1.
+ * Migrated to PostgreSQL in ADR-018 Phase 3.
  */
 
-import { openDatabase, type Client } from "./db.js";
-import * as path from "node:path";
+import { initSchema, withTransaction, type Pool } from "./db.js";
 import { log } from "./logger.js";
 
 // ─── Schema ─────────────────────────────────────────────────────
@@ -154,14 +152,14 @@ const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL,
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TIMESTAMPTZ DEFAULT NOW()
   )`,
 ];
 
 const SQL = {
-  get: `SELECT value FROM settings WHERE key = ?`,
-  set: `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-  del: `DELETE FROM settings WHERE key = ?`,
+  get: `SELECT value FROM settings WHERE key = $1`,
+  set: `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+  del: `DELETE FROM settings WHERE key = $1`,
   all: `SELECT key, value FROM settings`,
   count: `SELECT COUNT(*) AS count FROM settings`,
 };
@@ -193,14 +191,11 @@ export interface SettingsStore {
   /** Import multiple settings at once. */
   importValues(values: Record<string, string>): Promise<void>;
 
-  /** Close the database. */
+  /** No-op — pool lifecycle managed externally. */
   close(): void;
 
   /** Count how many settings have user-level overrides. */
   countUserOverrides(): Promise<number>;
-
-  /** Get the database file path. */
-  getDbPath(): string;
 }
 
 export interface SettingEntry {
@@ -216,29 +211,20 @@ export interface SettingEntry {
 
 // ─── Implementation ─────────────────────────────────────────────
 
-const DB_DIR = path.resolve(".smartergpt", "lex");
-const DB_FILE = path.join(DB_DIR, "settings.db");
-
 /**
- * Create a settings store backed by libSQL.
+ * Create a settings store backed by PostgreSQL.
  */
-export async function createSettingsStore(dbPath?: string): Promise<SettingsStore> {
-  const resolvedPath = dbPath ?? DB_FILE;
-  const client = openDatabase(resolvedPath);
-
-  // Schema init (batch)
-  await client.batch(
-    SCHEMA_STATEMENTS.map((s) => ({ sql: s, args: [] })),
-    "write",
-  );
+export async function createSettingsStore(pool: Pool): Promise<SettingsStore> {
+  // Schema init
+  await initSchema(pool, SCHEMA_STATEMENTS);
 
   /**
    * Resolve a setting: user DB → env var → schema default.
    */
   async function resolve(key: string): Promise<{ value: string; source: "user" | "env" | "default" }> {
     // 1. User setting (DB)
-    const result = await client.execute({ sql: SQL.get, args: [key] });
-    const row = result.rows[0] as unknown as { value: string } | undefined;
+    const result = await pool.query(SQL.get, [key]);
+    const row = result.rows[0] as { value: string } | undefined;
     if (row) {
       return { value: row.value, source: "user" };
     }
@@ -290,7 +276,7 @@ export async function createSettingsStore(dbPath?: string): Promise<SettingsStor
     return def;
   }
 
-  return {
+  const store: SettingsStore = {
     async get(key: string): Promise<string> {
       return (await resolve(key)).value;
     },
@@ -303,14 +289,14 @@ export async function createSettingsStore(dbPath?: string): Promise<SettingsStor
 
     async set(key: string, value: string): Promise<void> {
       const def = validate(key, value);
-      await client.execute({ sql: SQL.set, args: [key, value] });
+      await pool.query(SQL.set, [key, value]);
       log.settings.debug({ key, value: def.sensitive ? "[REDACTED]" : value }, "set");
     },
 
     async delete(key: string): Promise<boolean> {
-      const result = await client.execute({ sql: SQL.del, args: [key] });
-      log.settings.debug({ key, deleted: result.rowsAffected > 0 }, "delete");
-      return result.rowsAffected > 0;
+      const result = await pool.query(SQL.del, [key]);
+      log.settings.debug({ key, deleted: (result.rowCount ?? 0) > 0 }, "delete");
+      return (result.rowCount ?? 0) > 0;
     },
 
     async getAll(): Promise<SettingEntry[]> {
@@ -332,14 +318,14 @@ export async function createSettingsStore(dbPath?: string): Promise<SettingsStor
     },
 
     async getByCategory(category: string): Promise<SettingEntry[]> {
-      return (await this.getAll()).filter((e) => e.category === category);
+      return (await store.getAll()).filter((e: SettingEntry) => e.category === category);
     },
 
     async exportUserValues(): Promise<Record<string, string>> {
-      const result = await client.execute(SQL.all);
+      const result = await pool.query(SQL.all);
       const out: Record<string, string> = {};
       for (const row of result.rows) {
-        const r = row as unknown as { key: string; value: string };
+        const r = row as { key: string; value: string };
         out[r.key] = r.value;
       }
       return out;
@@ -356,31 +342,24 @@ export async function createSettingsStore(dbPath?: string): Promise<SettingsStor
       }
 
       // Write in a transaction
-      const tx = await client.transaction("write");
-      try {
+      await withTransaction(pool, async (client) => {
         for (const [key, value] of valid) {
-          await tx.execute({ sql: SQL.set, args: [key, value] });
+          await client.query(SQL.set, [key, value]);
         }
-        await tx.commit();
-      } catch (e) {
-        await tx.rollback();
-        throw e;
-      }
+      });
     },
 
     close(): void {
-      client.close();
+      // Pool lifecycle managed externally
     },
 
     async countUserOverrides(): Promise<number> {
-      const result = await client.execute(SQL.count);
-      return (result.rows[0] as unknown as { count: number }).count;
-    },
-
-    getDbPath(): string {
-      return resolvedPath;
+      const result = await pool.query(SQL.count);
+      return Number((result.rows[0] as { count: string | number }).count);
     },
   };
+
+  return store;
 }
 
 /**
