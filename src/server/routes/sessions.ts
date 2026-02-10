@@ -5,9 +5,12 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { requireVisitor } from "../auth.js";
 
 export function createSessionRoutes(appState: AppState): Router {
   const router = Router();
+  const visitor = requireVisitor(appState);
+  router.use("/api/sessions", visitor);
 
   router.get("/api/sessions", async (req, res) => {
     if (!appState.sessionStore) {

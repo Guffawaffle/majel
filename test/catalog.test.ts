@@ -31,6 +31,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     behaviorStore: null,
     referenceStore: null,
     overlayStore: null,
+    inviteStore: null,
     startupComplete: true,
     config: bootstrapConfigSync(),
     ...overrides,

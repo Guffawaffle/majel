@@ -11,9 +11,12 @@ import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { VALID_INTENT_CATEGORIES } from "../dock-store.js";
+import { requireVisitor } from "../auth.js";
 
 export function createDockRoutes(appState: AppState): Router {
   const router = Router();
+  const visitor = requireVisitor(appState);
+  router.use("/api/dock", visitor);
 
   // ─── Intents ────────────────────────────────────────────
 
