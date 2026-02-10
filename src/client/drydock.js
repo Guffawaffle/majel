@@ -363,7 +363,6 @@ function renderCrewSection(dock) {
     }
 
     const activePreset = activePresetId ? dockPresets.find(p => p.id === activePresetId && p.shipId === activeShip.shipId) : null;
-    const hasIntents = (dock.intents || []).length > 0;
 
     return `
         <div class="dock-section">
@@ -380,18 +379,15 @@ function renderCrewSection(dock) {
 function renderPresetSelector(dock, activeShip) {
     const shipPresets = dockPresets.filter(p => p.shipId === activeShip.shipId);
     const intentKeys = (dock.intents || []).map(i => i.key);
-    const hasIntents = intentKeys.length > 0;
+    // Use first dock intent, or fall back to "general" (always-available default)
+    const defaultIntent = intentKeys[0] || 'general';
 
     if (shipPresets.length === 0) {
-        // No presets for this ship — show create prompt
-        if (!hasIntents) {
-            return `<p class="hint">Select at least one intent to create crew presets.</p>`;
-        }
         return `
             <div class="preset-bar">
                 <span class="preset-bar-empty">No crew presets for this ship yet.</span>
                 <button class="btn btn-sm btn-accent" data-action="create-preset"
-                    data-ship="${activeShip.shipId}" data-intent="${intentKeys[0]}">
+                    data-ship="${activeShip.shipId}" data-intent="${defaultIntent}">
                     + New Preset
                 </button>
             </div>
@@ -401,8 +397,8 @@ function renderPresetSelector(dock, activeShip) {
     // Build dropdown options
     const options = shipPresets.map(p => {
         const memberCount = (p.members || []).length;
-        const intentLabel = p.intentLabel || p.intentKey;
-        const label = `${escHtml(p.presetName)} (${intentLabel}) · ${memberCount}/3`;
+        const intentLabel = (p.intentKey === 'general') ? '' : ` (${p.intentLabel || p.intentKey})`;
+        const label = `${escHtml(p.presetName)}${intentLabel} · ${memberCount}/3`;
         return `<option value="${p.id}" ${p.id === activePresetId ? 'selected' : ''}>${label}</option>`;
     }).join('');
 
@@ -411,11 +407,9 @@ function renderPresetSelector(dock, activeShip) {
             <select class="preset-select" data-action="select-preset">
                 ${options}
             </select>
-            ${hasIntents ? `
-                <button class="btn btn-sm btn-ghost" data-action="create-preset"
-                    data-ship="${activeShip.shipId}" data-intent="${intentKeys[0]}"
-                    title="New preset">+</button>
-            ` : ''}
+            <button class="btn btn-sm btn-ghost" data-action="create-preset"
+                data-ship="${activeShip.shipId}" data-intent="${defaultIntent}"
+                title="New preset">+</button>
             <button class="btn btn-sm btn-ghost btn-danger" data-action="delete-preset"
                 data-preset="${activePresetId}" title="Delete this preset">🗑</button>
         </div>
@@ -497,8 +491,8 @@ function renderSlot(slotKey, label, member, assignedIds, presetId) {
             ` : `
                 <div class="bridge-slot-empty">— Unassigned —</div>
                 ${allOfficers.filter(o => o.ownershipState === 'owned').length === 0
-                    ? '<div class="slot-hint">Mark officers as owned in the Catalog</div>'
-                    : ''}
+            ? '<div class="slot-hint">Mark officers as owned in the Catalog</div>'
+            : ''}
             `}
         </div>
     `;
@@ -645,6 +639,7 @@ function bindEvents() {
             if (dock) {
                 dock.intents = allIntents.filter(i => checked.includes(i.key));
             }
+            render(); // Re-render so crew section reflects new intents
         });
     });
 
@@ -665,8 +660,10 @@ function bindEvents() {
             const shipId = btn.dataset.ship;
             const intentKey = btn.dataset.intent;
             const shipName = allShips.find(s => s.id === shipId)?.name || 'Ship';
-            const intentLabel = allIntents.find(i => i.key === intentKey)?.label || intentKey;
-            const presetName = `${shipName} — ${intentLabel}`;
+            const intentObj = allIntents.find(i => i.key === intentKey);
+            const presetName = (intentKey === 'general')
+                ? `${shipName} — Crew`
+                : `${shipName} — ${intentObj?.label || intentKey}`;
 
             const result = await api.createPreset({ shipId, intentKey, presetName });
             if (result.ok && result.data) {

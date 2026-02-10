@@ -23,6 +23,7 @@ let counts = { reference: { officers: 0, ships: 0 }, overlay: {} };
 let undoStack = []; // { type, refIds, previousStates }
 let loading = false;
 let syncing = false;
+let letterFilter = ''; // Active letter filter ('A', 'B', ... or '' for all)
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -78,14 +79,18 @@ function render() {
     const area = $("#catalog-area");
     if (!area) return;
 
-    const items = activeTab === 'officers' ? officers : ships;
+    const allItems = activeTab === 'officers' ? officers : ships;
+    const items = letterFilter
+        ? allItems.filter(i => i.name && i.name[0].toUpperCase() === letterFilter)
+        : allItems;
     const refCount = activeTab === 'officers' ? counts.reference.officers : counts.reference.ships;
-    const hasActiveFilters = filters.ownership !== 'all' || filters.target !== 'all' || filters.rarity || filters.group || filters.faction || filters.class || searchQuery;
+    const hasActiveFilters = filters.ownership !== 'all' || filters.target !== 'all' || filters.rarity || filters.group || filters.faction || filters.class || searchQuery || letterFilter;
     const resultNote = hasActiveFilters ? `<div class="cat-result-count">Showing ${items.length} of ${refCount} ${activeTab}</div>` : '';
 
     area.innerHTML = `
         ${renderTabBar()}
         ${renderToolbar(refCount)}
+        ${renderLetterBar(allItems)}
         ${renderFilterChips()}
         ${resultNote}
         ${renderBulkActions(items)}
@@ -98,10 +103,11 @@ function render() {
 
     // Always re-focus search after render if we have an active query or search was focused
     const searchInput = area.querySelector('.cat-search');
-    if (searchInput && searchWasFocused) {
+    if (searchInput && (keepSearchFocus || searchWasFocused)) {
         searchInput.focus();
         // Restore cursor position to end
         searchInput.selectionStart = searchInput.selectionEnd = searchInput.value.length;
+        keepSearchFocus = false;
     }
 }
 
@@ -142,6 +148,30 @@ function renderToolbar(totalRef) {
                 </svg>
                 ${syncing ? 'Syncing...' : 'Sync Wiki Data'}
             </button>
+        </div>
+    `;
+}
+
+function renderLetterBar(items) {
+    // Compute which letters have items
+    const available = new Set();
+    for (const item of items) {
+        if (item.name) available.add(item.name[0].toUpperCase());
+    }
+
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    const letterBtns = letters.map(l => {
+        const has = available.has(l);
+        const active = letterFilter === l;
+        return `<button class="letter-btn ${active ? 'active' : ''} ${has ? '' : 'disabled'}"
+            data-action="filter-letter" data-letter="${l}" ${has ? '' : 'disabled'}>${l}</button>`;
+    }).join('');
+
+    return `
+        <div class="cat-letter-bar">
+            <button class="letter-btn ${letterFilter === '' ? 'active' : ''}"
+                data-action="filter-letter" data-letter="">All</button>
+            ${letterBtns}
         </div>
     `;
 }
@@ -298,6 +328,7 @@ function renderUndoBar() {
 
 let searchDebounce = null;
 let searchWasFocused = false;
+let keepSearchFocus = false; // Flag that survives blur events during DOM teardown
 
 function bindEvents() {
     const area = $("#catalog-area");
@@ -308,6 +339,7 @@ function bindEvents() {
         btn.addEventListener('click', () => {
             activeTab = btn.dataset.tab;
             searchQuery = '';
+            letterFilter = '';
             filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
             undoStack = [];
             refresh();
@@ -321,7 +353,8 @@ function bindEvents() {
         searchInput.addEventListener('focus', () => { searchWasFocused = true; });
         searchInput.addEventListener('blur', () => { searchWasFocused = false; });
         searchInput.addEventListener('input', (e) => {
-            searchWasFocused = true; // Keep focused during typing
+            keepSearchFocus = true; // Survives blur from DOM teardown
+            searchWasFocused = true;
             clearTimeout(searchDebounce);
             searchDebounce = setTimeout(() => {
                 searchQuery = e.target.value.trim();
@@ -351,6 +384,14 @@ function bindEvents() {
         });
     });
 
+    // Letter bar
+    area.querySelectorAll('[data-action="filter-letter"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            letterFilter = btn.dataset.letter;
+            render(); // Client-side filter — no server call needed
+        });
+    });
+
     // Filter chips
     area.querySelectorAll('[data-action="filter-ownership"]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -369,6 +410,7 @@ function bindEvents() {
     area.querySelectorAll('[data-action="clear-all-filters"]').forEach(btn => {
         btn.addEventListener('click', () => {
             searchQuery = '';
+            letterFilter = '';
             filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
             refresh();
         });

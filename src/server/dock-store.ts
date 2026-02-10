@@ -191,6 +191,8 @@ export interface DockStore {
 // ─── Seed Data ──────────────────────────────────────────────
 
 const SEED_INTENTS: Array<Pick<Intent, "key" | "label" | "category" | "description" | "icon"> & { sortOrder: number }> = [
+  // General (default — always available, even without dock intents selected)
+  { key: "general", label: "General", category: "utility", description: "General-purpose crew configuration", icon: "⚙️", sortOrder: 0 },
   // Mining
   { key: "mining-gas", label: "Gas Mining", category: "mining", description: "Collecting raw gas from nodes", icon: "⛽", sortOrder: 10 },
   { key: "mining-crystal", label: "Crystal Mining", category: "mining", description: "Collecting raw crystal from nodes", icon: "💎", sortOrder: 11 },
