@@ -22,7 +22,7 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode, asyncHandler } from "../envelope.js";
-import { SESSION_COOKIE, TENANT_COOKIE, requireRole } from "../auth.js";
+import { SESSION_COOKIE, TENANT_COOKIE, requireRole, requireAdmiral } from "../auth.js";
 import { authRateLimiter } from "../rate-limit.js";
 import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../email.js";
 
@@ -322,15 +322,25 @@ export function createAuthRoutes(appState: AppState): Router {
     }
   }));
 
+  // ── Admiral Console Routes ────────────────────────────────
+  // These routes accept both Bearer token AND session-cookie admirals.
+  // Bearer token is still needed for the very first promotion (no admirals yet).
+  router.use("/api/auth/admin", (req, res, next) => {
+    // Try Bearer token first (always works for bootstrapping)
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      if (token === appState.config.adminToken) {
+        return next();
+      }
+    }
+    // Fall back to session-based admiral check
+    return requireAdmiral(appState)(req, res, next);
+  });
+
   // ── POST /api/auth/admin/set-role ─────────────────────────
   // Admin-only: set a user's role (the only way to create the first Admiral)
   router.post("/api/auth/admin/set-role", asyncHandler(async (req, res) => {
-    // Require admin bearer token
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    if (token !== appState.config.adminToken) {
-      return sendFail(res, ErrorCode.UNAUTHORIZED, "Admin token required", 401);
-    }
 
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
@@ -363,12 +373,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
   // ── GET /api/auth/admin/users ─────────────────────────────
   // Admin-only: list all users
-  router.get("/api/auth/admin/users", asyncHandler(async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    if (token !== appState.config.adminToken) {
-      return sendFail(res, ErrorCode.UNAUTHORIZED, "Admin token required", 401);
-    }
+  router.get("/api/auth/admin/users", asyncHandler(async (_req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -376,14 +381,40 @@ export function createAuthRoutes(appState: AppState): Router {
     sendOk(res, { users, count: users.length });
   }));
 
+  // ── PATCH /api/auth/admin/lock ────────────────────────────
+  // Admin-only: lock or unlock a user account
+  router.patch("/api/auth/admin/lock", asyncHandler(async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { email, locked, reason } = req.body ?? {};
+    if (!email || typeof email !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    }
+    if (typeof locked !== "boolean") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "locked (boolean) required", 400);
+    }
+
+    const user = await appState.userStore.getUserByEmail(email);
+    if (!user) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
+    }
+
+    const ok = locked
+      ? await appState.userStore.lockUser(user.id, reason || "Locked by administrator")
+      : await appState.userStore.unlockUser(user.id);
+
+    if (!ok) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update lock status", 500);
+    }
+
+    sendOk(res, { message: `${user.displayName} ${locked ? "locked" : "unlocked"}.` });
+  }));
+
   // ── DELETE /api/auth/admin/user ───────────────────────────
   // Admin-only: delete a user by email
   router.delete("/api/auth/admin/user", asyncHandler(async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    if (token !== appState.config.adminToken) {
-      return sendFail(res, ErrorCode.UNAUTHORIZED, "Admin token required", 401);
-    }
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }

@@ -89,5 +89,21 @@ export function createAdminRoutes(appState: AppState): Router {
     sendOk(res, { deleted: true });
   });
 
+  // ── DELETE /api/admin/sessions (all) ──────────────────────
+  // Kill all tenant sessions
+  router.delete("/api/admin/sessions", async (_req, res) => {
+    if (!appState.inviteStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Invite store not available", 503);
+    }
+
+    const sessions = await appState.inviteStore.listSessions();
+    let count = 0;
+    for (const s of sessions) {
+      const ok = await appState.inviteStore.deleteSession(s.tenantId);
+      if (ok) count++;
+    }
+    sendOk(res, { deleted: count });
+  });
+
   return router;
 }

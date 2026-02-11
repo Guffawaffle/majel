@@ -17,6 +17,7 @@ import * as drydock from './drydock.js';
 import * as catalog from './catalog.js';
 import * as fleet from './fleet.js';
 import * as diagnostics from './diagnostics.js';
+import * as admin from './admin.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -46,6 +47,7 @@ const drydockArea = $("#drydock-area");
 const catalogArea = $("#catalog-area");
 const fleetArea = $("#fleet-area");
 const diagnosticsArea = $("#diagnostics-area");
+const adminArea = $("#admin-area");
 const titleBar = $("#title-bar");
 const titleBarHeading = $("#title-bar-heading");
 const titleBarSubtitle = $("#title-bar-subtitle");
@@ -179,7 +181,7 @@ async function searchRecall(query) {
 }
 
 // ─── View Switching & Hash Routing ──────────────────────────
-const VALID_VIEWS = ['chat', 'drydock', 'catalog', 'fleet', 'diagnostics'];
+const VALID_VIEWS = ['chat', 'drydock', 'catalog', 'fleet', 'diagnostics', 'admin'];
 
 function setActiveNav(view) {
     sidebarNavBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
@@ -212,6 +214,10 @@ function applySidebarGating() {
     const diagBtn = document.querySelector('.sidebar-nav-btn[data-view="diagnostics"]');
     if (diagBtn) diagBtn.classList.toggle("hidden", userRole !== "admiral");
 
+    // Admiral Console — Admiral only
+    const adminBtn = document.querySelector('.sidebar-nav-btn[data-view="admin"]');
+    if (adminBtn) adminBtn.classList.toggle("hidden", userRole !== "admiral");
+
     // Lex Memory & Recall — hidden for now (QA-001-6)
     if (historyBtn) historyBtn.classList.add("hidden");
     if (recallBtn) recallBtn.classList.add("hidden");
@@ -225,6 +231,7 @@ function showSetup(health) {
     if (catalogArea) catalogArea.classList.add("hidden");
     if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
+    if (adminArea) adminArea.classList.add("hidden");
     if (titleBar) titleBar.classList.add("hidden");
 
     if (health.gemini === "connected") {
@@ -242,6 +249,7 @@ function showChat() {
     if (catalogArea) catalogArea.classList.add("hidden");
     if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
+    if (adminArea) adminArea.classList.add("hidden");
     setActiveNav("chat");
     setTitleBar("💬", "Chat", "Gemini-powered fleet advisor");
 }
@@ -254,6 +262,7 @@ function showDrydock() {
     if (catalogArea) catalogArea.classList.add("hidden");
     if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
+    if (adminArea) adminArea.classList.add("hidden");
     setActiveNav("drydock");
     setTitleBar("🔧", "Drydock", "Configure docks, ships & crew");
     drydock.refresh();
@@ -267,6 +276,7 @@ function showCatalog() {
     if (catalogArea) catalogArea.classList.remove("hidden");
     if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
+    if (adminArea) adminArea.classList.add("hidden");
     setActiveNav("catalog");
     setTitleBar("📋", "Catalog", "Reference data & ownership tracking");
     catalog.refresh();
@@ -280,9 +290,24 @@ function showDiagnostics() {
     if (catalogArea) catalogArea.classList.add("hidden");
     if (fleetArea) fleetArea.classList.add("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.remove("hidden");
+    if (adminArea) adminArea.classList.add("hidden");
     setActiveNav("diagnostics");
     setTitleBar("⚡", "Diagnostics", "System health, data summary & query console");
     diagnostics.refresh();
+}
+
+function showAdmin() {
+    setupGuide.classList.add("hidden");
+    chatArea.classList.add("hidden");
+    inputArea.classList.add("hidden");
+    if (drydockArea) drydockArea.classList.add("hidden");
+    if (catalogArea) catalogArea.classList.add("hidden");
+    if (fleetArea) fleetArea.classList.add("hidden");
+    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
+    if (adminArea) adminArea.classList.remove("hidden");
+    setActiveNav("admin");
+    setTitleBar("🛡️", "Admiral Console", "User management, invites & sessions");
+    admin.refresh();
 }
 
 function showFleet() {
@@ -293,6 +318,7 @@ function showFleet() {
     if (catalogArea) catalogArea.classList.add("hidden");
     if (fleetArea) fleetArea.classList.remove("hidden");
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
+    if (adminArea) adminArea.classList.add("hidden");
     setActiveNav("fleet");
     setTitleBar("🚀", "Fleet", "Your owned roster — levels, ranks & power");
     fleet.refresh();
@@ -309,6 +335,7 @@ function navigateToView(view, { pushHistory = true, updateUrl = true } = {}) {
     else if (view === 'catalog') { showCatalog(); currentMode = 'catalog'; }
     else if (view === 'fleet') { showFleet(); currentMode = 'fleet'; }
     else if (view === 'diagnostics' && userRole === 'admiral') { showDiagnostics(); currentMode = 'diagnostics'; }
+    else if (view === 'admin' && userRole === 'admiral') { showAdmin(); currentMode = 'admin'; }
     else { showChat(); currentMode = 'chat'; }
 
     // Push URL state (skip when responding to browser back/forward — URL already changed)
@@ -408,12 +435,14 @@ if (logoutBtn) {
     await catalog.init();
     await fleet.init();
     await diagnostics.init();
+    await admin.init();
 
     // Fetch user identity for sidebar gating
     const me = await api.getMe();
     userRole = me?.role ?? null;
     applySidebarGating();
     catalog.setAdminMode(userRole === 'admiral');
+    admin.setCurrentUser(me?.email ?? null);
 
     // Initial health check
     const health = await checkHealthAndUpdateUI();
@@ -447,7 +476,7 @@ if (logoutBtn) {
             navigateToView('chat');
             chat.addMessage("system", "✅ Configuration detected — Aria is online, Admiral.");
             chatInput.focus();
-        } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "catalog" && currentMode !== "fleet" && currentMode !== "diagnostics" && h.gemini !== "connected") {
+        } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "catalog" && currentMode !== "fleet" && currentMode !== "diagnostics" && currentMode !== "admin" && h.gemini !== "connected") {
             showSetup(h);
             currentMode = "setup";
         }
