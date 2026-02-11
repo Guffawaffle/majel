@@ -85,29 +85,64 @@ function render() {
         : allItems;
     const refCount = activeTab === 'officers' ? counts.reference.officers : counts.reference.ships;
     const hasActiveFilters = filters.ownership !== 'all' || filters.target !== 'all' || filters.rarity || filters.group || filters.faction || filters.class || searchQuery || letterFilter;
-    const resultNote = hasActiveFilters ? `<div class="cat-result-count">Showing ${items.length} of ${refCount} ${activeTab}</div>` : '';
+    const resultNote = hasActiveFilters ? `Showing ${items.length} of ${refCount} ${activeTab}` : '';
 
+    // ── Fast path: if search input is focused, update dynamic sections only ──
+    // This prevents the search input from being destroyed/recreated, eliminating flicker.
+    const searchEl = area.querySelector('.cat-search');
+    const searchFocused = searchEl && document.activeElement === searchEl;
+
+    if (searchFocused) {
+        // Update grid
+        const grid = area.querySelector('.cat-grid');
+        if (grid) grid.innerHTML = items.length === 0 ? renderEmpty() : renderGrid(items);
+
+        // Update result count in toolbar
+        const toolbarCount = area.querySelector('.cat-toolbar .cat-result-count');
+        if (toolbarCount) toolbarCount.textContent = `${items.length}${refCount ? ` / ${refCount}` : ''}`;
+
+        // Update letter bar
+        replaceSection(area, '.cat-letter-bar', renderLetterBar(allItems));
+
+        // Update result note
+        const noteEl = area.querySelector('.cat-result-note');
+        if (noteEl) noteEl.innerHTML = resultNote ? `<div class="cat-result-count">${resultNote}</div>` : '';
+
+        // Update bulk actions
+        replaceSection(area, '.cat-bulk-wrap', `<div class="cat-bulk-wrap">${renderBulkActions(items)}</div>`);
+
+        // Rebind events only on the new dynamic elements
+        bindGridEvents(area);
+        bindLetterEvents(area);
+        bindBulkEvents(area);
+        return;
+    }
+
+    // ── Full path: rebuild entire DOM ──
     area.innerHTML = `
         ${renderTabBar()}
         ${renderToolbar(refCount)}
         ${renderLetterBar(allItems)}
         ${renderFilterChips()}
-        ${resultNote}
-        ${renderBulkActions(items)}
+        <div class="cat-result-note">${resultNote ? `<div class="cat-result-count">${resultNote}</div>` : ''}</div>
+        <div class="cat-bulk-wrap">${renderBulkActions(items)}</div>
         <div class="cat-grid" role="grid">
             ${items.length === 0 ? renderEmpty() : renderGrid(items)}
         </div>
         ${undoStack.length > 0 ? renderUndoBar() : ''}
     `;
     bindEvents();
+}
 
-    // Always re-focus search after render if we have an active query or search was focused
-    const searchInput = area.querySelector('.cat-search');
-    if (searchInput && (keepSearchFocus || searchWasFocused)) {
-        searchInput.focus();
-        // Restore cursor position to end
-        searchInput.selectionStart = searchInput.selectionEnd = searchInput.value.length;
-        keepSearchFocus = false;
+/** Replace a section's outerHTML by selector, or do nothing if not found */
+function replaceSection(area, selector, newHtml) {
+    const el = area.querySelector(selector);
+    if (el) {
+        const temp = document.createElement('div');
+        temp.innerHTML = newHtml;
+        if (temp.firstElementChild) {
+            el.replaceWith(temp.firstElementChild);
+        }
     }
 }
 
@@ -327,8 +362,6 @@ function renderUndoBar() {
 // ─── Event Binding ──────────────────────────────────────────
 
 let searchDebounce = null;
-let searchWasFocused = false;
-let keepSearchFocus = false; // Flag that survives blur events during DOM teardown
 
 function bindEvents() {
     const area = $("#catalog-area");
@@ -349,19 +382,13 @@ function bindEvents() {
     // Search input with debounce
     const searchInput = area.querySelector('.cat-search');
     if (searchInput) {
-        // Track focus state for re-focus after render
-        searchInput.addEventListener('focus', () => { searchWasFocused = true; });
-        searchInput.addEventListener('blur', () => { searchWasFocused = false; });
         searchInput.addEventListener('input', (e) => {
-            keepSearchFocus = true; // Survives blur from DOM teardown
-            searchWasFocused = true;
             clearTimeout(searchDebounce);
             searchDebounce = setTimeout(() => {
                 searchQuery = e.target.value.trim();
                 refresh();
             }, 200);
         });
-        // Keep focus on search for rapid-fire workflow
         searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 searchQuery = '';
@@ -376,19 +403,10 @@ function bindEvents() {
         btn.addEventListener('click', () => {
             searchQuery = '';
             refresh();
-            // Re-focus search after clear
             setTimeout(() => {
                 const s = area.querySelector('.cat-search');
                 if (s) s.focus();
             }, 50);
-        });
-    });
-
-    // Letter bar
-    area.querySelectorAll('[data-action="filter-letter"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            letterFilter = btn.dataset.letter;
-            render(); // Client-side filter — no server call needed
         });
     });
 
@@ -416,7 +434,48 @@ function bindEvents() {
         });
     });
 
-    // Single item: toggle ownership (binary: unowned ↔ owned)
+    // Undo
+    area.querySelectorAll('[data-action="undo"]').forEach(btn => {
+        btn.addEventListener('click', () => performUndo());
+    });
+
+    // Sync Wiki Data
+    area.querySelectorAll('[data-action="sync-wiki"]').forEach(btn => {
+        btn.addEventListener('click', () => performSync());
+    });
+
+    // Bind dynamic sub-sections
+    bindLetterEvents(area);
+    bindBulkEvents(area);
+    bindGridEvents(area);
+}
+
+/** Bind click events on letter bar buttons */
+function bindLetterEvents(area) {
+    area.querySelectorAll('[data-action="filter-letter"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            letterFilter = btn.dataset.letter;
+            render(); // Client-side filter — no server call needed
+        });
+    });
+}
+
+/** Bind click events on bulk action buttons */
+function bindBulkEvents(area) {
+    area.querySelectorAll('[data-action="bulk-owned"]').forEach(btn => {
+        btn.addEventListener('click', () => bulkAction('owned'));
+    });
+    area.querySelectorAll('[data-action="bulk-unowned"]').forEach(btn => {
+        btn.addEventListener('click', () => bulkAction('unowned'));
+    });
+    area.querySelectorAll('[data-action="bulk-target"]').forEach(btn => {
+        btn.addEventListener('click', () => bulkToggleTarget());
+    });
+}
+
+/** Bind events on grid cards (toggle owned/target, keyboard nav) */
+function bindGridEvents(area) {
+    // Single item: toggle ownership
     area.querySelectorAll('[data-action="toggle-owned"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -426,7 +485,6 @@ function bindEvents() {
             if (!item) return;
 
             const next = item.ownershipState === 'owned' ? 'unowned' : 'owned';
-
             const setFn = activeTab === 'officers' ? api.setOfficerOverlay : api.setShipOverlay;
             await setFn(id, { ownershipState: next });
             await refresh();
@@ -448,37 +506,14 @@ function bindEvents() {
         });
     });
 
-    // Bulk actions
-    area.querySelectorAll('[data-action="bulk-owned"]').forEach(btn => {
-        btn.addEventListener('click', () => bulkAction('owned'));
-    });
-    area.querySelectorAll('[data-action="bulk-unowned"]').forEach(btn => {
-        btn.addEventListener('click', () => bulkAction('unowned'));
-    });
-    area.querySelectorAll('[data-action="bulk-target"]').forEach(btn => {
-        btn.addEventListener('click', () => bulkToggleTarget());
-    });
-
-    // Undo
-    area.querySelectorAll('[data-action="undo"]').forEach(btn => {
-        btn.addEventListener('click', () => performUndo());
-    });
-
-    // Sync Wiki Data
-    area.querySelectorAll('[data-action="sync-wiki"]').forEach(btn => {
-        btn.addEventListener('click', () => performSync());
-    });
-
     // Keyboard navigation on cards
     area.querySelectorAll('.cat-card').forEach(card => {
         card.addEventListener('keydown', (e) => {
             if (e.key === ' ' || e.key === 'Enter') {
-                // Toggle ownership
                 e.preventDefault();
                 const ownBtn = card.querySelector('[data-action="toggle-owned"]');
                 if (ownBtn) ownBtn.click();
             } else if (e.key === 't' || e.key === 'T') {
-                // Toggle target
                 e.preventDefault();
                 const tgtBtn = card.querySelector('[data-action="toggle-target"]');
                 if (tgtBtn) tgtBtn.click();
