@@ -22,6 +22,11 @@ export const authRateLimiter = rateLimit({
   standardHeaders: true,  // RateLimit-* headers
   legacyHeaders: false,   // No X-RateLimit-* headers
 
+  // Trust proxy is set on the Express app (index.ts) so req.ip
+  // reflects the real client IP behind Cloud Run's load balancer.
+  // Disable header validation since trust proxy handles it.
+  validate: { xForwardedForHeader: false },
+
   // Custom error response using Majel's envelope format
   handler: (_req, res) => {
     sendFail(
