@@ -1,6 +1,10 @@
 # ── Stage 1: Build ────────────────────────────────────────────
 FROM node:22-slim AS builder
 
+# Build tools needed for argon2 native compilation (ADR-019)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Install deps first (layer cache)
@@ -12,14 +16,24 @@ COPY tsconfig.json ./
 COPY src/ src/
 RUN npm run build
 
-# ── Stage 2: Production ──────────────────────────────────────
+# ── Stage 2: Production deps (with native build tools for argon2) ──
+FROM node:22-slim AS deps
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# ── Stage 3: Production (no build tools — slim) ──────────────
 FROM node:22-slim AS production
 
 WORKDIR /app
 
-# Production deps only (pg is pure JS — no native build tools needed)
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+# Copy production node_modules from deps stage (includes compiled argon2)
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./
 
 # Copy built output from builder
 COPY --from=builder /app/dist ./dist
