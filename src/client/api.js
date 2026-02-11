@@ -8,6 +8,21 @@
 let cachedSessions = [];
 
 /**
+ * Fetch current user identity + role from /api/auth/me.
+ * Returns { id, email, displayName, role } or null on error/unauth.
+ */
+export async function getMe() {
+    try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) return null;
+        const body = await res.json();
+        return body.data?.user ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Check the health/status of the backend API
  * @returns {Promise<Object|null>} Health data or null on error
  */

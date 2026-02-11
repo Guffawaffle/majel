@@ -57,6 +57,7 @@ const sidebarOverlay = $("#sidebar-overlay");
 let isOnline = false;
 let currentMode = "loading";
 let opsLevel = 1;
+let userRole = null; // set after getMe()
 
 // ─── Ops Level ──────────────────────────────────────────────
 async function initOpsLevel() {
@@ -198,6 +199,21 @@ function setTitleBar(icon, heading, subtitle = "") {
     if (titleBar) titleBar.classList.remove("hidden");
 }
 
+/**
+ * Show/hide sidebar items based on the current userRole.
+ * - Diagnostics: Admiral only
+ * - Lex Memory + Memory Recall: hidden (not yet wired to user accounts)
+ */
+function applySidebarGating() {
+    // Diagnostics — Admiral only
+    const diagBtn = document.querySelector('.sidebar-nav-btn[data-view="diagnostics"]');
+    if (diagBtn) diagBtn.classList.toggle("hidden", userRole !== "admiral");
+
+    // Lex Memory & Recall — hidden for now (QA-001-6)
+    if (historyBtn) historyBtn.classList.add("hidden");
+    if (recallBtn) recallBtn.classList.add("hidden");
+}
+
 function showSetup(health) {
     setupGuide.classList.remove("hidden");
     chatArea.classList.add("hidden");
@@ -288,7 +304,7 @@ function navigateToView(view) {
     if (view === 'drydock') { showDrydock(); currentMode = 'drydock'; }
     else if (view === 'catalog') { showCatalog(); currentMode = 'catalog'; }
     else if (view === 'fleet') { showFleet(); currentMode = 'fleet'; }
-    else if (view === 'diagnostics') { showDiagnostics(); currentMode = 'diagnostics'; }
+    else if (view === 'diagnostics' && userRole === 'admiral') { showDiagnostics(); currentMode = 'diagnostics'; }
     else { showChat(); currentMode = 'chat'; }
 }
 
@@ -356,6 +372,11 @@ recallClose.addEventListener("click", () => recallDialog.close());
     await catalog.init();
     await fleet.init();
     await diagnostics.init();
+
+    // Fetch user identity for sidebar gating
+    const me = await api.getMe();
+    userRole = me?.role ?? null;
+    applySidebarGating();
 
     // Initial health check
     const health = await checkHealthAndUpdateUI();
