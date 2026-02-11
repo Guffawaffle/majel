@@ -134,6 +134,7 @@ const SQL = {
     lock_reason = CASE WHEN failed_login_count + 1 >= $2 THEN 'Too many failed login attempts' ELSE lock_reason END,
     updated_at = NOW()
     WHERE id = $1`,
+  lockUser: `UPDATE users SET locked_at = NOW(), lock_reason = $2, updated_at = NOW() WHERE id = $1`,
   unlockUser: `UPDATE users SET locked_at = NULL, lock_reason = NULL, failed_login_count = 0, updated_at = NOW() WHERE id = $1`,
   deleteUser: `DELETE FROM users WHERE id = $1`,
   listUsers: `SELECT id, email, email_verified, display_name, role, locked_at, last_login_at, created_at
@@ -340,6 +341,7 @@ export interface UserStore {
   getUserByEmail(email: string): Promise<UserPublic | null>;
   listUsers(): Promise<UserPublic[]>;
   setRole(userId: string, role: Role): Promise<UserPublic | null>;
+  lockUser(userId: string, reason?: string): Promise<boolean>;
   unlockUser(userId: string): Promise<boolean>;
   deleteUser(userId: string): Promise<boolean>;
   countUsers(): Promise<number>;
@@ -627,6 +629,11 @@ export async function createUserStore(pool: Pool): Promise<UserStore> {
       const row = res.rows[0] as Record<string, unknown> | undefined;
       if (!row) return null;
       return userToPublic(rowToUser(row));
+    },
+
+    async lockUser(userId: string, reason?: string): Promise<boolean> {
+      const res = await pool.query(SQL.lockUser, [userId, reason || "Locked by administrator"]);
+      return (res.rowCount ?? 0) > 0;
     },
 
     async unlockUser(userId: string): Promise<boolean> {
