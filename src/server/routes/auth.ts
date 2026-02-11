@@ -361,6 +361,51 @@ export function createAuthRoutes(appState: AppState): Router {
     });
   }));
 
+  // ── GET /api/auth/admin/users ─────────────────────────────
+  // Admin-only: list all users
+  router.get("/api/auth/admin/users", asyncHandler(async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (token !== appState.config.adminToken) {
+      return sendFail(res, ErrorCode.UNAUTHORIZED, "Admin token required", 401);
+    }
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+    const users = await appState.userStore.listUsers();
+    sendOk(res, { users, count: users.length });
+  }));
+
+  // ── DELETE /api/auth/admin/user ───────────────────────────
+  // Admin-only: delete a user by email
+  router.delete("/api/auth/admin/user", asyncHandler(async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (token !== appState.config.adminToken) {
+      return sendFail(res, ErrorCode.UNAUTHORIZED, "Admin token required", 401);
+    }
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { email } = req.body ?? {};
+    if (!email || typeof email !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    }
+
+    const user = await appState.userStore.getUserByEmail(email);
+    if (!user) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
+    }
+
+    const deleted = await appState.userStore.deleteUser(user.id);
+    if (!deleted) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to delete user", 500);
+    }
+
+    sendOk(res, { message: `User ${email} deleted.` });
+  }));
+
   // ── GET /api/auth/dev-verify ──────────────────────────────
   // Dev-only: verify email without actually sending/receiving email
   if (process.env.NODE_ENV !== "production") {
