@@ -316,7 +316,9 @@ describe("config isolation", () => {
       // Search for process.env in src/ excluding allowed files
       // Allowed: config.ts, logger.ts (bootstrap), gemini.ts (test detection), 
       //          settings.ts (internal resolution), memory.ts (Lex API contract),
-      //          db.ts (DATABASE_URL fallback)
+      //          db.ts (DATABASE_URL fallback), rate-limit.ts (test skip),
+      //          email.ts (production detection + BASE_URL),
+      //          routes/auth.ts (dev-verify guard)
       const result = execSync(
         'grep -rn "process\\.env" --include="*.ts" src/ | ' +
         'grep -v "src/server/config.ts" | ' +
@@ -324,7 +326,10 @@ describe("config isolation", () => {
         'grep -v "src/server/gemini.ts" | ' +
         'grep -v "src/server/settings.ts" | ' +
         'grep -v "src/server/memory.ts" | ' +
-        'grep -v "src/server/db.ts"',
+        'grep -v "src/server/db.ts" | ' +
+        'grep -v "src/server/rate-limit.ts" | ' +
+        'grep -v "src/server/email.ts" | ' +
+        'grep -v "src/server/routes/auth.ts"',
         { encoding: 'utf-8', cwd: path.resolve(__dirname, '..') }
       );
       

@@ -1,25 +1,290 @@
 /**
- * routes/auth.ts — Public Auth Routes (ADR-018 Phase 2)
+ * routes/auth.ts — Authentication Routes (ADR-019 Phase 1)
  *
- * Unauthenticated endpoints for invite code redemption.
+ * User sign-up, sign-in, email verification, password management,
+ * session management, and legacy invite code redemption.
  *
  * Routes:
- *   POST /api/auth/redeem  — Redeem an invite code → tenant cookie
- *   POST /api/auth/logout  — Clear tenant cookie
- *   GET  /api/auth/status  — Check current auth tier
+ *   POST /api/auth/signup          — Create account → verification email
+ *   POST /api/auth/verify-email    — Verify email with token
+ *   POST /api/auth/signin          — Sign in → session cookie
+ *   GET  /api/auth/me              — Current user info + role
+ *   POST /api/auth/logout          — Destroy current session
+ *   POST /api/auth/logout-all      — Destroy all sessions
+ *   POST /api/auth/change-password — Change password (kills other sessions)
+ *   POST /api/auth/forgot-password — Request password reset email
+ *   POST /api/auth/reset-password  — Reset password with token
+ *   GET  /api/auth/status          — Auth tier check (legacy compat)
+ *   POST /api/auth/redeem          — Legacy invite code redemption
+ *   GET  /api/auth/dev-verify      — Dev-only: verify email by address
  */
 
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
-import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { TENANT_COOKIE } from "../auth.js";
+import { sendOk, sendFail, ErrorCode, asyncHandler } from "../envelope.js";
+import { SESSION_COOKIE, TENANT_COOKIE, requireRole } from "../auth.js";
+import { authRateLimiter } from "../rate-limit.js";
+import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../email.js";
 
 export function createAuthRoutes(appState: AppState): Router {
   const router = Router();
 
+  // Apply rate limiting to all auth endpoints
+  router.use("/api/auth", authRateLimiter);
+
+  // ── POST /api/auth/signup ─────────────────────────────────
+  router.post("/api/auth/signup", asyncHandler(async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { email, password, displayName } = req.body ?? {};
+    if (!email || typeof email !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Email is required", 400);
+    }
+    if (!password || typeof password !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Password is required", 400);
+    }
+    if (!displayName || typeof displayName !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Display name is required", 400);
+    }
+
+    try {
+      const result = await appState.userStore.signUp({ email, password, displayName });
+
+      // Send verification email (fire-and-forget)
+      sendVerificationEmail(result.user.email, result.verifyToken).catch(() => {});
+
+      sendOk(res, {
+        message: "Account created. Please check your email to verify your address.",
+        user: { id: result.user.id, email: result.user.email, displayName: result.user.displayName },
+      }, 201);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Sign-up failed";
+      sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
+    }
+  }));
+
+  // ── POST /api/auth/verify-email ───────────────────────────
+  router.post("/api/auth/verify-email", asyncHandler(async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { token } = req.body ?? {};
+    if (!token || typeof token !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Verification token is required", 400);
+    }
+
+    const verified = await appState.userStore.verifyEmail(token);
+    if (!verified) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid or expired verification token", 400);
+    }
+
+    sendOk(res, { verified: true, message: "Email verified. You can now sign in." });
+  }));
+
+  // ── POST /api/auth/signin ─────────────────────────────────
+  router.post("/api/auth/signin", asyncHandler(async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { email, password } = req.body ?? {};
+    if (!email || typeof email !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Email is required", 400);
+    }
+    if (!password || typeof password !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Password is required", 400);
+    }
+
+    try {
+      const ip = req.ip || req.socket.remoteAddress || undefined;
+      const ua = req.headers["user-agent"] || undefined;
+      const result = await appState.userStore.signIn(email, password, ip, ua);
+
+      // Set session cookie
+      res.cookie(SESSION_COOKIE, result.sessionToken, {
+        httpOnly: true,
+        sameSite: "strict",
+        secure: appState.config.nodeEnv === "production",
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        path: "/",
+      });
+
+      sendOk(res, {
+        user: result.user,
+        message: `Welcome back, ${result.user.displayName}.`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Sign-in failed";
+      sendFail(res, ErrorCode.UNAUTHORIZED, message, 401);
+    }
+  }));
+
+  // ── GET /api/auth/me ──────────────────────────────────────
+  router.get("/api/auth/me", requireRole(appState, "ensign"), asyncHandler(async (_req, res) => {
+    sendOk(res, {
+      user: {
+        id: res.locals.userId,
+        email: res.locals.userEmail,
+        displayName: res.locals.userDisplayName,
+        role: res.locals.userRole,
+      },
+    });
+  }));
+
+  // ── POST /api/auth/logout ─────────────────────────────────
+  router.post("/api/auth/logout", asyncHandler(async (req, res) => {
+    // Destroy user session if present
+    const sessionToken = req.cookies?.[SESSION_COOKIE];
+    if (sessionToken && appState.userStore) {
+      await appState.userStore.destroySession(sessionToken);
+    }
+
+    // Clear both cookies (new + legacy)
+    res.clearCookie(SESSION_COOKIE, { path: "/" });
+    res.clearCookie(TENANT_COOKIE, { path: "/" });
+
+    sendOk(res, { message: "Signed out." });
+  }));
+
+  // ── POST /api/auth/logout-all ─────────────────────────────
+  router.post("/api/auth/logout-all", requireRole(appState, "ensign"), asyncHandler(async (_req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    await appState.userStore.destroyAllSessions(res.locals.userId!);
+
+    res.clearCookie(SESSION_COOKIE, { path: "/" });
+    res.clearCookie(TENANT_COOKIE, { path: "/" });
+
+    sendOk(res, { message: "All sessions destroyed." });
+  }));
+
+  // ── POST /api/auth/change-password ────────────────────────
+  router.post("/api/auth/change-password", requireRole(appState, "ensign"), asyncHandler(async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { currentPassword, newPassword } = req.body ?? {};
+    if (!currentPassword || typeof currentPassword !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Current password is required", 400);
+    }
+    if (!newPassword || typeof newPassword !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "New password is required", 400);
+    }
+
+    try {
+      // Keep the current session alive, kill all others
+      const sessionToken = req.cookies?.[SESSION_COOKIE] || "";
+      await appState.userStore.changePassword(
+        res.locals.userId!, currentPassword, newPassword, sessionToken,
+      );
+      sendOk(res, { message: "Password changed. All other sessions have been signed out." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Password change failed";
+      sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
+    }
+  }));
+
+  // ── POST /api/auth/forgot-password ────────────────────────
+  router.post("/api/auth/forgot-password", asyncHandler(async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { email } = req.body ?? {};
+    if (!email || typeof email !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Email is required", 400);
+    }
+
+    // Always return 200 — never reveal if email exists
+    const token = await appState.userStore.createResetToken(email);
+    if (token) {
+      sendPasswordResetEmail(email, token).catch(() => {});
+    }
+
+    sendOk(res, { message: "If that email is registered, a reset link has been sent." });
+  }));
+
+  // ── POST /api/auth/reset-password ─────────────────────────
+  router.post("/api/auth/reset-password", asyncHandler(async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { token, newPassword } = req.body ?? {};
+    if (!token || typeof token !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Reset token is required", 400);
+    }
+    if (!newPassword || typeof newPassword !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "New password is required", 400);
+    }
+
+    try {
+      const reset = await appState.userStore.resetPassword(token, newPassword);
+      if (!reset) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid or expired reset token", 400);
+      }
+      sendOk(res, { message: "Password has been reset. Please sign in with your new password." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Password reset failed";
+      sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
+    }
+  }));
+
+  // ── GET /api/auth/status ──────────────────────────────────
+  // Legacy compatibility endpoint
+  router.get("/api/auth/status", asyncHandler(async (req, res) => {
+    if (!appState.config.authEnabled) {
+      return sendOk(res, { tier: "admiral", authEnabled: false, tenantId: "local" });
+    }
+
+    // Check for admin bearer token
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      if (token === appState.config.adminToken) {
+        return sendOk(res, { tier: "admiral", authEnabled: true, tenantId: "admiral" });
+      }
+    }
+
+    // Check for user session
+    const sessionToken = req.cookies?.[SESSION_COOKIE];
+    if (sessionToken && appState.userStore) {
+      const session = await appState.userStore.resolveSession(sessionToken);
+      if (session) {
+        return sendOk(res, {
+          tier: session.role,
+          authEnabled: true,
+          user: {
+            id: session.userId,
+            email: session.email,
+            displayName: session.displayName,
+            role: session.role,
+          },
+        });
+      }
+    }
+
+    // Check for legacy tenant cookie
+    const tenantId = req.cookies?.[TENANT_COOKIE];
+    if (tenantId && appState.inviteStore) {
+      const session = await appState.inviteStore.getSession(tenantId);
+      if (session) {
+        return sendOk(res, { tier: "visitor", authEnabled: true, tenantId });
+      }
+    }
+
+    sendOk(res, { tier: "public", authEnabled: true, tenantId: null });
+  }));
+
   // ── POST /api/auth/redeem ─────────────────────────────────
-  router.post("/api/auth/redeem", async (req, res) => {
-    // In demo mode, no invite codes needed
+  // Legacy invite code redemption (backward compat)
+  router.post("/api/auth/redeem", asyncHandler(async (req, res) => {
     if (!appState.config.authEnabled) {
       return sendOk(res, {
         tenantId: "local",
@@ -39,12 +304,11 @@ export function createAuthRoutes(appState: AppState): Router {
 
     try {
       const session = await appState.inviteStore.redeemCode(code.trim());
-      // Set HttpOnly tenant cookie
       res.cookie(TENANT_COOKIE, session.tenantId, {
         httpOnly: true,
         sameSite: "strict",
         secure: appState.config.nodeEnv === "production",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        maxAge: 30 * 24 * 60 * 60 * 1000,
         path: "/",
       });
       sendOk(res, {
@@ -56,40 +320,34 @@ export function createAuthRoutes(appState: AppState): Router {
       const message = err instanceof Error ? err.message : "Failed to redeem invite code";
       sendFail(res, ErrorCode.FORBIDDEN, message, 403);
     }
-  });
+  }));
 
-  // ── POST /api/auth/logout ─────────────────────────────────
-  router.post("/api/auth/logout", (_req, res) => {
-    res.clearCookie(TENANT_COOKIE, { path: "/" });
-    sendOk(res, { message: "Session cleared" });
-  });
-
-  // ── GET /api/auth/status ──────────────────────────────────
-  router.get("/api/auth/status", async (req, res) => {
-    if (!appState.config.authEnabled) {
-      return sendOk(res, { tier: "admiral", authEnabled: false, tenantId: "local" });
-    }
-
-    // Check for admiral token
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.slice(7);
-      if (token === appState.config.adminToken) {
-        return sendOk(res, { tier: "admiral", authEnabled: true, tenantId: "admiral" });
+  // ── GET /api/auth/dev-verify ──────────────────────────────
+  // Dev-only: verify email without actually sending/receiving email
+  if (process.env.NODE_ENV !== "production") {
+    router.get("/api/auth/dev-verify", asyncHandler(async (req, res) => {
+      if (!appState.userStore) {
+        return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
       }
-    }
 
-    // Check for tenant cookie
-    const tenantId = req.cookies?.[TENANT_COOKIE];
-    if (tenantId && appState.inviteStore) {
-      const session = await appState.inviteStore.getSession(tenantId);
-      if (session) {
-        return sendOk(res, { tier: "visitor", authEnabled: true, tenantId });
+      const email = req.query.email as string;
+      if (!email) {
+        return sendFail(res, ErrorCode.MISSING_PARAM, "Email query parameter required", 400);
       }
-    }
 
-    sendOk(res, { tier: "public", authEnabled: true, tenantId: null });
-  });
+      const devToken = getDevToken(email);
+      if (!devToken || devToken.type !== "verify") {
+        return sendFail(res, ErrorCode.NOT_FOUND, "No pending verification for that email", 404);
+      }
+
+      const verified = await appState.userStore.verifyEmail(devToken.token);
+      if (!verified) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "Token already used or expired", 400);
+      }
+
+      sendOk(res, { verified: true, email, message: "Email verified (dev mode)." });
+    }));
+  }
 
   return router;
 }

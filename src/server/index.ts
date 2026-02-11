@@ -38,6 +38,7 @@ import { createBehaviorStore } from "./behavior-store.js";
 import { createReferenceStore } from "./reference-store.js";
 import { createOverlayStore } from "./overlay-store.js";
 import { createInviteStore } from "./invite-store.js";
+import { createUserStore } from "./user-store.js";
 import { createPool } from "./db.js";
 
 // Shared types & config (avoids circular deps between index ↔ routes)
@@ -90,6 +91,7 @@ const state: AppState = {
   referenceStore: null,
   overlayStore: null,
   inviteStore: null,
+  userStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -125,20 +127,32 @@ export function createApp(appState: AppState): express.Express {
     }),
   );
 
-  // Static files
-  app.use(express.static(clientDir));
+  // Static files (for /app/* — the authenticated SPA)
+  app.use("/app", express.static(clientDir));
+
+  // ─── Landing page routes (ADR-019 Phase 1) ────────────────
+  const landingFile = path.join(clientDir, "landing.html");
+
+  // Public landing page routes → landing.html
+  for (const route of ["/", "/login", "/signup", "/verify", "/reset-password"]) {
+    app.get(route, (_req, res) => {
+      res.sendFile(landingFile);
+    });
+  }
 
   // ─── Mount route modules ──────────────────────────────────
-  app.use(createCoreRoutes(appState));  app.use(createAuthRoutes(appState));
-  app.use(createAdminRoutes(appState));  app.use(createChatRoutes(appState));
+  app.use(createCoreRoutes(appState));
+  app.use(createAuthRoutes(appState));
+  app.use(createAdminRoutes(appState));
+  app.use(createChatRoutes(appState));
   app.use(createSettingsRoutes(appState));
   app.use(createSessionRoutes(appState));
   app.use(createDockRoutes(appState));
   app.use(createCatalogRoutes(appState));
   app.use(createDiagnosticQueryRoutes(appState));
 
-  // ─── SPA Fallback ─────────────────────────────────────────
-  app.get("*", (_req, res) => {
+  // ─── SPA Fallback (authenticated app) ─────────────────────
+  app.get("/app/*", (_req, res) => {
     res.sendFile(path.join(clientDir, "index.html"));
   });
 
@@ -232,6 +246,15 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "invite store init failed");
   }
 
+  // 2i. Initialize user store (ADR-019)
+  try {
+    state.userStore = await createUserStore(pool);
+    const userCount = await state.userStore.countUsers();
+    log.boot.info({ users: userCount }, "user store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "user store init failed");
+  }
+
   // Resolve config from settings store
   const { geminiApiKey } = state.config;
 
@@ -268,6 +291,7 @@ async function shutdown(): Promise<void> {
   state.behaviorStore?.close();
   state.overlayStore?.close();
   state.inviteStore?.close();
+  state.userStore?.close();
   state.referenceStore?.close();
   if (state.memoryService) {
     await state.memoryService.close();
