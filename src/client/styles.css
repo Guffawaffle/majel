@@ -1191,7 +1191,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); }
   opacity: 0;
   transition: all var(--transition);
 }
-.ship-option:hover .ship-remove-btn { opacity: 1; }
+.ship-option:hover .ship-remove-btn,
+.ship-radio-row:hover .ship-remove-btn { opacity: 1; }
 .ship-remove-btn:hover { color: var(--accent-red); background: rgba(248, 113, 113, 0.15); }
 
 .ship-add-row { margin-top: 4px; padding: 0 8px 8px; }
