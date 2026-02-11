@@ -100,9 +100,9 @@ const state: AppState = {
 export function createApp(appState: AppState): express.Express {
   const app = express();
 
-  // Trust Cloud Run's load balancer so req.ip is the real client IP
-  // Required for rate limiting and logging behind GFE / Cloud Run proxy
-  app.set("trust proxy", true);
+  // Trust exactly one proxy hop (Cloud Run's Google Frontend)
+  // Using 1 instead of true avoids ERR_ERL_PERMISSIVE_TRUST_PROXY
+  app.set("trust proxy", 1);
   
   // AX-First response envelope (ADR-004) — requestId + timing on every request
   // MUST come before body parser so request ID is available for all errors
