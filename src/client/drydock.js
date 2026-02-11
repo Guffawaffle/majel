@@ -110,11 +110,36 @@ function render() {
 }
 
 /**
+ * Detect ships assigned to multiple docks (client-side).
+ * Returns array of { shipName, shipId, dockNumbers: number[] }
+ */
+function getShipConflicts() {
+    const shipDocks = new Map(); // shipId → { name, docks: Set<number> }
+    for (const dock of docks) {
+        for (const ds of (dock.ships || [])) {
+            if (!shipDocks.has(ds.shipId)) {
+                const ship = allShips.find(s => s.id === ds.shipId);
+                shipDocks.set(ds.shipId, { name: ship?.name || ds.shipId, docks: new Set() });
+            }
+            shipDocks.get(ds.shipId).docks.add(dock.dockNumber);
+        }
+    }
+    const conflicts = [];
+    for (const [shipId, info] of shipDocks) {
+        if (info.docks.size > 1) {
+            conflicts.push({ shipId, shipName: info.name, dockNumbers: [...info.docks].sort((a, b) => a - b) });
+        }
+    }
+    return conflicts;
+}
+
+/**
  * Collapsible Dock Intel — conflicts and insights
  */
 function renderIntelSection() {
-    const conflictList = conflicts.conflicts || [];
-    const warningCount = conflictList.length;
+    const officerConflictList = conflicts.conflicts || [];
+    const shipConflictList = getShipConflicts();
+    const warningCount = officerConflictList.length + shipConflictList.length;
     const hasWarnings = warningCount > 0;
 
     const badgeHtml = hasWarnings
@@ -122,18 +147,33 @@ function renderIntelSection() {
         : `<span class="intel-badge ok">✅</span>`;
 
     let intelBody = '';
-    if (hasWarnings) {
-        intelBody = conflictList.map(c => {
+
+    // Ship conflicts
+    if (shipConflictList.length > 0) {
+        intelBody += shipConflictList.map(c => {
+            const dockNums = c.dockNumbers.map(n => `D${n}`).join(', ');
+            return `<div class="intel-item warn">
+                <span class="intel-icon">🚀</span>
+                <span><strong>${escHtml(c.shipName)}</strong> assigned to multiple docks (${dockNums})</span>
+            </div>`;
+        }).join('');
+    }
+
+    // Officer conflicts
+    if (officerConflictList.length > 0) {
+        intelBody += officerConflictList.map(c => {
             const dockNums = c.appearances.map(a => a.dockNumbers.join(', D')).join('; ');
             return `<div class="intel-item warn">
                 <span class="intel-icon">⚠</span>
                 <span><strong>${c.officerName}</strong> assigned to multiple docks (D${dockNums})</span>
             </div>`;
         }).join('');
-    } else {
+    }
+
+    if (!hasWarnings) {
         intelBody = `<div class="intel-item ok">
             <span class="intel-icon">✅</span>
-            <span>No officer conflicts detected</span>
+            <span>No conflicts detected</span>
         </div>`;
     }
 
