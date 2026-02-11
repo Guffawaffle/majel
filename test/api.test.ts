@@ -72,6 +72,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     referenceStore: null,
     overlayStore: null,
     inviteStore: null,
+    userStore: null,
     startupComplete: false,
     config: bootstrapConfigSync(),
     ...overrides,

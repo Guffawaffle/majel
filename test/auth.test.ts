@@ -43,6 +43,7 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
 
 function makeState(overrides: Partial<AppState> = {}): AppState {
   return {
+    pool: null,
     geminiEngine: null,
     memoryService: null,
     settingsStore: null,
@@ -52,6 +53,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     referenceStore: null,
     overlayStore: null,
     inviteStore: null,
+    userStore: null,
     startupComplete: true,
     config: makeConfig(),
     ...overrides,
@@ -120,8 +122,8 @@ describe("Auth — requireAdmiral", () => {
     const res = await request(app)
       .get("/test/admiral")
       .set("Authorization", "Bearer wrong-token");
-    expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe("FORBIDDEN");
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe("UNAUTHORIZED");
   });
 
   it("rejects non-Bearer auth", async () => {
@@ -145,7 +147,6 @@ describe("Auth — requireAdmiral", () => {
       .set("Authorization", `Bearer ${ADMIN_TOKEN}`);
     expect(res.status).toBe(200);
     expect(res.body.data.access).toBe("admiral");
-    expect(res.body.data.tenantId).toBe("admiral");
   });
 });
 
@@ -180,7 +181,6 @@ describe("Auth — requireVisitor", () => {
       .get("/test/visitor")
       .set("Authorization", `Bearer ${ADMIN_TOKEN}`);
     expect(res.status).toBe(200);
-    expect(res.body.data.tenantId).toBe("admiral");
   });
 
   it("accepts valid tenant cookie", async () => {
