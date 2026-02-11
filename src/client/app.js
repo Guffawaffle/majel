@@ -35,6 +35,7 @@ const recallInput = $("#recall-input");
 const recallResults = $("#recall-results");
 const recallClose = $("#recall-close");
 const titleBackBtn = $("#title-back-btn");
+const logoutBtn = $("#logout-btn");
 
 // View switching elements
 const setupGuide = $("#setup-guide");
@@ -186,7 +187,7 @@ function setActiveNav(view) {
 
 function updateHash(view) {
     if (window.location.hash !== `#/${view}`) {
-        history.replaceState(null, '', `#/${view}`);
+        history.pushState(null, '', `#/${view}`);
     }
 }
 
@@ -243,7 +244,6 @@ function showChat() {
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("chat");
     setTitleBar("💬", "Chat", "Gemini-powered fleet advisor");
-    updateHash("chat");
 }
 
 function showDrydock() {
@@ -256,7 +256,6 @@ function showDrydock() {
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("drydock");
     setTitleBar("🔧", "Drydock", "Configure docks, ships & crew");
-    updateHash("drydock");
     drydock.refresh();
 }
 
@@ -270,7 +269,6 @@ function showCatalog() {
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("catalog");
     setTitleBar("📋", "Catalog", "Reference data & ownership tracking");
-    updateHash("catalog");
     catalog.refresh();
 }
 
@@ -284,7 +282,6 @@ function showDiagnostics() {
     if (diagnosticsArea) diagnosticsArea.classList.remove("hidden");
     setActiveNav("diagnostics");
     setTitleBar("⚡", "Diagnostics", "System health, data summary & query console");
-    updateHash("diagnostics");
     diagnostics.refresh();
 }
 
@@ -298,12 +295,11 @@ function showFleet() {
     if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
     setActiveNav("fleet");
     setTitleBar("🚀", "Fleet", "Your owned roster — levels, ranks & power");
-    updateHash("fleet");
     fleet.refresh();
 }
 
-function navigateToView(view, { pushHistory = true } = {}) {
-    // Track view history for back button
+function navigateToView(view, { pushHistory = true, updateUrl = true } = {}) {
+    // Track view history for in-app back button
     if (pushHistory && currentMode && currentMode !== "loading" && currentMode !== "setup" && currentMode !== view) {
         viewHistory.push(currentMode);
         if (viewHistory.length > 20) viewHistory.shift();
@@ -315,7 +311,10 @@ function navigateToView(view, { pushHistory = true } = {}) {
     else if (view === 'diagnostics' && userRole === 'admiral') { showDiagnostics(); currentMode = 'diagnostics'; }
     else { showChat(); currentMode = 'chat'; }
 
-    // Back button: visible when there's history and not on chat (home)
+    // Push URL state (skip when responding to browser back/forward — URL already changed)
+    if (updateUrl) updateHash(currentMode);
+
+    // In-app back button: visible when there's history and not on chat (home)
     if (titleBackBtn) {
         titleBackBtn.classList.toggle("hidden", viewHistory.length === 0 || currentMode === 'chat');
     }
@@ -334,10 +333,16 @@ sidebarNavBtns.forEach(btn => {
     });
 });
 
-// Hash-based routing: browser back/forward + refresh
-window.addEventListener('hashchange', () => {
+// Browser back/forward: popstate fires when user presses back/forward.
+// Navigate without pushing new history — the browser already changed the URL.
+// Also pop our internal viewHistory to keep the in-app back button in sync.
+window.addEventListener('popstate', () => {
     const view = getViewFromHash();
-    if (view && view !== currentMode) navigateToView(view);
+    if (view && view !== currentMode) {
+        // Pop viewHistory so in-app back button stays consistent
+        if (viewHistory.length > 0) viewHistory.pop();
+        navigateToView(view, { pushHistory: false, updateUrl: false });
+    }
 });
 
 // Ops level badge click
@@ -375,11 +380,21 @@ recallForm.addEventListener("submit", (e) => {
 
 recallClose.addEventListener("click", () => recallDialog.close());
 
-// Back button
+// In-app back button — triggers browser back which fires popstate,
+// keeping browser history and app state in sync.
 if (titleBackBtn) {
     titleBackBtn.addEventListener("click", () => {
-        const prev = viewHistory.pop();
-        if (prev) navigateToView(prev, { pushHistory: false });
+        if (viewHistory.length > 0) {
+            history.back();
+        }
+    });
+}
+
+// Logout
+if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+        try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
+        window.location.href = "/";
     });
 }
 
@@ -398,6 +413,7 @@ if (titleBackBtn) {
     const me = await api.getMe();
     userRole = me?.role ?? null;
     applySidebarGating();
+    catalog.setAdminMode(userRole === 'admiral');
 
     // Initial health check
     const health = await checkHealthAndUpdateUI();
@@ -417,8 +433,7 @@ if (titleBackBtn) {
         if (savedView && savedView !== 'chat') {
             navigateToView(savedView);
         } else {
-            showChat();
-            currentMode = "chat";
+            navigateToView('chat');
             chatInput.focus();
         }
     }
@@ -429,8 +444,7 @@ if (titleBackBtn) {
         if (!h) return;
 
         if (currentMode === "setup" && h.gemini === "connected") {
-            showChat();
-            currentMode = "chat";
+            navigateToView('chat');
             chat.addMessage("system", "✅ Configuration detected — Aria is online, Admiral.");
             chatInput.focus();
         } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "catalog" && currentMode !== "fleet" && currentMode !== "diagnostics" && h.gemini !== "connected") {

@@ -24,10 +24,14 @@ let undoStack = []; // { type, refIds, previousStates }
 let loading = false;
 let syncing = false;
 let letterFilter = ''; // Active letter filter ('A', 'B', ... or '' for all)
+let isAdmin = false; // Set by app.js — gates sync button
 
 const $ = (sel) => document.querySelector(sel);
 
 // ─── Public API ─────────────────────────────────────────────
+
+/** Called by app.js to enable/disable admin-only features (e.g. wiki sync). */
+export function setAdminMode(admin) { isAdmin = !!admin; }
 
 export async function init() {
     const area = $("#catalog-area");
@@ -176,13 +180,13 @@ function renderToolbar(totalRef) {
                 ${searchQuery ? '<button class="cat-search-clear" data-action="clear-search" title="Clear search">✕</button>' : ''}
             </div>
             <span class="cat-result-count">${items.length}${totalRef ? ` / ${totalRef}` : ''}</span>
-            <button class="cat-sync-btn ${syncing ? 'syncing' : ''}" data-action="sync-wiki" title="Sync reference data from STFC Fandom Wiki">
+            ${isAdmin ? `<button class="cat-sync-btn ${syncing ? 'syncing' : ''}" data-action="sync-wiki" title="Sync reference data from STFC Fandom Wiki">
                 <svg class="cat-sync-icon" width="14" height="14" viewBox="0 0 16 16" fill="none">
                     <path d="M14 8A6 6 0 1 1 8 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     <path d="M8 0l3 2-3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 ${syncing ? 'Syncing...' : 'Sync Wiki Data'}
-            </button>
+            </button>` : ''}
         </div>
     `;
 }
