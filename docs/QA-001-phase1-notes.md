@@ -64,6 +64,25 @@
 
 ---
 
+### QA-001-9: Fleet list should show dock assignment(s)
+- **Severity:** Medium (UX enhancement)
+- **Location:** Fleet screen
+- **Behavior:** Fleet list entries should show which dock(s) a ship is assigned to, e.g., `[Dock Name] [Ship Name]`. Gives at-a-glance fleet deployment status.
+
+### QA-001-10: Show Captain Maneuver and Officer Ability in fleet/catalog
+- **Severity:** Medium (UX enhancement)
+- **Location:** Fleet screen / Catalog
+- **Behavior:** There's dry space that could display Captain Maneuver and Officer Ability text. This is core fleet-planning info that shouldn't require drilling into a detail view.
+
+### QA-001-11: CRITICAL — Incomplete ship catalog (Fandom Wiki gaps)
+- **Severity:** Critical (data completeness)
+- **Location:** Reference data / Wiki ingest
+- **Behavior:** Known missing ship: **Ferengi D'Vor**. If one ship is missing, others likely are too. The Fandom Wiki scraper may be missing pages, categories, or ship naming variations.
+- **Status:** Guffawaffle researching scope of missing data. NOT blocking other work — catalog is reference-only and corrections can be backfilled.
+- **Action:** Audit full ship list against in-game data when research is complete. May need supplementary data sources or manual additions.
+
+---
+
 ## Priority Order (suggested)
 1. **QA-001-1** — Search focus (UX-breaking, persistent bug)
 2. **QA-001-2** — Remove ship from dock (functional gap)
@@ -73,3 +92,6 @@
 6. **QA-001-5** — Multi-dock ship warning (intel feature)
 7. **QA-001-4** — Back button (navigation UX)
 8. **QA-001-8** — Fleet screen redesign (UX enhancement)
+9. **QA-001-9** — Fleet list dock assignments (UX)
+10. **QA-001-10** — Captain Maneuver / Officer Ability display (UX)
+11. **QA-001-11** — Incomplete catalog (Critical but non-blocking — research pending)
