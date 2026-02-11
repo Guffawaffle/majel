@@ -29,36 +29,23 @@ ADR-019 allocated this to "Phase 5.4" as a one-liner. This ADR expands the spec.
 
 ## Decision
 
-### D1 — Owner-Only Access Gate
+### D1 — Admiral-Gated Access
 
-The Admiral Console is restricted to a single owner identity, not merely any `admiral`-role user.
+The Admiral Console reuses the existing `requireAdmiral` middleware. Any user with the `admiral` role can access it — the same gate already protecting the Diagnostics tab. No new environment variables, no hardcoded emails, no special "owner" concept.
 
-**Mechanism:** A new environment variable `MAJEL_OWNER_EMAIL` (default: not set). A new `requireOwner(appState)` middleware:
+**Routes protected by `requireAdmiral`:**
+- `GET/POST/DELETE /api/admin/*` (existing admin routes — already gated)
+- `GET/POST/DELETE /api/auth/admin/*` (user management routes — already gated via Bearer token, updated to also accept admiral sessions)
 
-1. Runs after `requireAdmiral` (must already be admiral)
-2. If `MAJEL_OWNER_EMAIL` is not set → allow any admiral (dev mode / backwards-compatible)
-3. If set → assert `resolvedIdentity.email === MAJEL_OWNER_EMAIL`
-4. For Bearer token (virtual admiral): map the virtual identity email to `MAJEL_OWNER_EMAIL` instead of `admin@majel.local`
-
-**Production config:**
-```env
-MAJEL_OWNER_EMAIL=guff@smartergpt.dev
-```
-
-This cleanly separates the "admiral" role (fleet power-user permissions) from "owner" (system administration). A future admiral who isn't the owner would see the Diagnostics tab but **not** the Admiral Console.
-
-**Routes protected by `requireOwner`:**
-- `GET /api/admin/*` (all existing admin routes)
-- `POST/DELETE /api/auth/admin/*` (user management routes)
-- The console view itself (client-side gating via `/api/auth/me` response)
+**Client-side gating:** The sidebar button is visible when `me.role === 'admiral'`, identical to how the Diagnostics button is gated today.
 
 ### D2 — Console View Architecture
 
 A new `admin` view added to the SPA, rendered by a new `admin.js` module.
 
-**Sidebar:** New button `🛡️ Admiral Console` — visible only when `me.email === ownerEmail` (returned from an enhanced `/api/auth/me` response that includes `isOwner: true`).
+**Sidebar:** New button `🛡️ Admiral Console` — visible only to admirals (same gating as Diagnostics).
 
-**Navigation:** Added to `VALID_VIEWS` as `'admin'`, gated like diagnostics.
+**Navigation:** Added to `VALID_VIEWS` as `'admin'`, gated identically to `'diagnostics'`.
 
 ### D3 — Console Panels
 
@@ -68,7 +55,7 @@ The console contains 3 panels, each with a tab:
 | Feature | API | Description |
 |---------|-----|-------------|
 | User list | `GET /api/auth/admin/users` | Table: email, display name, role, verified status, created date, locked status |
-| Role dropdown | `POST /api/auth/admin/set-role` | Inline select: ensign/lieutenant/captain/admiral — disabled for owner's own row |
+| Role dropdown | `POST /api/auth/admin/set-role` | Inline select: ensign/lieutenant/captain/admiral — disabled for the current user's own row |
 | Lock/unlock | (new) `PATCH /api/auth/admin/lock` | Toggle `locked_at` — prevents login without deletion |
 | Delete user | `DELETE /api/auth/admin/user` | Confirm dialog, cascades overlays/sessions/settings |
 
@@ -85,25 +72,13 @@ The console contains 3 panels, each with a tab:
 |---------|-----|-------------|
 | Session list | `GET /api/admin/sessions` | Table: session ID, user email, created, last active, IP |
 | Kill session | `DELETE /api/admin/sessions/:id` | Force logout a specific session |
-| Kill all | (new) `DELETE /api/admin/sessions` | Nuke all non-owner sessions |
+| Kill all | (new) `DELETE /api/admin/sessions` | Nuke all sessions except the caller's |
 
-### D4 — `/api/auth/me` Enhancement
+### D4 — Session-Based Admiral Access to Admin Routes
 
-The `/api/auth/me` response gets an `isOwner` flag:
+Currently the `/api/auth/admin/*` routes (set-role, users, delete-user) only accept Bearer token authentication. This ADR extends them to also accept session-cookie admirals via `requireAdmiral`, so the console UI can call them without the raw admin token.
 
-```json
-{
-  "user": {
-    "id": "...",
-    "email": "guff@smartergpt.dev",
-    "displayName": "Guffawaffle",
-    "role": "admiral",
-    "isOwner": true
-  }
-}
-```
-
-This flag is derived server-side: `isOwner = identity.email === config.ownerEmail`. The client uses it for sidebar gating — the `🛡️ Admiral Console` button is only visible when `isOwner === true`.
+The existing Bearer-token path remains functional for CLI/automation use.
 
 ### D5 — Client Module Structure
 
@@ -124,45 +99,24 @@ src/client/
 
 | Constraint | Implementation |
 |-----------|----------------|
-| Owner-only access | `requireOwner` middleware on all admin routes |
-| No self-deletion | Owner row in user list has delete button disabled |
-| No self-demotion | Role dropdown disabled on owner's own row |
+| Admiral-only access | Existing `requireAdmiral` middleware on all admin routes |
+| No self-deletion | Current user's row in user list has delete button disabled |
+| No self-demotion | Role dropdown disabled on current user's own row |
 | Cascading delete | User deletion removes: sessions, overlays, settings, dock presets |
 | Confirm dialogs | All destructive actions (delete user, revoke code, kill session) require confirmation |
-| Audit visibility | All admin actions logged at `info` level with actor identity |
-
-### D7 — Virtual Admiral Email Mapping
-
-The Bearer-token virtual admiral currently resolves to `admin@majel.local`. This ADR changes it to resolve to `MAJEL_OWNER_EMAIL` when set:
-
-```typescript
-// auth.ts — resolveIdentity, Bearer token path
-return {
-  userId: deriveAdminUserId(appState.config.adminToken),
-  role: "admiral",
-  email: appState.config.ownerEmail || "admin@majel.local",
-  displayName: "Admiral",
-  emailVerified: true,
-  lockedAt: null,
-  source: "admin-token",
-};
-```
-
-This ensures the Bearer-token admin and the `guff@smartergpt.dev` session-based admin are treated as the same owner identity.
+| Audit logging | All admin actions logged at `info` level with actor identity |
 
 ---
 
 ## Implementation Phases
 
-### Phase 1 — Owner Gating (server)
+### Phase 1 — Route Updates (server)
 
 | # | Task | Scope |
 |---|------|-------|
-| 1.1 | Add `MAJEL_OWNER_EMAIL` to config | `config.ts` |
-| 1.2 | Map virtual admiral email to `ownerEmail` | `auth.ts` |
-| 1.3 | Create `requireOwner` middleware | `auth.ts` |
-| 1.4 | Apply `requireOwner` to `/api/admin/*` and `/api/auth/admin/*` | Routes |
-| 1.5 | Add `isOwner` flag to `GET /api/auth/me` | `routes/auth.ts` |
+| 1.1 | Update `/api/auth/admin/*` routes to accept session-cookie admirals (not just Bearer token) | `routes/auth.ts` |
+| 1.2 | Add `PATCH /api/auth/admin/lock` endpoint | `routes/auth.ts` |
+| 1.3 | Add `DELETE /api/admin/sessions` (kill-all) endpoint | `routes/admin.ts` |
 
 ### Phase 2 — Console UI
 
@@ -174,20 +128,12 @@ This ensures the Bearer-token admin and the `guff@smartergpt.dev` session-based 
 | 2.4 | Add `'admin'` to `VALID_VIEWS`, wire gating in `app.js` | Client |
 | 2.5 | Add admin panel CSS | `styles.css` |
 
-### Phase 3 — New Endpoints
+### Phase 3 — Tests
 
 | # | Task | Scope |
 |---|------|-------|
-| 3.1 | `PATCH /api/auth/admin/lock` — lock/unlock user | `routes/auth.ts` |
-| 3.2 | `DELETE /api/admin/sessions` — kill all non-owner sessions | `routes/admin.ts` |
-
-### Phase 4 — Tests
-
-| # | Task | Scope |
-|---|------|-------|
-| 4.1 | `requireOwner` middleware unit tests | Test |
-| 4.2 | Owner-only route integration tests | Test |
-| 4.3 | Admin API function tests | Test |
+| 3.1 | Admiral-gated route integration tests | Test |
+| 3.2 | Admin API function tests | Test |
 
 ---
 
@@ -195,16 +141,15 @@ This ensures the Bearer-token admin and the `guff@smartergpt.dev` session-based 
 
 | Alternative | Rejected Because |
 |------------|------------------|
-| Reuse diagnostics tab for admin panels | Diagnostics is system inspection; admin is mutation. Different audiences (any admiral vs. owner only). Mixing them confuses the trust boundary. |
-| Admin as a sub-route of diagnostics | Same problem — an admiral promoted for fleet oversight shouldn't see user management tools. |
-| Hardcode `guff@smartergpt.dev` in source | Violates ADR-019 principle: "No hardcoded admin UUIDs in source code." Config-driven is correct. |
-| No owner distinction (any admiral = full access) | Unsafe — promoting a trusted friend to admiral for fleet features shouldn't grant them user deletion power. |
+| Reuse diagnostics tab for admin panels | Diagnostics is system inspection; admin is mutation. Mixing them in one tab creates clutter and conflates read-only diagnostics with destructive admin actions. |
+| Separate "owner" role above admiral | Over-engineered for a single-instance app. The RBAC system already has admiral as the top role; adding another layer adds complexity without clear benefit. Any admiral is trusted. |
+| Hardcoded email allowlists | Violates ADR-019 principle: "No hardcoded admin UUIDs in source code." Role-based gating is the correct approach. |
 
 ---
 
 ## Consequences
 
-- **Owner is config-driven**, not role-driven. A system can have multiple admirals but only one owner.
-- **Bearer-token admin is the owner** by definition (they control the env var).
-- **Diagnostics tab remains admiral-accessible.** The new console is a separate, more restricted view.
-- **Future multi-admin** could extend `MAJEL_OWNER_EMAIL` to a comma-separated list, but this is out of scope.
+- **Any admiral can access the console.** Promotion to admiral grants full admin UI access.
+- **No new env vars or config changes required.** The existing `requireAdmiral` middleware + RBAC handles everything.
+- **Diagnostics and Admiral Console are both admiral-gated** but remain separate views — diagnostics for inspection, console for management.
+- **Bearer-token CLI access is preserved** alongside the new session-based UI access.
