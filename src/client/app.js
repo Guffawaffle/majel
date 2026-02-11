@@ -34,6 +34,7 @@ const recallForm = $("#recall-form");
 const recallInput = $("#recall-input");
 const recallResults = $("#recall-results");
 const recallClose = $("#recall-close");
+const titleBackBtn = $("#title-back-btn");
 
 // View switching elements
 const setupGuide = $("#setup-guide");
@@ -58,6 +59,7 @@ let isOnline = false;
 let currentMode = "loading";
 let opsLevel = 1;
 let userRole = null; // set after getMe()
+let viewHistory = []; // stack for back button
 
 // ─── Ops Level ──────────────────────────────────────────────
 async function initOpsLevel() {
@@ -300,12 +302,23 @@ function showFleet() {
     fleet.refresh();
 }
 
-function navigateToView(view) {
+function navigateToView(view, { pushHistory = true } = {}) {
+    // Track view history for back button
+    if (pushHistory && currentMode && currentMode !== "loading" && currentMode !== "setup" && currentMode !== view) {
+        viewHistory.push(currentMode);
+        if (viewHistory.length > 20) viewHistory.shift();
+    }
+
     if (view === 'drydock') { showDrydock(); currentMode = 'drydock'; }
     else if (view === 'catalog') { showCatalog(); currentMode = 'catalog'; }
     else if (view === 'fleet') { showFleet(); currentMode = 'fleet'; }
     else if (view === 'diagnostics' && userRole === 'admiral') { showDiagnostics(); currentMode = 'diagnostics'; }
     else { showChat(); currentMode = 'chat'; }
+
+    // Back button: visible when there's history and not on chat (home)
+    if (titleBackBtn) {
+        titleBackBtn.classList.toggle("hidden", viewHistory.length === 0 || currentMode === 'chat');
+    }
 }
 
 // ─── Event Handlers ─────────────────────────────────────────
@@ -361,6 +374,14 @@ recallForm.addEventListener("submit", (e) => {
 });
 
 recallClose.addEventListener("click", () => recallDialog.close());
+
+// Back button
+if (titleBackBtn) {
+    titleBackBtn.addEventListener("click", () => {
+        const prev = viewHistory.pop();
+        if (prev) navigateToView(prev, { pushHistory: false });
+    });
+}
 
 // ─── Init ───────────────────────────────────────────────────
 (async () => {
