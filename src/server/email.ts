@@ -64,7 +64,7 @@ async function sendEmail(message: EmailMessage, tokenInfo?: { token: string; typ
   // Production: Gmail API (Phase 4)
   // For now, log a warning that email delivery is not yet configured
   log.boot.warn(
-    { to: message.to, subject: message.subject },
+    { to: message.to, subject: message.subject, token: tokenInfo?.token, type: tokenInfo?.type },
     "Email delivery not yet configured (Gmail API Phase 4) — token logged for manual verification",
   );
 
