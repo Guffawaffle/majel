@@ -322,6 +322,45 @@ export function createAuthRoutes(appState: AppState): Router {
     }
   }));
 
+  // ── POST /api/auth/admin/set-role ─────────────────────────
+  // Admin-only: set a user's role (the only way to create the first Admiral)
+  router.post("/api/auth/admin/set-role", asyncHandler(async (req, res) => {
+    // Require admin bearer token
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (token !== appState.config.adminToken) {
+      return sendFail(res, ErrorCode.UNAUTHORIZED, "Admin token required", 401);
+    }
+
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { email, role } = req.body ?? {};
+    if (!email || typeof email !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    }
+    if (!role || !["ensign", "lieutenant", "captain", "admiral"].includes(role)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Role must be ensign, lieutenant, captain, or admiral", 400);
+    }
+
+    // Look up user by email to get their ID
+    const user = await appState.userStore.getUserByEmail(email);
+    if (!user) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
+    }
+
+    const updated = await appState.userStore.setRole(user.id, role);
+    if (!updated) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update role", 500);
+    }
+
+    sendOk(res, {
+      message: `${updated.displayName} promoted to ${role}.`,
+      user: updated,
+    });
+  }));
+
   // ── GET /api/auth/dev-verify ──────────────────────────────
   // Dev-only: verify email without actually sending/receiving email
   if (process.env.NODE_ENV !== "production") {
