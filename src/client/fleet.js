@@ -19,12 +19,15 @@ import * as api from './api.js';
 // ─── State ──────────────────────────────────────────────────
 let officers = [];
 let ships = [];
+let docks = [];          // dock data for ship→dock lookups (QA-001-9)
 let activeTab = 'officers'; // 'officers' | 'ships'
+let viewMode = 'list';   // 'list' | 'cards' (QA-001-8)
 let searchQuery = '';
 let sortField = 'name'; // 'name' | 'level' | 'power' | 'rarity'
 let sortDir = 'asc';    // 'asc' | 'desc'
 let loading = false;
 let saveTimers = {};     // { refId: timeoutId } for debounced saves
+let noteTimers = {};     // { refId: timeoutId } for debounced note saves
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -39,12 +42,14 @@ export async function refresh() {
     if (loading) return;
     loading = true;
     try {
-        const [officerData, shipData] = await Promise.all([
+        const [officerData, shipData, dockData] = await Promise.all([
             api.fetchCatalogOfficers({ ownership: 'owned' }),
             api.fetchCatalogShips({ ownership: 'owned' }),
+            api.fetchDocks().catch(() => []),
         ]);
         officers = officerData;
         ships = shipData;
+        docks = dockData;
         render();
     } catch (err) {
         console.error("Fleet refresh failed:", err);
@@ -119,7 +124,7 @@ function render() {
         ${renderTabBar()}
         ${renderStatsBar(stats)}
         ${renderToolbar()}
-        <div class="fleet-grid">
+        <div class="fleet-grid ${viewMode === 'cards' ? 'fleet-grid-cards' : ''}">
             ${items.length === 0 ? renderEmpty() : renderGrid(items)}
         </div>
     `;
@@ -175,11 +180,22 @@ function renderToolbar() {
                     ${sortDir === 'asc' ? '↑' : '↓'}
                 </button>
             </div>
+            <div class="fleet-view-toggle">
+                <button class="fleet-view-btn ${viewMode === 'list' ? 'active' : ''}" data-action="view-list" title="List view">☰</button>
+                <button class="fleet-view-btn ${viewMode === 'cards' ? 'active' : ''}" data-action="view-cards" title="Card view">▦</button>
+            </div>
         </div>
     `;
 }
 
 function renderGrid(items) {
+    if (viewMode === 'cards') {
+        if (activeTab === 'officers') {
+            return items.map(o => renderOfficerCard(o)).join('');
+        } else {
+            return items.map(s => renderShipCard(s)).join('');
+        }
+    }
     if (activeTab === 'officers') {
         return items.map(o => renderOfficerRow(o)).join('');
     } else {
@@ -197,6 +213,7 @@ function renderOfficerRow(o) {
                 ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
             </div>
+            ${renderAbilities(o)}
             <div class="fleet-row-fields">
                 <label class="fleet-field">
                     <span class="fleet-field-label">Level</span>
@@ -214,13 +231,14 @@ function renderOfficerRow(o) {
                            value="${o.userPower ?? ''}" min="0" placeholder="—" />
                 </label>
             </div>
-            ${targeted && o.targetNote ? `<div class="fleet-target-note">📝 ${esc(o.targetNote)}</div>` : ''}
+            ${renderNoteField(o)}
         </div>
     `;
 }
 
 function renderShipRow(s) {
     const targeted = s.target;
+    const dockNames = getShipDockNames(s.id);
     return `
         <div class="fleet-row ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(s.id)}">
             <div class="fleet-row-header">
@@ -229,6 +247,7 @@ function renderShipRow(s) {
                 ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
                 ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
+                ${dockNames.length > 0 ? `<span class="fleet-dock-badge" title="Assigned to: ${esc(dockNames.join(', '))}">⚓ ${esc(dockNames.join(', '))}</span>` : ''}
             </div>
             <div class="fleet-row-fields">
                 <label class="fleet-field">
@@ -247,9 +266,119 @@ function renderShipRow(s) {
                            value="${s.userPower ?? ''}" min="0" placeholder="—" />
                 </label>
             </div>
-            ${targeted && s.targetNote ? `<div class="fleet-target-note">📝 ${esc(s.targetNote)}</div>` : ''}
+            ${renderNoteField(s)}
         </div>
     `;
+}
+
+// ─── Card Renderers (QA-001-8) ──────────────────────────────
+
+function renderOfficerCard(o) {
+    const targeted = o.target;
+    return `
+        <div class="fleet-card ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(o.id)}">
+            <div class="fleet-card-header">
+                <span class="fleet-row-name">${esc(o.name)}</span>
+                ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
+            </div>
+            <div class="fleet-card-badges">
+                ${o.rarity ? `<span class="cat-badge rarity-${(o.rarity || '').toLowerCase()}">${esc(o.rarity)}</span>` : ''}
+                ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
+            </div>
+            ${renderAbilities(o)}
+            <div class="fleet-card-fields">
+                <label class="fleet-field">
+                    <span class="fleet-field-label">Level</span>
+                    <input type="number" class="fleet-input" data-field="level" data-id="${esc(o.id)}"
+                           value="${o.userLevel ?? ''}" min="1" max="200" placeholder="—" />
+                </label>
+                <label class="fleet-field">
+                    <span class="fleet-field-label">Rank</span>
+                    <input type="text" class="fleet-input" data-field="rank" data-id="${esc(o.id)}"
+                           value="${esc(o.userRank ?? '')}" placeholder="—" />
+                </label>
+                <label class="fleet-field">
+                    <span class="fleet-field-label">Power</span>
+                    <input type="number" class="fleet-input fleet-input-power" data-field="power" data-id="${esc(o.id)}"
+                           value="${o.userPower ?? ''}" min="0" placeholder="—" />
+                </label>
+            </div>
+            ${renderNoteField(o)}
+        </div>
+    `;
+}
+
+function renderShipCard(s) {
+    const targeted = s.target;
+    const dockNames = getShipDockNames(s.id);
+    return `
+        <div class="fleet-card ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(s.id)}">
+            <div class="fleet-card-header">
+                <span class="fleet-row-name">${esc(s.name)}</span>
+                ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
+            </div>
+            <div class="fleet-card-badges">
+                ${s.rarity ? `<span class="cat-badge rarity-${(s.rarity || '').toLowerCase()}">${esc(s.rarity)}</span>` : ''}
+                ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
+                ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
+                ${dockNames.length > 0 ? `<span class="fleet-dock-badge">⚓ ${esc(dockNames.join(', '))}</span>` : ''}
+            </div>
+            <div class="fleet-card-fields">
+                <label class="fleet-field">
+                    <span class="fleet-field-label">Tier</span>
+                    <input type="number" class="fleet-input" data-field="tier" data-id="${esc(s.id)}"
+                           value="${s.userTier ?? ''}" min="1" max="10" placeholder="—" />
+                </label>
+                <label class="fleet-field">
+                    <span class="fleet-field-label">Level</span>
+                    <input type="number" class="fleet-input" data-field="level" data-id="${esc(s.id)}"
+                           value="${s.userLevel ?? ''}" min="1" max="200" placeholder="—" />
+                </label>
+                <label class="fleet-field">
+                    <span class="fleet-field-label">Power</span>
+                    <input type="number" class="fleet-input fleet-input-power" data-field="power" data-id="${esc(s.id)}"
+                           value="${s.userPower ?? ''}" min="0" placeholder="—" />
+                </label>
+            </div>
+            ${renderNoteField(s)}
+        </div>
+    `;
+}
+
+// ─── Shared Rendering Helpers ───────────────────────────────
+
+/** Render CM/OA abilities for officers (QA-001-10) */
+function renderAbilities(o) {
+    if (!o.captainManeuver && !o.officerAbility) return '';
+    return `
+        <div class="fleet-abilities">
+            ${o.captainManeuver ? `<div class="fleet-ability"><span class="fleet-ability-label">CM:</span> ${esc(o.captainManeuver)}</div>` : ''}
+            ${o.officerAbility ? `<div class="fleet-ability"><span class="fleet-ability-label">OA:</span> ${esc(o.officerAbility)}</div>` : ''}
+        </div>
+    `;
+}
+
+/** Render inline note textarea (QA-001-8) */
+function renderNoteField(item) {
+    const note = item.targetNote || '';
+    return `
+        <div class="fleet-note-wrap">
+            <textarea class="fleet-note-input" data-id="${esc(item.id)}" data-field="targetNote"
+                      placeholder="Add a note… e.g. farm X for this, comes from Borg daily loop"
+                      rows="1">${esc(note)}</textarea>
+        </div>
+    `;
+}
+
+/** Look up which dock(s) a ship is assigned to (QA-001-9) */
+function getShipDockNames(shipId) {
+    const names = [];
+    for (const dock of docks) {
+        if (dock.ships && dock.ships.some(s => s.shipId === shipId)) {
+            names.push(dock.label || `Dock ${dock.dockNumber}`);
+        }
+    }
+    return names;
 }
 
 function renderEmpty() {
@@ -309,6 +438,20 @@ function bindEvents() {
         });
     }
 
+    // View toggle (QA-001-8)
+    const listBtn = area.querySelector('[data-action="view-list"]');
+    if (listBtn) {
+        listBtn.addEventListener('click', () => {
+            if (viewMode !== 'list') { viewMode = 'list'; render(); }
+        });
+    }
+    const cardsBtn = area.querySelector('[data-action="view-cards"]');
+    if (cardsBtn) {
+        cardsBtn.addEventListener('click', () => {
+            if (viewMode !== 'cards') { viewMode = 'cards'; render(); }
+        });
+    }
+
     // Inline field editing with debounced save
     // Capture activeTab at bind time to prevent stale-closure data corruption
     // if the user switches tabs before the 600ms debounce fires.
@@ -346,13 +489,43 @@ function bindEvents() {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                const row = e.target.closest('.fleet-row');
+                const row = e.target.closest('.fleet-row, .fleet-card');
                 const field = e.target.dataset.field;
                 const nextRow = row?.nextElementSibling;
                 if (nextRow) {
                     const nextInput = nextRow.querySelector(`.fleet-input[data-field="${CSS.escape(field)}"]`);
                     if (nextInput) nextInput.focus();
                 }
+            }
+        });
+    });
+
+    // Inline note editing with debounced save (QA-001-8)
+    area.querySelectorAll('.fleet-note-input').forEach(textarea => {
+        // Auto-resize textarea
+        autoResizeTextarea(textarea);
+
+        textarea.addEventListener('input', (e) => {
+            autoResizeTextarea(e.target);
+            const id = e.target.dataset.id;
+            const rawValue = e.target.value;
+
+            const key = `note:${id}`;
+            if (noteTimers[key]) clearTimeout(noteTimers[key]);
+            noteTimers[key] = setTimeout(() => {
+                saveNote(id, rawValue, boundTab);
+                delete noteTimers[key];
+            }, 800);
+        });
+
+        textarea.addEventListener('blur', (e) => {
+            const id = e.target.dataset.id;
+            const rawValue = e.target.value;
+            const key = `note:${id}`;
+            if (noteTimers[key]) {
+                clearTimeout(noteTimers[key]);
+                delete noteTimers[key];
+                saveNote(id, rawValue, boundTab);
             }
         });
     });
@@ -432,4 +605,38 @@ function updateStatsBar() {
 function esc(str) {
     if (str == null) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Save inline note via overlay API (QA-001-8) */
+async function saveNote(id, rawValue, tab) {
+    const isOfficer = tab === 'officers';
+    const setFn = isOfficer ? api.setOfficerOverlay : api.setShipOverlay;
+    const value = rawValue.trim().slice(0, 500) || null;
+    const overlay = { targetNote: value };
+
+    try {
+        await setFn(id, overlay);
+        const textarea = document.querySelector(`.fleet-note-input[data-id="${CSS.escape(id)}"]`);
+        if (textarea) {
+            textarea.classList.add('fleet-saved');
+            setTimeout(() => textarea.classList.remove('fleet-saved'), 800);
+        }
+        // Update local state
+        const items = isOfficer ? officers : ships;
+        const item = items.find(i => i.id === id);
+        if (item) item.targetNote = value;
+    } catch (err) {
+        console.error(`Failed to save note for ${id}:`, err);
+        const textarea = document.querySelector(`.fleet-note-input[data-id="${CSS.escape(id)}"]`);
+        if (textarea) {
+            textarea.classList.add('fleet-save-error');
+            setTimeout(() => textarea.classList.remove('fleet-save-error'), 1500);
+        }
+    }
+}
+
+/** Auto-grow textarea to content */
+function autoResizeTextarea(el) {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
 }

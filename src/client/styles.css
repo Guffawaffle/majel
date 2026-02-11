@@ -2117,6 +2117,129 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); }
   padding-left: 4px;
 }
 
+/* Fleet view toggle (QA-001-8) */
+.fleet-view-toggle {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.fleet-view-btn {
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-secondary);
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  transition: color var(--transition), background var(--transition);
+}
+.fleet-view-btn:hover { color: var(--text-primary); }
+.fleet-view-btn.active {
+  background: var(--accent-gold-dim);
+  color: var(--accent-gold);
+}
+
+/* Fleet card grid (QA-001-8) */
+.fleet-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  flex-direction: unset;
+}
+.fleet-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color var(--transition);
+}
+.fleet-card:hover { border-color: var(--border-light); }
+.fleet-card.fleet-targeted {
+  border-left: 3px solid var(--accent-orange);
+}
+.fleet-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fleet-card-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.fleet-card-fields {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Fleet abilities (QA-001-10) */
+.fleet-abilities {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+.fleet-ability {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+.fleet-ability-label {
+  color: var(--accent-gold);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* Fleet inline notes (QA-001-8) */
+.fleet-note-wrap {
+  width: 100%;
+}
+.fleet-note-input {
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-family: inherit;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  min-height: 28px;
+  transition: border-color var(--transition), box-shadow 0.3s, color var(--transition);
+  box-sizing: border-box;
+}
+.fleet-note-input:focus {
+  border-color: var(--accent-blue-dim);
+  color: var(--text-primary);
+}
+.fleet-note-input::placeholder { color: var(--text-muted); }
+.fleet-note-input.fleet-saved {
+  border-color: var(--accent-green);
+  box-shadow: 0 0 4px rgba(52, 211, 153, 0.3);
+}
+.fleet-note-input.fleet-save-error {
+  border-color: var(--accent-red);
+  box-shadow: 0 0 4px rgba(248, 113, 113, 0.3);
+}
+
+/* Fleet dock badges (QA-001-9) */
+.fleet-dock-badge {
+  font-size: 0.78rem;
+  color: var(--accent-blue);
+  background: rgba(96, 165, 250, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
 .fleet-empty {
   text-align: center;
   padding: 48px 24px;
@@ -2164,6 +2287,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); }
   .fleet-area { padding: 12px; }
   .fleet-row-fields { gap: 8px; }
   .fleet-toolbar { flex-wrap: wrap; }
+  .fleet-grid-cards { grid-template-columns: 1fr; }
+  .fleet-card-fields { gap: 6px; }
 }
 
 @media (max-width: 480px) {
