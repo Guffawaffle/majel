@@ -164,7 +164,22 @@ function ensureGcloud(): boolean {
     runCapture("which gcloud");
     return true;
   } catch {
-    humanError("\u274c gcloud CLI not found. Install: https://cloud.google.com/sdk/docs/install");
+    if (AX_MODE) {
+      console.log(JSON.stringify({
+        command: `cloud:${process.argv.slice(2).find(a => !a.startsWith("--")) ?? "unknown"}`,
+        success: false,
+        timestamp: new Date().toISOString(),
+        durationMs: 0,
+        data: {},
+        errors: ["gcloud CLI not found on PATH"],
+        hints: [
+          "Install: https://cloud.google.com/sdk/docs/install",
+          "Or run from a machine with gcloud configured",
+        ],
+      }, null, 2));
+    } else {
+      humanError("\u274c gcloud CLI not found. Install: https://cloud.google.com/sdk/docs/install");
+    }
     return false;
   }
 }
@@ -238,7 +253,11 @@ async function cmdDeploy(): Promise<void> {
   } catch {
     const msg = "Local CI failed — fix issues before deploying";
     if (AX_MODE) {
-      axOutput("deploy", start, { step: "local-ci", phase: "pre-flight" }, { success: false, errors: [msg] });
+      axOutput("deploy", start, { step: "local-ci", phase: "pre-flight" }, {
+        success: false,
+        errors: [msg],
+        hints: ["Run: npm test to diagnose test failures", "Run: npm run lint to check linting", "Run: npx tsc --noEmit to check types"],
+      });
     } else {
       console.error(`❌ ${msg}`);
     }
@@ -247,11 +266,37 @@ async function cmdDeploy(): Promise<void> {
 
   // Step 2: Build image
   humanLog("\n📦 Step 2/4: Building container image...");
-  gcloud(`builds submit --tag ${IMAGE} --quiet`);
+  try {
+    gcloud(`builds submit --tag ${IMAGE} --quiet`);
+  } catch (err) {
+    if (AX_MODE) {
+      axOutput("deploy", start, { step: "build", phase: "image-build", image: IMAGE }, {
+        success: false,
+        errors: [`Image build failed: ${err instanceof Error ? err.message : String(err)}`],
+        hints: ["Check Cloud Build logs in GCP Console", "Verify Dockerfile syntax: docker build ."],
+      });
+    } else {
+      console.error("❌ Image build failed");
+    }
+    process.exit(1);
+  }
 
   // Step 3: Deploy to Cloud Run
   humanLog("\n☁️  Step 3/4: Deploying to Cloud Run...");
-  gcloud(`run deploy ${SERVICE} --image ${IMAGE} --region ${REGION} --quiet`);
+  try {
+    gcloud(`run deploy ${SERVICE} --image ${IMAGE} --region ${REGION} --quiet`);
+  } catch (err) {
+    if (AX_MODE) {
+      axOutput("deploy", start, { step: "deploy", phase: "cloud-run-deploy", image: IMAGE }, {
+        success: false,
+        errors: [`Cloud Run deploy failed: ${err instanceof Error ? err.message : String(err)}`],
+        hints: ["Image was built successfully — try: npm run cloud:push", "Check service logs: npm run cloud:logs -- --ax"],
+      });
+    } else {
+      console.error("❌ Cloud Run deploy failed (image was built)");
+    }
+    process.exit(1);
+  }
 
   // Step 4: Health check
   humanLog("\n🏥 Step 4/4: Health check...");
@@ -337,7 +382,11 @@ async function cmdLogs(): Promise<void> {
         })),
       });
     } catch {
-      axOutput("logs", start, { count: 0, entries: [] }, { errors: ["Failed to fetch logs"] });
+      axOutput("logs", start, { count: 0, entries: [] }, {
+        success: false,
+        errors: ["Failed to fetch logs"],
+        hints: ["Ensure gcloud is authenticated: gcloud auth login", "Check service exists: npm run cloud:status -- --ax", "Verify permissions: roles/logging.viewer required"],
+      });
     }
   } else {
     // Interactive streaming for humans
@@ -498,7 +547,9 @@ async function cmdSsh(): Promise<void> {
       instance: CLOUD_SQL_INSTANCE,
       localPort: 5433,
       connectCommand: "psql -h 127.0.0.1 -p 5433 -U postgres -d majel",
-    }, { hints: ["Run the connectCommand in another terminal while the proxy is active"] });
+      proxyRunning: false,
+      note: "AX mode returns metadata only — proxy requires interactive terminal",
+    }, { hints: ["Run the connectCommand in another terminal while the proxy is active", "Start proxy interactively: npx tsx scripts/cloud.ts ssh"] });
     return;
   }
 
@@ -783,10 +834,20 @@ async function cmdScale(): Promise<void> {
 
   // Validate numeric args to prevent injection
   if (minArg !== undefined && (!Number.isInteger(Number(minArg)) || Number(minArg) < 0)) {
-    humanError("\u274c --min must be a non-negative integer"); process.exit(1);
+    if (AX_MODE) {
+      axOutput("scale", start, {}, { success: false, errors: ["--min must be a non-negative integer"], hints: ["Example: npm run cloud:scale -- --min 1 --max 5 --ax"] });
+    } else {
+      humanError("\u274c --min must be a non-negative integer");
+    }
+    process.exit(1);
   }
   if (maxArg !== undefined && (!Number.isInteger(Number(maxArg)) || Number(maxArg) < 1)) {
-    humanError("\u274c --max must be a positive integer"); process.exit(1);
+    if (AX_MODE) {
+      axOutput("scale", start, {}, { success: false, errors: ["--max must be a positive integer"], hints: ["Example: npm run cloud:scale -- --min 1 --max 5 --ax"] });
+    } else {
+      humanError("\u274c --max must be a positive integer");
+    }
+    process.exit(1);
   }
 
   if (minArg !== undefined || maxArg !== undefined) {
@@ -802,7 +863,9 @@ async function cmdScale(): Promise<void> {
     const newMax = annotations["autoscaling.knative.dev/maxScale"] ?? "unknown";
 
     if (AX_MODE) {
-      axOutput("scale", start, { min: parseInt(newMin, 10), max: parseInt(newMax, 10), updated: true });
+      axOutput("scale", start, { min: parseInt(newMin, 10), max: parseInt(newMax, 10), updated: true }, {
+        hints: ["Run cloud:status --ax for full service state"],
+      });
     } else {
       humanLog(`\u2705 Scaling updated: ${newMin}\u2013${newMax} instances`);
     }
@@ -1045,7 +1108,11 @@ async function cmdMetrics(): Promise<void> {
     }
   } catch {
     if (AX_MODE) {
-      axOutput("metrics", start, {}, { success: false, errors: ["Failed to fetch metrics. Ensure logging.read permission."] });
+      axOutput("metrics", start, {}, {
+        success: false,
+        errors: ["Failed to fetch metrics"],
+        hints: ["Ensure Cloud Logging API is enabled", "Verify you have roles/logging.viewer permission", "Check gcloud auth: gcloud auth list"],
+      });
     } else {
       humanError("\u274c Failed to fetch metrics");
       humanError("   Ensure logging API is enabled and you have logging.read permission.");
@@ -1188,6 +1255,40 @@ async function cmdHelp(): Promise<void> {
   const start = Date.now();
 
   if (AX_MODE) {
+    const COMMAND_ARGS: Record<string, Array<{ name: string; type: string; default?: string; description: string }>> = {
+      deploy: [],
+      build: [],
+      push: [],
+      rollback: [],
+      scale: [
+        { name: "--min", type: "integer", default: "0", description: "Minimum instances (0 = scale to zero)" },
+        { name: "--max", type: "integer", default: "cloud default", description: "Maximum instances" },
+      ],
+      canary: [
+        { name: "--percent", type: "integer", default: "10", description: "Traffic percentage for canary revision" },
+      ],
+      promote: [
+        { name: "<revision>", type: "string", description: "Revision name to route 100% traffic to" },
+      ],
+      ssh: [],
+      status: [],
+      health: [],
+      logs: [],
+      env: [],
+      secrets: [],
+      sql: [],
+      revisions: [],
+      diff: [],
+      metrics: [],
+      costs: [],
+      warm: [
+        { name: "-n", type: "integer", default: "3", description: "Number of warmup requests" },
+      ],
+      init: [
+        { name: "--force", type: "boolean", description: "Overwrite existing .cloud-auth file" },
+      ],
+    };
+
     const commands = Object.entries(COMMANDS)
       .filter(([name]) => name !== "help")
       .map(([name, def]) => ({
@@ -1195,6 +1296,7 @@ async function cmdHelp(): Promise<void> {
         alias: def.alias,
         tier: def.tier,
         description: def.description,
+        args: COMMAND_ARGS[name] ?? [],
       }));
 
     axOutput("help", start, {
@@ -1305,8 +1407,20 @@ async function main(): Promise<void> {
 
   const def = COMMANDS[command];
   if (!def) {
-    humanError(`\u274c Unknown command: ${command}`);
-    humanError(`   Run: npx tsx scripts/cloud.ts help`);
+    if (AX_MODE) {
+      console.log(JSON.stringify({
+        command: `cloud:${command}`,
+        success: false,
+        timestamp: new Date().toISOString(),
+        durationMs: 0,
+        data: {},
+        errors: [`Unknown command: ${command}`],
+        hints: [`Valid commands: ${Object.keys(COMMANDS).join(", ")}`, "Run: cloud help --ax"],
+      }, null, 2));
+    } else {
+      humanError(`\u274c Unknown command: ${command}`);
+      humanError(`   Run: npx tsx scripts/cloud.ts help`);
+    }
     process.exit(1);
   }
 
@@ -1332,6 +1446,7 @@ main().catch((err) => {
       durationMs: 0,
       data: {},
       errors: [err instanceof Error ? err.message : String(err)],
+      hints: ["Check gcloud auth: gcloud auth list", "Verify project: gcloud config get-value project", "Run cloud:help --ax for command reference"],
     }, null, 2));
   } else {
     console.error("\ud83d\udca5 Unexpected error:", err instanceof Error ? err.message : String(err));

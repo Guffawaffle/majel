@@ -20,11 +20,15 @@ export function createChatRoutes(appState: AppState): Router {
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 
     if (!message || typeof message !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'message' in request body");
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'message' in request body", 400,
+        undefined, ["Send JSON body: { \"message\": \"your question\" }"]);
     }
 
     if (!appState.geminiEngine) {
-      return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready. Check /api/health for status.", 503);
+      return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready", 503,
+        { reason: appState.startupComplete ? "no API key configured" : "initializing" },
+        ["Check /api/health for status", "If initializing, retry in 2-3 seconds"],
+      );
     }
 
     try {
@@ -100,12 +104,14 @@ export function createChatRoutes(appState: AppState): Router {
     const query = req.query.q as string;
 
     if (!query) {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing query parameter 'q'");
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing query parameter 'q'", 400,
+        undefined, ["Example: GET /api/recall?q=warp+drive&limit=10"]);
     }
 
     const memory = res.locals.memory ?? appState.memoryService;
     if (!memory) {
-      return sendFail(res, ErrorCode.MEMORY_NOT_AVAILABLE, "Memory service not available", 503);
+      return sendFail(res, ErrorCode.MEMORY_NOT_AVAILABLE, "Memory service not available", 503,
+        undefined, ["Lex memory is not configured", "Check /api/health for subsystem status"]);
     }
 
     try {
@@ -138,6 +144,7 @@ export function createChatRoutes(appState: AppState): Router {
 
     sendOk(res, {
       current,
+      defaultModel: MODEL_REGISTRY[0].id,
       currentDef: getModelDef(current),
       models: MODEL_REGISTRY.map((m) => ({
         ...m,
@@ -159,16 +166,21 @@ export function createChatRoutes(appState: AppState): Router {
     const { model: requestedModel } = req.body;
 
     if (!requestedModel || typeof requestedModel !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'model' in request body");
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'model' in request body", 400,
+        undefined, ["Send JSON body: { \"model\": \"<model-id>\" }", `Valid IDs: ${MODEL_REGISTRY.map(m => m.id).join(", ")}`]);
     }
 
     if (!appState.geminiEngine) {
-      return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready", 503);
+      return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready", 503,
+        undefined, ["Check /api/health for status"]);
     }
 
     const modelDef = getModelDef(requestedModel);
     if (!modelDef) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown model: ${requestedModel}. Use GET /api/models for available options.`);
+      return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown model: ${requestedModel}`, 400,
+        { validModels: MODEL_REGISTRY.map(m => m.id) },
+        [`Valid models: ${MODEL_REGISTRY.map(m => m.id).join(", ")}`, "Use GET /api/models for full metadata"],
+      );
     }
 
     const previousModel = appState.geminiEngine.getModel();
@@ -190,9 +202,9 @@ export function createChatRoutes(appState: AppState): Router {
       currentModel: requestedModel,
       modelDef,
       sessionsCleared: true,
-      hint: modelDef.thinking
-        ? "Thinking model active — responses may take longer but will be more reasoned."
-        : "Standard model active — fastest responses.",
+      hints: modelDef.thinking
+        ? ["Thinking model active — responses may take longer but will be more reasoned."]
+        : ["Standard model active — fastest responses."],
     });
   });
 
