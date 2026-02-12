@@ -7,27 +7,29 @@
  *
  * Unified CLI for all cloud deploy/ops commands.
  * Supports --ax flag for AI-agent-friendly structured JSON output.
+ * Auth-tiered: read-only commands need gcloud, mutating commands need .cloud-auth token.
  *
  * Usage:
  *   npx tsx scripts/cloud.ts <command> [--ax] [--flags]
- *   npm run cloud:deploy          # Full build → push → deploy pipeline
- *   npm run cloud:build           # Build container image only
- *   npm run cloud:push            # Deploy already-built image to Cloud Run
- *   npm run cloud:logs            # Tail production logs
- *   npm run cloud:status          # Service status + revision info
- *   npm run cloud:health          # Hit production /api/health
- *   npm run cloud:secrets         # List Secret Manager secrets
- *   npm run cloud:ssh             # Open Cloud SQL proxy for psql
- *   npm run cloud:rollback        # Roll back to previous revision
- *   npm run cloud:env             # Show Cloud Run env + secret bindings
+ *
+ * Tiers:
+ *   open   — help, init (no auth needed)
+ *   read   — status, health, logs, env, secrets, sql, revisions, diff, metrics, costs, warm
+ *   write  — deploy, build, push, rollback, scale, canary, promote, ssh (requires .cloud-auth)
+ *
+ * Setup:
+ *   npm run cloud:init              # Generate .cloud-auth token (one-time)
+ *   npm run cloud:deploy            # Full build → push → deploy pipeline
+ *   npm run cloud:status -- --ax    # AI-agent structured JSON
  *
  * @see docs/ADR-018-cloud-deployment.md
  */
 
 import { execSync, spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 
 // ─── Constants ──────────────────────────────────────────────────
 
@@ -42,7 +44,10 @@ const REGISTRY = `${REGION}-docker.pkg.dev/${PROJECT}/${SERVICE}`;
 const IMAGE = `${REGISTRY}/${SERVICE}:latest`;
 const CLOUD_SQL_INSTANCE = `${PROJECT}:${REGION}:majel-pg`;
 
-// ─── Helpers ────────────────────────────────────────────────────
+const AUTH_FILE = resolve(ROOT, ".cloud-auth");
+const AUTH_TOKEN_BYTES = 32; // 64 hex chars
+
+// ─── Types ──────────────────────────────────────────────────────
 
 interface AxOutput {
   command: string;
@@ -54,7 +59,18 @@ interface AxOutput {
   hints?: string[];
 }
 
+type AuthTier = "open" | "read" | "write";
+
+interface CommandDef {
+  fn: () => Promise<void>;
+  tier: AuthTier;
+  description: string;
+  alias: string;
+}
+
 let AX_MODE = false;
+
+// ─── Helpers ────────────────────────────────────────────────────
 
 function getPackageVersion(): string {
   try {
@@ -90,7 +106,7 @@ function run(cmd: string, opts?: { silent?: boolean; capture?: boolean }): strin
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (!AX_MODE && !opts?.silent) {
-      console.error(`❌ Command failed: ${cmd}`);
+      console.error(`\u274c Command failed: ${cmd}`);
       console.error(msg);
     }
     throw err;
@@ -127,9 +143,59 @@ function ensureGcloud(): boolean {
     runCapture("which gcloud");
     return true;
   } catch {
-    humanError("❌ gcloud CLI not found. Install: https://cloud.google.com/sdk/docs/install");
+    humanError("\u274c gcloud CLI not found. Install: https://cloud.google.com/sdk/docs/install");
     return false;
   }
+}
+
+// ─── Auth ───────────────────────────────────────────────────────
+
+function loadCloudToken(): string | null {
+  // 1. Check env var first (CI pipelines)
+  if (process.env.MAJEL_CLOUD_TOKEN) return process.env.MAJEL_CLOUD_TOKEN;
+
+  // 2. Check .cloud-auth file exists
+  if (!existsSync(AUTH_FILE)) return null;
+
+  // 3. Verify permissions (must be 600)
+  try {
+    const stats = statSync(AUTH_FILE);
+    const mode = stats.mode & 0o777;
+    if (mode !== 0o600) {
+      humanError(`\u26a0\ufe0f  .cloud-auth has permissions ${mode.toString(8)} \u2014 expected 600. Run: chmod 600 .cloud-auth`);
+      return null;
+    }
+  } catch { return null; }
+
+  // 4. Parse token
+  try {
+    const content = readFileSync(AUTH_FILE, "utf-8");
+    const match = content.match(/^MAJEL_CLOUD_TOKEN=(.+)$/m);
+    return match?.[1]?.trim() ?? null;
+  } catch { return null; }
+}
+
+function requireWriteAuth(command: string): boolean {
+  const token = loadCloudToken();
+  if (!token) {
+    if (AX_MODE) {
+      console.log(JSON.stringify({
+        command: `cloud:${command}`,
+        success: false,
+        timestamp: new Date().toISOString(),
+        durationMs: 0,
+        data: {},
+        errors: ["Write auth required. Run `npm run cloud:init` to generate .cloud-auth token."],
+        hints: ["For CI: set MAJEL_CLOUD_TOKEN environment variable"],
+      }, null, 2));
+    } else {
+      humanError("\ud83d\udd12 This command requires cloud auth.");
+      humanError("   Run: npm run cloud:init");
+      humanError("   Or set MAJEL_CLOUD_TOKEN env var for CI.");
+    }
+    return false;
+  }
+  return true;
 }
 
 // ─── Commands ───────────────────────────────────────────────────
@@ -520,69 +586,665 @@ async function cmdEnv(): Promise<void> {
   }
 }
 
-async function cmdHelp(): Promise<void> {
+// ─── New Commands ───────────────────────────────────────────────
+
+async function cmdInit(): Promise<void> {
   const start = Date.now();
-  const commands = [
-    { name: "deploy",   alias: "cloud:deploy",   description: "Full pipeline: local-ci → build → deploy → health check" },
-    { name: "build",    alias: "cloud:build",     description: "Build container image via Cloud Build" },
-    { name: "push",     alias: "cloud:push",      description: "Deploy already-built image to Cloud Run" },
-    { name: "logs",     alias: "cloud:logs",      description: "Tail production logs (streaming for humans, batch for --ax)" },
-    { name: "status",   alias: "cloud:status",    description: "Service status: URL, revision, scaling, resources" },
-    { name: "health",   alias: "cloud:health",    description: "Hit production /api/health endpoint" },
-    { name: "secrets",  alias: "cloud:secrets",   description: "List Secret Manager secrets (values never exposed)" },
-    { name: "ssh",      alias: "cloud:ssh",       description: "Start Cloud SQL Auth Proxy for local psql access" },
-    { name: "rollback", alias: "cloud:rollback",  description: "Roll back to previous Cloud Run revision" },
-    { name: "env",      alias: "cloud:env",       description: "Show Cloud Run env vars and secret bindings" },
-  ];
+
+  if (existsSync(AUTH_FILE) && !process.argv.includes("--force")) {
+    const token = loadCloudToken();
+    if (AX_MODE) {
+      axOutput("init", start, { exists: true, valid: !!token }, {
+        success: false,
+        errors: [".cloud-auth already exists. Use --force to regenerate."],
+      });
+    } else {
+      humanError("\u26a0\ufe0f  .cloud-auth already exists. Use --force to regenerate.");
+    }
+    return;
+  }
+
+  const token = randomBytes(AUTH_TOKEN_BYTES).toString("hex");
+  const content = [
+    "# Majel Cloud Auth Token",
+    `# Generated: ${new Date().toISOString()}`,
+    "# chmod 600 \u2014 do NOT commit this file",
+    "#",
+    "# This token gates mutating cloud commands (deploy, rollback, scale, etc.)",
+    "# Set MAJEL_CLOUD_TOKEN env var for CI pipelines.",
+    `MAJEL_CLOUD_TOKEN=${token}`,
+    "",
+  ].join("\n");
+
+  writeFileSync(AUTH_FILE, content, { mode: 0o600 });
 
   if (AX_MODE) {
+    axOutput("init", start, {
+      file: ".cloud-auth",
+      permissions: "600",
+      tokenPreview: `${token.slice(0, 8)}...${token.slice(-8)}`,
+    }, { hints: ["Mutating commands now require this token", "Set MAJEL_CLOUD_TOKEN env var for CI"] });
+  } else {
+    humanLog("\ud83d\udd10 Cloud auth initialized");
+    humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    humanLog(`  File:   .cloud-auth (chmod 600, gitignored)`);
+    humanLog(`  Token:  ${token.slice(0, 8)}...${token.slice(-8)}`);
+    humanLog("\n  Mutating commands (deploy, rollback, scale, etc.) now require this token.");
+    humanLog("  Set MAJEL_CLOUD_TOKEN env var for CI pipelines.");
+  }
+}
+
+async function cmdSql(): Promise<void> {
+  const start = Date.now();
+
+  interface SqlInstance {
+    state?: string;
+    databaseVersion?: string;
+    settings?: {
+      tier?: string;
+      dataDiskSizeGb?: string;
+      dataDiskType?: string;
+      backupConfiguration?: { enabled?: boolean; startTime?: string };
+      availabilityType?: string;
+    };
+    ipAddresses?: Array<{ type?: string; ipAddress?: string }>;
+    connectionName?: string;
+    createTime?: string;
+    serverCaCert?: { expirationTime?: string };
+  }
+
+  const instance = gcloudJson<SqlInstance>(`sql instances describe majel-pg --project ${PROJECT}`);
+
+  if (AX_MODE) {
+    axOutput("sql", start, {
+      instance: "majel-pg",
+      project: PROJECT,
+      state: instance.state,
+      version: instance.databaseVersion,
+      tier: instance.settings?.tier,
+      diskSizeGb: instance.settings?.dataDiskSizeGb,
+      diskType: instance.settings?.dataDiskType,
+      availability: instance.settings?.availabilityType,
+      backups: instance.settings?.backupConfiguration?.enabled,
+      backupWindow: instance.settings?.backupConfiguration?.startTime,
+      connectionName: instance.connectionName,
+      created: instance.createTime,
+      ipAddresses: instance.ipAddresses,
+      certExpires: instance.serverCaCert?.expirationTime,
+    });
+  } else {
+    humanLog("\ud83d\udc18 Cloud SQL Instance");
+    humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    humanLog(`  Instance:     majel-pg`);
+    humanLog(`  State:        ${instance.state}`);
+    humanLog(`  Version:      ${instance.databaseVersion}`);
+    humanLog(`  Tier:         ${instance.settings?.tier}`);
+    humanLog(`  Disk:         ${instance.settings?.dataDiskSizeGb} GB (${instance.settings?.dataDiskType})`);
+    humanLog(`  Availability: ${instance.settings?.availabilityType}`);
+    humanLog(`  Backups:      ${instance.settings?.backupConfiguration?.enabled ? "\u2705 enabled" : "\u274c disabled"} (window: ${instance.settings?.backupConfiguration?.startTime ?? "unset"})`);
+    humanLog(`  Connection:   ${instance.connectionName}`);
+    humanLog(`  Created:      ${instance.createTime}`);
+    if (instance.ipAddresses?.length) {
+      humanLog("\n  IP Addresses:");
+      for (const ip of instance.ipAddresses) {
+        humanLog(`    ${ip.type}: ${ip.ipAddress}`);
+      }
+    }
+  }
+}
+
+async function cmdRevisions(): Promise<void> {
+  const start = Date.now();
+
+  interface TrafficEntry { revisionName?: string; percent?: number }
+  interface ServiceTraffic { status?: { traffic?: TrafficEntry[] } }
+  const svc = gcloudJson<ServiceTraffic>(`run services describe ${SERVICE} --region ${REGION}`);
+  const trafficEntries = svc.status?.traffic ?? [];
+  const trafficMap: Record<string, number> = {};
+  for (const t of trafficEntries) {
+    if (t.revisionName) trafficMap[t.revisionName] = t.percent ?? 0;
+  }
+
+  interface RevisionItem {
+    metadata?: { name?: string; creationTimestamp?: string };
+    status?: { conditions?: Array<{ type?: string; status?: string }> };
+    spec?: { containers?: Array<{ image?: string }> };
+  }
+  const revisions = gcloudJson<RevisionItem[]>(`run revisions list --service ${SERVICE} --region ${REGION} --limit 10`);
+
+  if (AX_MODE) {
+    axOutput("revisions", start, {
+      service: SERVICE,
+      count: revisions.length,
+      revisions: revisions.map((r) => ({
+        name: r.metadata?.name,
+        created: r.metadata?.creationTimestamp,
+        ready: r.status?.conditions?.find((c) => c.type === "Ready")?.status === "True",
+        traffic: trafficMap[r.metadata?.name ?? ""] ?? 0,
+        image: r.spec?.containers?.[0]?.image,
+      })),
+    });
+  } else {
+    humanLog("\ud83d\udccb Cloud Run Revisions");
+    humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    for (const r of revisions) {
+      const name = r.metadata?.name ?? "unknown";
+      const ready = r.status?.conditions?.find((c) => c.type === "Ready")?.status === "True";
+      const traffic = trafficMap[name] ?? 0;
+      const icon = ready ? "\u2705" : "\u274c";
+      const trafficStr = traffic > 0 ? ` \u2190 ${traffic}% traffic` : "";
+      humanLog(`  ${icon} ${name}  (${r.metadata?.creationTimestamp})${trafficStr}`);
+    }
+    humanLog(`\n  ${revisions.length} revision(s)`);
+  }
+}
+
+async function cmdScale(): Promise<void> {
+  const start = Date.now();
+  const args = process.argv.slice(2);
+  const minIdx = args.indexOf("--min");
+  const maxIdx = args.indexOf("--max");
+  const minArg = minIdx >= 0 ? args[minIdx + 1] : undefined;
+  const maxArg = maxIdx >= 0 ? args[maxIdx + 1] : undefined;
+
+  if (minArg !== undefined || maxArg !== undefined) {
+    const flags: string[] = [];
+    if (minArg) flags.push(`--min-instances=${minArg}`);
+    if (maxArg) flags.push(`--max-instances=${maxArg}`);
+    gcloud(`run services update ${SERVICE} --region ${REGION} ${flags.join(" ")} --quiet`);
+
+    interface ServiceDesc { spec?: { template?: { metadata?: { annotations?: Record<string, string> } } } }
+    const svc = gcloudJson<ServiceDesc>(`run services describe ${SERVICE} --region ${REGION}`);
+    const annotations = svc.spec?.template?.metadata?.annotations ?? {};
+    const newMin = annotations["autoscaling.knative.dev/minScale"] ?? "0";
+    const newMax = annotations["autoscaling.knative.dev/maxScale"] ?? "unknown";
+
+    if (AX_MODE) {
+      axOutput("scale", start, { min: parseInt(newMin, 10), max: parseInt(newMax, 10), updated: true });
+    } else {
+      humanLog(`\u2705 Scaling updated: ${newMin}\u2013${newMax} instances`);
+    }
+  } else {
+    interface ServiceDesc { spec?: { template?: { metadata?: { annotations?: Record<string, string> } } } }
+    const svc = gcloudJson<ServiceDesc>(`run services describe ${SERVICE} --region ${REGION}`);
+    const annotations = svc.spec?.template?.metadata?.annotations ?? {};
+    const min = annotations["autoscaling.knative.dev/minScale"] ?? "0";
+    const max = annotations["autoscaling.knative.dev/maxScale"] ?? "unknown";
+
+    if (AX_MODE) {
+      axOutput("scale", start, { min: parseInt(min, 10), max: parseInt(max, 10), updated: false }, {
+        hints: ["Set scaling: npm run cloud:scale -- --min 1 --max 5"],
+      });
+    } else {
+      humanLog("\u2696\ufe0f  Cloud Run Scaling");
+      humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+      humanLog(`  Min instances: ${min}`);
+      humanLog(`  Max instances: ${max}`);
+      humanLog(`\n  Set: npm run cloud:scale -- --min 1 --max 5`);
+    }
+  }
+}
+
+async function cmdCanary(): Promise<void> {
+  const start = Date.now();
+  const args = process.argv.slice(2);
+  const pctIdx = args.indexOf("--percent");
+  const pct = pctIdx >= 0 ? parseInt(args[pctIdx + 1] ?? "10", 10) : 10;
+
+  if (pct < 1 || pct > 99) {
+    const msg = "Canary percent must be 1\u201399";
+    if (AX_MODE) {
+      axOutput("canary", start, {}, { success: false, errors: [msg] });
+    } else {
+      humanError(`\u274c ${msg}`);
+    }
+    process.exit(1);
+  }
+
+  humanLog(`\ud83d\udc24 Canary deploy: ${pct}% traffic to new revision`);
+
+  humanLog("\n  Building + deploying (no traffic)...");
+  gcloud(`builds submit --tag ${IMAGE} --quiet`);
+  gcloud(`run deploy ${SERVICE} --image ${IMAGE} --region ${REGION} --no-traffic --quiet`);
+
+  const newRevision = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.latestCreatedRevisionName)'`);
+
+  humanLog(`  Routing ${pct}% to ${newRevision}...`);
+  gcloud(`run services update-traffic ${SERVICE} --region ${REGION} --to-revisions ${newRevision}=${pct} --quiet`);
+
+  const url = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.url)'`);
+
+  if (AX_MODE) {
+    axOutput("canary", start, {
+      canaryRevision: newRevision,
+      canaryPercent: pct,
+      url,
+      image: IMAGE,
+    }, { hints: [`Promote: npm run cloud:promote -- ${newRevision}`, "Rollback: npm run cloud:rollback"] });
+  } else {
+    humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    humanLog(`\u2705 Canary live: ${newRevision} (${pct}%)`);
+    humanLog(`   Promote: npm run cloud:promote -- ${newRevision}`);
+    humanLog(`   Rollback: npm run cloud:rollback`);
+  }
+}
+
+async function cmdPromote(): Promise<void> {
+  const start = Date.now();
+  const args = process.argv.slice(2).filter(a => a !== "promote" && !a.startsWith("--"));
+  let revision = args[0];
+
+  if (!revision) {
+    revision = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.latestReadyRevisionName)'`);
+  }
+
+  humanLog(`\ud83d\ude80 Promoting ${revision} to 100% traffic...`);
+  gcloud(`run services update-traffic ${SERVICE} --region ${REGION} --to-revisions ${revision}=100 --quiet`);
+
+  const url = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.url)'`);
+
+  if (AX_MODE) {
+    axOutput("promote", start, { revision, url, trafficPercent: 100 });
+  } else {
+    humanLog(`\u2705 ${revision} now serving 100% traffic`);
+    humanLog(`   URL: ${url}`);
+  }
+}
+
+async function cmdDiff(): Promise<void> {
+  const start = Date.now();
+
+  const localVersion = getPackageVersion();
+  let localSha = "unknown";
+  let localBranch = "unknown";
+  let localDirty = false;
+  try {
+    localSha = runCapture("git rev-parse --short HEAD");
+    localBranch = runCapture("git rev-parse --abbrev-ref HEAD");
+    localDirty = runCapture("git status --porcelain").length > 0;
+  } catch { /* not a git repo */ }
+
+  interface ServiceDesc {
+    status?: { url?: string; latestReadyRevisionName?: string };
+    spec?: { template?: { spec?: { containers?: Array<{ image?: string; env?: Array<{ name: string; value?: string; valueFrom?: unknown }> }> } } };
+  }
+  const svc = gcloudJson<ServiceDesc>(`run services describe ${SERVICE} --region ${REGION}`);
+  const deployedImage = svc.spec?.template?.spec?.containers?.[0]?.image ?? "unknown";
+  const deployedRevision = svc.status?.latestReadyRevisionName ?? "unknown";
+  const url = svc.status?.url ?? "unknown";
+
+  const deployedPlainEnv = (svc.spec?.template?.spec?.containers?.[0]?.env ?? [])
+    .filter((v) => !v.valueFrom)
+    .reduce((acc, v) => { acc[v.name] = v.value ?? ""; return acc; }, {} as Record<string, string>);
+
+  let localEnv: Record<string, string> = {};
+  try {
+    const envContent = readFileSync(resolve(ROOT, ".env"), "utf-8");
+    for (const line of envContent.split("\n")) {
+      const match = line.match(/^([^#=]+)=(.*)$/);
+      if (match) localEnv[match[1].trim()] = match[2].trim();
+    }
+  } catch { /* no .env file */ }
+
+  const drifts: string[] = [];
+  for (const key of Object.keys(deployedPlainEnv)) {
+    if (localEnv[key] !== undefined && localEnv[key] !== deployedPlainEnv[key]) {
+      drifts.push(`${key}: local="${localEnv[key]}" vs deployed="${deployedPlainEnv[key]}"`);
+    }
+  }
+
+  if (AX_MODE) {
+    axOutput("diff", start, {
+      local: { version: localVersion, gitSha: localSha, branch: localBranch, dirty: localDirty },
+      deployed: { revision: deployedRevision, image: deployedImage, url },
+      envDrift: drifts,
+      envDriftCount: drifts.length,
+    }, {
+      hints: drifts.length > 0 ? ["Environment variable drift detected \u2014 review before deploying"] : undefined,
+    });
+  } else {
+    humanLog("\ud83d\udd0d Local vs Deployed Diff");
+    humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    humanLog("  Local:");
+    humanLog(`    Version:  ${localVersion}`);
+    humanLog(`    Git SHA:  ${localSha}${localDirty ? " (dirty)" : ""}`);
+    humanLog(`    Branch:   ${localBranch}`);
+    humanLog("  Deployed:");
+    humanLog(`    Revision: ${deployedRevision}`);
+    humanLog(`    Image:    ${deployedImage}`);
+    humanLog(`    URL:      ${url}`);
+    if (drifts.length > 0) {
+      humanLog("\n  \u26a0\ufe0f  Environment Drift:");
+      for (const d of drifts) humanLog(`    ${d}`);
+    } else {
+      humanLog("\n  \u2705 No environment variable drift detected");
+    }
+  }
+}
+
+async function cmdMetrics(): Promise<void> {
+  const start = Date.now();
+
+  try {
+    const raw = gcloudCapture(
+      `logging read 'resource.type="cloud_run_revision" resource.labels.service_name="${SERVICE}" resource.labels.location="${REGION}"' --limit 500 --format=json --freshness=1h --project ${PROJECT}`
+    );
+    const entries = JSON.parse(raw) as Array<Record<string, unknown>>;
+
+    const severityCounts: Record<string, number> = {};
+    const statusCounts: Record<string, number> = {};
+    let httpRequests = 0;
+    const latencies: number[] = [];
+
+    for (const entry of entries) {
+      const sev = (entry.severity as string) ?? "DEFAULT";
+      severityCounts[sev] = (severityCounts[sev] ?? 0) + 1;
+
+      const httpReq = entry.httpRequest as Record<string, unknown> | undefined;
+      if (httpReq) {
+        httpRequests++;
+        const status = String(httpReq.status ?? "0");
+        const bucket = `${status[0]}xx`;
+        statusCounts[bucket] = (statusCounts[bucket] ?? 0) + 1;
+        const lat = httpReq.latency;
+        if (typeof lat === "string") {
+          const ms = parseFloat(lat) * 1000;
+          if (!isNaN(ms)) latencies.push(ms);
+        }
+      }
+    }
+
+    latencies.sort((a, b) => a - b);
+    const percentile = (arr: number[], p: number) => arr[Math.floor(arr.length * p)] ?? 0;
+
+    if (AX_MODE) {
+      axOutput("metrics", start, {
+        window: "1h",
+        totalLogEntries: entries.length,
+        httpRequests,
+        severity: severityCounts,
+        statusCodes: statusCounts,
+        latencyMs: latencies.length > 0 ? {
+          p50: Math.round(percentile(latencies, 0.5)),
+          p95: Math.round(percentile(latencies, 0.95)),
+          p99: Math.round(percentile(latencies, 0.99)),
+          max: Math.round(latencies[latencies.length - 1] ?? 0),
+        } : null,
+        errorRate: httpRequests > 0
+          ? `${(((statusCounts["5xx"] ?? 0) / httpRequests) * 100).toFixed(1)}%`
+          : "0%",
+      });
+    } else {
+      humanLog("\ud83d\udcc8 Metrics (last 1 hour)");
+      humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+      humanLog(`  Log entries:    ${entries.length}`);
+      humanLog(`  HTTP requests:  ${httpRequests}`);
+      if (Object.keys(statusCounts).length) {
+        humanLog(`  Status codes:   ${Object.entries(statusCounts).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+      }
+      if (Object.keys(severityCounts).length) {
+        humanLog(`  Severity:       ${Object.entries(severityCounts).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+      }
+      if (latencies.length > 0) {
+        humanLog(`  Latency (ms):   p50=${Math.round(percentile(latencies, 0.5))} p95=${Math.round(percentile(latencies, 0.95))} p99=${Math.round(percentile(latencies, 0.99))} max=${Math.round(latencies[latencies.length - 1])}`);
+        humanLog(`  Error rate:     ${(((statusCounts["5xx"] ?? 0) / httpRequests) * 100).toFixed(1)}%`);
+      } else {
+        humanLog("  (no HTTP request data in the window)");
+      }
+    }
+  } catch {
+    if (AX_MODE) {
+      axOutput("metrics", start, {}, { success: false, errors: ["Failed to fetch metrics. Ensure logging.read permission."] });
+    } else {
+      humanError("\u274c Failed to fetch metrics");
+      humanError("   Ensure logging API is enabled and you have logging.read permission.");
+    }
+  }
+}
+
+async function cmdCosts(): Promise<void> {
+  const start = Date.now();
+
+  interface ServiceDesc {
+    spec?: { template?: {
+      spec?: { containers?: Array<{ resources?: { limits?: Record<string, string> } }> };
+      metadata?: { annotations?: Record<string, string> };
+    } };
+  }
+  const svc = gcloudJson<ServiceDesc>(`run services describe ${SERVICE} --region ${REGION}`);
+  const limits = svc.spec?.template?.spec?.containers?.[0]?.resources?.limits ?? {};
+  const annotations = svc.spec?.template?.metadata?.annotations ?? {};
+  const cpu = parseFloat(limits.cpu ?? "1");
+  const memoryRaw = limits.memory ?? "512Mi";
+  const memoryMi = parseInt(memoryRaw);
+  const memoryGiB = memoryMi / 1024;
+  const minInstances = parseInt(annotations["autoscaling.knative.dev/minScale"] ?? "0", 10);
+  const maxInstances = parseInt(annotations["autoscaling.knative.dev/maxScale"] ?? "3", 10);
+
+  interface SqlInstance { settings?: { tier?: string; dataDiskSizeGb?: string }; state?: string }
+  let sqlTier = "unknown";
+  let sqlDiskGb = "0";
+  try {
+    const sql = gcloudJson<SqlInstance>(`sql instances describe majel-pg --project ${PROJECT}`);
+    sqlTier = sql.settings?.tier ?? "unknown";
+    sqlDiskGb = sql.settings?.dataDiskSizeGb ?? "0";
+  } catch { /* ignore */ }
+
+  // Cloud Run pricing (us-central1, Tier 1)
+  const CR_CPU_PER_SEC = 0.00002400;
+  const CR_MEM_PER_GIB_SEC = 0.00000250;
+  const HOURS_PER_MONTH = 730;
+
+  const alwaysOnCpuCost = minInstances * cpu * HOURS_PER_MONTH * 3600 * CR_CPU_PER_SEC;
+  const alwaysOnMemCost = minInstances * memoryGiB * HOURS_PER_MONTH * 3600 * CR_MEM_PER_GIB_SEC;
+  const alwaysOnTotal = alwaysOnCpuCost + alwaysOnMemCost;
+
+  const SQL_TIERS: Record<string, number> = {
+    "db-f1-micro": 7.67,
+    "db-g1-small": 25.55,
+    "db-n1-standard-1": 51.10,
+  };
+  const sqlEstimate = SQL_TIERS[sqlTier] ?? 0;
+  const sqlStorageCost = parseInt(sqlDiskGb) * 0.17;
+
+  if (AX_MODE) {
+    axOutput("costs", start, {
+      cloudRun: {
+        cpu, memoryMi, memoryGiB: +memoryGiB.toFixed(2),
+        minInstances, maxInstances,
+        alwaysOnEstimate: `$${alwaysOnTotal.toFixed(2)}/month`,
+        note: minInstances === 0 ? "Scale-to-zero: $0 when idle" : `${minInstances} instance(s) always on`,
+        pricing: { cpuPerSec: CR_CPU_PER_SEC, memPerGiBSec: CR_MEM_PER_GIB_SEC },
+      },
+      cloudSql: {
+        tier: sqlTier,
+        diskGb: parseInt(sqlDiskGb),
+        instanceEstimate: `$${sqlEstimate.toFixed(2)}/month`,
+        storageEstimate: `$${sqlStorageCost.toFixed(2)}/month`,
+      },
+      totalEstimate: `$${(alwaysOnTotal + sqlEstimate + sqlStorageCost).toFixed(2)}/month`,
+      note: "Estimates based on published GCP pricing. Actual costs depend on request volume and execution time.",
+    });
+  } else {
+    humanLog("\ud83d\udcb0 Cost Estimates");
+    humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    humanLog("  Cloud Run:");
+    humanLog(`    CPU: ${cpu} vCPU  |  Memory: ${memoryRaw}`);
+    humanLog(`    Scaling: ${minInstances}\u2013${maxInstances} instances`);
+    if (minInstances === 0) {
+      humanLog("    \ud83d\udca4 Scale-to-zero: $0.00/month when idle");
+    } else {
+      humanLog(`    Always-on (${minInstances} inst): ~$${alwaysOnTotal.toFixed(2)}/month`);
+    }
+    humanLog("  Cloud SQL:");
+    humanLog(`    Tier: ${sqlTier}  |  Disk: ${sqlDiskGb} GB`);
+    humanLog(`    Instance: ~$${sqlEstimate.toFixed(2)}/month  |  Storage: ~$${sqlStorageCost.toFixed(2)}/month`);
+    humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    humanLog(`  Estimated total: ~$${(alwaysOnTotal + sqlEstimate + sqlStorageCost).toFixed(2)}/month`);
+    humanLog("  \u2139\ufe0f  + request-based Cloud Run costs, network egress, Cloud Build minutes");
+  }
+}
+
+async function cmdWarm(): Promise<void> {
+  const start = Date.now();
+  const args = process.argv.slice(2);
+  const nIdx = args.indexOf("-n");
+  const count = nIdx >= 0 ? parseInt(args[nIdx + 1] ?? "3", 10) : 3;
+
+  const url = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.url)'`);
+
+  humanLog(`\ud83d\udd25 Warming ${count} request(s) to ${url}/api/health`);
+
+  const results: Array<{ attempt: number; status: string; latencyMs: number }> = [];
+  for (let i = 0; i < count; i++) {
+    const t0 = Date.now();
+    try {
+      const code = runCapture(`curl -sf -o /dev/null -w '%{http_code}' ${url}/api/health --max-time 15`);
+      results.push({ attempt: i + 1, status: code, latencyMs: Date.now() - t0 });
+    } catch {
+      results.push({ attempt: i + 1, status: "failed", latencyMs: Date.now() - t0 });
+    }
+    if (!AX_MODE) {
+      const r = results[results.length - 1];
+      humanLog(`  #${r.attempt}: ${r.status === "200" ? "\u2705" : "\u274c"} ${r.latencyMs}ms`);
+    }
+  }
+
+  const avgLatency = Math.round(results.reduce((s, r) => s + r.latencyMs, 0) / results.length);
+  const coldStart = results.length >= 2 && results[0].latencyMs > results[1].latencyMs * 3;
+
+  if (AX_MODE) {
+    axOutput("warm", start, {
+      url: `${url}/api/health`,
+      requests: results,
+      avgLatencyMs: avgLatency,
+      coldStartDetected: coldStart,
+    }, {
+      hints: coldStart ? ["Cold start detected \u2014 first request was 3x+ slower", "Set min-instances=1 to avoid: npm run cloud:scale -- --min 1"] : undefined,
+    });
+  } else {
+    humanLog("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    humanLog(`  Avg: ${avgLatency}ms${coldStart ? "  \u26a0\ufe0f  Cold start detected (first request 3x+ slower)" : ""}`);
+    if (coldStart) {
+      humanLog("  Tip: npm run cloud:scale -- --min 1");
+    }
+  }
+}
+
+// ─── Help ───────────────────────────────────────────────────────
+
+async function cmdHelp(): Promise<void> {
+  const start = Date.now();
+
+  if (AX_MODE) {
+    const commands = Object.entries(COMMANDS)
+      .filter(([name]) => name !== "help")
+      .map(([name, def]) => ({
+        name,
+        alias: def.alias,
+        tier: def.tier,
+        description: def.description,
+      }));
+
     axOutput("help", start, {
       service: SERVICE,
       project: PROJECT,
       region: REGION,
       image: IMAGE,
+      tiers: {
+        open: "No authentication required",
+        read: "Requires gcloud authentication (read-only)",
+        write: "Requires .cloud-auth token (mutating operations)",
+      },
       commands,
       flags: [
         { name: "--ax", description: "Output structured JSON for AI agent consumption" },
         { name: "--json", description: "Alias for --ax" },
       ],
       usage: "npm run cloud:<command> [-- --ax]",
+      authSetup: "npm run cloud:init",
     });
   } else {
-    humanLog("☁️  Majel Cloud Operations CLI");
-    humanLog("────────────────────────────────────────");
+    const tier = (t: AuthTier) => t === "open" ? "     " : t === "read" ? " \ud83d\udc41\ufe0f  " : " \ud83d\udd12 ";
+
+    humanLog("\u2601\ufe0f  Majel Cloud Operations CLI");
+    humanLog("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
     humanLog(`  Project: ${PROJECT}  |  Region: ${REGION}  |  Service: ${SERVICE}\n`);
-    for (const cmd of commands) {
-      humanLog(`  npm run ${cmd.alias.padEnd(16)} ${cmd.description}`);
+    humanLog("  \ud83d\udc41\ufe0f  = read-only (gcloud auth)   \ud83d\udd12 = write (requires .cloud-auth)\n");
+
+    const groups: Record<AuthTier, Array<[string, CommandDef]>> = { open: [], read: [], write: [] };
+    for (const [name, def] of Object.entries(COMMANDS)) {
+      if (name === "help") continue;
+      groups[def.tier].push([name, def]);
     }
+
+    if (groups.open.length) {
+      humanLog("  Setup:");
+      for (const [, def] of groups.open) {
+        humanLog(`  ${tier(def.tier)} npm run ${def.alias.padEnd(20)} ${def.description}`);
+      }
+    }
+
+    humanLog("\n  Read-only:");
+    for (const [, def] of groups.read) {
+      humanLog(`  ${tier(def.tier)} npm run ${def.alias.padEnd(20)} ${def.description}`);
+    }
+
+    humanLog("\n  Mutating (\ud83d\udd12 requires cloud:init):");
+    for (const [, def] of groups.write) {
+      humanLog(`  ${tier(def.tier)} npm run ${def.alias.padEnd(20)} ${def.description}`);
+    }
+
     humanLog(`\n  Flags:`);
-    humanLog(`    --ax, --json    Output structured JSON for AI agents`);
+    humanLog(`    --ax, --json        Structured JSON for AI agents`);
+    humanLog(`    --force             Force overwrite (cloud:init)`);
+    humanLog(`    --percent <n>       Canary traffic % (cloud:canary, default 10)`);
+    humanLog(`    --min <n> --max <n> Set scaling (cloud:scale)`);
+    humanLog(`    -n <count>          Warmup requests (cloud:warm, default 3)`);
     humanLog(`\n  Examples:`);
-    humanLog(`    npm run cloud:deploy`);
-    humanLog(`    npm run cloud:status -- --ax`);
-    humanLog(`    npm run cloud:health -- --json | jq .data.response`);
+    humanLog(`    npm run cloud:init                    # One-time auth setup`);
+    humanLog(`    npm run cloud:deploy                  # Full deploy pipeline`);
+    humanLog(`    npm run cloud:canary -- --percent 20  # 20% canary deploy`);
+    humanLog(`    npm run cloud:status -- --ax          # Structured JSON`);
+    humanLog(`    npm run cloud:warm -- -n 5            # 5 warmup pings`);
+    humanLog(`    npm run cloud:costs -- --ax | jq .data.totalEstimate`);
   }
 }
 
-// ─── Main ───────────────────────────────────────────────────────
+// ─── Command Registry ───────────────────────────────────────────
 
-const COMMANDS: Record<string, () => Promise<void>> = {
-  deploy: cmdDeploy,
-  build: cmdBuild,
-  push: cmdPush,
-  logs: cmdLogs,
-  status: cmdStatus,
-  health: cmdHealth,
-  secrets: cmdSecrets,
-  ssh: cmdSsh,
-  rollback: cmdRollback,
-  env: cmdEnv,
-  help: cmdHelp,
+const COMMANDS: Record<string, CommandDef> = {
+  // Tier: open
+  help:      { fn: cmdHelp,      tier: "open",  alias: "cloud",           description: "Show all commands, tiers, and usage" },
+  init:      { fn: cmdInit,      tier: "open",  alias: "cloud:init",      description: "Generate .cloud-auth token (chmod 600, gitignored)" },
+  // Tier: read
+  status:    { fn: cmdStatus,    tier: "read",  alias: "cloud:status",    description: "Service status: URL, revision, scaling, resources" },
+  health:    { fn: cmdHealth,    tier: "read",  alias: "cloud:health",    description: "Hit production /api/health endpoint" },
+  logs:      { fn: cmdLogs,      tier: "read",  alias: "cloud:logs",      description: "Tail production logs (streaming/batch)" },
+  env:       { fn: cmdEnv,       tier: "read",  alias: "cloud:env",       description: "Show Cloud Run env vars and secret bindings" },
+  secrets:   { fn: cmdSecrets,   tier: "read",  alias: "cloud:secrets",   description: "List Secret Manager secrets (values never exposed)" },
+  sql:       { fn: cmdSql,       tier: "read",  alias: "cloud:sql",       description: "Cloud SQL instance status and configuration" },
+  revisions: { fn: cmdRevisions, tier: "read",  alias: "cloud:revisions", description: "List revisions with traffic split percentages" },
+  diff:      { fn: cmdDiff,      tier: "read",  alias: "cloud:diff",      description: "Compare local vs deployed (version, SHA, env drift)" },
+  metrics:   { fn: cmdMetrics,   tier: "read",  alias: "cloud:metrics",   description: "Log-based metrics: latency, errors, status codes (1h)" },
+  costs:     { fn: cmdCosts,     tier: "read",  alias: "cloud:costs",     description: "Estimated monthly costs (Cloud Run + Cloud SQL)" },
+  warm:      { fn: cmdWarm,      tier: "read",  alias: "cloud:warm",      description: "Send warmup pings to detect cold starts" },
+  // Tier: write (requires .cloud-auth)
+  deploy:    { fn: cmdDeploy,    tier: "write", alias: "cloud:deploy",    description: "Full pipeline: local-ci \u2192 build \u2192 deploy \u2192 health check" },
+  build:     { fn: cmdBuild,     tier: "write", alias: "cloud:build",     description: "Build container image via Cloud Build" },
+  push:      { fn: cmdPush,      tier: "write", alias: "cloud:push",      description: "Deploy already-built image to Cloud Run" },
+  rollback:  { fn: cmdRollback,  tier: "write", alias: "cloud:rollback",  description: "Roll back to previous Cloud Run revision" },
+  scale:     { fn: cmdScale,     tier: "write", alias: "cloud:scale",     description: "View/set min-max instance scaling" },
+  canary:    { fn: cmdCanary,    tier: "write", alias: "cloud:canary",    description: "Deploy with partial traffic (default 10%)" },
+  promote:   { fn: cmdPromote,   tier: "write", alias: "cloud:promote",   description: "Route 100% traffic to a specific revision" },
+  ssh:       { fn: cmdSsh,       tier: "write", alias: "cloud:ssh",       description: "Start Cloud SQL Auth Proxy for local psql" },
 };
+
+// ─── Main ───────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const command = args[0];
+  const command = args.find(a => !a.startsWith("--"));
   AX_MODE = args.includes("--ax") || args.includes("--json");
 
   if (!command || command === "--help" || command === "-h" || command === "help") {
@@ -590,17 +1252,24 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!COMMANDS[command]) {
-    humanError(`❌ Unknown command: ${command}`);
+  const def = COMMANDS[command];
+  if (!def) {
+    humanError(`\u274c Unknown command: ${command}`);
     humanError(`   Run: npx tsx scripts/cloud.ts help`);
     process.exit(1);
   }
 
-  if (!ensureGcloud()) {
-    process.exit(1);
+  // Open tier: no gcloud needed (help, init)
+  if (def.tier !== "open") {
+    if (!ensureGcloud()) process.exit(1);
   }
 
-  await COMMANDS[command]();
+  // Write tier: require .cloud-auth token
+  if (def.tier === "write") {
+    if (!requireWriteAuth(command)) process.exit(1);
+  }
+
+  await def.fn();
 }
 
 main().catch((err) => {
@@ -614,7 +1283,7 @@ main().catch((err) => {
       errors: [err instanceof Error ? err.message : String(err)],
     }, null, 2));
   } else {
-    console.error("💥 Unexpected error:", err instanceof Error ? err.message : String(err));
+    console.error("\ud83d\udca5 Unexpected error:", err instanceof Error ? err.message : String(err));
   }
   process.exit(1);
 });
