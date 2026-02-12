@@ -430,7 +430,8 @@ export class PostgresFrameStore implements FrameStore {
           paramIdx += 2;
         }
       } else if (options?.offset) {
-        // Offset pagination fallback (less efficient but compatible)
+        // TODO: Offset pagination not yet implemented (cursor-based preferred).
+        // Callers passing offset will silently get unfiltered results.
       }
 
       // userId filter (belt-and-suspenders)

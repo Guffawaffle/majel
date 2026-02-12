@@ -7,13 +7,14 @@ import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 import { requireAdmiral, requireVisitor } from "../auth.js";
+import { attachScopedMemory } from "../memory-middleware.js";
 
 export function createChatRoutes(appState: AppState): Router {
   const router = Router();
 
   // ─── Chat ───────────────────────────────────────────────────
 
-  router.post("/api/chat", requireAdmiral(appState), createTimeoutMiddleware(30000), async (req, res) => {
+  router.post("/api/chat", requireAdmiral(appState), attachScopedMemory(appState), createTimeoutMiddleware(30000), async (req, res) => {
     const { message } = req.body;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 
@@ -55,7 +56,7 @@ export function createChatRoutes(appState: AppState): Router {
 
   // ─── History ────────────────────────────────────────────────
 
-  router.get("/api/history", requireVisitor(appState), async (req, res) => {
+  router.get("/api/history", requireVisitor(appState), attachScopedMemory(appState), async (req, res) => {
     const source = (req.query.source as string) || "both";
     const limit = parseInt((req.query.limit as string) || "20", 10);
 
@@ -92,7 +93,7 @@ export function createChatRoutes(appState: AppState): Router {
 
   // ─── Recall ─────────────────────────────────────────────────
 
-  router.get("/api/recall", requireVisitor(appState), async (req, res) => {
+  router.get("/api/recall", requireVisitor(appState), attachScopedMemory(appState), async (req, res) => {
     const query = req.query.q as string;
 
     if (!query) {
