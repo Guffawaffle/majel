@@ -41,7 +41,7 @@ import { createOverlayStore } from "./overlay-store.js";
 import { createInviteStore } from "./invite-store.js";
 import { createUserStore } from "./user-store.js";
 import { createPool } from "./db.js";
-import { attachScopedMemory } from "./memory-middleware.js";
+// attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
@@ -147,12 +147,9 @@ export function createApp(appState: AppState): express.Express {
     });
   }
 
-  // ─── Per-request scoped memory (ADR-021 D4) ──────────────
-  // Must come after auth middleware (which sets res.locals.userId).
-  // Routes that require auth will have res.locals.memory available.
-  app.use(attachScopedMemory(appState));
-
   // ─── Mount route modules ──────────────────────────────────
+  // Per-request scoped memory (ADR-021 D4) is chained per-route in chat.ts,
+  // AFTER auth middleware sets res.locals.userId. Not app-level — auth is route-level.
   app.use(createCoreRoutes(appState));
   app.use(createAuthRoutes(appState));
   app.use(createAdminRoutes(appState));
