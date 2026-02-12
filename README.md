@@ -2,9 +2,11 @@
 
 *Named in honor of Majel Barrett-Roddenberry (1932–2008), the voice of Starfleet computers across four decades of Star Trek.*
 
-A local fleet management and AI advisor for **Star Trek Fleet Command**, powered by **Gemini 2.5 Flash** and **[Lex](https://github.com/Guffawaffle/lex)** episodic memory. The in-character assistant, **Ariadne** ("Aria"), combines wiki-sourced reference data, your personal fleet overlays, and full game/lore knowledge into a conversational interface that actually knows your fleet.
+A fleet management and AI advisor for **Star Trek Fleet Command**, powered by **Gemini** and **[Lex](https://github.com/Guffawaffle/lex)** episodic memory. The in-character assistant, **Ariadne** ("Aria"), combines wiki-sourced reference data, your personal fleet overlays, and full game/lore knowledge into a conversational interface that actually knows your fleet.
 
-> **Status:** v0.4.0 alpha — functional, local-only, actively developed.
+> **Status:** v0.4.0 alpha — functional, cloud-deployed, actively developed.
+>
+> **Production:** [majel-bbqfhcihga-uc.a.run.app](https://majel-bbqfhcihga-uc.a.run.app)
 
 ---
 
@@ -26,7 +28,7 @@ npm run dev
 # 4. Open http://localhost:3000
 ```
 
-See [docs/SETUP.md](docs/SETUP.md) for detailed setup.
+See [docs/SETUP.md](docs/SETUP.md) for detailed setup including PostgreSQL and cloud deployment.
 
 ---
 
@@ -61,9 +63,12 @@ Majel is a **five-view single-page application** with an LCARS-inspired UI:
 │   5 views: Chat │ Catalog │ Fleet │ Drydock │ Diagnostics │
 │              LCARS-inspired dark theme                    │
 └──────────────────────┬───────────────────────────────────┘
-                       │ HTTP/JSON (56 endpoints)
+                       │ HTTP/JSON (56+ endpoints)
 ┌──────────────────────▼───────────────────────────────────┐
-│                Express Server (:3000)                     │
+│                Express Server (:3000)                      │
+│                                                           │
+│  Auth:  4-tier RBAC (Ensign → Admiral) + Bearer tokens    │
+│  API:   Envelope pattern { ok, data|error, meta }         │
 │                                                           │
 │  /api/catalog/*    Officer & ship reference + overlays    │
 │  /api/dock/*       Drydock loadouts, presets, tags        │
@@ -71,17 +76,19 @@ Majel is a **five-view single-page application** with an LCARS-inspired UI:
 │  /api/chat         Gemini conversation via MicroRunner    │
 │  /api/sessions/*   Multi-session management               │
 │  /api/settings/*   User preferences                       │
+│  /api/models/*     Gemini model hot-swap (5 tiers)        │
 │  /api/health       Status + version                       │
 └──┬──────────────┬──────────────┬─────────────────────────┘
    │              │              │
    ▼              ▼              ▼
 ┌────────┐  ┌──────────┐  ┌────────────┐
-│ Gemini │  │  SQLite   │  │    Lex     │
-│  2.5   │  │ (4 DBs)  │  │ Memory DB  │
-│ Flash  │  │reference │  │(workspace- │
-│(brute  │  │settings  │  │ isolated,  │
-│ force  │  │chat      │  │ semantic   │
-│context)│  │behavior  │  │ recall)    │
+│ Gemini │  │PostgreSQL│  │    Lex     │
+│  2.5   │  │   16     │  │ Memory     │
+│(5 model│  │reference │  │(PostgreSQL │
+│ tiers, │  │overlays  │  │ frame      │
+│ hot-   │  │docks     │  │ store,     │
+│ swap)  │  │sessions  │  │ per-user   │
+│        │  │settings  │  │ RLS)       │
 └────────┘  └──────────┘  └────────────┘
 ```
 
@@ -127,11 +134,25 @@ Memory is workspace-isolated — Majel's DB lives at `.smartergpt/lex/` and neve
 npm run dev          # Development server with hot reload (tsx watch)
 npm run build        # Compile TypeScript + copy static assets
 npm start            # Production server (from dist/)
-npm test             # Run test suite (512 tests via Vitest)
+npm test             # Run test suite (738 tests via Vitest)
 npm run typecheck    # Type-check without emitting
 npm run local-ci     # Full CI pipeline: typecheck + coverage + build
 npm run health       # Curl the health endpoint
 ```
+
+### Cloud Operations
+
+```bash
+npm run cloud                    # Show all commands, tiers, and usage
+npm run cloud:status             # Service status, URL, revision, scaling
+npm run cloud:deploy             # Full pipeline: local-ci → build → deploy → health
+npm run cloud:logs               # Tail production logs
+npm run cloud:metrics            # Log-based metrics (latency, errors, 1h window)
+npm run cloud:costs              # Estimated monthly costs
+npm run cloud:status -- --ax     # Structured JSON for AI agent consumption
+```
+
+See `npm run cloud` for the full 20-command reference with auth tiers.
 
 ---
 
@@ -142,52 +163,51 @@ majel/
 ├── src/
 │   ├── server/
 │   │   ├── index.ts             # Express server bootstrap
-│   │   ├── gemini.ts            # Gemini API + system prompt builder
+│   │   ├── app-context.ts       # Dependency injection (AppState)
+│   │   ├── config.ts            # Environment config resolver
+│   │   ├── gemini.ts            # Gemini API + 5-tier model registry
 │   │   ├── micro-runner.ts      # MicroRunner pipeline (classify → gate → validate)
+│   │   ├── envelope.ts          # API response envelope (sendOk/sendFail + hints)
+│   │   ├── auth.ts              # 4-tier RBAC middleware (ADR-019)
+│   │   ├── user-store.ts        # User accounts + sessions
+│   │   ├── memory.ts            # Lex memory integration
+│   │   ├── memory-middleware.ts  # Per-user scoped memory (RLS)
 │   │   ├── reference-store.ts   # Wiki-sourced officer/ship data (read-only)
 │   │   ├── overlay-store.ts     # User overlays (level, tier, notes)
 │   │   ├── dock-store.ts        # Drydock loadouts + presets
+│   │   ├── loadout-store.ts     # PostgreSQL loadout manager (ADR-022)
 │   │   ├── wiki-ingest.ts       # STFC Fandom wiki scraper/importer
-│   │   ├── memory.ts            # Lex memory integration
-│   │   ├── behavior-store.ts    # Behavioral correction rules
 │   │   ├── sessions.ts          # Multi-session management
 │   │   ├── settings.ts          # User preferences store
-│   │   ├── config.ts            # Environment config
 │   │   ├── logger.ts            # Pino structured logging
-│   │   ├── envelope.ts          # API response envelope
-│   │   ├── app-context.ts       # Dependency injection context
 │   │   └── routes/
-│   │       ├── core.ts          # /api, /api/health, /api/chat, /api/history, /api/recall
+│   │       ├── core.ts          # /api, /api/health, /api/diagnostic
+│   │       ├── chat.ts          # /api/chat, /api/history, /api/recall, /api/models
 │   │       ├── catalog.ts       # /api/catalog/* (officers, ships, overlays, sync)
 │   │       ├── docks.ts         # /api/dock/* (loadouts, presets, tags)
 │   │       ├── diagnostic-query.ts  # /api/diagnostic/* (AI query tool)
-│   │       ├── chat.ts          # /api/chat (POST)
 │   │       ├── sessions.ts      # /api/sessions/*
 │   │       └── settings.ts      # /api/settings/*
 │   └── client/
 │       ├── index.html           # SPA shell + LCARS theme
 │       ├── app.js               # Router + tab management
 │       ├── api.js               # Fetch wrapper
-│       ├── chat.js              # Chat view
-│       ├── catalog.js           # Catalog browser view
-│       ├── fleet.js             # Fleet roster view (inline editing)
-│       ├── drydock.js           # Drydock loadout builder
-│       ├── diagnostics.js       # AI diagnostic query view
-│       ├── sessions.js          # Session management
-│       ├── confirm-dialog.js    # Reusable confirmation modal
+│       ├── chat.js, catalog.js, fleet.js, drydock.js, diagnostics.js
 │       └── styles.css           # LCARS-inspired dark theme
-├── test/                        # 13 test files, 512 tests (Vitest)
+├── scripts/
+│   └── cloud.ts                 # Cloud operations CLI (20 commands, AX mode)
+├── test/                        # 18 test files, 738 tests (Vitest)
 ├── docs/
-│   ├── ADR-001 through ADR-017  # Architecture Decision Records
+│   ├── ADR-001 through ADR-022  # Architecture Decision Records
+│   ├── AX-SCHEMA.md             # AI agent response format reference
 │   ├── PROMPT_GUIDE.md          # Prompt engineering reference
 │   └── SETUP.md                 # Developer setup guide
 ├── legacy/
-│   ├── majel.py                 # Original Python CLI prototype
-│   └── requirements.txt
-├── package.json
-├── tsconfig.json
-├── .env.example
-└── CHANGELOG.md
+│   └── majel.py                 # Original Python CLI prototype
+├── BACKLOG.md                   # Issue tracker + tech debt
+├── CHANGELOG.md                 # Release history
+├── CONTRIBUTING.md              # Contributor guidelines
+└── package.json
 ```
 
 ---
@@ -196,9 +216,11 @@ majel/
 
 | Package | Purpose |
 |---------|---------|
-| `@google/generative-ai` | Gemini 2.5 Flash SDK |
-| `@smartergpt/lex` | Episodic memory (conversation persistence + recall) |
-| `better-sqlite3` | SQLite driver for reference, overlay, dock, and settings stores |
+| `@google/generative-ai` | Gemini SDK — 5 model tiers (flash-lite → 3-pro-preview) |
+| `@smartergpt/lex` | Episodic memory — PostgreSQL frame store with per-user RLS |
+| `pg` | PostgreSQL 16 driver (Cloud SQL) |
+| `better-sqlite3` | Local SQLite for reference data caches |
+| `cookie-parser` | Session cookie middleware |
 | `express` | HTTP server |
 | `pino` / `pino-http` | Structured JSON logging |
 | `dotenv` | Environment configuration |
@@ -207,9 +229,9 @@ majel/
 
 ## Privacy & Cost
 
-- **Privacy**: Gemini paid tier — no training on prompts/responses. All fleet data stored locally in SQLite.
-- **Cost**: Target <$2/month. Gemini 2.5 Flash is ≈$0.075/1M input tokens.
-- **Local-only**: Nothing leaves your machine except Gemini API calls.
+- **Privacy**: Gemini paid tier — no training on prompts/responses. Fleet data in Cloud SQL with per-user row-level security.
+- **Cost**: Target <$5/month. Gemini 2.5 Flash ≈$0.075/1M input tokens. Cloud Run scales to zero. Cloud SQL f1-micro.
+- **Data sovereignty**: Each user's memory and fleet data is isolated via PostgreSQL RLS. Admin queries are audited.
 
 ---
 
@@ -219,8 +241,8 @@ Majel serves as a public proof-of-concept for [Lex](https://github.com/Guffawaff
 
 - **Frame-based memory** — each conversation turn becomes a Lex frame with structured metadata
 - **Semantic recall** — search past conversations by meaning, not just keywords
-- **Workspace isolation** — Majel's memory DB is separate from any global Lex installation
-- **Zero configuration** — `createFrameStore()` handles all SQLite setup automatically
+- **Per-user isolation** — PostgreSQL row-level security scopes all memory by user_id
+- **Production deployment** — `PostgresFrameStore` runs in Cloud SQL with connection pooling
 
 ---
 
