@@ -36,7 +36,7 @@ function makeMockMemory(frames: Frame[] = []): MemoryService {
     recall: vi.fn().mockResolvedValue(frames),
     timeline: vi.fn().mockResolvedValue(frames),
     close: vi.fn().mockResolvedValue(undefined),
-    getFrameCount: vi.fn().mockReturnValue(frames.length),
+    getFrameCount: vi.fn().mockResolvedValue(frames.length),
     getDbPath: vi.fn().mockReturnValue("/tmp/test-memory.db"),
   };
 }
@@ -65,6 +65,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     pool: null,
     geminiEngine: null,
     memoryService: null,
+    frameStoreFactory: null,
     settingsStore: null,
     sessionStore: null,
     dockStore: null,

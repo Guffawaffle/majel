@@ -7,15 +7,18 @@
  * Uses @smartergpt/lex to persist conversation turns as memory frames.
  * Each Q&A turn becomes a searchable, timestamped frame.
  *
- * Workspace isolation: LEX_WORKSPACE_ROOT=/srv/majel ensures
- * Majel's DB is at /srv/majel/.smartergpt/lex/memory.db
- * (never touches the global ~/.smartergpt/lex/memory.db)
+ * ADR-021: Supports two backends:
+ * - SQLite (via Lex's built-in createFrameStore) — local dev fallback
+ * - PostgreSQL (via PostgresFrameStore + RLS) — production, multi-tenant
+ *
+ * When using PostgreSQL, the FrameStore is pre-scoped to a user via
+ * FrameStoreFactory.forUser(). RLS enforces isolation at the DB level.
+ * The MemoryService API has NO userId parameters — isolation is structural.
  */
 
 import { createFrameStore } from "@smartergpt/lex/store";
-import { getFrameCount } from "@smartergpt/lex/store";
 import { createFrame } from "@smartergpt/lex/types";
-import type { Frame } from "@smartergpt/lex/types";
+import type { Frame, FrameStore } from "@smartergpt/lex/store";
 import { log } from "./logger.js";
 
 // Re-export Frame type for consumers
@@ -40,20 +43,29 @@ export interface MemoryService {
   close(): Promise<void>;
 
   /** Get total frame count. */
-  getFrameCount(): number;
+  getFrameCount(): Promise<number>;
 
-  /** Get the database file path. */
+  /** Get the database file path or store description. */
   getDbPath(): string;
 }
 
 /**
- * Create the memory service backed by Lex's FrameStore.
+ * Create a MemoryService wrapping any FrameStore implementation.
  *
- * @param dbPath - Optional explicit path to SQLite DB.
- *   If omitted, Lex resolves via LEX_WORKSPACE_ROOT or defaults.
+ * For SQLite (local dev):
+ *   createMemoryService()  // uses Lex's built-in SQLite store
+ *
+ * For PostgreSQL (production, ADR-021):
+ *   createMemoryService(factory.forUser(userId))  // pre-scoped via RLS
  */
-export function createMemoryService(dbPath?: string): MemoryService {
-  const store = createFrameStore(dbPath);
+export function createMemoryService(storeOrPath?: FrameStore | string): MemoryService {
+  const store: FrameStore = typeof storeOrPath === "string" || storeOrPath === undefined
+    ? createFrameStore(storeOrPath)
+    : storeOrPath;
+
+  const dbDescription = typeof storeOrPath === "object"
+    ? "postgres (RLS-scoped)"
+    : `${process.env.LEX_WORKSPACE_ROOT || process.cwd()}/.smartergpt/lex/memory.db`;
 
   return {
     async remember(turn: ConversationTurn): Promise<Frame> {
@@ -68,7 +80,7 @@ export function createMemoryService(dbPath?: string): MemoryService {
       const frame = createFrame({
         branch: "majel-chat",
         module_scope: ["majel/chat"],
-        summary_caption: `Q: ${refPoint} → A: ${turn.answer.slice(0, 100)}${turn.answer.length > 100 ? "..." : ""}`,
+        summary_caption: `Q: ${refPoint} \u2192 A: ${turn.answer.slice(0, 100)}${turn.answer.length > 100 ? "..." : ""}`,
         reference_point: refPoint,
         next_action: "Continue conversation",
         keywords,
@@ -102,18 +114,16 @@ export function createMemoryService(dbPath?: string): MemoryService {
       await store.close();
     },
 
-    getFrameCount(): number {
+    async getFrameCount(): Promise<number> {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return getFrameCount((store as any)._db);
+        return await store.getFrameCount();
       } catch {
         return -1;
       }
     },
 
     getDbPath(): string {
-      const wsRoot = process.env.LEX_WORKSPACE_ROOT || process.cwd();
-      return `${wsRoot}/.smartergpt/lex/memory.db`;
+      return dbDescription;
     },
   };
 }

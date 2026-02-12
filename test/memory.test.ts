@@ -206,4 +206,9 @@ describe("createMemoryService", () => {
     await service.close();
     // Should not throw
   });
+
+  // ─── Multi-tenant isolation ─────────────────────────────────
+  // ADR-021: Isolation is now via PostgreSQL Row-Level Security.
+  // The MemoryService API has no userId parameters.
+  // See test/postgres-frame-store.test.ts for RLS isolation tests.
 });

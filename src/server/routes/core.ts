@@ -113,9 +113,9 @@ export function createCoreRoutes(appState: AppState): Router {
       gemini: appState.geminiEngine
         ? { status: "connected", model: "gemini-2.5-flash-lite", activeSessions: appState.geminiEngine.getSessionCount() }
         : { status: "not configured" },
-      memory: (() => {
+      memory: await (async () => {
         if (!appState.memoryService) return { status: "not configured" };
-        return { status: "active", frameCount: appState.memoryService.getFrameCount(), dbPath: appState.memoryService.getDbPath() };
+        return { status: "active", frameCount: await appState.memoryService.getFrameCount(), dbPath: appState.memoryService.getDbPath() };
       })(),
       settings: await (async () => {
         if (!appState.settingsStore) return { status: "not configured" };

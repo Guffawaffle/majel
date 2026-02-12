@@ -31,6 +31,7 @@ import { pinoHttp } from "pino-http";
 import { log, rootLogger } from "./logger.js";
 import { createGeminiEngine } from "./gemini.js";
 import { createMemoryService } from "./memory.js";
+import { createFrameStoreFactory } from "./postgres-frame-store.js";
 import { createSettingsStore } from "./settings.js";
 import { createSessionStore } from "./sessions.js";
 import { createDockStore } from "./dock-store.js";
@@ -40,6 +41,7 @@ import { createOverlayStore } from "./overlay-store.js";
 import { createInviteStore } from "./invite-store.js";
 import { createUserStore } from "./user-store.js";
 import { createPool } from "./db.js";
+// attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
@@ -84,6 +86,7 @@ const state: AppState = {
   pool: null,
   geminiEngine: null,
   memoryService: null,
+  frameStoreFactory: null,
   settingsStore: null,
   sessionStore: null,
   dockStore: null,
@@ -145,6 +148,8 @@ export function createApp(appState: AppState): express.Express {
   }
 
   // ─── Mount route modules ──────────────────────────────────
+  // Per-request scoped memory (ADR-021 D4) is chained per-route in chat.ts,
+  // AFTER auth middleware sets res.locals.userId. Not app-level — auth is route-level.
   app.use(createCoreRoutes(appState));
   app.use(createAuthRoutes(appState));
   app.use(createAdminRoutes(appState));
@@ -186,10 +191,18 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "settings store init failed");
   }
 
-  // 2. Initialize Lex memory (always — it's local)
+  // 2. Initialize Lex memory — ADR-021: prefer PostgreSQL + RLS when pool is available
   try {
-    state.memoryService = createMemoryService();
-    log.boot.info("lex memory service online");
+    if (pool) {
+      const factory = await createFrameStoreFactory(pool);
+      state.frameStoreFactory = factory;
+      // Boot-time memory service uses a system-scoped store (for /api/health frame count)
+      state.memoryService = createMemoryService(factory.forUser("system"));
+      log.boot.info("lex memory service online (postgres + RLS)");
+    } else {
+      state.memoryService = createMemoryService();
+      log.boot.info("lex memory service online (sqlite fallback)");
+    }
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "lex memory init failed");
   }
