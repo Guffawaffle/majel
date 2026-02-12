@@ -262,8 +262,8 @@ const SQL = {
   upsertDock: `
     INSERT INTO docks (dock_number, label, notes) VALUES ($1, $2, $3)
     ON CONFLICT (dock_number)
-    DO UPDATE SET label = COALESCE(EXCLUDED.label, docks.label),
-                  notes = COALESCE(EXCLUDED.notes, docks.notes),
+    DO UPDATE SET label = EXCLUDED.label,
+                  notes = EXCLUDED.notes,
                   updated_at = NOW()
     RETURNING *
   `,
@@ -499,11 +499,14 @@ function fixBool(v: unknown): boolean {
   return false;
 }
 
-/** Parse JSONB array column to string[]. */
+/** Parse JSONB array column to string[]. Coerces all elements to strings. */
 function parseJsonbArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v;
+  if (Array.isArray(v)) return v.map(String);
   if (typeof v === "string") {
-    try { return JSON.parse(v); } catch { return []; }
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch { return []; }
   }
   return [];
 }
@@ -618,9 +621,10 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
     const members = base.loadoutId
       ? (await pool.query(SQL.listLoadoutMembers, [base.loadoutId])).rows.map(mapMember)
       : [];
-    const awayMembers = !base.loadoutId
-      ? (await pool.query(SQL.listAwayMembers, [base.id])).rows.map(mapAwayMember)
-      : [];
+    // Always fetch away members — they may exist regardless of loadout assignment.
+    // The API consumer decides the semantic conflict; the store must not hide data.
+    const awayResult = await pool.query(SQL.listAwayMembers, [base.id]);
+    const awayMembers = awayResult.rows.map(mapAwayMember);
     return {
       ...base,
       intentLabel: (row.intent_label as string) ?? null,
@@ -835,23 +839,29 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
 
   // ─── Dock CRUD ────────────────────────────────────
 
+  function mapAssignment(row: Record<string, unknown>): PlanItemSummary {
+    return {
+      id: row.id as number,
+      intentKey: (row.intent_key as string) ?? null,
+      label: (row.label as string) ?? null,
+      loadoutId: (row.loadout_id as number) ?? null,
+      loadoutName: (row.loadout_name as string) ?? null,
+      shipName: (row.ship_name as string) ?? null,
+      isActive: fixBool(row.is_active),
+    };
+  }
+
+  async function resolveDockAssignment(dockNumber: number): Promise<PlanItemSummary | null> {
+    const { rows } = await pool.query(SQL.dockAssignment, [dockNumber]);
+    return rows.length > 0 ? mapAssignment(rows[0]) : null;
+  }
+
   async function listDocks(): Promise<DockWithAssignment[]> {
     const { rows } = await pool.query(SQL.listDocks);
     const result: DockWithAssignment[] = [];
     for (const row of rows) {
       const dock = mapDock(row);
-      const assignResult = await pool.query(SQL.dockAssignment, [dock.dockNumber]);
-      const assignment: PlanItemSummary | null = assignResult.rows.length > 0
-        ? {
-            id: assignResult.rows[0].id as number,
-            intentKey: (assignResult.rows[0].intent_key as string) ?? null,
-            label: (assignResult.rows[0].label as string) ?? null,
-            loadoutId: (assignResult.rows[0].loadout_id as number) ?? null,
-            loadoutName: (assignResult.rows[0].loadout_name as string) ?? null,
-            shipName: (assignResult.rows[0].ship_name as string) ?? null,
-            isActive: fixBool(assignResult.rows[0].is_active),
-          }
-        : null;
+      const assignment = await resolveDockAssignment(dock.dockNumber);
       result.push({ ...dock, assignment });
     }
     return result;
@@ -861,18 +871,7 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
     const { rows } = await pool.query(SQL.getDock, [dockNumber]);
     if (rows.length === 0) return null;
     const dock = mapDock(rows[0]);
-    const assignResult = await pool.query(SQL.dockAssignment, [dockNumber]);
-    const assignment: PlanItemSummary | null = assignResult.rows.length > 0
-      ? {
-          id: assignResult.rows[0].id as number,
-          intentKey: (assignResult.rows[0].intent_key as string) ?? null,
-          label: (assignResult.rows[0].label as string) ?? null,
-          loadoutId: (assignResult.rows[0].loadout_id as number) ?? null,
-          loadoutName: (assignResult.rows[0].loadout_name as string) ?? null,
-          shipName: (assignResult.rows[0].ship_name as string) ?? null,
-          isActive: fixBool(assignResult.rows[0].is_active),
-        }
-      : null;
+    const assignment = await resolveDockAssignment(dockNumber);
     return { ...dock, assignment };
   }
 
