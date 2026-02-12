@@ -17,11 +17,104 @@ import {
   HarmBlockThreshold,
   type ChatSession,
   type SafetySetting,
+  type GenerativeModel,
 } from "@google/generative-ai";
 import { log } from "./logger.js";
 import { type MicroRunner, VALIDATION_DISCLAIMER } from "./micro-runner.js";
 
-const MODEL_NAME = "gemini-2.5-flash-lite";
+// ─── Model Registry ───────────────────────────────────────────
+
+/**
+ * Available Gemini models with metadata for the model selector.
+ *
+ * Ordered by cost tier (cheapest → most expensive).
+ * Model IDs use stable version aliases unless preview-only.
+ *
+ * Pricing notes (per 1M tokens, as of Feb 2026):
+ * - Flash-Lite:  $0.075 input / $0.30 output (cheapest, no native thinking)
+ * - 2.5 Flash:   $0.15 input / $0.60 output (thinking-capable, great balance)
+ * - 3 Flash:     ~$0.15 input / $0.60 output (latest gen, native thinking)
+ * - 2.5 Pro:     $1.25 input / $10 output (deep reasoning, long context)
+ * - 3 Pro:       ~$1.25 input / $10 output (frontier intelligence)
+ */
+export interface ModelDef {
+  id: string;
+  name: string;
+  tier: "budget" | "balanced" | "thinking" | "premium" | "frontier";
+  description: string;
+  thinking: boolean;
+  contextWindow: number;
+  costRelative: number; // 1 = cheapest, 5 = most expensive
+  speed: "fastest" | "fast" | "moderate" | "slow";
+}
+
+export const MODEL_REGISTRY: ModelDef[] = [
+  {
+    id: "gemini-2.5-flash-lite",
+    name: "Gemini 2.5 Flash-Lite",
+    tier: "budget",
+    description: "Ultra-fast, lowest cost. Great for high-volume chat. No native thinking.",
+    thinking: false,
+    contextWindow: 1_048_576,
+    costRelative: 1,
+    speed: "fastest",
+  },
+  {
+    id: "gemini-2.5-flash",
+    name: "Gemini 2.5 Flash",
+    tier: "balanced",
+    description: "Best price-performance. Thinking-capable with dynamic budget. Solid all-rounder.",
+    thinking: true,
+    contextWindow: 1_048_576,
+    costRelative: 2,
+    speed: "fast",
+  },
+  {
+    id: "gemini-3-flash-preview",
+    name: "Gemini 3 Flash (Preview)",
+    tier: "thinking",
+    description: "Latest-gen Flash with native thinking. Fast + smart. Preview — may change.",
+    thinking: true,
+    contextWindow: 1_048_576,
+    costRelative: 2,
+    speed: "fast",
+  },
+  {
+    id: "gemini-2.5-pro",
+    name: "Gemini 2.5 Pro",
+    tier: "premium",
+    description: "Advanced reasoning, deep analysis, long context. Best for complex strategy & code.",
+    thinking: true,
+    contextWindow: 1_048_576,
+    costRelative: 4,
+    speed: "moderate",
+  },
+  {
+    id: "gemini-3-pro-preview",
+    name: "Gemini 3 Pro (Preview)",
+    tier: "frontier",
+    description: "Most intelligent model. State-of-the-art reasoning & multimodal. Preview — may change.",
+    thinking: true,
+    contextWindow: 1_048_576,
+    costRelative: 5,
+    speed: "slow",
+  },
+];
+
+const MODEL_REGISTRY_MAP = new Map(MODEL_REGISTRY.map((m) => [m.id, m]));
+
+/** Get a model definition by ID, or null if unknown. */
+export function getModelDef(modelId: string): ModelDef | null {
+  return MODEL_REGISTRY_MAP.get(modelId) ?? null;
+}
+
+/** Validate a model ID. Returns the ID if valid, or the default if not. */
+export function resolveModelId(modelId: string | undefined | null): string {
+  if (modelId && MODEL_REGISTRY_MAP.has(modelId)) return modelId;
+  return MODEL_REGISTRY[0].id; // default: flash-lite
+}
+
+const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 
 /**
  * Fleet configuration context for the system prompt.
@@ -127,7 +220,7 @@ OPERATING RULES:
 4. CORRECTIONS ARE WELCOME — If the Admiral corrects you, accept it. "Good catch, Admiral. Let me reconsider."
 
 ARCHITECTURE (general description only):
-You run on ${MODEL_NAME} (Google Gemini). Your supporting systems include conversation memory (Lex), a settings store (SQLite), a reference catalog (wiki-imported officers/ships), and a user overlay (ownership, targeting, levels).
+You run on Google Gemini (model selectable by the Admiral). Your supporting systems include conversation memory (Lex), a settings store (PostgreSQL), a reference catalog (wiki-imported officers/ships), and a user overlay (ownership, targeting, levels).
 You CANNOT inspect your own subsystems at runtime — you don't know current memory frame counts, connection status, or settings values unless they're in your context. For live diagnostics, direct the Admiral to /api/health.
 If asked how your systems work, describe them generally. Do not claim implementation specifics you haven't been given.
 
@@ -182,6 +275,10 @@ export interface GeminiEngine {
   getSessionCount(): number;
   /** Close a specific session and free its resources. */
   closeSession(sessionId: string): void;
+  /** Get the current model ID. */
+  getModel(): string;
+  /** Hot-swap the model. Clears all sessions (new model = fresh context). */
+  setModel(modelId: string): void;
 }
 
 /** Default session TTL: 30 minutes */
@@ -216,23 +313,30 @@ export function createGeminiEngine(
   fleetConfig?: FleetConfig | null,
   dockBriefing?: string | null,
   microRunner?: MicroRunner | null,
+  initialModelId?: string | null,
 ): GeminiEngine {
   const genAI = new GoogleGenerativeAI(apiKey);
+  const systemInstruction = buildSystemPrompt(fleetConfig, dockBriefing);
 
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    systemInstruction: buildSystemPrompt(fleetConfig, dockBriefing),
-    safetySettings: SAFETY_SETTINGS,
-  });
+  let currentModelId = resolveModelId(initialModelId);
 
+  function createModel(modelId: string): GenerativeModel {
+    return genAI.getGenerativeModel({
+      model: modelId,
+      systemInstruction,
+      safetySettings: SAFETY_SETTINGS,
+    });
+  }
+
+  let model = createModel(currentModelId);
   const sessions = new Map<string, SessionState>();
 
   log.gemini.debug({
-    model: MODEL_NAME,
+    model: currentModelId,
     hasFleetConfig: !!fleetConfig,
     hasDockBriefing: !!dockBriefing,
     hasMicroRunner: !!microRunner,
-    promptLen: buildSystemPrompt(fleetConfig, dockBriefing).length,
+    promptLen: systemInstruction.length,
   }, "init");
 
   /** Get or create a session by ID */
@@ -357,6 +461,29 @@ export function createGeminiEngine(
       if (deleted) {
         log.gemini.debug({ sessionId, remaining: sessions.size }, "session:close");
       }
+    },
+
+    getModel(): string {
+      return currentModelId;
+    },
+
+    setModel(modelId: string): void {
+      const resolved = resolveModelId(modelId);
+      if (resolved === currentModelId) return;
+
+      const previousModel = currentModelId;
+      currentModelId = resolved;
+      model = createModel(resolved);
+
+      // Clear all sessions — new model needs fresh chat context
+      const sessionCount = sessions.size;
+      sessions.clear();
+
+      log.gemini.info({
+        previousModel,
+        newModel: resolved,
+        sessionsCleared: sessionCount,
+      }, "model:switch");
     },
   };
 }

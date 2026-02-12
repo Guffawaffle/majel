@@ -124,9 +124,9 @@ describe("buildSystemPrompt", () => {
   });
 
   describe("model name interpolation", () => {
-    it("includes the model name in the prompt", () => {
+    it("mentions the model is selectable by the Admiral", () => {
       const prompt = buildSystemPrompt();
-      expect(prompt).toContain("gemini-2.5-flash-lite");
+      expect(prompt).toContain("model selectable by the Admiral");
     });
   });
 

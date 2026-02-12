@@ -278,13 +278,17 @@ async function boot(): Promise<void> {
   // 3. Initialize Gemini engine
   if (geminiApiKey) {
     const runner = await buildMicroRunnerFromState(state);
+    const modelName = state.settingsStore
+      ? await state.settingsStore.get("model.name")
+      : undefined;
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,
       await readFleetConfig(state.settingsStore),
       await readDockBriefing(state.dockStore),
       runner,
+      modelName,
     );
-    log.boot.info({ model: "gemini-2.5-flash-lite", microRunner: !!runner }, "gemini engine online");
+    log.boot.info({ model: state.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
   } else {
     log.boot.warn("GEMINI_API_KEY not set — chat disabled");
   }
