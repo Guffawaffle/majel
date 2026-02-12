@@ -1135,6 +1135,38 @@ describe("LoadoutStore — Edge Cases", () => {
     expect(c.awayMembers).toBe(0);
   });
 
+  it("upsertDock clears label to null on update", async () => {
+    await store.upsertDock(1, { label: "Grinder", notes: "PvE" });
+    const cleared = await store.upsertDock(1, { label: undefined, notes: undefined });
+    expect(cleared.label).toBeNull();
+    expect(cleared.notes).toBeNull();
+  });
+
+  it("away members on loadout-backed plan item are still visible", async () => {
+    const loadout = await store.createLoadout({ shipId: "vidar", name: "Borg Loop" });
+    await store.upsertDock(1, { label: "D1" });
+    const item = await store.createPlanItem({ loadoutId: loadout.id, dockNumber: 1, label: "Hybrid" });
+    // Set away members despite having a loadout — store should NOT hide this data
+    await store.setPlanAwayMembers(item.id, ["kirk", "spock"]);
+    const fetched = await store.getPlanItem(item.id);
+    expect(fetched!.loadoutId).toBe(loadout.id);
+    expect(fetched!.awayMembers.length).toBe(2);
+  });
+
+  it("updateLoadout with empty fields is a no-op", async () => {
+    const created = await store.createLoadout({ shipId: "vidar", name: "Borg Loop", priority: 3 });
+    const updated = await store.updateLoadout(created.id, {});
+    expect(updated!.name).toBe("Borg Loop");
+    expect(updated!.priority).toBe(3);
+  });
+
+  it("updatePlanItem can set intentKey to null", async () => {
+    const item = await store.createPlanItem({ label: "Test", intentKey: "grinding" });
+    expect(item.intentKey).toBe("grinding");
+    const updated = await store.updatePlanItem(item.id, { intentKey: null as unknown as string });
+    expect(updated!.intentKey).toBeNull();
+  });
+
   it("full scenario: 4 docks, multiple loadouts, away team, conflicts", async () => {
     // Create loadouts
     const borgLoop = await store.createLoadout({ shipId: "vidar", name: "Borg Loop", priority: 3, intentKeys: ["grinding-eclipse"] });
