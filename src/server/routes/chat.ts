@@ -28,9 +28,11 @@ export function createChatRoutes(appState: AppState): Router {
     try {
       const answer = await appState.geminiEngine.chat(message, sessionId);
 
-      // Persist to Lex memory (fire-and-forget, don't block the response)
-      if (appState.memoryService) {
-        appState.memoryService
+      // Persist to Lex memory — user-scoped via RLS (ADR-021 D4)
+      // Falls back to appState.memoryService if middleware didn't attach
+      const memory = res.locals.memory ?? appState.memoryService;
+      if (memory) {
+        memory
           .remember({ question: message, answer })
           .catch((err) => {
             log.lex.warn({ err: err instanceof Error ? err.message : String(err) }, "memory save failed");
@@ -67,12 +69,13 @@ export function createChatRoutes(appState: AppState): Router {
       result.session = appState.geminiEngine?.getHistory(sessionId) || [];
     }
 
+    const memory = res.locals.memory ?? appState.memoryService;
     if (
       (source === "lex" || source === "both") &&
-      appState.memoryService
+      memory
     ) {
       try {
-        const frames = await appState.memoryService.timeline(limit);
+        const frames = await memory.timeline(limit);
         result.lex = frames.map((f) => ({
           id: f.id,
           timestamp: f.timestamp,
@@ -96,13 +99,14 @@ export function createChatRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing query parameter 'q'");
     }
 
-    if (!appState.memoryService) {
+    const memory = res.locals.memory ?? appState.memoryService;
+    if (!memory) {
       return sendFail(res, ErrorCode.MEMORY_NOT_AVAILABLE, "Memory service not available", 503);
     }
 
     try {
       const limit = parseInt((req.query.limit as string) || "10", 10);
-      const frames = await appState.memoryService.recall(query, limit);
+      const frames = await memory.recall(query, limit);
       sendOk(res, {
         query,
         results: frames.map((f) => ({
