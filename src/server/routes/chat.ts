@@ -37,7 +37,8 @@ export function createChatRoutes(appState: AppState): Router {
         memory
           .remember({ question: message, answer })
           .catch((err) => {
-            log.lex.warn({ err: err instanceof Error ? err.message : String(err) }, "memory save failed");
+            // M6: Log at error level with context — silent data loss is tracked
+            log.lex.error({ err: err instanceof Error ? err.message : String(err), sessionId }, "memory save failed — conversation not persisted to Lex");
           });
       }
 
@@ -59,7 +60,8 @@ export function createChatRoutes(appState: AppState): Router {
 
   router.get("/api/history", requireVisitor(appState), attachScopedMemory(appState), async (req, res) => {
     const source = (req.query.source as string) || "both";
-    const limit = parseInt((req.query.limit as string) || "20", 10);
+    // I4: Clamp limit to 1-100 to prevent excessive memory queries
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) || "20", 10) || 20, 1), 100);
 
     const result: {
       session?: Array<{ role: string; text: string }>;
@@ -107,7 +109,7 @@ export function createChatRoutes(appState: AppState): Router {
     }
 
     try {
-      const limit = parseInt((req.query.limit as string) || "10", 10);
+      const limit = Math.min(Math.max(parseInt((req.query.limit as string) || "10", 10) || 10, 1), 100);
       const frames = await memory.recall(query, limit);
       sendOk(res, {
         query,

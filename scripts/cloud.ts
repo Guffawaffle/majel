@@ -25,7 +25,7 @@
  * @see docs/ADR-018-cloud-deployment.md
  */
 
-import { execSync, spawn } from "node:child_process";
+import { execSync, execFileSync, spawn } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,9 +94,12 @@ function axOutput(command: string, start: number, data: Record<string, unknown>,
   console.log(JSON.stringify(output, null, 2));
 }
 
+/** Shell-safe command runner. Splits a command string into [program, ...args] and uses execFileSync to avoid shell injection. */
 function run(cmd: string, opts?: { silent?: boolean; capture?: boolean }): string {
+  const parts = shellSplit(cmd);
+  const [program, ...args] = parts;
   try {
-    const result = execSync(cmd, {
+    const result = execFileSync(program, args, {
       cwd: ROOT,
       encoding: "utf-8",
       stdio: opts?.capture ? ["pipe", "pipe", "pipe"] : (opts?.silent ? ["pipe", "pipe", "pipe"] : "inherit"),
@@ -106,11 +109,29 @@ function run(cmd: string, opts?: { silent?: boolean; capture?: boolean }): strin
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (!AX_MODE && !opts?.silent) {
-      console.error(`\u274c Command failed: ${cmd}`);
+      console.error(`\u274c Command failed: ${program} ${args.join(" ")}`);
       console.error(msg);
     }
     throw err;
   }
+}
+
+/** Naive shell-split: respects single-quotes (for gcloud format flags). */
+function shellSplit(cmd: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let inSingleQuote = false;
+  for (const ch of cmd) {
+    if (ch === "'" && !inSingleQuote) { inSingleQuote = true; continue; }
+    if (ch === "'" && inSingleQuote) { inSingleQuote = false; continue; }
+    if (ch === " " && !inSingleQuote) {
+      if (current) { tokens.push(current); current = ""; }
+      continue;
+    }
+    current += ch;
+  }
+  if (current) tokens.push(current);
+  return tokens;
 }
 
 function runCapture(cmd: string): string {
@@ -175,9 +196,15 @@ function loadCloudToken(): string | null {
   } catch { return null; }
 }
 
+const CLOUD_TOKEN_MIN_LENGTH = 32; // reject trivially short tokens
+const CLOUD_TOKEN_PATTERN = /^[a-f0-9]{32,}$/i; // hex string, 32+ chars
+
 function requireWriteAuth(command: string): boolean {
   const token = loadCloudToken();
-  if (!token) {
+  if (!token || !CLOUD_TOKEN_PATTERN.test(token)) {
+    const errors = !token
+      ? ["Write auth required. Run `npm run cloud:init` to generate .cloud-auth token."]
+      : [`Invalid cloud auth token (expected ${CLOUD_TOKEN_MIN_LENGTH}+ hex chars). Regenerate: npm run cloud:init -- --force`];
     if (AX_MODE) {
       console.log(JSON.stringify({
         command: `cloud:${command}`,
@@ -185,12 +212,11 @@ function requireWriteAuth(command: string): boolean {
         timestamp: new Date().toISOString(),
         durationMs: 0,
         data: {},
-        errors: ["Write auth required. Run `npm run cloud:init` to generate .cloud-auth token."],
+        errors,
         hints: ["For CI: set MAJEL_CLOUD_TOKEN environment variable"],
       }, null, 2));
     } else {
-      humanError("\ud83d\udd12 This command requires cloud auth.");
-      humanError("   Run: npm run cloud:init");
+      humanError(`\ud83d\udd12 ${errors[0]}`);
       humanError("   Or set MAJEL_CLOUD_TOKEN env var for CI.");
     }
     return false;
@@ -320,6 +346,10 @@ async function cmdLogs(): Promise<void> {
       "run", "services", "logs", "tail", SERVICE,
       "--region", REGION,
     ], { stdio: "inherit" });
+    // M7: Graceful cleanup on SIGINT/SIGTERM
+    const cleanup = () => { child.kill(); process.exit(0); };
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
     child.on("exit", (code) => process.exit(code ?? 0));
     // Keep process alive for streaming
     await new Promise(() => {});
@@ -486,6 +516,10 @@ async function cmdSsh(): Promise<void> {
     CLOUD_SQL_INSTANCE,
     "--port", "5433",
   ], { stdio: "inherit" });
+  // M7: Graceful cleanup on SIGINT/SIGTERM
+  const cleanup = () => { child.kill(); process.exit(0); };
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
   child.on("exit", (code) => process.exit(code ?? 0));
   await new Promise(() => {});
 }
@@ -747,10 +781,18 @@ async function cmdScale(): Promise<void> {
   const minArg = minIdx >= 0 ? args[minIdx + 1] : undefined;
   const maxArg = maxIdx >= 0 ? args[maxIdx + 1] : undefined;
 
+  // Validate numeric args to prevent injection
+  if (minArg !== undefined && (!Number.isInteger(Number(minArg)) || Number(minArg) < 0)) {
+    humanError("\u274c --min must be a non-negative integer"); process.exit(1);
+  }
+  if (maxArg !== undefined && (!Number.isInteger(Number(maxArg)) || Number(maxArg) < 1)) {
+    humanError("\u274c --max must be a positive integer"); process.exit(1);
+  }
+
   if (minArg !== undefined || maxArg !== undefined) {
     const flags: string[] = [];
-    if (minArg) flags.push(`--min-instances=${minArg}`);
-    if (maxArg) flags.push(`--max-instances=${maxArg}`);
+    if (minArg) flags.push(`--min-instances=${Number(minArg)}`);
+    if (maxArg) flags.push(`--max-instances=${Number(maxArg)}`);
     gcloud(`run services update ${SERVICE} --region ${REGION} ${flags.join(" ")} --quiet`);
 
     interface ServiceDesc { spec?: { template?: { metadata?: { annotations?: Record<string, string> } } } }
@@ -838,6 +880,14 @@ async function cmdPromote(): Promise<void> {
     revision = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.latestReadyRevisionName)'`);
   }
 
+  // Validate revision name format (Cloud Run revision names: lowercase alphanum + hyphens)
+  if (!/^[a-z][a-z0-9-]{0,95}$/.test(revision)) {
+    const msg = `Invalid revision name: ${revision}`;
+    if (AX_MODE) { axOutput("promote", start, {}, { success: false, errors: [msg] }); }
+    else { humanError(`\u274c ${msg}`); }
+    process.exit(1);
+  }
+
   humanLog(`\ud83d\ude80 Promoting ${revision} to 100% traffic...`);
   gcloud(`run services update-traffic ${SERVICE} --region ${REGION} --to-revisions ${revision}=100 --quiet`);
 
@@ -886,10 +936,11 @@ async function cmdDiff(): Promise<void> {
     }
   } catch { /* no .env file */ }
 
+  // I7: Show only keys that drift, never expose values (may contain secrets)
   const drifts: string[] = [];
   for (const key of Object.keys(deployedPlainEnv)) {
     if (localEnv[key] !== undefined && localEnv[key] !== deployedPlainEnv[key]) {
-      drifts.push(`${key}: local="${localEnv[key]}" vs deployed="${deployedPlainEnv[key]}"`);
+      drifts.push(key);
     }
   }
 
@@ -897,10 +948,10 @@ async function cmdDiff(): Promise<void> {
     axOutput("diff", start, {
       local: { version: localVersion, gitSha: localSha, branch: localBranch, dirty: localDirty },
       deployed: { revision: deployedRevision, image: deployedImage, url },
-      envDrift: drifts,
+      envDriftKeys: drifts,
       envDriftCount: drifts.length,
     }, {
-      hints: drifts.length > 0 ? ["Environment variable drift detected \u2014 review before deploying"] : undefined,
+      hints: drifts.length > 0 ? ["Environment variable drift detected \u2014 review before deploying", "Drifting keys (values masked): " + drifts.join(", ")] : undefined,
     });
   } else {
     humanLog("\ud83d\udd0d Local vs Deployed Diff");
@@ -914,8 +965,8 @@ async function cmdDiff(): Promise<void> {
     humanLog(`    Image:    ${deployedImage}`);
     humanLog(`    URL:      ${url}`);
     if (drifts.length > 0) {
-      humanLog("\n  \u26a0\ufe0f  Environment Drift:");
-      for (const d of drifts) humanLog(`    ${d}`);
+      humanLog("\n  \u26a0\ufe0f  Environment Drift (values masked):");
+      for (const d of drifts) humanLog(`    ${d}: local=**** vs deployed=****`);
     } else {
       humanLog("\n  \u2705 No environment variable drift detected");
     }
