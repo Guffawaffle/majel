@@ -8,6 +8,7 @@ import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 import { requireAdmiral, requireVisitor } from "../auth.js";
 import { attachScopedMemory } from "../memory-middleware.js";
+import { MODEL_REGISTRY, getModelDef, resolveModelId } from "../gemini.js";
 
 export function createChatRoutes(appState: AppState): Router {
   const router = Router();
@@ -122,6 +123,75 @@ export function createChatRoutes(appState: AppState): Router {
       const message = err instanceof Error ? err.message : String(err);
       sendFail(res, ErrorCode.MEMORY_ERROR, message, 500);
     }
+  });
+
+  // ─── Model Selector ────────────────────────────────────────
+
+  /**
+   * GET /api/models — List available models with metadata.
+   * Returns the full registry + which model is currently active.
+   */
+  router.get("/api/models", requireAdmiral(appState), async (_req, res) => {
+    const current = appState.geminiEngine?.getModel() ?? "unknown";
+
+    sendOk(res, {
+      current,
+      currentDef: getModelDef(current),
+      models: MODEL_REGISTRY.map((m) => ({
+        ...m,
+        active: m.id === current,
+      })),
+    });
+  });
+
+  /**
+   * POST /api/models/select — Switch the active model (Admiral only).
+   *
+   * Body: { "model": "gemini-2.5-pro" }
+   *
+   * This hot-swaps the model without restarting the server.
+   * All chat sessions are cleared (new model = fresh context).
+   * The selection is persisted to settings so it survives restarts.
+   */
+  router.post("/api/models/select", requireAdmiral(appState), async (req, res) => {
+    const { model: requestedModel } = req.body;
+
+    if (!requestedModel || typeof requestedModel !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'model' in request body");
+    }
+
+    if (!appState.geminiEngine) {
+      return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready", 503);
+    }
+
+    const modelDef = getModelDef(requestedModel);
+    if (!modelDef) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown model: ${requestedModel}. Use GET /api/models for available options.`);
+    }
+
+    const previousModel = appState.geminiEngine.getModel();
+    appState.geminiEngine.setModel(requestedModel);
+
+    // Persist to settings store so it survives restarts
+    if (appState.settingsStore) {
+      try {
+        await appState.settingsStore.set("model.name", requestedModel);
+      } catch (err) {
+        log.settings.warn({ err: err instanceof Error ? err.message : String(err) }, "failed to persist model selection");
+      }
+    }
+
+    log.gemini.info({ previousModel, newModel: requestedModel, tier: modelDef.tier }, "model:select");
+
+    sendOk(res, {
+      previousModel,
+      currentModel: requestedModel,
+      modelDef,
+      sessionsCleared: true,
+      hint: modelDef.thinking
+        ? "Thinking model active — responses may take longer but will be more reasoned."
+        : "Standard model active — fastest responses.",
+    });
   });
 
   return router;
