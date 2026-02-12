@@ -13,7 +13,12 @@
  * @see docs/ADR-021-postgres-frame-store.md
  */
 
-import { initSchema, withTransaction, type Pool, type PoolClient } from "./db.js";
+import {
+  initSchema,
+  withTransaction,
+  type Pool,
+  type PoolClient,
+} from "./db.js";
 import { log } from "./logger.js";
 import type {
   FrameStore,
@@ -141,9 +146,13 @@ function rowToFrame(row: FrameRow): Frame {
   if (row.tool_calls?.length) f.toolCalls = row.tool_calls;
   if (row.guardrail_profile) f.guardrailProfile = row.guardrail_profile;
   if (row.turn_cost) f.turnCost = row.turn_cost as Frame["turnCost"];
-  if (row.capability_tier) f.capabilityTier = row.capability_tier as Frame["capabilityTier"];
-  if (row.task_complexity) f.taskComplexity = row.task_complexity as Frame["taskComplexity"];
-  if (row.contradiction_resolution) f.contradiction_resolution = row.contradiction_resolution as Frame["contradiction_resolution"];
+  if (row.capability_tier)
+    f.capabilityTier = row.capability_tier as Frame["capabilityTier"];
+  if (row.task_complexity)
+    f.taskComplexity = row.task_complexity as Frame["taskComplexity"];
+  if (row.contradiction_resolution)
+    f.contradiction_resolution =
+      row.contradiction_resolution as Frame["contradiction_resolution"];
   return f;
 }
 
@@ -159,8 +168,8 @@ const SELECT_COLS = `id, user_id, timestamp, branch, jira, module_scope,
 // ─── Cursor encoding ───────────────────────────────────────────
 
 interface CursorPayload {
-  ts: string;  // ISO timestamp
-  id: string;  // frame ID (tiebreaker)
+  ts: string; // ISO timestamp
+  id: string; // frame ID (tiebreaker)
 }
 
 /**
@@ -178,7 +187,8 @@ function encodeCursor(ts: string, id: string): string {
 function decodeCursor(cursor: string): CursorPayload | null {
   try {
     const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString());
-    if (typeof parsed.ts === "string" && typeof parsed.id === "string") return parsed;
+    if (typeof parsed.ts === "string" && typeof parsed.id === "string")
+      return parsed;
     return null;
   } catch {
     return null;
@@ -198,7 +208,9 @@ export async function withUserScope<T>(
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   return withTransaction(pool, async (client) => {
-    await client.query("SELECT set_config('app.current_user_id', $1, true)", [userId]);
+    await client.query("SELECT set_config('app.current_user_id', $1, true)", [
+      userId,
+    ]);
     return fn(client);
   });
 }
@@ -215,7 +227,9 @@ async function withUserRead<T>(
 ): Promise<T> {
   const client = await pool.connect();
   try {
-    await client.query("SELECT set_config('app.current_user_id', $1, false)", [userId]);
+    await client.query("SELECT set_config('app.current_user_id', $1, false)", [
+      userId,
+    ]);
     return await fn(client);
   } finally {
     client.release();
@@ -246,7 +260,9 @@ export class PostgresFrameStore implements FrameStore {
   }
 
   /** Run a read-only query with user scope but no transaction overhead. */
-  private async scopedRead<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  private async scopedRead<T>(
+    fn: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
     return withUserRead(this.pool, this.userId, fn);
   }
 
@@ -258,10 +274,10 @@ export class PostgresFrameStore implements FrameStore {
       frame.timestamp,
       frame.branch,
       frame.jira ?? null,
-      JSON.stringify(frame.module_scope),       // always present (required field)
+      JSON.stringify(frame.module_scope), // always present (required field)
       frame.summary_caption,
       frame.reference_point,
-      JSON.stringify(frame.status_snapshot),     // always present (required field)
+      JSON.stringify(frame.status_snapshot), // always present (required field)
       frame.keywords?.length ? JSON.stringify(frame.keywords) : null,
       frame.atlas_frame_id ?? null,
       frame.feature_flags?.length ? JSON.stringify(frame.feature_flags) : null,
@@ -277,7 +293,9 @@ export class PostgresFrameStore implements FrameStore {
       frame.turnCost ? JSON.stringify(frame.turnCost) : null,
       frame.capabilityTier ?? null,
       frame.taskComplexity ? JSON.stringify(frame.taskComplexity) : null,
-      frame.contradiction_resolution ? JSON.stringify(frame.contradiction_resolution) : null,
+      frame.contradiction_resolution
+        ? JSON.stringify(frame.contradiction_resolution)
+        : null,
     ];
   }
 
@@ -303,7 +321,10 @@ export class PostgresFrameStore implements FrameStore {
 
   async getFrameById(id: string): Promise<Frame | null> {
     return this.scopedRead(async (client) => {
-      const { rows } = await client.query(`SELECT ${SELECT_COLS} FROM lex_frames WHERE id = $1`, [id]);
+      const { rows } = await client.query(
+        `SELECT ${SELECT_COLS} FROM lex_frames WHERE id = $1`,
+        [id],
+      );
       return rows.length > 0 ? rowToFrame(rows[0] as FrameRow) : null;
     });
   }
@@ -316,29 +337,37 @@ export class PostgresFrameStore implements FrameStore {
 
       // Full-text search
       if (criteria.query) {
-        const terms = criteria.query.split(/\s+/).filter(Boolean).map(sanitizeTsqueryTerm).filter(Boolean);
+        const terms = criteria.query
+          .split(/\s+/)
+          .filter(Boolean)
+          .map(sanitizeTsqueryTerm)
+          .filter(Boolean);
 
         if (terms.length === 0) {
           // All terms were stripped — no-op search
         } else if (criteria.mode === "any") {
           // OR mode: any term can match
           const tsExpr = terms
-            .map((t) => criteria.exact ? t : `${t}:*`)
+            .map((t) => (criteria.exact ? t : `${t}:*`))
             .join(" | ");
-          conditions.push(`search_vector @@ to_tsquery('english', $${paramIdx})`);
+          conditions.push(
+            `search_vector @@ to_tsquery('english', $${paramIdx})`,
+          );
           params.push(tsExpr);
           paramIdx++;
         } else if (criteria.exact) {
           // AND mode, exact: plainto_tsquery handles implicit AND
-          conditions.push(`search_vector @@ plainto_tsquery('english', $${paramIdx})`);
+          conditions.push(
+            `search_vector @@ plainto_tsquery('english', $${paramIdx})`,
+          );
           params.push(criteria.query);
           paramIdx++;
         } else {
           // AND mode, fuzzy: prefix matching with :* suffix
-          const tsExpr = terms
-            .map((t) => `${t}:*`)
-            .join(" & ");
-          conditions.push(`search_vector @@ to_tsquery('english', $${paramIdx})`);
+          const tsExpr = terms.map((t) => `${t}:*`).join(" & ");
+          conditions.push(
+            `search_vector @@ to_tsquery('english', $${paramIdx})`,
+          );
           params.push(tsExpr);
           paramIdx++;
         }
@@ -373,7 +402,8 @@ export class PostgresFrameStore implements FrameStore {
         paramIdx++;
       }
 
-      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const where =
+        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
       const limit = criteria.limit ?? 50;
 
       const sql = `SELECT ${SELECT_COLS} FROM lex_frames ${where} ORDER BY timestamp DESC LIMIT $${paramIdx}`;
@@ -410,7 +440,8 @@ export class PostgresFrameStore implements FrameStore {
         paramIdx++;
       }
 
-      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const where =
+        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
       // Fetch limit + 1 to detect hasMore
       const sql = `SELECT ${SELECT_COLS} FROM lex_frames ${where} ORDER BY timestamp DESC, id DESC LIMIT $${paramIdx}`;
@@ -437,21 +468,30 @@ export class PostgresFrameStore implements FrameStore {
 
   async deleteFrame(id: string): Promise<boolean> {
     return this.scoped(async (client) => {
-      const { rowCount } = await client.query(`DELETE FROM lex_frames WHERE id = $1`, [id]);
+      const { rowCount } = await client.query(
+        `DELETE FROM lex_frames WHERE id = $1`,
+        [id],
+      );
       return (rowCount ?? 0) > 0;
     });
   }
 
   async deleteFramesBefore(date: Date): Promise<number> {
     return this.scoped(async (client) => {
-      const { rowCount } = await client.query(`DELETE FROM lex_frames WHERE timestamp < $1`, [date.toISOString()]);
+      const { rowCount } = await client.query(
+        `DELETE FROM lex_frames WHERE timestamp < $1`,
+        [date.toISOString()],
+      );
       return rowCount ?? 0;
     });
   }
 
   async deleteFramesByBranch(branch: string): Promise<number> {
     return this.scoped(async (client) => {
-      const { rowCount } = await client.query(`DELETE FROM lex_frames WHERE branch = $1`, [branch]);
+      const { rowCount } = await client.query(
+        `DELETE FROM lex_frames WHERE branch = $1`,
+        [branch],
+      );
       return rowCount ?? 0;
     });
   }
@@ -468,7 +508,9 @@ export class PostgresFrameStore implements FrameStore {
 
   async getFrameCount(): Promise<number> {
     return this.scopedRead(async (client) => {
-      const { rows } = await client.query(`SELECT COUNT(*)::int AS count FROM lex_frames`);
+      const { rows } = await client.query(
+        `SELECT COUNT(*)::int AS count FROM lex_frames`,
+      );
       return rows[0].count;
     });
   }
@@ -521,15 +563,19 @@ export class PostgresFrameStore implements FrameStore {
         params.push(since);
       }
 
-      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const where =
+        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-      const { rows } = await client.query(`
+      const { rows } = await client.query(
+        `
         SELECT
           COUNT(*)::int AS frame_count,
           COALESCE(SUM((spend->>'tokens_estimated')::int), 0)::int AS estimated_tokens,
           COALESCE(SUM((spend->>'prompts')::int), 0)::int AS prompts
         FROM lex_frames ${where}
-      `, params);
+      `,
+        params,
+      );
 
       return {
         frameCount: rows[0].frame_count,
@@ -549,30 +595,60 @@ export class PostgresFrameStore implements FrameStore {
       let paramIdx = 1;
 
       // Map Frame field names to DB column names + value serialisation
-      const fieldMap: Record<string, { col: string; toDb: (v: unknown) => unknown }> = {
-        branch:                   { col: "branch",                   toDb: (v) => v },
-        jira:                     { col: "jira",                     toDb: (v) => v ?? null },
-        module_scope:             { col: "module_scope",             toDb: (v) => JSON.stringify(v) },
-        summary_caption:          { col: "summary_caption",          toDb: (v) => v },
-        reference_point:          { col: "reference_point",          toDb: (v) => v },
-        status_snapshot:          { col: "status_snapshot",          toDb: (v) => JSON.stringify(v) },
-        keywords:                 { col: "keywords",                 toDb: (v) => v ? JSON.stringify(v) : null },
-        atlas_frame_id:           { col: "atlas_frame_id",           toDb: (v) => v ?? null },
-        feature_flags:            { col: "feature_flags",            toDb: (v) => v ? JSON.stringify(v) : null },
-        permissions:              { col: "permissions",              toDb: (v) => v ? JSON.stringify(v) : null },
-        runId:                    { col: "run_id",                   toDb: (v) => v ?? null },
-        planHash:                 { col: "plan_hash",                toDb: (v) => v ?? null },
-        spend:                    { col: "spend",                    toDb: (v) => v ? JSON.stringify(v) : null },
-        userId:                   { col: "user_id",                  toDb: (v) => v ?? null },
-        superseded_by:            { col: "superseded_by",            toDb: (v) => v ?? null },
-        merged_from:              { col: "merged_from",              toDb: (v) => v ? JSON.stringify(v) : null },
-        executorRole:             { col: "executor_role",            toDb: (v) => v ?? null },
-        toolCalls:                { col: "tool_calls",               toDb: (v) => v ? JSON.stringify(v) : null },
-        guardrailProfile:         { col: "guardrail_profile",        toDb: (v) => v ?? null },
-        turnCost:                 { col: "turn_cost",                toDb: (v) => v ? JSON.stringify(v) : null },
-        capabilityTier:           { col: "capability_tier",          toDb: (v) => v ?? null },
-        taskComplexity:           { col: "task_complexity",          toDb: (v) => v ? JSON.stringify(v) : null },
-        contradiction_resolution: { col: "contradiction_resolution", toDb: (v) => v ? JSON.stringify(v) : null },
+      const fieldMap: Record<
+        string,
+        { col: string; toDb: (v: unknown) => unknown }
+      > = {
+        branch: { col: "branch", toDb: (v) => v },
+        jira: { col: "jira", toDb: (v) => v ?? null },
+        module_scope: { col: "module_scope", toDb: (v) => JSON.stringify(v) },
+        summary_caption: { col: "summary_caption", toDb: (v) => v },
+        reference_point: { col: "reference_point", toDb: (v) => v },
+        status_snapshot: {
+          col: "status_snapshot",
+          toDb: (v) => JSON.stringify(v),
+        },
+        keywords: {
+          col: "keywords",
+          toDb: (v) => (v ? JSON.stringify(v) : null),
+        },
+        atlas_frame_id: { col: "atlas_frame_id", toDb: (v) => v ?? null },
+        feature_flags: {
+          col: "feature_flags",
+          toDb: (v) => (v ? JSON.stringify(v) : null),
+        },
+        permissions: {
+          col: "permissions",
+          toDb: (v) => (v ? JSON.stringify(v) : null),
+        },
+        runId: { col: "run_id", toDb: (v) => v ?? null },
+        planHash: { col: "plan_hash", toDb: (v) => v ?? null },
+        spend: { col: "spend", toDb: (v) => (v ? JSON.stringify(v) : null) },
+        userId: { col: "user_id", toDb: (v) => v ?? null },
+        superseded_by: { col: "superseded_by", toDb: (v) => v ?? null },
+        merged_from: {
+          col: "merged_from",
+          toDb: (v) => (v ? JSON.stringify(v) : null),
+        },
+        executorRole: { col: "executor_role", toDb: (v) => v ?? null },
+        toolCalls: {
+          col: "tool_calls",
+          toDb: (v) => (v ? JSON.stringify(v) : null),
+        },
+        guardrailProfile: { col: "guardrail_profile", toDb: (v) => v ?? null },
+        turnCost: {
+          col: "turn_cost",
+          toDb: (v) => (v ? JSON.stringify(v) : null),
+        },
+        capabilityTier: { col: "capability_tier", toDb: (v) => v ?? null },
+        taskComplexity: {
+          col: "task_complexity",
+          toDb: (v) => (v ? JSON.stringify(v) : null),
+        },
+        contradiction_resolution: {
+          col: "contradiction_resolution",
+          toDb: (v) => (v ? JSON.stringify(v) : null),
+        },
       };
 
       for (const [key, value] of Object.entries(updates)) {
@@ -613,7 +689,9 @@ export class PostgresFrameStore implements FrameStore {
  * Initialize the lex_frames schema and return a factory for creating
  * user-scoped PostgresFrameStore instances.
  */
-export async function createFrameStoreFactory(pool: Pool): Promise<FrameStoreFactory> {
+export async function createFrameStoreFactory(
+  pool: Pool,
+): Promise<FrameStoreFactory> {
   await initSchema(pool, SCHEMA_STATEMENTS);
   log.boot.info("lex_frames schema initialized (Postgres + RLS)");
   return new FrameStoreFactory(pool);

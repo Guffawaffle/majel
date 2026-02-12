@@ -100,7 +100,10 @@ export async function runMaintenance(
 
     if (opts.dryRun) {
       // Count how many would be deleted (search with until + large limit)
-      const expired = await store.searchFrames({ until: cutoff, limit: 100000 });
+      const expired = await store.searchFrames({
+        until: cutoff,
+        limit: 100000,
+      });
       ttlDeleted = expired.length;
     } else {
       ttlDeleted = await store.deleteFramesBefore(cutoff);
@@ -125,7 +128,10 @@ export async function runMaintenance(
     dryRun: opts.dryRun,
   };
 
-  log.lex.info(result, opts.dryRun ? "maintenance dry-run" : "maintenance complete");
+  log.lex.info(
+    result,
+    opts.dryRun ? "maintenance dry-run" : "maintenance complete",
+  );
   return result;
 }
 
@@ -135,7 +141,10 @@ export async function runMaintenance(
  * Uses FrameStore.purgeSuperseded() for O(1) bulk delete (Lex ≥ 2.5.0).
  * In dry-run mode, falls back to pagination to count without deleting.
  */
-async function purgeSupersededFrames(store: FrameStore, dryRun: boolean): Promise<number> {
+async function purgeSupersededFrames(
+  store: FrameStore,
+  dryRun: boolean,
+): Promise<number> {
   if (!dryRun) {
     // Single bulk DELETE — no pagination needed
     return store.purgeSuperseded();
@@ -186,9 +195,8 @@ export async function getBloatReport(
   // Reclaimable is the union (some expired frames may also be superseded)
   // Approximate: sum minus estimated overlap
   const reclaimableRows = Math.min(totalFrames, supersededCount + expiredCount);
-  const reclaimablePercent = totalFrames > 0
-    ? Math.round((reclaimableRows / totalFrames) * 100)
-    : 0;
+  const reclaimablePercent =
+    totalFrames > 0 ? Math.round((reclaimableRows / totalFrames) * 100) : 0;
 
   return {
     totalFrames,
