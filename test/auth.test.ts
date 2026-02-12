@@ -46,6 +46,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     pool: null,
     geminiEngine: null,
     memoryService: null,
+    frameStoreFactory: null,
     settingsStore: null,
     sessionStore: null,
     dockStore: null,

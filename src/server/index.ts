@@ -31,6 +31,7 @@ import { pinoHttp } from "pino-http";
 import { log, rootLogger } from "./logger.js";
 import { createGeminiEngine } from "./gemini.js";
 import { createMemoryService } from "./memory.js";
+import { createFrameStoreFactory } from "./postgres-frame-store.js";
 import { createSettingsStore } from "./settings.js";
 import { createSessionStore } from "./sessions.js";
 import { createDockStore } from "./dock-store.js";
@@ -84,6 +85,7 @@ const state: AppState = {
   pool: null,
   geminiEngine: null,
   memoryService: null,
+  frameStoreFactory: null,
   settingsStore: null,
   sessionStore: null,
   dockStore: null,
@@ -186,10 +188,18 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "settings store init failed");
   }
 
-  // 2. Initialize Lex memory (always — it's local)
+  // 2. Initialize Lex memory — ADR-021: prefer PostgreSQL + RLS when pool is available
   try {
-    state.memoryService = createMemoryService();
-    log.boot.info("lex memory service online");
+    if (pool) {
+      const factory = await createFrameStoreFactory(pool);
+      state.frameStoreFactory = factory;
+      // Boot-time memory service uses a system-scoped store (for /api/health frame count)
+      state.memoryService = createMemoryService(factory.forUser("system"));
+      log.boot.info("lex memory service online (postgres + RLS)");
+    } else {
+      state.memoryService = createMemoryService();
+      log.boot.info("lex memory service online (sqlite fallback)");
+    }
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "lex memory init failed");
   }
