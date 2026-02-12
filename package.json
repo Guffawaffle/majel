@@ -22,7 +22,18 @@
     "test:coverage": "vitest run --coverage",
     "local-ci": "npm run typecheck && npm run test:coverage && npm run build",
     "promote": "tsx scripts/promote.ts",
-    "health": "curl -s http://localhost:${MAJEL_PORT:-3000}/api/health | python3 -m json.tool"
+    "health": "curl -s http://localhost:${MAJEL_PORT:-3000}/api/health | python3 -m json.tool",
+    "cloud": "tsx scripts/cloud.ts help",
+    "cloud:deploy": "tsx scripts/cloud.ts deploy",
+    "cloud:build": "tsx scripts/cloud.ts build",
+    "cloud:push": "tsx scripts/cloud.ts push",
+    "cloud:logs": "tsx scripts/cloud.ts logs",
+    "cloud:status": "tsx scripts/cloud.ts status",
+    "cloud:health": "tsx scripts/cloud.ts health",
+    "cloud:secrets": "tsx scripts/cloud.ts secrets",
+    "cloud:ssh": "tsx scripts/cloud.ts ssh",
+    "cloud:rollback": "tsx scripts/cloud.ts rollback",
+    "cloud:env": "tsx scripts/cloud.ts env"
   },
   "keywords": [
     "stfc",
