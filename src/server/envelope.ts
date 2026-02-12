@@ -72,6 +72,7 @@ export interface ApiErrorResponse {
     code: string;
     message: string;
     detail?: unknown;
+    hints?: string[];
   };
   meta: ApiMeta;
 }
@@ -117,10 +118,16 @@ export function sendFail(
   message: string,
   statusCode = 400,
   detail?: unknown,
+  hints?: string[],
 ): void {
   res.status(statusCode).json({
     ok: false,
-    error: { code, message, ...(detail !== undefined ? { detail } : {}) },
+    error: {
+      code,
+      message,
+      ...(detail !== undefined ? { detail } : {}),
+      ...(hints?.length ? { hints } : {}),
+    },
     meta: buildMeta(res),
   });
 }

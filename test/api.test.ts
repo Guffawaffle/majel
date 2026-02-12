@@ -43,6 +43,7 @@ function makeMockMemory(frames: Frame[] = []): MemoryService {
 
 function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
   const sessions = new Map<string, Array<{ role: string; text: string }>>();
+  let currentModel = "gemini-2.5-flash-lite";
   const getSessionHistory = (sid: string) => {
     if (!sessions.has(sid)) sessions.set(sid, []);
     return sessions.get(sid)!;
@@ -57,6 +58,9 @@ function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
     getHistory: vi.fn().mockImplementation((sessionId = "default") => [...getSessionHistory(sessionId)]),
     getSessionCount: vi.fn().mockImplementation(() => sessions.size),
     closeSession: vi.fn().mockImplementation((sessionId: string) => { sessions.delete(sessionId); }),
+    getModel: vi.fn().mockImplementation(() => currentModel),
+    setModel: vi.fn().mockImplementation((id: string) => { currentModel = id; sessions.clear(); }),
+    close: vi.fn(),
   };
 }
 
