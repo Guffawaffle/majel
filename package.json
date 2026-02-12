@@ -33,7 +33,17 @@
     "cloud:secrets": "tsx scripts/cloud.ts secrets",
     "cloud:ssh": "tsx scripts/cloud.ts ssh",
     "cloud:rollback": "tsx scripts/cloud.ts rollback",
-    "cloud:env": "tsx scripts/cloud.ts env"
+    "cloud:env": "tsx scripts/cloud.ts env",
+    "cloud:init": "tsx scripts/cloud.ts init",
+    "cloud:sql": "tsx scripts/cloud.ts sql",
+    "cloud:revisions": "tsx scripts/cloud.ts revisions",
+    "cloud:scale": "tsx scripts/cloud.ts scale",
+    "cloud:canary": "tsx scripts/cloud.ts canary",
+    "cloud:promote": "tsx scripts/cloud.ts promote",
+    "cloud:diff": "tsx scripts/cloud.ts diff",
+    "cloud:metrics": "tsx scripts/cloud.ts metrics",
+    "cloud:costs": "tsx scripts/cloud.ts costs",
+    "cloud:warm": "tsx scripts/cloud.ts warm"
   },
   "keywords": [
     "stfc",
