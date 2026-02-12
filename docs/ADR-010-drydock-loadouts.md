@@ -1,8 +1,9 @@
 # ADR-010: Drydock Loadouts — Intent-Based Ship & Crew Rotation Management
 
-**Status:** Proposed (planning only — not yet approved for execution)  
+**Status:** Superseded by ADR-022 (Loadout Architecture)  
 **Date:** 2026-02-08  
-**Authors:** Guff, Opie (Claude)
+**Authors:** Guff, Opie (Claude)  
+**Superseded by:** [ADR-022](ADR-022-loadout-architecture.md) — Task-first fleet management with loadout inversion
 
 ## Context
 
