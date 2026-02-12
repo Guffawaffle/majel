@@ -249,6 +249,14 @@ const SQL = {
     WHERE lm.loadout_id = $1
     ORDER BY lm.role_type, lm.slot
   `,
+  // I1: Batch-fetch members for multiple loadouts in one query
+  batchLoadoutMembers: `
+    SELECT lm.*, ro.name AS officer_name
+    FROM loadout_members lm
+    LEFT JOIN reference_officers ro ON ro.id = lm.officer_id
+    WHERE lm.loadout_id = ANY($1::int[])
+    ORDER BY lm.loadout_id, lm.role_type, lm.slot
+  `,
   deleteLoadoutMembers: `DELETE FROM loadout_members WHERE loadout_id = $1`,
   insertLoadoutMember: `
     INSERT INTO loadout_members (loadout_id, officer_id, role_type, slot)
@@ -314,6 +322,14 @@ const SQL = {
     WHERE pam.plan_item_id = $1
     ORDER BY pam.id
   `,
+  // I1: Batch-fetch away members for multiple plan items
+  batchAwayMembers: `
+    SELECT pam.*, ro.name AS officer_name
+    FROM plan_away_members pam
+    LEFT JOIN reference_officers ro ON ro.id = pam.officer_id
+    WHERE pam.plan_item_id = ANY($1::int[])
+    ORDER BY pam.plan_item_id, pam.id
+  `,
   deleteAwayMembers: `DELETE FROM plan_away_members WHERE plan_item_id = $1`,
   insertAwayMember: `
     INSERT INTO plan_away_members (plan_item_id, officer_id)
@@ -322,6 +338,7 @@ const SQL = {
   `,
 
   // Officer conflicts — find officers appearing in multiple active plan items
+  // M4: Uses window function instead of correlated subquery for efficiency
   officerConflicts: `
     WITH active_officers AS (
       -- Officers from loadouts assigned to active plan items
@@ -354,11 +371,15 @@ const SQL = {
       JOIN plan_away_members pam ON pam.plan_item_id = pi.id
       JOIN reference_officers ro ON ro.id = pam.officer_id
       WHERE pi.is_active = TRUE
+    ),
+    counted AS (
+      SELECT *, COUNT(*) OVER (PARTITION BY officer_id) AS appearance_count
+      FROM active_officers
     )
-    SELECT * FROM active_officers
-    WHERE officer_id IN (
-      SELECT officer_id FROM active_officers GROUP BY officer_id HAVING COUNT(*) > 1
-    )
+    SELECT officer_id, officer_name, plan_item_id, plan_item_label,
+           intent_key, dock_number, source, loadout_name
+    FROM counted
+    WHERE appearance_count > 1
     ORDER BY officer_id, plan_item_id
   `,
 
@@ -487,6 +508,17 @@ const SQL = {
     ORDER BY pi.priority DESC
     LIMIT 1
   `,
+  // I2: Batch-fetch dock assignments in one query (highest-priority active item per dock)
+  batchDockAssignments: `
+    SELECT DISTINCT ON (pi.dock_number)
+           pi.dock_number, pi.id, pi.intent_key, pi.label, pi.loadout_id,
+           l.name AS loadout_name, rs.name AS ship_name, pi.is_active
+    FROM plan_items pi
+    LEFT JOIN loadouts l ON l.id = pi.loadout_id
+    LEFT JOIN reference_ships rs ON rs.id = l.ship_id
+    WHERE pi.dock_number = ANY($1::int[]) AND pi.is_active = TRUE
+    ORDER BY pi.dock_number, pi.priority DESC
+  `,
 } as const;
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -597,32 +629,59 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
   // Create schema
   await initSchema(pool, SCHEMA_STATEMENTS);
 
-  // Seed builtin intents
-  for (const seed of SEED_INTENTS) {
-    await pool.query(SQL.seedIntent, [seed.key, seed.label, seed.category, seed.description, seed.icon, seed.sortOrder]);
+  // M1: Batch-seed builtin intents in a single query instead of 24 round-trips
+  if (SEED_INTENTS.length > 0) {
+    const values: unknown[] = [];
+    const placeholders: string[] = [];
+    let idx = 1;
+    for (const seed of SEED_INTENTS) {
+      placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, TRUE, $${idx++})`);
+      values.push(seed.key, seed.label, seed.category, seed.description, seed.icon, seed.sortOrder);
+    }
+    await pool.query(
+      `INSERT INTO intent_catalog (key, label, category, description, icon, is_builtin, sort_order)
+       VALUES ${placeholders.join(", ")}
+       ON CONFLICT (key) DO NOTHING`,
+      values,
+    );
   }
 
   log.boot.debug("loadout store schema ready");
 
   // ─── Resolve helpers ──────────────────────────────
 
+  /** Fetch members for a single loadout (used by getLoadout, createLoadout). */
   async function resolveLoadout(row: Record<string, unknown>): Promise<LoadoutWithMembers> {
     const loadout = mapLoadout(row);
     const membersResult = await pool.query(SQL.listLoadoutMembers, [loadout.id]);
     return { ...loadout, members: membersResult.rows.map(mapMember) };
   }
 
+  /**
+   * I1: Batch-resolve loadout members — 1 query for all, then join in-memory.
+   * Replaces N+1 pattern (was 1 + N queries, now always 2).
+   */
   async function resolveLoadouts(rows: Record<string, unknown>[]): Promise<LoadoutWithMembers[]> {
-    return Promise.all(rows.map(resolveLoadout));
+    if (rows.length === 0) return [];
+    const loadouts = rows.map(mapLoadout);
+    const ids = loadouts.map((l) => l.id);
+    const membersResult = await pool.query(SQL.batchLoadoutMembers, [ids]);
+    const membersByLoadout = new Map<number, LoadoutMember[]>();
+    for (const row of membersResult.rows) {
+      const member = mapMember(row);
+      const list = membersByLoadout.get(member.loadoutId) ?? [];
+      list.push(member);
+      membersByLoadout.set(member.loadoutId, list);
+    }
+    return loadouts.map((l) => ({ ...l, members: membersByLoadout.get(l.id) ?? [] }));
   }
 
+  /** Fetch context for a single plan item (used by getPlanItem, createPlanItem). */
   async function resolvePlanItem(row: Record<string, unknown>): Promise<PlanItemWithContext> {
     const base = mapPlanItem(row);
     const members = base.loadoutId
       ? (await pool.query(SQL.listLoadoutMembers, [base.loadoutId])).rows.map(mapMember)
       : [];
-    // Always fetch away members — they may exist regardless of loadout assignment.
-    // The API consumer decides the semantic conflict; the store must not hide data.
     const awayResult = await pool.query(SQL.listAwayMembers, [base.id]);
     const awayMembers = awayResult.rows.map(mapAwayMember);
     return {
@@ -637,8 +696,57 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
     };
   }
 
+  /**
+   * I1: Batch-resolve plan items — 2 queries for loadout members + away members.
+   * Replaces N+1 pattern (was up to 3N+1 queries, now always 3).
+   */
   async function resolvePlanItems(rows: Record<string, unknown>[]): Promise<PlanItemWithContext[]> {
-    return Promise.all(rows.map(resolvePlanItem));
+    if (rows.length === 0) return [];
+    const items = rows.map((row) => ({
+      base: mapPlanItem(row),
+      intentLabel: (row.intent_label as string) ?? null,
+      loadoutName: (row.loadout_name as string) ?? null,
+      shipId: (row.ship_id as string) ?? null,
+      shipName: (row.ship_name as string) ?? null,
+      dockLabel: (row.dock_label as string) ?? null,
+    }));
+
+    // Batch-fetch loadout members
+    const loadoutIds = [...new Set(items.filter((i) => i.base.loadoutId).map((i) => i.base.loadoutId!))];
+    const membersByLoadout = new Map<number, LoadoutMember[]>();
+    if (loadoutIds.length > 0) {
+      const membersResult = await pool.query(SQL.batchLoadoutMembers, [loadoutIds]);
+      for (const row of membersResult.rows) {
+        const member = mapMember(row);
+        const list = membersByLoadout.get(member.loadoutId) ?? [];
+        list.push(member);
+        membersByLoadout.set(member.loadoutId, list);
+      }
+    }
+
+    // Batch-fetch away members
+    const planItemIds = items.map((i) => i.base.id);
+    const awayByPlanItem = new Map<number, PlanAwayMember[]>();
+    if (planItemIds.length > 0) {
+      const awayResult = await pool.query(SQL.batchAwayMembers, [planItemIds]);
+      for (const row of awayResult.rows) {
+        const member = mapAwayMember(row);
+        const list = awayByPlanItem.get(member.planItemId) ?? [];
+        list.push(member);
+        awayByPlanItem.set(member.planItemId, list);
+      }
+    }
+
+    return items.map((i) => ({
+      ...i.base,
+      intentLabel: i.intentLabel,
+      loadoutName: i.loadoutName,
+      shipId: i.shipId,
+      shipName: i.shipName,
+      dockLabel: i.dockLabel,
+      members: i.base.loadoutId ? (membersByLoadout.get(i.base.loadoutId) ?? []) : [],
+      awayMembers: awayByPlanItem.get(i.base.id) ?? [],
+    }));
   }
 
   // ─── Intent catalog ───────────────────────────────
@@ -716,30 +824,34 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
     if (!fields.shipId || !fields.name) {
       throw new Error("Loadout requires shipId and name");
     }
-    // Validate ship exists
-    const shipCheck = await pool.query(SQL.shipExists, [fields.shipId]);
-    if (shipCheck.rows.length === 0) {
-      throw new Error(`Ship not found: ${fields.shipId}`);
-    }
-    try {
-      const { rows } = await pool.query(SQL.insertLoadout, [
-        fields.shipId,
-        fields.name,
-        fields.priority ?? 0,
-        fields.isActive ?? true,
-        JSON.stringify(fields.intentKeys ?? []),
-        JSON.stringify(fields.tags ?? []),
-        fields.notes ?? null,
-      ]);
-      // Re-fetch with ship_name join
-      return (await getLoadout(rows[0].id as number))!;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("unique") || msg.includes("UNIQUE") || msg.includes("duplicate key")) {
-        throw new Error(`Loadout "${fields.name}" already exists for this ship`);
+    // I3: Wrap FK validation + insert in a transaction to avoid TOCTOU races
+    const newId = await withTransaction(pool, async (client: PoolClient) => {
+      // Validate ship exists
+      const shipCheck = await client.query(SQL.shipExists, [fields.shipId]);
+      if (shipCheck.rows.length === 0) {
+        throw new Error(`Ship not found: ${fields.shipId}`);
       }
-      throw err;
-    }
+      try {
+        const { rows } = await client.query(SQL.insertLoadout, [
+          fields.shipId,
+          fields.name,
+          fields.priority ?? 0,
+          fields.isActive ?? true,
+          JSON.stringify(fields.intentKeys ?? []),
+          JSON.stringify(fields.tags ?? []),
+          fields.notes ?? null,
+        ]);
+        return rows[0].id as number;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("unique") || msg.includes("UNIQUE") || msg.includes("duplicate key")) {
+          throw new Error(`Loadout "${fields.name}" already exists for this ship`);
+        }
+        throw err;
+      }
+    });
+    // Fetch with ship_name join after transaction commits
+    return (await getLoadout(newId))!;
   }
 
   async function updateLoadout(
@@ -753,6 +865,9 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
     const existing = await getLoadout(id);
     if (!existing) return null;
 
+    // C3: Column names in setClauses are compile-time constants from this function body.
+    // They are NOT derived from user input. Only these columns can be updated:
+    // name, priority, is_active, intent_keys, tags, notes, updated_at
     const setClauses: string[] = ["updated_at = NOW()"];
     const values: unknown[] = [];
     let paramIdx = 1;
@@ -858,13 +973,19 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
 
   async function listDocks(): Promise<DockWithAssignment[]> {
     const { rows } = await pool.query(SQL.listDocks);
-    const result: DockWithAssignment[] = [];
-    for (const row of rows) {
-      const dock = mapDock(row);
-      const assignment = await resolveDockAssignment(dock.dockNumber);
-      result.push({ ...dock, assignment });
+    if (rows.length === 0) return [];
+    const docks = rows.map(mapDock);
+    // I2: Batch-fetch dock assignments in 1 query instead of N
+    const dockNumbers = docks.map((d) => d.dockNumber);
+    const { rows: assignmentRows } = await pool.query(SQL.batchDockAssignments, [dockNumbers]);
+    const assignmentMap = new Map<number, PlanItemSummary>();
+    for (const row of assignmentRows) {
+      assignmentMap.set(row.dock_number as number, mapAssignment(row));
     }
-    return result;
+    return docks.map((dock) => ({
+      ...dock,
+      assignment: assignmentMap.get(dock.dockNumber) ?? null,
+    }));
   }
 
   async function getDock(dockNumber: number): Promise<DockWithAssignment | null> {
@@ -924,33 +1045,38 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
     intentKey?: string; label?: string; loadoutId?: number;
     dockNumber?: number; priority?: number; isActive?: boolean; notes?: string;
   }): Promise<PlanItemWithContext> {
-    // Validate loadout exists if specified
-    if (fields.loadoutId) {
-      const loadout = await getLoadout(fields.loadoutId);
-      if (!loadout) throw new Error(`Loadout not found: ${fields.loadoutId}`);
-    }
-    // Validate dock exists if specified
-    if (fields.dockNumber) {
-      const { rows } = await pool.query(SQL.getDock, [fields.dockNumber]);
-      if (rows.length === 0) throw new Error(`Dock not found: ${fields.dockNumber}`);
-    }
-    // Validate intent exists if specified
-    if (fields.intentKey) {
-      const intent = await getIntent(fields.intentKey);
-      if (!intent) throw new Error(`Intent not found: ${fields.intentKey}`);
-    }
+    // I3: Wrap FK validation + insert in a transaction to avoid TOCTOU races
+    const newId = await withTransaction(pool, async (client: PoolClient) => {
+      // Validate loadout exists if specified
+      if (fields.loadoutId) {
+        const { rows } = await client.query(SQL.getLoadout, [fields.loadoutId]);
+        if (rows.length === 0) throw new Error(`Loadout not found: ${fields.loadoutId}`);
+      }
+      // Validate dock exists if specified
+      if (fields.dockNumber) {
+        const { rows } = await client.query(SQL.getDock, [fields.dockNumber]);
+        if (rows.length === 0) throw new Error(`Dock not found: ${fields.dockNumber}`);
+      }
+      // Validate intent exists if specified
+      if (fields.intentKey) {
+        const { rows } = await client.query(SQL.getIntent, [fields.intentKey]);
+        if (rows.length === 0) throw new Error(`Intent not found: ${fields.intentKey}`);
+      }
 
-    const { rows } = await pool.query(SQL.insertPlanItem, [
-      fields.intentKey ?? null,
-      fields.label ?? null,
-      fields.loadoutId ?? null,
-      fields.dockNumber ?? null,
-      fields.priority ?? 0,
-      fields.isActive ?? true,
-      fields.notes ?? null,
-    ]);
+      const { rows } = await client.query(SQL.insertPlanItem, [
+        fields.intentKey ?? null,
+        fields.label ?? null,
+        fields.loadoutId ?? null,
+        fields.dockNumber ?? null,
+        fields.priority ?? 0,
+        fields.isActive ?? true,
+        fields.notes ?? null,
+      ]);
 
-    return (await getPlanItem(rows[0].id as number))!;
+      return rows[0].id as number;
+    });
+    // Fetch with full joins after transaction commits
+    return (await getPlanItem(newId))!;
   }
 
   async function updatePlanItem(
@@ -963,6 +1089,9 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
     const existing = await getPlanItem(id);
     if (!existing) return null;
 
+    // C3: Column names in setClauses are compile-time constants from this function body.
+    // They are NOT derived from user input. Only these columns can be updated:
+    // intent_key, label, loadout_id, dock_number, priority, is_active, notes, updated_at
     const setClauses: string[] = ["updated_at = NOW()"];
     const values: unknown[] = [];
     let paramIdx = 1;
@@ -1192,6 +1321,7 @@ export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
 
   function close() {
     // Pool lifecycle managed externally
+    log.boot.debug("loadout store closed");
   }
 
   return {

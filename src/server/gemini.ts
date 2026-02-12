@@ -279,6 +279,8 @@ export interface GeminiEngine {
   getModel(): string;
   /** Hot-swap the model. Clears all sessions (new model = fresh context). */
   setModel(modelId: string): void;
+  /** Clean up resources (cleanup timer). Call on shutdown or in tests. */
+  close(): void;
 }
 
 /** Default session TTL: 30 minutes */
@@ -315,6 +317,11 @@ export function createGeminiEngine(
   microRunner?: MicroRunner | null,
   initialModelId?: string | null,
 ): GeminiEngine {
+  // I5: Fail fast with clear message if API key is missing
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is required — cannot create Gemini engine without it");
+  }
+
   const genAI = new GoogleGenerativeAI(apiKey);
   const systemInstruction = buildSystemPrompt(fleetConfig, dockBriefing);
 
@@ -468,12 +475,15 @@ export function createGeminiEngine(
     },
 
     setModel(modelId: string): void {
-      const resolved = resolveModelId(modelId);
-      if (resolved === currentModelId) return;
+      // I6: Throw on unrecognized model instead of silently degrading
+      if (!MODEL_REGISTRY_MAP.has(modelId)) {
+        throw new Error(`Unknown model: ${modelId}. Valid: ${MODEL_REGISTRY.map((m) => m.id).join(", ")}`);
+      }
+      if (modelId === currentModelId) return;
 
       const previousModel = currentModelId;
-      currentModelId = resolved;
-      model = createModel(resolved);
+      currentModelId = modelId;
+      model = createModel(modelId);
 
       // Clear all sessions — new model needs fresh chat context
       const sessionCount = sessions.size;
@@ -481,9 +491,16 @@ export function createGeminiEngine(
 
       log.gemini.info({
         previousModel,
-        newModel: resolved,
+        newModel: modelId,
         sessionsCleared: sessionCount,
       }, "model:switch");
+    },
+
+    close(): void {
+      // M2: Clear cleanup timer to prevent leaks in tests
+      if (cleanupTimer) clearInterval(cleanupTimer);
+      sessions.clear();
+      log.gemini.debug("engine:close");
     },
   };
 }
