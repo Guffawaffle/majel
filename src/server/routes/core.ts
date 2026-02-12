@@ -5,9 +5,22 @@
  */
 
 import { Router } from "express";
+import { readFileSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, createTimeoutMiddleware } from "../envelope.js";
+import { requireVisitor } from "../auth.js";
+
+// Read version from package.json once at module load
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const APP_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, "../../../package.json"), "utf-8"));
+    return pkg.version ?? "unknown";
+  } catch { return "unknown"; }
+})();
 
 export function createCoreRoutes(appState: AppState): Router {
   const router = Router();
@@ -19,15 +32,22 @@ export function createCoreRoutes(appState: AppState): Router {
     if (!appState.startupComplete) {
       res.setHeader("Retry-After", "2");
     }
+
+    const safeCounts = async (store: { counts(): Promise<unknown> } | null | undefined, label: string) => {
+      if (!store) return { active: false };
+      try { return { active: true, ...await store.counts() as Record<string, unknown> }; }
+      catch (err) { log.root.warn({ err, store: label }, "Health check: store counts failed"); return { active: true, error: "unavailable" }; }
+    };
+
     sendOk(res, {
       status,
       ...(!appState.startupComplete ? { retryAfterMs: 2000 } : {}),
       gemini: appState.geminiEngine ? "connected" : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
-      dockStore: appState.dockStore ? { active: true, ...await appState.dockStore.counts() } : { active: false },
-      referenceStore: appState.referenceStore ? { active: true, ...await appState.referenceStore.counts() } : { active: false },
-      overlayStore: appState.overlayStore ? { active: true, ...await appState.overlayStore.counts() } : { active: false },
+      dockStore: await safeCounts(appState.dockStore, "dockStore"),
+      referenceStore: await safeCounts(appState.referenceStore, "referenceStore"),
+      overlayStore: await safeCounts(appState.overlayStore, "overlayStore"),
     });
   });
 
@@ -38,7 +58,7 @@ export function createCoreRoutes(appState: AppState): Router {
   router.get("/api", (_req, res) => {
     sendOk(res, {
       name: "Majel",
-      version: "0.4.0",
+      version: APP_VERSION,
       description: "STFC Fleet Intelligence System API",
       envelope: "All responses wrapped in { ok, data, meta } / { ok, error: { code, message, detail?, hints? }, meta } (ADR-004)",
       auth: {
@@ -49,7 +69,7 @@ export function createCoreRoutes(appState: AppState): Router {
       endpoints: [
         { method: "GET", path: "/api", auth: "none", description: "API discovery (this endpoint)" },
         { method: "GET", path: "/api/health", auth: "none", description: "Fast health check (returns retryAfterMs when initializing)" },
-        { method: "GET", path: "/api/diagnostic", auth: "none", description: "Deep subsystem status" },
+        { method: "GET", path: "/api/diagnostic", auth: "lieutenant", description: "Deep subsystem status" },
         { method: "POST", path: "/api/chat", auth: "admiral", description: "Send a message, get a Gemini response", body: { message: "string (required)" } },
         { method: "GET", path: "/api/history", auth: "lieutenant", description: "Conversation history (session + Lex)", params: { source: "session|lex|both", limit: "1-100", sessionId: "string" } },
         { method: "GET", path: "/api/recall", auth: "lieutenant", description: "Search Lex memory by meaning", params: { q: "string (required)", limit: "1-100" } },
@@ -101,16 +121,16 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "GET", path: "/api/models", auth: "admiral", description: "List available AI models + current selection" },
         { method: "POST", path: "/api/models/select", auth: "admiral", description: "Hot-swap the active Gemini model", body: { model: "string (required) — model ID from GET /api/models" } },
         // ── Diagnostic Query (AI Tool) ──
-        { method: "GET", path: "/api/diagnostic/schema", auth: "lieutenant", description: "DB schema introspection (tables, columns, indexes)" },
-        { method: "GET", path: "/api/diagnostic/query", auth: "lieutenant", description: "Execute read-only SQL (AI consumption)", params: { sql: "string (required)" } },
-        { method: "GET", path: "/api/diagnostic/summary", auth: "lieutenant", description: "Pre-built reference + overlay summary" },
+        { method: "GET", path: "/api/diagnostic/schema", auth: "admiral", description: "DB schema introspection (tables, columns, indexes)" },
+        { method: "GET", path: "/api/diagnostic/query", auth: "admiral", description: "Execute read-only SQL (AI consumption)", params: { sql: "string (required)" } },
+        { method: "GET", path: "/api/diagnostic/summary", auth: "admiral", description: "Pre-built reference + overlay summary" },
       ],
     });
   });
 
   // ─── Diagnostic ─────────────────────────────────────────────
 
-  router.get("/api/diagnostic", async (_req, res) => {
+  router.get("/api/diagnostic", requireVisitor(appState), async (_req, res) => {
     const uptimeSeconds = process.uptime();
     const hours = Math.floor(uptimeSeconds / 3600);
     const minutes = Math.floor((uptimeSeconds % 3600) / 60);
@@ -118,7 +138,7 @@ export function createCoreRoutes(appState: AppState): Router {
 
     sendOk(res, {
       system: {
-        version: "0.4.0",
+        version: APP_VERSION,
         uptime,
         uptimeSeconds: Math.round(uptimeSeconds),
         nodeVersion: process.version,

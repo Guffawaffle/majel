@@ -139,7 +139,6 @@ export function requireRole(appState: AppState, minRole: Role): RequestHandler {
       sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401, undefined, [
         "Provide a Bearer token in the Authorization header",
         "Or authenticate via the session cookie flow",
-        "Admin token: Authorization: Bearer <MAJEL_ADMIN_TOKEN>",
       ]);
       return;
     }
@@ -164,8 +163,8 @@ export function requireRole(appState: AppState, minRole: Role): RequestHandler {
     // Check role level
     if (roleLevel(identity.role) < roleLevel(minRole)) {
       sendFail(res, ErrorCode.INSUFFICIENT_RANK, `Minimum rank required: ${minRole}`, 403,
-        { currentRole: identity.role, requiredRole: minRole },
-        [`Your current rank is ${identity.role}`, `This endpoint requires ${minRole} or higher`],
+        { requiredRole: minRole },
+        [`This endpoint requires ${minRole} or higher`],
       );
       return;
     }

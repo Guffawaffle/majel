@@ -9,6 +9,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] — arch/loadout-inversion
+
+### Added
+
+#### Loadout Architecture (ADR-022)
+- **PostgreSQL loadout store** — `loadout-store.ts` with intent catalog, loadouts, docks, plan items, officer conflict detection
+  - 100 tests covering CRUD, away members, planning, edge cases
+  - Batch SQL queries (`ANY($1::int[])`) — N+1 eliminated from resolveLoadouts, resolvePlanItems, listDocks
+  - Transactional creates (`withTransaction` for createLoadout, createPlanItem)
+  - Window function for officer conflict detection (`COUNT(*) OVER (PARTITION BY officer_id)`)
+
+#### Cloud CLI v2 (ADR-018)
+- **20 commands** across 3 auth tiers: open, read, write
+  - Status, health, logs, env, secrets, sql, revisions, diff, metrics, costs, warm (read)
+  - Deploy, build, push, rollback, scale, canary, promote, ssh (write)
+  - Help, init (open)
+- **AX mode** (`--ax` flag) — structured JSON output for AI agent consumption
+  - All exit paths emit valid JSON (no silent failures)
+  - Per-step error context in multi-step commands (deploy)
+  - Recovery `hints[]` on every failure path
+  - Command arg schemas in `help --ax` output
+- **Auth tier system** — `.cloud-auth` token file with `chmod 600`, env var fallback for CI
+
+#### Model Selector
+- **5 Gemini tiers** — flash-lite, flash, 3-flash-preview, 2.5-pro, 3-pro-preview
+  - Hot-swap via `POST /api/models/select` (Admiral only, no restart)
+  - Persisted to settings store, survives restarts
+  - `GET /api/models` returns full registry + current + default
+
+#### Postgres Middleware (ADR-021)
+- **PostgresFrameStore** — Lex frame store backed by PostgreSQL with RLS
+- **Memory middleware** — per-user scoped memory via `attachScopedMemory()`
+
+#### User System (ADR-019)
+- **Role-based access control** — Ensign, Lieutenant, Captain, Admiral tiers
+  - Session cookie + Bearer token auth flows
+  - `requireRole(appState, minRole)` middleware factory
+  - Legacy tenant cookie backward compatibility
+
+#### AX Mode Documentation
+- **docs/AX-SCHEMA.md** — documents both CLI `AxOutput` and API envelope schemas
+  - Error codes reference with agent-specific guidance
+  - Auth tier documentation
+
+### Changed
+- **API discovery** (`GET /api`) — now includes `auth` tier per endpoint, `body`/`params` schemas for key endpoints, updated envelope description mentioning `hints`
+- **API error envelope** — `sendFail()` accepts optional `hints?: string[]` parameter; `ApiErrorResponse.error` gains optional `hints` field
+- **Health endpoint** — returns `retryAfterMs: 2000` + `Retry-After` HTTP header when status is `"initializing"`
+- **Diagnostic endpoint** — reads actual model from `geminiEngine.getModel()` (was hardcoded `"gemini-2.5-flash-lite"`)
+- **Model select response** — `hint` (string) → `hints` (string array) for consistency with CLI convention
+- **`GET /api/models`** — includes `defaultModel` field
+
+### Security
+- **Shell injection prevention** — `execSync` → `execFileSync` + `shellSplit()` in Cloud CLI
+- **Token validation** — 32+ hex char pattern enforcement on cloud auth tokens
+- **Env value masking** — `cmdDiff` shows only drifting key names, masks all values with `****`
+- **Input validation** — numeric validation on scale args, regex validation on revision names
+- **SET clause allowlists** — commented in updateLoadout/updatePlanItem SQL builders
+- **Auth error codes** — use `ErrorCode.*` constants instead of string literals
+- **Auth hint hardening** — no env var names leaked in error responses
+- **SIGINT/SIGTERM handlers** — graceful cleanup for cmdLogs/cmdSsh child processes
+
+### Improved
+- **Batch SQL performance** — loadout member, away member, and dock assignment queries collapsed from N+1 to 2 queries
+- **Seed performance** — 24 sequential INSERTs collapsed to 1 multi-value INSERT
+- **API key validation** — `createGeminiEngine()` throws immediately if key is empty
+- **Model validation** — `setModel()` throws on unknown model ID (was silent fallback)
+- **Engine lifecycle** — `close()` method clears session cleanup interval timer
+- **Limit clamping** — history and recall `limit` params clamped to 1-100
+- **Error logging** — memory save failures logged at `error` level with sessionId context
+- **Discovery fidelity** — route list includes auth tiers and param schemas
+- **Test coverage** — 738 tests across 18 test files
+
+---
+
 ## [0.4.0] - 2026-02-08
 
 ### Added
