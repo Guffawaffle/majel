@@ -7,6 +7,7 @@
 
 import type { GeminiEngine, FleetConfig } from "./gemini.js";
 import type { MemoryService } from "./memory.js";
+import type { FrameStoreFactory } from "./postgres-frame-store.js";
 import type { SettingsStore } from "./settings.js";
 import type { SessionStore } from "./sessions.js";
 import type { DockStore } from "./dock-store.js";
@@ -25,6 +26,8 @@ export interface AppState {
   pool: Pool | null;
   geminiEngine: GeminiEngine | null;
   memoryService: MemoryService | null;
+  /** ADR-021: Factory that creates per-user RLS-scoped FrameStores. */
+  frameStoreFactory: FrameStoreFactory | null;
   settingsStore: SettingsStore | null;
   sessionStore: SessionStore | null;
   dockStore: DockStore | null;
