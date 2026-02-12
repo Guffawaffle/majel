@@ -41,6 +41,7 @@ import { createOverlayStore } from "./overlay-store.js";
 import { createInviteStore } from "./invite-store.js";
 import { createUserStore } from "./user-store.js";
 import { createPool } from "./db.js";
+import { attachScopedMemory } from "./memory-middleware.js";
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
@@ -145,6 +146,11 @@ export function createApp(appState: AppState): express.Express {
       res.sendFile(landingFile);
     });
   }
+
+  // ─── Per-request scoped memory (ADR-021 D4) ──────────────
+  // Must come after auth middleware (which sets res.locals.userId).
+  // Routes that require auth will have res.locals.memory available.
+  app.use(attachScopedMemory(appState));
 
   // ─── Mount route modules ──────────────────────────────────
   app.use(createCoreRoutes(appState));
