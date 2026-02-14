@@ -69,7 +69,7 @@ import { createCatalogRoutes } from "./routes/catalog.js";
 import { createDiagnosticQueryRoutes } from "./routes/diagnostic-query.js";
 import { createLoadoutRoutes } from "./routes/loadouts.js";
 import { createAuthRoutes } from "./routes/auth.js";
-import { createAdminRoutes } from "./routes/admin.js";
+import { createAdmiralRoutes } from "./routes/admiral.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -143,15 +143,14 @@ export function createApp(appState: AppState): express.Express {
 
   // ─── Security headers (ADR-023 Phase 0) ───────────────────
   // Content-Security-Policy — locks down resource loading.
-  // style-src 'unsafe-inline': all inline style="" attrs were removed in
-  // Phase 2-3. JS `.style.*` (CSSOM) is not affected by this directive.
-  // Removing 'unsafe-inline' is now safe — tracked as Phase 4 (#52) scope.
+  // All inline style="" attrs were removed in Phases 2-3.
+  // JS `.style.*` (CSSOM) is not affected by style-src.
   // img-src/connect-src 'self' blocks CSS-based data exfiltration vectors.
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
       "script-src 'self'",
-      "style-src 'self' 'unsafe-inline'",
+      "style-src 'self'",
       "img-src 'self' data:",
       "connect-src 'self'",
       "font-src 'self'",
@@ -199,7 +198,7 @@ export function createApp(appState: AppState): express.Express {
   // AFTER auth middleware sets res.locals.userId. Not app-level — auth is route-level.
   app.use(createCoreRoutes(appState));
   app.use(createAuthRoutes(appState));
-  app.use(createAdminRoutes(appState));
+  app.use(createAdmiralRoutes(appState));
   app.use(createChatRoutes(appState));
   app.use(createSettingsRoutes(appState));
   app.use(createSessionRoutes(appState));
