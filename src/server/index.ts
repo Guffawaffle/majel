@@ -143,11 +143,10 @@ export function createApp(appState: AppState): express.Express {
 
   // ─── Security headers (ADR-023 Phase 0) ───────────────────
   // Content-Security-Policy — locks down resource loading.
-  // style-src includes 'unsafe-inline' temporarily: inline style="" attrs
-  // remain in index.html + app.js + chat.js. Phase 2 (CSS decomposition)
-  // replaces them with classes, then 'unsafe-inline' is removed.
-  // Inline styles cannot execute code; img-src/connect-src 'self' blocks
-  // CSS-based data exfiltration vectors.
+  // style-src 'unsafe-inline': all inline style="" attrs were removed in
+  // Phase 2-3. JS `.style.*` (CSSOM) is not affected by this directive.
+  // Removing 'unsafe-inline' is now safe — tracked as Phase 4 (#52) scope.
+  // img-src/connect-src 'self' blocks CSS-based data exfiltration vectors.
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
