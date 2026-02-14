@@ -1,0 +1,473 @@
+/**
+ * loadouts.css — Loadout Management View Styles
+ *
+ * Three-tab layout: Loadouts, Plan, Dock Status.
+ * Follows admiral.css tab/panel pattern.
+ */
+
+/* ─── Tabs ─────────────────────────────────────────────────── */
+
+.loadout-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+.loadout-tab {
+    padding: 0.6rem 1.2rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.loadout-tab:hover {
+    color: var(--text);
+}
+
+.loadout-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+/* ─── Panel ────────────────────────────────────────────────── */
+
+.loadout-panel {
+    padding: 0 0.5rem;
+}
+
+.loadout-loading {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-dim);
+}
+
+.loadout-empty {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-dim);
+}
+
+.loadout-hint {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+/* ─── Toolbar ──────────────────────────────────────────────── */
+
+.loadout-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+/* ─── Buttons ──────────────────────────────────────────────── */
+
+.loadout-action-btn {
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: background 0.15s;
+}
+
+.loadout-action-btn:hover {
+    background: var(--surface-hover, var(--border));
+}
+
+.loadout-create-btn {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.loadout-create-btn:hover {
+    filter: brightness(1.1);
+}
+
+.loadout-danger-btn {
+    color: var(--danger, #e74c3c);
+    border-color: var(--danger, #e74c3c);
+}
+
+.loadout-danger-btn:hover {
+    background: var(--danger, #e74c3c);
+    color: #fff;
+}
+
+/* ─── Loadout Cards ────────────────────────────────────────── */
+
+.loadout-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.loadout-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    background: var(--surface);
+    transition: border-color 0.15s;
+}
+
+.loadout-card-active {
+    border-left: 3px solid var(--accent, #3498db);
+}
+
+.loadout-card-inactive {
+    opacity: 0.7;
+}
+
+.loadout-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.3rem;
+}
+
+.loadout-card-ship {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.loadout-toggle-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.2rem;
+}
+
+.loadout-card-name {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-bottom: 0.4rem;
+}
+
+.loadout-card-crew {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-bottom: 0.3rem;
+}
+
+.loadout-card-intents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-bottom: 0.3rem;
+}
+
+.loadout-intent-tag {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    background: var(--tag-bg, rgba(52, 152, 219, 0.15));
+    color: var(--accent, #3498db);
+    font-size: 0.75rem;
+}
+
+.loadout-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-bottom: 0.3rem;
+}
+
+.loadout-tag {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    background: var(--surface-hover, var(--border));
+    font-size: 0.7rem;
+    color: var(--text-dim);
+}
+
+.loadout-card-notes {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    font-style: italic;
+    margin-bottom: 0.4rem;
+}
+
+.loadout-card-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+/* ─── Loadout Detail ───────────────────────────────────────── */
+
+.loadout-detail h2 {
+    margin: 0.5rem 0;
+}
+
+.loadout-detail h3 {
+    margin: 1rem 0 0.3rem;
+    font-size: 0.95rem;
+}
+
+.loadout-detail-meta {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 0.5rem;
+}
+
+.loadout-detail-intents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+}
+
+.loadout-detail-notes {
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 0.85rem;
+}
+
+.loadout-crew-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.loadout-crew-table th,
+.loadout-crew-table td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+
+.loadout-crew-table th {
+    font-weight: 600;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.loadout-empty-crew {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* ─── Plan Items ───────────────────────────────────────────── */
+
+.plan-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.8rem;
+}
+
+.plan-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem;
+    background: var(--surface);
+}
+
+.plan-item-active {
+    border-left: 3px solid var(--accent, #3498db);
+}
+
+.plan-item-inactive {
+    opacity: 0.6;
+}
+
+.plan-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.3rem;
+}
+
+.plan-item-intent {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.plan-item-loadout,
+.plan-item-dock,
+.plan-item-away {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-bottom: 0.2rem;
+}
+
+.plan-item-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+/* ─── Plan Validation ──────────────────────────────────────── */
+
+.plan-validation {
+    padding: 0.8rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.plan-valid {
+    background: rgba(46, 204, 113, 0.1);
+    border: 1px solid rgba(46, 204, 113, 0.3);
+    color: var(--text);
+}
+
+.plan-invalid {
+    background: rgba(231, 76, 60, 0.08);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    color: var(--text);
+}
+
+/* ─── Dock Cards ───────────────────────────────────────────── */
+
+.dock-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.8rem;
+}
+
+.dock-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem;
+    background: var(--surface);
+}
+
+.dock-occupied {
+    border-left: 3px solid var(--accent, #3498db);
+}
+
+.dock-empty {
+    opacity: 0.7;
+}
+
+.dock-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.3rem;
+}
+
+.dock-card-number {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.dock-card-status {
+    font-size: 0.8rem;
+}
+
+.dock-card-label {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-bottom: 0.3rem;
+}
+
+.dock-card-assignment {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+
+.dock-card-empty-msg {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+.dock-card-notes {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    font-style: italic;
+    margin-top: 0.3rem;
+}
+
+/* ─── Forms ────────────────────────────────────────────────── */
+
+.loadout-form {
+    max-width: 500px;
+}
+
+.loadout-form h3 {
+    margin: 0 0 1rem;
+}
+
+.loadout-form label {
+    display: block;
+    margin-bottom: 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.loadout-form input[type="text"],
+.loadout-form select,
+.loadout-form textarea {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg, var(--bg));
+    color: var(--text);
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.loadout-form fieldset {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem 0.8rem;
+    margin-bottom: 0.8rem;
+}
+
+.loadout-form fieldset legend {
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0 0.3rem;
+}
+
+.loadout-intent-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0.2rem 0.5rem 0.2rem 0;
+    font-weight: normal;
+    font-size: 0.8rem;
+}
+
+.loadout-form-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+/* ─── Responsive ───────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .loadout-grid,
+    .plan-grid,
+    .dock-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .loadout-form {
+        max-width: 100%;
+    }
+}

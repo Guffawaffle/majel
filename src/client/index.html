@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="views/drydock/drydock.css" />
   <link rel="stylesheet" href="views/catalog/catalog.css" />
   <link rel="stylesheet" href="views/fleet/fleet.css" />
+  <link rel="stylesheet" href="views/loadouts/loadouts.css" />
   <link rel="stylesheet" href="views/admiral/admiral.css" />
 
   <!-- Component CSS -->
@@ -55,6 +56,9 @@
       </button>
       <button class="sidebar-nav-btn" data-view="fleet">
         <span class="icon">🚀</span> Fleet
+      </button>
+      <button class="sidebar-nav-btn" data-view="loadouts">
+        <span class="icon">📦</span> Loadouts
       </button>
       <button class="sidebar-nav-btn" data-view="diagnostics">
         <span class="icon">⚡</span> Diagnostics
@@ -199,6 +203,9 @@
 
       <!-- Fleet Area (hidden by default) -->
       <section id="fleet-area" class="fleet-area hidden"></section>
+
+      <!-- Loadouts Area (hidden by default) -->
+      <section id="loadouts-area" class="loadouts-area hidden"></section>
 
       <!-- Diagnostics Area (hidden by default) -->
       <section id="diagnostics-area" class="diagnostics-area hidden"></section>
