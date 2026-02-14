@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-12 | Branch: `arch/loadout-inversion`
+> Updated: 2026-02-14 | Branch: `arch/loadout-inversion`
 
 ---
 
@@ -39,7 +39,7 @@
 - [x] I7–I10: Cloud CLI failures include recovery hints
 - [x] N1–N8: Schema docs, discovery auth tiers, arg schemas, consistency fixes
 
-### [ ] Self-Review Findings (pending)
+### [x] Self-Review Findings (6fadefe + 0560656)
 
 #### Footguns
 - [x] **F1/E1 (IMPORTANT):** `sendFail()` has 6 positional params → switch to options object
@@ -113,10 +113,21 @@
 - [ ] Cloud CLI: `shellSplit` should handle double quotes or warn (F6)
 - [ ] API: auto-generate discovery from Express router introspection (F4 long-term fix)
 - [ ] API: define `HealthResponse` type to guard contract (E4)
-- [ ] API: type `res.locals` via Express module augmentation (E5)
+- [x] API: type `res.locals` via Express module augmentation (E5)
 - [ ] API: `ErrorCode` namespace convention for module-specific codes (E2)
 - [ ] Shared AX types between CLI and API (E3)
 - [ ] Integration test: discovery endpoints match actual Express routes
+
+---
+
+## In Progress — Phase 2: Loadout API (#43)
+
+- [ ] Loadout CRUD routes (`/api/loadouts`)
+- [ ] Dock routes (`/api/docks`)
+- [ ] Plan item routes (`/api/plan`)
+- [ ] Intent routes (`/api/intents`)
+- [ ] Plan briefing builder (`plan-briefing.ts`)
+- [ ] Route + briefing tests
 
 ---
 

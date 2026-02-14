@@ -73,6 +73,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     settingsStore: null,
     sessionStore: null,
     dockStore: null,
+    loadoutStore: null,
     behaviorStore: null,
     referenceStore: null,
     overlayStore: null,
