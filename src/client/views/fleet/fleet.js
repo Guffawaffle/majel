@@ -14,8 +14,8 @@
  * - Target notes visible inline for targeted items
  */
 
-import { fetchCatalogOfficers, fetchCatalogShips, setOfficerOverlay, setShipOverlay } from './api/catalog.js';
-import { fetchDocks } from './api/docks.js';
+import { fetchCatalogOfficers, fetchCatalogShips, setOfficerOverlay, setShipOverlay } from 'api/catalog.js';
+import { fetchDocks } from 'api/docks.js';
 
 // ─── State ──────────────────────────────────────────────────
 let officers = [];

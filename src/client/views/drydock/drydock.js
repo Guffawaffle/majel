@@ -12,9 +12,9 @@ import {
     removeDockShip, setActiveShip, fetchIntents,
     fetchConflicts, fetchPresetsForDock,
     createPreset, deletePreset, setPresetMembers,
-} from './api/docks.js';
-import { fetchShips, fetchOfficers } from './api/catalog.js';
-import { showConfirmDialog } from './confirm-dialog.js';
+} from 'api/docks.js';
+import { fetchShips, fetchOfficers } from 'api/catalog.js';
+import { showConfirmDialog } from 'components/confirm-dialog.js';
 
 // ─── State ──────────────────────────────────────────────────
 let docks = [];
