@@ -1,0 +1,352 @@
+/**
+ * landing.css — Landing Page Styles
+ *
+ * Ariadne — STFC Fleet Intelligence System
+ * Extracted from landing.html for CSP compliance (script-src/style-src 'self').
+ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1a2236;
+  --bg-card: #151c2e;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-gold: #f0a030;
+  --accent-gold-dim: #b07820;
+  --accent-blue: #60a0ff;
+  --accent-blue-dim: #3070cc;
+  --accent-green: #34d399;
+  --accent-purple: #a78bfa;
+  --border: #1e293b;
+  --radius: 8px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Layout ───────────────────────────── */
+.landing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ──────────────────────────── */
+.landing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.landing-logo {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent-gold);
+  letter-spacing: 0.05em;
+}
+.landing-nav {
+  display: flex;
+  gap: 0.75rem;
+}
+.nav-btn {
+  padding: 0.5rem 1.25rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.nav-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-gold-dim);
+}
+.nav-btn-primary {
+  background: var(--accent-gold);
+  color: var(--bg-primary);
+  border-color: var(--accent-gold);
+  font-weight: 600;
+}
+.nav-btn-primary:hover {
+  background: var(--accent-gold-dim);
+  border-color: var(--accent-gold-dim);
+}
+
+/* ── Hero ─────────────────────────────── */
+.hero {
+  flex: 0 0 auto;
+  text-align: center;
+  padding: 5rem 2rem 3rem;
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+}
+.hero-icon {
+  font-size: 3.5rem;
+  margin-bottom: 1rem;
+}
+.hero h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--accent-gold);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.03em;
+}
+.hero .subtitle {
+  font-size: 1.125rem;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+.hero-desc {
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.hero-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.hero-btn {
+  padding: 0.75rem 2rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  font-size: 1rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  font-weight: 500;
+}
+.hero-btn-gold {
+  background: var(--accent-gold);
+  color: var(--bg-primary);
+  border-color: var(--accent-gold);
+  font-weight: 700;
+}
+.hero-btn-gold:hover { background: var(--accent-gold-dim); }
+.hero-btn-outline {
+  background: transparent;
+  color: var(--text-primary);
+}
+.hero-btn-outline:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-gold-dim);
+}
+
+/* ── Features ─────────────────────────── */
+.features {
+  padding: 3rem 2rem 4rem;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.features h2 {
+  text-align: center;
+  font-size: 1.5rem;
+  color: var(--accent-gold);
+  margin-bottom: 2rem;
+  letter-spacing: 0.03em;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+.feature-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  transition: border-color 0.15s;
+}
+.feature-card:hover {
+  border-color: var(--accent-gold-dim);
+}
+.feature-icon {
+  font-size: 1.75rem;
+  margin-bottom: 0.75rem;
+}
+.feature-card h3 {
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+.feature-card p {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ── Footer ───────────────────────────── */
+.landing-footer {
+  margin-top: auto;
+  padding: 1.5rem 2rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  background: var(--bg-secondary);
+}
+.landing-footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.landing-footer a:hover {
+  color: var(--accent-gold);
+}
+.footer-links {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Auth Forms ───────────────────────── */
+.auth-section {
+  display: none;
+  max-width: 420px;
+  margin: 3rem auto;
+  padding: 2rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.auth-section.active { display: block; }
+.auth-section h2 {
+  font-size: 1.25rem;
+  color: var(--accent-gold);
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+.form-group {
+  margin-bottom: 1rem;
+}
+.form-group label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.form-group input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+.form-group input:focus {
+  outline: none;
+  border-color: var(--accent-gold);
+}
+.form-submit {
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  background: var(--accent-gold);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.form-submit:hover { background: var(--accent-gold-dim); }
+.form-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.form-footer {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.form-footer a {
+  color: var(--accent-blue);
+  cursor: pointer;
+  text-decoration: none;
+}
+.form-footer a:hover { text-decoration: underline; }
+.form-message {
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  display: none;
+}
+.form-message.error {
+  display: block;
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: #f87171;
+}
+.form-message.success {
+  display: block;
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: #34d399;
+}
+.password-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+/* ── Landing-specific inline style replacements ──── */
+.feature-card-highlight {
+  border-color: var(--accent-gold-dim);
+  background: linear-gradient(135deg, var(--bg-card) 0%, rgba(240,160,48,0.05) 100%);
+}
+.alpha-badge {
+  font-size: 0.7rem;
+  color: var(--accent-gold);
+  vertical-align: middle;
+}
+.verify-text {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+.verify-hint {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.verify-hint a {
+  color: var(--accent-blue);
+}
+.form-footer-spaced {
+  margin-top: 1.5rem;
+}
+
+/* ── Responsive ───────────────────────── */
+@media (max-width: 640px) {
+  .hero { padding: 3rem 1.5rem 2rem; }
+  .hero h1 { font-size: 1.75rem; }
+  .hero-desc { font-size: 0.9rem; }
+  .hero-actions { flex-direction: column; align-items: center; }
+  .features { padding: 2rem 1.5rem 3rem; }
+  .landing-header { padding: 0.75rem 1rem; }
+}

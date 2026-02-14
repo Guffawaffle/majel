@@ -57,7 +57,7 @@ import {
 import { bootstrapConfigSync, resolveConfig } from "./config.js";
 
 // Envelope (ADR-004)
-import { envelopeMiddleware, errorHandler, createTimeoutMiddleware } from "./envelope.js";
+import { envelopeMiddleware, errorHandler, createTimeoutMiddleware, sendFail, ErrorCode } from "./envelope.js";
 
 // Route modules
 import { createCoreRoutes } from "./routes/core.js";
@@ -143,16 +143,21 @@ export function createApp(appState: AppState): express.Express {
 
   // ─── Security headers (ADR-023 Phase 0) ───────────────────
   // Content-Security-Policy — locks down resource loading.
-  // style-src 'self' is critical: blocks injected external stylesheets
-  // before Phase 2 introduces dynamic CSS loading (ensureCSS).
+  // style-src includes 'unsafe-inline' temporarily: inline style="" attrs
+  // remain in index.html + app.js + chat.js. Phase 2 (CSS decomposition)
+  // replaces them with classes, then 'unsafe-inline' is removed.
+  // Inline styles cannot execute code; img-src/connect-src 'self' blocks
+  // CSS-based data exfiltration vectors.
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
       "script-src 'self'",
-      "style-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "connect-src 'self'",
       "font-src 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
       "frame-ancestors 'none'",
     ].join('; '));
     next();
@@ -164,7 +169,7 @@ export function createApp(appState: AppState): express.Express {
   app.use('/api', (req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     if (req.headers['x-requested-with'] !== 'majel-client') {
-      return res.status(403).json({ error: { message: 'Forbidden' } });
+      return sendFail(res, ErrorCode.FORBIDDEN, 'Missing CSRF header', 403);
     }
     next();
   });
@@ -178,6 +183,10 @@ export function createApp(appState: AppState): express.Express {
 
   // ─── Landing page routes (ADR-019 Phase 1) ────────────────
   const landingFile = path.join(clientDir, "landing.html");
+
+  // Landing page static assets (landing.css, landing.js)
+  app.get('/landing.css', (_req, res) => res.sendFile(path.join(clientDir, 'landing.css')));
+  app.get('/landing.js', (_req, res) => res.sendFile(path.join(clientDir, 'landing.js')));
 
   // Public landing page routes → landing.html
   for (const route of ["/", "/login", "/signup", "/verify", "/reset-password"]) {
