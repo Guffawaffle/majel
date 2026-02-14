@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import request from "supertest";
+import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import type { GeminiEngine } from "../src/server/gemini.js";
 import type { MemoryService, Frame } from "../src/server/memory.js";
@@ -104,7 +105,7 @@ describe("GET /api/health", () => {
     const state = makeState();
     const app = createApp(state);
 
-    const res = await request(app).get("/api/health");
+    const res = await testRequest(app).get("/api/health");
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe("initializing");
     expect(res.body.data.gemini).toBe("not configured");
@@ -120,7 +121,7 @@ describe("GET /api/health", () => {
     });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/health");
+    const res = await testRequest(app).get("/api/health");
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe("online");
     expect(res.body.data.gemini).toBe("connected");
@@ -137,7 +138,7 @@ describe("POST /api/chat", () => {
     const state = makeState({ geminiEngine: makeMockEngine() });
     const app = createApp(state);
 
-    const res = await request(app).post("/api/chat").send({});
+    const res = await testRequest(app).post("/api/chat").send({});
     expect(res.status).toBe(400);
     expect(res.body.error.message).toContain("Missing");
   });
@@ -146,7 +147,7 @@ describe("POST /api/chat", () => {
     const state = makeState({ geminiEngine: makeMockEngine() });
     const app = createApp(state);
 
-    const res = await request(app).post("/api/chat").send({ message: 42 });
+    const res = await testRequest(app).post("/api/chat").send({ message: 42 });
     expect(res.status).toBe(400);
   });
 
@@ -154,7 +155,7 @@ describe("POST /api/chat", () => {
     const state = makeState();
     const app = createApp(state);
 
-    const res = await request(app)
+    const res = await testRequest(app)
       .post("/api/chat")
       .send({ message: "Hello" });
     expect(res.status).toBe(503);
@@ -166,7 +167,7 @@ describe("POST /api/chat", () => {
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
-    const res = await request(app)
+    const res = await testRequest(app)
       .post("/api/chat")
       .send({ message: "Hello" });
     expect(res.status).toBe(200);
@@ -180,7 +181,7 @@ describe("POST /api/chat", () => {
     const state = makeState({ geminiEngine: engine, memoryService: memory });
     const app = createApp(state);
 
-    await request(app).post("/api/chat").send({ message: "Status report" });
+    await testRequest(app).post("/api/chat").send({ message: "Status report" });
 
     // memory.remember is fire-and-forget, give it a tick
     await new Promise((r) => setTimeout(r, 50));
@@ -203,7 +204,7 @@ describe("POST /api/chat", () => {
     });
     const app = createApp(state);
 
-    const res = await request(app)
+    const res = await testRequest(app)
       .post("/api/chat")
       .send({ message: "Test" });
     expect(res.status).toBe(200);
@@ -218,7 +219,7 @@ describe("POST /api/chat", () => {
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
-    const res = await request(app).post("/api/chat").send({ message: "Hi" });
+    const res = await testRequest(app).post("/api/chat").send({ message: "Hi" });
     expect(res.status).toBe(500);
     expect(res.body.error.message).toBe("AI request failed");
   });
@@ -228,7 +229,7 @@ describe("POST /api/chat", () => {
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
-    await request(app)
+    await testRequest(app)
       .post("/api/chat")
       .set("X-Session-Id", "tab-abc")
       .send({ message: "Hello from tab A" });
@@ -241,7 +242,7 @@ describe("POST /api/chat", () => {
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
-    await request(app)
+    await testRequest(app)
       .post("/api/chat")
       .send({ message: "Hello" });
 
@@ -253,12 +254,12 @@ describe("POST /api/chat", () => {
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
-    await request(app)
+    await testRequest(app)
       .post("/api/chat")
       .set("X-Session-Id", "session-1")
       .send({ message: "Alpha" });
 
-    await request(app)
+    await testRequest(app)
       .post("/api/chat")
       .set("X-Session-Id", "session-2")
       .send({ message: "Beta" });
@@ -280,7 +281,7 @@ describe("GET /api/history", () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/history");
+    const res = await testRequest(app).get("/api/history");
     expect(res.status).toBe(200);
     expect(res.body.data.session).toEqual([]);
     // No memory service → no lex field
@@ -292,7 +293,7 @@ describe("GET /api/history", () => {
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/history?source=session");
+    const res = await testRequest(app).get("/api/history?source=session");
     expect(res.status).toBe(200);
     expect(res.body.data.session).toHaveLength(2);
     expect(res.body.data.session[0].text).toBe("Hello");
@@ -304,7 +305,7 @@ describe("GET /api/history", () => {
     const state = makeState({ memoryService: memory });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/history?source=lex");
+    const res = await testRequest(app).get("/api/history?source=lex");
     expect(res.status).toBe(200);
     expect(res.body.data.lex).toHaveLength(2);
     expect(res.body.data.lex[0].id).toBe("f1");
@@ -316,7 +317,7 @@ describe("GET /api/history", () => {
     const state = makeState({ geminiEngine: engine, memoryService: memory });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/history");
+    const res = await testRequest(app).get("/api/history");
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveProperty("session");
     expect(res.body.data).toHaveProperty("lex");
@@ -330,7 +331,7 @@ describe("GET /api/history", () => {
     const state = makeState({ memoryService: memory });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/history?source=lex");
+    const res = await testRequest(app).get("/api/history?source=lex");
     expect(res.status).toBe(200);
     expect(res.body.data.lex).toEqual([]);
   });
@@ -340,7 +341,7 @@ describe("GET /api/history", () => {
     const state = makeState({ memoryService: memory });
     const app = createApp(state);
 
-    await request(app).get("/api/history?source=lex&limit=5");
+    await testRequest(app).get("/api/history?source=lex&limit=5");
     expect(memory.timeline).toHaveBeenCalledWith(5);
   });
 
@@ -351,7 +352,7 @@ describe("GET /api/history", () => {
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/history?source=session&sessionId=tab-a");
+    const res = await testRequest(app).get("/api/history?source=session&sessionId=tab-a");
     expect(res.status).toBe(200);
     expect(res.body.data.session).toHaveLength(2);
     expect(res.body.data.session[0].text).toBe("Tab A message");
@@ -365,7 +366,7 @@ describe("GET /api/recall", () => {
     const state = makeState({ memoryService: makeMockMemory() });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/recall");
+    const res = await testRequest(app).get("/api/recall");
     expect(res.status).toBe(400);
     expect(res.body.error.message).toContain("Missing query");
   });
@@ -374,7 +375,7 @@ describe("GET /api/recall", () => {
     const state = makeState();
     const app = createApp(state);
 
-    const res = await request(app).get("/api/recall?q=Kirk");
+    const res = await testRequest(app).get("/api/recall?q=Kirk");
     expect(res.status).toBe(503);
   });
 
@@ -388,7 +389,7 @@ describe("GET /api/recall", () => {
     const state = makeState({ memoryService: memory });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/recall?q=Kirk");
+    const res = await testRequest(app).get("/api/recall?q=Kirk");
     expect(res.status).toBe(200);
     expect(res.body.data.query).toBe("Kirk");
     expect(res.body.data.results).toHaveLength(1);
@@ -402,7 +403,7 @@ describe("GET /api/recall", () => {
     const state = makeState({ memoryService: memory });
     const app = createApp(state);
 
-    await request(app).get("/api/recall?q=test&limit=5");
+    await testRequest(app).get("/api/recall?q=test&limit=5");
     expect(memory.recall).toHaveBeenCalledWith("test", 5);
   });
 
@@ -414,7 +415,7 @@ describe("GET /api/recall", () => {
     const state = makeState({ memoryService: memory });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/recall?q=test");
+    const res = await testRequest(app).get("/api/recall?q=test");
     expect(res.status).toBe(500);
     expect(res.body.error.message).toBe("Memory recall failed");
   });
@@ -427,7 +428,7 @@ describe("SPA fallback", () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
 
-    const res = await request(app).get("/some/unknown/route");
+    const res = await testRequest(app).get("/some/unknown/route");
     // Should get 200 with HTML content (or 404 if index.html doesn't exist in test env)
     // Either way, the route handler fires — covering the SPA fallback line
     expect([200, 404]).toContain(res.status);
@@ -442,7 +443,7 @@ describe("edge cases", () => {
     const state = makeState({ geminiEngine: engine, memoryService: null });
     const app = createApp(state);
 
-    const res = await request(app)
+    const res = await testRequest(app)
       .post("/api/chat")
       .send({ message: "Hello" });
     expect(res.status).toBe(200);
@@ -453,7 +454,7 @@ describe("edge cases", () => {
     const state = makeState({ memoryService: null });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/history?source=lex");
+    const res = await testRequest(app).get("/api/history?source=lex");
     expect(res.status).toBe(200);
     expect(res.body.data.lex).toBeUndefined();
   });
@@ -464,7 +465,7 @@ describe("edge cases", () => {
     const state = makeState({ geminiEngine: engine, memoryService: memory });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/history?source=session");
+    const res = await testRequest(app).get("/api/history?source=session");
     expect(res.status).toBe(200);
     expect(res.body.data.session).toBeDefined();
     expect(res.body.data.lex).toBeUndefined();
@@ -478,7 +479,7 @@ describe("edge cases", () => {
     const state = makeState({ memoryService: memory });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/recall?q=test");
+    const res = await testRequest(app).get("/api/recall?q=test");
     expect(res.status).toBe(500);
     expect(res.body.error.message).toBe("Memory recall failed");
   });
@@ -491,7 +492,7 @@ describe("edge cases", () => {
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
-    const res = await request(app)
+    const res = await testRequest(app)
       .post("/api/chat")
       .send({ message: "Hi" });
     expect(res.status).toBe(500);
@@ -502,7 +503,7 @@ describe("edge cases", () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
 
-    const res = await request(app).get("/api/health");
+    const res = await testRequest(app).get("/api/health");
     expect(res.body.data.referenceStore).toBeDefined();
     expect(res.body.data.overlayStore).toBeDefined();
   });
@@ -512,7 +513,7 @@ describe("edge cases", () => {
     const state = makeState({ memoryService: memory });
     const app = createApp(state);
 
-    await request(app).get("/api/recall?q=test");
+    await testRequest(app).get("/api/recall?q=test");
     expect(memory.recall).toHaveBeenCalledWith("test", 10);
   });
 });
@@ -530,13 +531,13 @@ describe("settings API", () => {
   describe("GET /api/settings", () => {
     it("returns 503 when settings store is not available", async () => {
       const app = createApp(makeState());
-      const res = await request(app).get("/api/settings");
+      const res = await testRequest(app).get("/api/settings");
       expect(res.status).toBe(503);
     });
 
     it("returns all settings with categories", async () => {
       const app = createApp(makeState({ settingsStore }));
-      const res = await request(app).get("/api/settings");
+      const res = await testRequest(app).get("/api/settings");
       expect(res.status).toBe(200);
       expect(res.body.data.categories).toContain("display");
       expect(res.body.data.settings.length).toBeGreaterThan(0);
@@ -544,7 +545,7 @@ describe("settings API", () => {
 
     it("filters by category", async () => {
       const app = createApp(makeState({ settingsStore }));
-      const res = await request(app).get("/api/settings?category=display");
+      const res = await testRequest(app).get("/api/settings?category=display");
       expect(res.status).toBe(200);
       expect(res.body.data.category).toBe("display");
       for (const s of res.body.data.settings) {
@@ -554,7 +555,7 @@ describe("settings API", () => {
 
     it("returns 400 for unknown category", async () => {
       const app = createApp(makeState({ settingsStore }));
-      const res = await request(app).get("/api/settings?category=fake");
+      const res = await testRequest(app).get("/api/settings?category=fake");
       expect(res.status).toBe(400);
     });
   });
@@ -562,13 +563,13 @@ describe("settings API", () => {
   describe("PATCH /api/settings", () => {
     it("returns 503 when store not available", async () => {
       const app = createApp(makeState());
-      const res = await request(app).patch("/api/settings").send({ "display.admiralName": "Guff" });
+      const res = await testRequest(app).patch("/api/settings").send({ "display.admiralName": "Guff" });
       expect(res.status).toBe(503);
     });
 
     it("updates a setting", async () => {
       const app = createApp(makeState({ settingsStore }));
-      const res = await request(app)
+      const res = await testRequest(app)
         .patch("/api/settings")
         .send({ "display.admiralName": "Guff" });
       expect(res.status).toBe(200);
@@ -578,7 +579,7 @@ describe("settings API", () => {
 
     it("reports errors for invalid keys", async () => {
       const app = createApp(makeState({ settingsStore }));
-      const res = await request(app)
+      const res = await testRequest(app)
         .patch("/api/settings")
         .send({ "fake.key": "value" });
       expect(res.status).toBe(200);
@@ -588,7 +589,7 @@ describe("settings API", () => {
     it("returns 400 for non-object body", async () => {
       const app = createApp(makeState({ settingsStore }));
       // Send a JSON number — parsed by express.json() as a non-object
-      const res = await request(app)
+      const res = await testRequest(app)
         .patch("/api/settings")
         .set("Content-Type", "application/json")
         .send("42");
@@ -597,7 +598,7 @@ describe("settings API", () => {
 
     it("returns 400 for array body", async () => {
       const app = createApp(makeState({ settingsStore }));
-      const res = await request(app)
+      const res = await testRequest(app)
         .patch("/api/settings")
         .send([1, 2, 3]);
       expect(res.status).toBe(400);
@@ -607,14 +608,14 @@ describe("settings API", () => {
   describe("DELETE /api/settings/:key", () => {
     it("returns 503 when store not available", async () => {
       const app = createApp(makeState());
-      const res = await request(app).delete("/api/settings/display.admiralName");
+      const res = await testRequest(app).delete("/api/settings/display.admiralName");
       expect(res.status).toBe(503);
     });
 
     it("resets a user-set value", async () => {
       await settingsStore.set("display.admiralName", "Guff");
       const app = createApp(makeState({ settingsStore }));
-      const res = await request(app).delete("/api/settings/display.admiralName");
+      const res = await testRequest(app).delete("/api/settings/display.admiralName");
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe("reset");
       expect(res.body.data.resolvedValue).toBe("Admiral"); // default
@@ -622,7 +623,7 @@ describe("settings API", () => {
 
     it("handles non-existent key gracefully", async () => {
       const app = createApp(makeState({ settingsStore }));
-      const res = await request(app).delete("/api/settings/display.admiralName");
+      const res = await testRequest(app).delete("/api/settings/display.admiralName");
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe("not_found");
     });
@@ -634,7 +635,7 @@ describe("settings API", () => {
 describe("GET /api", () => {
   it("returns API manifest with endpoints list", async () => {
     const app = createApp(makeState());
-    const res = await request(app).get("/api");
+    const res = await testRequest(app).get("/api");
     expect(res.status).toBe(200);
     expect(res.body.data.name).toBe("Majel");
     expect(res.body.data.version).toBeDefined();
@@ -644,7 +645,7 @@ describe("GET /api", () => {
 
   it("includes all major endpoints", async () => {
     const app = createApp(makeState());
-    const res = await request(app).get("/api");
+    const res = await testRequest(app).get("/api");
     const paths = res.body.data.endpoints.map((e: { path: string }) => e.path);
     expect(paths).toContain("/api/health");
     expect(paths).toContain("/api/diagnostic");
@@ -655,7 +656,7 @@ describe("GET /api", () => {
 
   it("each endpoint has method, path, and description", async () => {
     const app = createApp(makeState());
-    const res = await request(app).get("/api");
+    const res = await testRequest(app).get("/api");
     for (const endpoint of res.body.data.endpoints) {
       expect(endpoint.method).toBeDefined();
       expect(endpoint.path).toBeDefined();
@@ -669,7 +670,7 @@ describe("GET /api", () => {
 describe("GET /api/diagnostic", () => {
   it("returns system info regardless of subsystem state", async () => {
     const app = createApp(makeState());
-    const res = await request(app).get("/api/diagnostic");
+    const res = await testRequest(app).get("/api/diagnostic");
     expect(res.status).toBe(200);
     expect(res.body.data.system).toBeDefined();
     expect(res.body.data.system.nodeVersion).toMatch(/^v\d+/);
@@ -679,7 +680,7 @@ describe("GET /api/diagnostic", () => {
 
   it("reports gemini as not configured when no engine", async () => {
     const app = createApp(makeState());
-    const res = await request(app).get("/api/diagnostic");
+    const res = await testRequest(app).get("/api/diagnostic");
     expect(res.body.data.gemini.status).toBe("not configured");
   });
 
@@ -687,7 +688,7 @@ describe("GET /api/diagnostic", () => {
     const engine = makeMockEngine();
     await engine.chat("hello"); // creates a session in "default"
     const app = createApp(makeState({ geminiEngine: engine }));
-    const res = await request(app).get("/api/diagnostic");
+    const res = await testRequest(app).get("/api/diagnostic");
     expect(res.body.data.gemini.status).toBe("connected");
     expect(res.body.data.gemini.model).toBe("gemini-2.5-flash-lite");
     expect(res.body.data.gemini.activeSessions).toBe(1);
@@ -697,7 +698,7 @@ describe("GET /api/diagnostic", () => {
     const frames = [makeFrame(), makeFrame({ id: "frame-2" })];
     const memory = makeMockMemory(frames);
     const app = createApp(makeState({ memoryService: memory }));
-    const res = await request(app).get("/api/diagnostic");
+    const res = await testRequest(app).get("/api/diagnostic");
     expect(res.body.data.memory.status).toBe("active");
     expect(res.body.data.memory.frameCount).toBe(2);
     expect(res.body.data.memory.dbPath).toBeDefined();
@@ -705,7 +706,7 @@ describe("GET /api/diagnostic", () => {
 
   it("reports memory as not configured when no service", async () => {
     const app = createApp(makeState());
-    const res = await request(app).get("/api/diagnostic");
+    const res = await testRequest(app).get("/api/diagnostic");
     expect(res.body.data.memory.status).toBe("not configured");
   });
 
@@ -714,7 +715,7 @@ describe("GET /api/diagnostic", () => {
     const store = await createSettingsStore(pool);
     await store.set("display.admiralName", "TestAdmiral");
     const app = createApp(makeState({ settingsStore: store }));
-    const res = await request(app).get("/api/diagnostic");
+    const res = await testRequest(app).get("/api/diagnostic");
     expect(res.body.data.settings.status).toBe("active");
     expect(res.body.data.settings.userOverrides).toBe(1);
   });

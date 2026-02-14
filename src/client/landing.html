@@ -524,7 +524,7 @@
       try {
         const resp = await fetch('/api/auth/signup', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'majel-client' },
           body: JSON.stringify({
             email: document.getElementById('signup-email').value.trim(),
             password: document.getElementById('signup-password').value,
@@ -556,7 +556,7 @@
       try {
         const resp = await fetch('/api/auth/signin', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'majel-client' },
           body: JSON.stringify({
             email: document.getElementById('login-email').value.trim(),
             password: document.getElementById('login-password').value,
@@ -584,7 +584,7 @@
       try {
         await fetch('/api/auth/forgot-password', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'majel-client' },
           body: JSON.stringify({
             email: document.getElementById('forgot-email').value.trim(),
           }),
@@ -604,7 +604,7 @@
       if (page === '/verify' && token) {
         fetch('/api/auth/verify-email', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'majel-client' },
           body: JSON.stringify({ token }),
         })
         .then(r => r.json())

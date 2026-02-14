@@ -141,6 +141,34 @@ export function createApp(appState: AppState): express.Express {
     }),
   );
 
+  // ─── Security headers (ADR-023 Phase 0) ───────────────────
+  // Content-Security-Policy — locks down resource loading.
+  // style-src 'self' is critical: blocks injected external stylesheets
+  // before Phase 2 introduces dynamic CSS loading (ensureCSS).
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Security-Policy', [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self'",
+      "img-src 'self' data:",
+      "connect-src 'self'",
+      "font-src 'self'",
+      "frame-ancestors 'none'",
+    ].join('; '));
+    next();
+  });
+
+  // CSRF protection — require custom header on state-changing requests.
+  // X-Requested-With cannot be set cross-origin without CORS preflight.
+  // Combined with sameSite: strict cookies, this is defense-in-depth.
+  app.use('/api', (req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    if (req.headers['x-requested-with'] !== 'majel-client') {
+      return res.status(403).json({ error: { message: 'Forbidden' } });
+    }
+    next();
+  });
+
   // Static files (for /app/* — the authenticated SPA)
   // Cache headers: 1 day browser cache, etag for conditional revalidation (ADR-023)
   app.use("/app", express.static(clientDir, {

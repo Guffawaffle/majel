@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ariadne — STFC Fleet Intelligence</title>
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Import map — flat module paths, no ../../ counting (ADR-023) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "api/":        "./api/",
+      "views/":      "./views/",
+      "components/": "./components/",
+      "router":      "./router.js",
+      "app":         "./app.js"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="app">

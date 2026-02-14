@@ -13,6 +13,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import express from "express";
 import cookieParser from "cookie-parser";
 import request from "supertest";
+import { testRequest } from "./helpers/test-request.js";
 import { createInviteStore, type InviteStore } from "../src/server/invite-store.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import { bootstrapConfigSync, type AppConfig } from "../src/server/config.js";
@@ -88,7 +89,7 @@ describe("Auth — Demo Mode (no MAJEL_ADMIN_TOKEN)", () => {
   it("admiral endpoint is open", async () => {
     const state = makeState(); // authEnabled = false (no adminToken)
     const app = buildTestApp(state);
-    const res = await request(app).get("/test/admiral");
+    const res = await testRequest(app).get("/test/admiral");
     expect(res.status).toBe(200);
     expect(res.body.data.access).toBe("admiral");
   });
@@ -96,7 +97,7 @@ describe("Auth — Demo Mode (no MAJEL_ADMIN_TOKEN)", () => {
   it("visitor endpoint is open with tenantId 'local'", async () => {
     const state = makeState();
     const app = buildTestApp(state);
-    const res = await request(app).get("/test/visitor");
+    const res = await testRequest(app).get("/test/visitor");
     expect(res.status).toBe(200);
     expect(res.body.data.tenantId).toBe("local");
   });
@@ -110,7 +111,7 @@ describe("Auth — requireAdmiral", () => {
       config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
     });
     const app = buildTestApp(state);
-    const res = await request(app).get("/test/admiral");
+    const res = await testRequest(app).get("/test/admiral");
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe("UNAUTHORIZED");
   });
@@ -120,7 +121,7 @@ describe("Auth — requireAdmiral", () => {
       config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
     });
     const app = buildTestApp(state);
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/test/admiral")
       .set("Authorization", "Bearer wrong-token");
     expect(res.status).toBe(401);
@@ -132,7 +133,7 @@ describe("Auth — requireAdmiral", () => {
       config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
     });
     const app = buildTestApp(state);
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/test/admiral")
       .set("Authorization", `Basic ${ADMIN_TOKEN}`);
     expect(res.status).toBe(401);
@@ -143,7 +144,7 @@ describe("Auth — requireAdmiral", () => {
       config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
     });
     const app = buildTestApp(state);
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/test/admiral")
       .set("Authorization", `Bearer ${ADMIN_TOKEN}`);
     expect(res.status).toBe(200);
@@ -167,7 +168,7 @@ describe("Auth — requireVisitor", () => {
       inviteStore,
     });
     const app = buildTestApp(state);
-    const res = await request(app).get("/test/visitor");
+    const res = await testRequest(app).get("/test/visitor");
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe("UNAUTHORIZED");
   });
@@ -178,7 +179,7 @@ describe("Auth — requireVisitor", () => {
       inviteStore,
     });
     const app = buildTestApp(state);
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/test/visitor")
       .set("Authorization", `Bearer ${ADMIN_TOKEN}`);
     expect(res.status).toBe(200);
@@ -193,7 +194,7 @@ describe("Auth — requireVisitor", () => {
       inviteStore,
     });
     const app = buildTestApp(state);
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/test/visitor")
       .set("Cookie", `${TENANT_COOKIE}=${session.tenantId}`);
     expect(res.status).toBe(200);
@@ -206,7 +207,7 @@ describe("Auth — requireVisitor", () => {
       inviteStore,
     });
     const app = buildTestApp(state);
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/test/visitor")
       .set("Cookie", `${TENANT_COOKIE}=nonexistent-uuid`);
     expect(res.status).toBe(401);
@@ -231,7 +232,7 @@ describe("Auth Routes", () => {
         inviteStore,
       });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/auth/redeem")
         .send({ code: code.code });
       expect(res.status).toBe(201);
@@ -249,7 +250,7 @@ describe("Auth Routes", () => {
         inviteStore,
       });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/auth/redeem")
         .send({});
       expect(res.status).toBe(400);
@@ -261,7 +262,7 @@ describe("Auth Routes", () => {
         inviteStore,
       });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/auth/redeem")
         .send({ code: "NOPE" });
       expect(res.status).toBe(403);
@@ -270,7 +271,7 @@ describe("Auth Routes", () => {
     it("returns demo mode response when auth disabled", async () => {
       const state = makeState({ inviteStore });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/auth/redeem")
         .send({ code: "anything" });
       expect(res.status).toBe(200);
@@ -282,7 +283,7 @@ describe("Auth Routes", () => {
     it("clears the tenant cookie", async () => {
       const state = makeState({ inviteStore });
       const app = createApp(state);
-      const res = await request(app).post("/api/auth/logout");
+      const res = await testRequest(app).post("/api/auth/logout");
       expect(res.status).toBe(200);
       const cookies = res.headers["set-cookie"];
       expect(cookies).toBeDefined();
@@ -295,7 +296,7 @@ describe("Auth Routes", () => {
     it("returns admiral tier when auth disabled", async () => {
       const state = makeState({ inviteStore });
       const app = createApp(state);
-      const res = await request(app).get("/api/auth/status");
+      const res = await testRequest(app).get("/api/auth/status");
       expect(res.status).toBe(200);
       expect(res.body.data.tier).toBe("admiral");
       expect(res.body.data.authEnabled).toBe(false);
@@ -307,7 +308,7 @@ describe("Auth Routes", () => {
         inviteStore,
       });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .get("/api/auth/status")
         .set("Authorization", `Bearer ${ADMIN_TOKEN}`);
       expect(res.status).toBe(200);
@@ -322,7 +323,7 @@ describe("Auth Routes", () => {
         inviteStore,
       });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .get("/api/auth/status")
         .set("Cookie", `${TENANT_COOKIE}=${session.tenantId}`);
       expect(res.status).toBe(200);
@@ -335,7 +336,7 @@ describe("Auth Routes", () => {
         inviteStore,
       });
       const app = createApp(state);
-      const res = await request(app).get("/api/auth/status");
+      const res = await testRequest(app).get("/api/auth/status");
       expect(res.status).toBe(200);
       expect(res.body.data.tier).toBe("public");
     });
@@ -359,7 +360,7 @@ describe("Admin Routes", () => {
     it("creates an invite code", async () => {
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/admin/invites")
         .set(authHeaders())
         .send({ label: "Test", maxUses: 5, expiresIn: "7d" });
@@ -371,7 +372,7 @@ describe("Admin Routes", () => {
     it("rejects without admiral token", async () => {
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/admin/invites")
         .send({ label: "Nope" });
       expect(res.status).toBe(401);
@@ -384,7 +385,7 @@ describe("Admin Routes", () => {
       await inviteStore.createCode({ label: "B" });
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .get("/api/admin/invites")
         .set(authHeaders());
       expect(res.status).toBe(200);
@@ -397,7 +398,7 @@ describe("Admin Routes", () => {
       const code = await inviteStore.createCode();
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .delete(`/api/admin/invites/${code.code}`)
         .set(authHeaders());
       expect(res.status).toBe(200);
@@ -411,7 +412,7 @@ describe("Admin Routes", () => {
     it("returns 404 for unknown code", async () => {
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .delete("/api/admin/invites/MAJEL-NOPE-XXXX")
         .set(authHeaders());
       expect(res.status).toBe(404);
@@ -425,7 +426,7 @@ describe("Admin Routes", () => {
       await inviteStore.redeemCode(code.code);
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .get("/api/admin/sessions")
         .set(authHeaders());
       expect(res.status).toBe(200);
@@ -439,7 +440,7 @@ describe("Admin Routes", () => {
       const session = await inviteStore.redeemCode(code.code);
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
-      const res = await request(app)
+      const res = await testRequest(app)
         .delete(`/api/admin/sessions/${session.tenantId}`)
         .set(authHeaders());
       expect(res.status).toBe(200);
@@ -463,7 +464,7 @@ describe("Route Protection (auth enforced)", () => {
   it("health endpoint is public (no auth needed)", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    const res = await request(app).get("/api/health");
+    const res = await testRequest(app).get("/api/health");
     expect(res.status).toBe(200);
   });
 
@@ -471,14 +472,14 @@ describe("Route Protection (auth enforced)", () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
     // Reference store is null so it'll be 503, but not 401
-    const res = await request(app).get("/api/catalog/officers");
+    const res = await testRequest(app).get("/api/catalog/officers");
     expect(res.status).toBe(503); // store unavailable, NOT 401
   });
 
   it("chat requires admiral token", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    const res = await request(app)
+    const res = await testRequest(app)
       .post("/api/chat")
       .send({ message: "hi" });
     expect(res.status).toBe(401);
@@ -487,35 +488,35 @@ describe("Route Protection (auth enforced)", () => {
   it("settings requires visitor auth", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    const res = await request(app).get("/api/settings");
+    const res = await testRequest(app).get("/api/settings");
     expect(res.status).toBe(401);
   });
 
   it("sessions requires visitor auth", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    const res = await request(app).get("/api/sessions");
+    const res = await testRequest(app).get("/api/sessions");
     expect(res.status).toBe(401);
   });
 
   it("dock routes require visitor auth", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    const res = await request(app).get("/api/dock/docks");
+    const res = await testRequest(app).get("/api/dock/docks");
     expect(res.status).toBe(401);
   });
 
   it("diagnostic routes require admiral auth", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    const res = await request(app).get("/api/diagnostic/schema");
+    const res = await testRequest(app).get("/api/diagnostic/schema");
     expect(res.status).toBe(401);
   });
 
   it("catalog overlay mutation requires visitor auth", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    const res = await request(app)
+    const res = await testRequest(app)
       .patch("/api/catalog/officers/test-id/overlay")
       .send({ ownership: "owned" });
     expect(res.status).toBe(401);

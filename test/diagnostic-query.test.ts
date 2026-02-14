@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import request from "supertest";
+import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
 import { createOverlayStore, type OverlayStore } from "../src/server/overlay-store.js";
@@ -105,7 +106,7 @@ describe("GET /api/diagnostic/schema", () => {
   it("returns table list with columns and row counts", async () => {
     await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app).get("/api/diagnostic/schema");
+    const res = await testRequest(app).get("/api/diagnostic/schema");
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -123,7 +124,7 @@ describe("GET /api/diagnostic/schema", () => {
   it("includes indexes", async () => {
     await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app).get("/api/diagnostic/schema");
+    const res = await testRequest(app).get("/api/diagnostic/schema");
 
     const officers = res.body.data.tables.find((t: { table: string }) => t.table === "reference_officers");
     expect(officers.indexes.length).toBeGreaterThan(0);
@@ -132,7 +133,7 @@ describe("GET /api/diagnostic/schema", () => {
 
   it("returns 503 when reference store not available", async () => {
     const app = createApp(makeState());
-    const res = await request(app).get("/api/diagnostic/schema");
+    const res = await testRequest(app).get("/api/diagnostic/schema");
     expect(res.status).toBe(503);
   });
 });
@@ -145,7 +146,7 @@ describe("GET /api/diagnostic/query", () => {
   it("executes a SELECT query and returns rows", async () => {
     await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/api/diagnostic/query")
       .query({ sql: "SELECT id, name, rarity FROM reference_officers ORDER BY name" });
 
@@ -161,7 +162,7 @@ describe("GET /api/diagnostic/query", () => {
 
   it("supports information_schema queries", async () => {
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/api/diagnostic/query")
       .query({ sql: "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'reference_officers'" });
 
@@ -172,7 +173,7 @@ describe("GET /api/diagnostic/query", () => {
   it("supports WITH (CTE) queries", async () => {
     await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/api/diagnostic/query")
       .query({ sql: "WITH counts AS (SELECT COUNT(*) AS c FROM reference_officers) SELECT c FROM counts" });
 
@@ -191,7 +192,7 @@ describe("GET /api/diagnostic/query", () => {
     ];
 
     for (const sql of dangerous) {
-      const res = await request(app)
+      const res = await testRequest(app)
         .get("/api/diagnostic/query")
         .query({ sql });
       expect(res.status).toBe(400);
@@ -201,7 +202,7 @@ describe("GET /api/diagnostic/query", () => {
 
   it("requires sql parameter", async () => {
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app).get("/api/diagnostic/query");
+    const res = await testRequest(app).get("/api/diagnostic/query");
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("MISSING_PARAM");
   });
@@ -226,7 +227,7 @@ describe("GET /api/diagnostic/query", () => {
     }
 
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/api/diagnostic/query")
       .query({ sql: "SELECT * FROM reference_officers", limit: "5" });
 
@@ -238,7 +239,7 @@ describe("GET /api/diagnostic/query", () => {
 
   it("returns SQL error for malformed queries", async () => {
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/api/diagnostic/query")
       .query({ sql: "SELECT * FROM nonexistent_table" });
 
@@ -248,7 +249,7 @@ describe("GET /api/diagnostic/query", () => {
 
   it("returns 503 when reference store not available", async () => {
     const app = createApp(makeState());
-    const res = await request(app)
+    const res = await testRequest(app)
       .get("/api/diagnostic/query")
       .query({ sql: "SELECT 1" });
     expect(res.status).toBe(503);
@@ -263,7 +264,7 @@ describe("GET /api/diagnostic/summary", () => {
   it("returns reference counts and breakdowns", async () => {
     await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app).get("/api/diagnostic/summary");
+    const res = await testRequest(app).get("/api/diagnostic/summary");
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -281,7 +282,7 @@ describe("GET /api/diagnostic/summary", () => {
     await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
     await overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", ownershipState: "unowned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app).get("/api/diagnostic/summary");
+    const res = await testRequest(app).get("/api/diagnostic/summary");
 
     const overlay = res.body.data.overlay;
     expect(overlay.officers.total).toBe(2);
@@ -292,7 +293,7 @@ describe("GET /api/diagnostic/summary", () => {
   it("includes sample data", async () => {
     await seedData(refStore);
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
-    const res = await request(app).get("/api/diagnostic/summary");
+    const res = await testRequest(app).get("/api/diagnostic/summary");
 
     expect(res.body.data.samples.officers).toBeInstanceOf(Array);
     expect(res.body.data.samples.officers.length).toBeGreaterThan(0);
@@ -302,7 +303,7 @@ describe("GET /api/diagnostic/summary", () => {
 
   it("returns 503 when reference store not available", async () => {
     const app = createApp(makeState());
-    const res = await request(app).get("/api/diagnostic/summary");
+    const res = await testRequest(app).get("/api/diagnostic/summary");
     expect(res.status).toBe(503);
   });
 });
