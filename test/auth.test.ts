@@ -356,12 +356,12 @@ describe("Admin Routes", () => {
   const authConfig = () => makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true });
   const authHeaders = () => ({ Authorization: `Bearer ${ADMIN_TOKEN}` });
 
-  describe("POST /api/admin/invites", () => {
+  describe("POST /api/admiral/invites", () => {
     it("creates an invite code", async () => {
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
       const res = await testRequest(app)
-        .post("/api/admin/invites")
+        .post("/api/admiral/invites")
         .set(authHeaders())
         .send({ label: "Test", maxUses: 5, expiresIn: "7d" });
       expect(res.status).toBe(201);
@@ -373,33 +373,33 @@ describe("Admin Routes", () => {
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
       const res = await testRequest(app)
-        .post("/api/admin/invites")
+        .post("/api/admiral/invites")
         .send({ label: "Nope" });
       expect(res.status).toBe(401);
     });
   });
 
-  describe("GET /api/admin/invites", () => {
+  describe("GET /api/admiral/invites", () => {
     it("lists invite codes", async () => {
       await inviteStore.createCode({ label: "A" });
       await inviteStore.createCode({ label: "B" });
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
       const res = await testRequest(app)
-        .get("/api/admin/invites")
+        .get("/api/admiral/invites")
         .set(authHeaders());
       expect(res.status).toBe(200);
       expect(res.body.data.count).toBe(2);
     });
   });
 
-  describe("DELETE /api/admin/invites/:code", () => {
+  describe("DELETE /api/admiral/invites/:code", () => {
     it("revokes an invite code", async () => {
       const code = await inviteStore.createCode();
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
       const res = await testRequest(app)
-        .delete(`/api/admin/invites/${code.code}`)
+        .delete(`/api/admiral/invites/${code.code}`)
         .set(authHeaders());
       expect(res.status).toBe(200);
       expect(res.body.data.revoked).toBe(true);
@@ -413,13 +413,13 @@ describe("Admin Routes", () => {
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
       const res = await testRequest(app)
-        .delete("/api/admin/invites/MAJEL-NOPE-XXXX")
+        .delete("/api/admiral/invites/MAJEL-NOPE-XXXX")
         .set(authHeaders());
       expect(res.status).toBe(404);
     });
   });
 
-  describe("GET /api/admin/sessions", () => {
+  describe("GET /api/admiral/sessions", () => {
     it("lists tenant sessions", async () => {
       const code = await inviteStore.createCode({ maxUses: 5 });
       await inviteStore.redeemCode(code.code);
@@ -427,21 +427,21 @@ describe("Admin Routes", () => {
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
       const res = await testRequest(app)
-        .get("/api/admin/sessions")
+        .get("/api/admiral/sessions")
         .set(authHeaders());
       expect(res.status).toBe(200);
       expect(res.body.data.count).toBe(2);
     });
   });
 
-  describe("DELETE /api/admin/sessions/:id", () => {
+  describe("DELETE /api/admiral/sessions/:id", () => {
     it("deletes a tenant session", async () => {
       const code = await inviteStore.createCode();
       const session = await inviteStore.redeemCode(code.code);
       const state = makeState({ config: authConfig(), inviteStore });
       const app = createApp(state);
       const res = await testRequest(app)
-        .delete(`/api/admin/sessions/${session.tenantId}`)
+        .delete(`/api/admiral/sessions/${session.tenantId}`)
         .set(authHeaders());
       expect(res.status).toBe(200);
       expect(res.body.data.deleted).toBe(true);

@@ -27,10 +27,9 @@ let currentUserEmail = null; // set from app.js
 const $ = (sel) => document.querySelector(sel);
 
 // ─── View Registration ──────────────────────────────────────
-// View ID 'admin' matches sidebar data-view and DOM #admin-area.
-// Phase 4 (#52) will rename these to 'admiral' across the full stack.
-registerView('admin', {
-    area: $('#admin-area'),
+// View ID 'admiral' matches sidebar data-view and DOM #admiral-area.
+registerView('admiral', {
+    area: $('#admiral-area'),
     icon: '🛡️', title: 'Admiral Console', subtitle: 'User management, invites & sessions',
     cssHref: 'views/admiral/admiral.css',
     init, refresh,
@@ -40,7 +39,7 @@ registerView('admin', {
 // ─── Public API ─────────────────────────────────────────────
 
 export async function init() {
-    const area = $("#admin-area");
+    const area = $("#admiral-area");
     if (!area) return;
     render();
 }
@@ -80,7 +79,7 @@ function switchTab(tab) {
 // ─── Render ─────────────────────────────────────────────────
 
 function render() {
-    const area = $("#admin-area");
+    const area = $("#admiral-area");
     if (!area) return;
 
     area.innerHTML = `

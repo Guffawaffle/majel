@@ -116,7 +116,7 @@ async function resolveIdentity(
  *
  * Usage:
  *   router.get("/api/chat", requireRole(appState, "lieutenant"), handler);
- *   router.post("/api/admin/users", requireRole(appState, "admiral"), handler);
+ *   router.post("/api/admiral/users", requireRole(appState, "admiral"), handler);
  *
  * In dev mode (no adminToken): always passes with admiral-level access.
  */

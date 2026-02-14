@@ -21,7 +21,7 @@ import { _fetch } from './_fetch.js';
  * @returns {Promise<Array>} Array of user objects
  */
 export async function adminListUsers() {
-    const res = await _fetch("/api/auth/admin/users");
+    const res = await _fetch("/api/auth/admiral/users");
     const env = await res.json();
     return env.data?.users || [];
 }
@@ -33,7 +33,7 @@ export async function adminListUsers() {
  * @returns {Promise<Object>}
  */
 export async function adminSetRole(email, role) {
-    const res = await _fetch("/api/auth/admin/set-role", {
+    const res = await _fetch("/api/auth/admiral/set-role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, role }),
@@ -50,7 +50,7 @@ export async function adminSetRole(email, role) {
  * @returns {Promise<Object>}
  */
 export async function adminSetLock(email, locked, reason) {
-    const res = await _fetch("/api/auth/admin/lock", {
+    const res = await _fetch("/api/auth/admiral/lock", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, locked, reason }),
@@ -65,7 +65,7 @@ export async function adminSetLock(email, locked, reason) {
  * @returns {Promise<Object>}
  */
 export async function adminDeleteUser(email) {
-    const res = await _fetch("/api/auth/admin/user", {
+    const res = await _fetch("/api/auth/admiral/user", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -81,7 +81,7 @@ export async function adminDeleteUser(email) {
  * @returns {Promise<Array>} Array of invite code objects
  */
 export async function adminListInvites() {
-    const res = await _fetch("/api/admin/invites");
+    const res = await _fetch("/api/admiral/invites");
     const env = await res.json();
     return env.data?.codes || [];
 }
@@ -92,7 +92,7 @@ export async function adminListInvites() {
  * @returns {Promise<Object>}
  */
 export async function adminCreateInvite(opts = {}) {
-    const res = await _fetch("/api/admin/invites", {
+    const res = await _fetch("/api/admiral/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(opts),
@@ -107,7 +107,7 @@ export async function adminCreateInvite(opts = {}) {
  * @returns {Promise<Object>}
  */
 export async function adminRevokeInvite(code) {
-    const res = await _fetch(`/api/admin/invites/${encodeURIComponent(code)}`, {
+    const res = await _fetch(`/api/admiral/invites/${encodeURIComponent(code)}`, {
         method: "DELETE",
     });
     const env = await res.json();
@@ -121,7 +121,7 @@ export async function adminRevokeInvite(code) {
  * @returns {Promise<Array>} Array of session objects
  */
 export async function adminListSessions() {
-    const res = await _fetch("/api/admin/sessions");
+    const res = await _fetch("/api/admiral/sessions");
     const env = await res.json();
     return env.data?.sessions || [];
 }
@@ -132,7 +132,7 @@ export async function adminListSessions() {
  * @returns {Promise<Object>}
  */
 export async function adminDeleteSession(id) {
-    const res = await _fetch(`/api/admin/sessions/${encodeURIComponent(id)}`, {
+    const res = await _fetch(`/api/admiral/sessions/${encodeURIComponent(id)}`, {
         method: "DELETE",
     });
     const env = await res.json();
@@ -144,7 +144,7 @@ export async function adminDeleteSession(id) {
  * @returns {Promise<Object>}
  */
 export async function adminDeleteAllSessions() {
-    const res = await _fetch("/api/admin/sessions", {
+    const res = await _fetch("/api/admiral/sessions", {
         method: "DELETE",
     });
     const env = await res.json();
