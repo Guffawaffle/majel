@@ -14,6 +14,7 @@ import {
     adminListInvites, adminCreateInvite, adminRevokeInvite,
     adminListSessions, adminDeleteSession, adminDeleteAllSessions,
 } from 'api/admiral.js';
+import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
 let users = [];
@@ -24,6 +25,15 @@ let loading = false;
 let currentUserEmail = null; // set from app.js
 
 const $ = (sel) => document.querySelector(sel);
+
+// ─── View Registration ──────────────────────────────────────
+registerView('admin', {
+    area: $('#admin-area'),
+    icon: '🛡️', title: 'Admiral Console', subtitle: 'User management, invites & sessions',
+    cssHref: 'views/admiral/admiral.css',
+    init, refresh,
+    gate: 'admiral',
+});
 
 // ─── Public API ─────────────────────────────────────────────
 

@@ -16,6 +16,7 @@
 
 import { fetchCatalogOfficers, fetchCatalogShips, setOfficerOverlay, setShipOverlay } from 'api/catalog.js';
 import { fetchDocks } from 'api/docks.js';
+import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
 let officers = [];
@@ -31,6 +32,14 @@ let saveTimers = {};     // { refId: timeoutId } for debounced saves
 let noteTimers = {};     // { refId: timeoutId } for debounced note saves
 
 const $ = (sel) => document.querySelector(sel);
+
+// ─── View Registration ──────────────────────────────────────
+registerView('fleet', {
+    area: $('#fleet-area'),
+    icon: '🚀', title: 'Fleet', subtitle: 'Your owned roster — levels, ranks & power',
+    cssHref: 'views/fleet/fleet.css',
+    init, refresh,
+});
 
 // ─── Public API ─────────────────────────────────────────────
 

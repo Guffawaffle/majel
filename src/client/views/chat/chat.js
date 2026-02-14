@@ -6,6 +6,7 @@
  */
 
 import { sendChat as apiSendChat } from 'api/chat.js';
+import { registerView } from 'router';
 
 // ─── DOM Elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -16,6 +17,16 @@ const sendBtn = $("#send-btn");
 const chatArea = $("#chat-area");
 const scrollBottomBtn = $("#scroll-bottom");
 const welcomeScreen = $("#welcome");
+const inputArea = $("#input-area");
+
+// ─── View Registration ──────────────────────────────────────
+registerView('chat', {
+    area: chatArea,
+    extraAreas: [inputArea],
+    icon: '💬', title: 'Chat', subtitle: 'Gemini-powered fleet advisor',
+    cssHref: 'views/chat/chat.css',
+    refresh: () => { },
+});
 
 // ─── State ──────────────────────────────────────────────────
 let hasMessages = false;

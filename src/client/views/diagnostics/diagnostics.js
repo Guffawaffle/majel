@@ -11,6 +11,7 @@
  */
 
 import { _fetch } from 'api/_fetch.js';
+import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
 let healthData = null;
@@ -21,6 +22,15 @@ let queryHistory = [];
 let loading = false;
 
 const $ = (sel) => document.querySelector(sel);
+
+// ─── View Registration ──────────────────────────────────────
+registerView('diagnostics', {
+    area: $('#diagnostics-area'),
+    icon: '⚡', title: 'Diagnostics', subtitle: 'System health, data summary & query console',
+    cssHref: 'views/diagnostics/diagnostics.css',
+    init, refresh,
+    gate: 'admiral',
+});
 
 // ─── Preset Queries ─────────────────────────────────────────
 const PRESET_QUERIES = [

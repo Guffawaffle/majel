@@ -15,6 +15,7 @@ import {
 } from 'api/docks.js';
 import { fetchShips, fetchOfficers } from 'api/catalog.js';
 import { showConfirmDialog } from 'components/confirm-dialog.js';
+import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
 let docks = [];
@@ -29,6 +30,14 @@ let activePresetId = null;  // currently selected preset ID
 // ─── DOM Refs ───────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
+
+// ─── View Registration ──────────────────────────────────────
+registerView('drydock', {
+    area: $('#drydock-area'),
+    icon: '🔧', title: 'Drydock', subtitle: 'Configure docks, ships & crew',
+    cssHref: 'views/drydock/drydock.css',
+    init, refresh,
+});
 
 // ─── Public API ─────────────────────────────────────────────
 
