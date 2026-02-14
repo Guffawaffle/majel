@@ -14,7 +14,8 @@
  * - Target notes visible inline for targeted items
  */
 
-import * as api from './api.js';
+import { fetchCatalogOfficers, fetchCatalogShips, setOfficerOverlay, setShipOverlay } from './api/catalog.js';
+import { fetchDocks } from './api/docks.js';
 
 // ─── State ──────────────────────────────────────────────────
 let officers = [];
@@ -43,9 +44,9 @@ export async function refresh() {
     loading = true;
     try {
         const [officerData, shipData, dockData] = await Promise.all([
-            api.fetchCatalogOfficers({ ownership: 'owned' }),
-            api.fetchCatalogShips({ ownership: 'owned' }),
-            api.fetchDocks().catch(() => []),
+            fetchCatalogOfficers({ ownership: 'owned' }),
+            fetchCatalogShips({ ownership: 'owned' }),
+            fetchDocks().catch(() => []),
         ]);
         officers = officerData;
         ships = shipData;
@@ -535,7 +536,7 @@ function bindEvents() {
 
 async function saveField(id, field, rawValue, tab) {
     const isOfficer = tab === 'officers';
-    const setFn = isOfficer ? api.setOfficerOverlay : api.setShipOverlay;
+    const setFn = isOfficer ? setOfficerOverlay : setShipOverlay;
 
     let value;
     if (field === 'rank') {
@@ -610,7 +611,7 @@ function esc(str) {
 /** Save inline note via overlay API (QA-001-8) */
 async function saveNote(id, rawValue, tab) {
     const isOfficer = tab === 'officers';
-    const setFn = isOfficer ? api.setOfficerOverlay : api.setShipOverlay;
+    const setFn = isOfficer ? setOfficerOverlay : setShipOverlay;
     const value = rawValue.trim().slice(0, 500) || null;
     const overlay = { targetNote: value };
 
