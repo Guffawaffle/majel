@@ -5,7 +5,7 @@
  * @layer   api-client
  * @domain  core
  * @depends none
- * @exports apiFetch, ApiError
+ * @exports _fetch, apiFetch, ApiError
  * @emits   none
  * @state   none
  *
@@ -66,8 +66,8 @@ export class ApiError extends Error {
  */
 export async function apiFetch(path, opts = {}) {
     const res = await fetch(path, {
-        credentials: 'same-origin',
         ...opts,
+        credentials: 'same-origin',
         headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': 'majel-client',
