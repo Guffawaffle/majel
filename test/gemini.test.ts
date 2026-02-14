@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { buildSystemPrompt, createGeminiEngine } from "../src/server/gemini.js";
+import { buildSystemPrompt, createGeminiEngine } from "../src/server/services/gemini.js";
 
 // ─── buildSystemPrompt ──────────────────────────────────────────
 

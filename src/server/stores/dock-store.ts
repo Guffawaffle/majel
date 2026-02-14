@@ -13,9 +13,9 @@
  * Migrated from @libsql/client to pg (PostgreSQL) in ADR-018 Phase 3.
  */
 
-import { initSchema, withTransaction, type Pool, type PoolClient } from "./db.js";
-import { buildDockBriefing } from "./dock-briefing.js";
-import { log } from "./logger.js";
+import { initSchema, withTransaction, type Pool, type PoolClient } from "../db.js";
+import { buildDockBriefing } from "../services/dock-briefing.js";
+import { log } from "../logger.js";
 
 import type {
   Intent,
@@ -28,12 +28,12 @@ import type {
   CrewPresetWithMembers,
   OfficerConflict,
   DockBriefing,
-} from "./dock-types.js";
+} from "../types/dock-types.js";
 
-import { VALID_INTENT_CATEGORIES, SEED_INTENTS } from "./dock-types.js";
+import { VALID_INTENT_CATEGORIES, SEED_INTENTS } from "../types/dock-types.js";
 
 // Re-export public API so consumers can keep importing from dock-store
-export { VALID_INTENT_CATEGORIES } from "./dock-types.js";
+export { VALID_INTENT_CATEGORIES } from "../types/dock-types.js";
 export type {
   Intent,
   IntentCategory,

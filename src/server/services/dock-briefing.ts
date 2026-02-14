@@ -14,7 +14,7 @@ import type {
   DockBriefing,
   OfficerConflict,
   CrewPresetWithMembers,
-} from "./dock-types.js";
+} from "../types/dock-types.js";
 
 /**
  * Build a multi-tier briefing from dock state.

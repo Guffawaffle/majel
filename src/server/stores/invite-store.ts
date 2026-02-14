@@ -10,8 +10,8 @@
  */
 
 import { randomUUID, randomBytes } from "node:crypto";
-import { initSchema, type Pool } from "./db.js";
-import { log } from "./logger.js";
+import { initSchema, type Pool } from "../db.js";
+import { log } from "../logger.js";
 
 // ─── Schema ─────────────────────────────────────────────────────
 

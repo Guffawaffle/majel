@@ -12,8 +12,8 @@
  * Pattern: factory function createLoadoutStore(pool) returns LoadoutStore.
  */
 
-import { initSchema, withTransaction, type Pool, type PoolClient } from "./db.js";
-import { log } from "./logger.js";
+import { initSchema, withTransaction, type Pool, type PoolClient } from "../db.js";
+import { log } from "../logger.js";
 
 import type {
   Intent,
@@ -29,12 +29,12 @@ import type {
   OfficerConflict,
   PlanValidation,
   PlanItemSummary,
-} from "./loadout-types.js";
+} from "../types/loadout-types.js";
 
-import { VALID_INTENT_CATEGORIES, SEED_INTENTS } from "./loadout-types.js";
+import { VALID_INTENT_CATEGORIES, SEED_INTENTS } from "../types/loadout-types.js";
 
 // Re-export public API so consumers can keep importing from loadout-store
-export { VALID_INTENT_CATEGORIES } from "./loadout-types.js";
+export { VALID_INTENT_CATEGORIES } from "../types/loadout-types.js";
 export type {
   Intent,
   IntentCategory,

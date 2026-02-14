@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import * as path from "node:path";
 import { resolveConfig, bootstrapConfigSync } from "../src/server/config.js";
-import { createSettingsStore, type SettingsStore } from "../src/server/settings.js";
+import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -323,12 +323,12 @@ describe("config isolation", () => {
         'grep -rn "process\\.env" --include="*.ts" src/ | ' +
         'grep -v "src/server/config.ts" | ' +
         'grep -v "src/server/logger.ts" | ' +
-        'grep -v "src/server/gemini.ts" | ' +
-        'grep -v "src/server/settings.ts" | ' +
-        'grep -v "src/server/memory.ts" | ' +
+        'grep -v "src/server/services/gemini.ts" | ' +
+        'grep -v "src/server/stores/settings.ts" | ' +
+        'grep -v "src/server/services/memory.ts" | ' +
         'grep -v "src/server/db.ts" | ' +
         'grep -v "src/server/rate-limit.ts" | ' +
-        'grep -v "src/server/email.ts" | ' +
+        'grep -v "src/server/services/email.ts" | ' +
         'grep -v "src/server/routes/auth.ts"',
         { encoding: 'utf-8', cwd: path.resolve(__dirname, '..') }
       );

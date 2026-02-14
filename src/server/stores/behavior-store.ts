@@ -15,9 +15,9 @@
  * Migrated to PostgreSQL in ADR-018 Phase 3.
  */
 
-import { initSchema, type Pool } from "./db.js";
-import { log } from "./logger.js";
-import type { TaskType } from "./micro-runner.js";
+import { initSchema, type Pool } from "../db.js";
+import { log } from "../logger.js";
+import type { TaskType } from "../services/micro-runner.js";
 
 // ─── Types ──────────────────────────────────────────────────
 

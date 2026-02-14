@@ -6,9 +6,9 @@ import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
-import { requireAdmiral, requireVisitor } from "../auth.js";
-import { attachScopedMemory } from "../memory-middleware.js";
-import { MODEL_REGISTRY, getModelDef, resolveModelId } from "../gemini.js";
+import { requireAdmiral, requireVisitor } from "../services/auth.js";
+import { attachScopedMemory } from "../services/memory-middleware.js";
+import { MODEL_REGISTRY, getModelDef, resolveModelId } from "../services/gemini.js";
 
 export function createChatRoutes(appState: AppState): Router {
   const router = Router();

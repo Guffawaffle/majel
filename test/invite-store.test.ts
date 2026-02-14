@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { createInviteStore, type InviteStore } from "../src/server/invite-store.js";
+import { createInviteStore, type InviteStore } from "../src/server/stores/invite-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;

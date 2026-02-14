@@ -18,8 +18,8 @@
  * Migrated from @libsql/client to PostgreSQL (pg) in ADR-018 Phase 3.
  */
 
-import { initSchema, withTransaction, type Pool } from "./db.js";
-import { log } from "./logger.js";
+import { initSchema, withTransaction, type Pool } from "../db.js";
+import { log } from "../logger.js";
 
 // ─── Types ──────────────────────────────────────────────────
 

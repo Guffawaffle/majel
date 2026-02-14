@@ -9,7 +9,7 @@
  * All email functions are no-throw: failures are logged, never crash the request.
  */
 
-import { log } from "./logger.js";
+import { log } from "../logger.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 

@@ -19,7 +19,7 @@ import {
   type SafetySetting,
   type GenerativeModel,
 } from "@google/generative-ai";
-import { log } from "./logger.js";
+import { log } from "../logger.js";
 import { type MicroRunner, VALIDATION_DISCLAIMER } from "./micro-runner.js";
 
 // ─── Model Registry ───────────────────────────────────────────

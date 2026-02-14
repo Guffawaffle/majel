@@ -16,7 +16,7 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { requireAdmiral } from "../auth.js";
+import { requireAdmiral } from "../services/auth.js";
 
 export function createAdmiralRoutes(appState: AppState): Router {
   const router = Router();

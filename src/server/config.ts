@@ -15,7 +15,7 @@
  * - Config object is fully typed
  */
 
-import type { SettingsStore } from "./settings.js";
+import type { SettingsStore } from "./stores/settings.js";
 
 // ─── Configuration Interface ────────────────────────────────────
 

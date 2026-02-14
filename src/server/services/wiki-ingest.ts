@@ -24,8 +24,8 @@
  * └─────────────────────────────────────────────────────────────────┘
  */
 
-import type { ReferenceStore, CreateReferenceOfficerInput, CreateReferenceShipInput } from "./reference-store.js";
-import { log } from "./logger.js";
+import type { ReferenceStore, CreateReferenceOfficerInput, CreateReferenceShipInput } from "../stores/reference-store.js";
+import { log } from "../logger.js";
 
 // ─── Constants ──────────────────────────────────────────────
 

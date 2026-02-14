@@ -13,7 +13,7 @@
  */
 
 import type { Request, Response, NextFunction, RequestHandler } from "express";
-import type { AppState } from "./app-context.js";
+import type { AppState } from "../app-context.js";
 import { createMemoryService, type MemoryService } from "./memory.js";
 
 // Augment Express locals type for IDE support

@@ -9,7 +9,7 @@
  * Replaces dock-briefing.ts (ADR-010).
  */
 
-import type { LoadoutStore, PlanItemWithContext, OfficerConflict, PlanValidation } from "./loadout-store.js";
+import type { LoadoutStore, PlanItemWithContext, OfficerConflict, PlanValidation } from "../stores/loadout-store.js";
 
 // ─── Types ──────────────────────────────────────────────────
 

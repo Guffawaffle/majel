@@ -13,9 +13,9 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { requireVisitor, requireAdmiral } from "../auth.js";
-import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../overlay-store.js";
-import { syncWikiData } from "../wiki-ingest.js";
+import { requireVisitor, requireAdmiral } from "../services/auth.js";
+import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
+import { syncWikiData } from "../services/wiki-ingest.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
   const router = Router();

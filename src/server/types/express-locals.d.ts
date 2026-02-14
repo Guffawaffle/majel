@@ -9,7 +9,7 @@
  *      src/server/envelope.ts (envelopeMiddleware sets _requestId, _startTime)
  */
 
-import type { MemoryService } from "./memory.js";
+import type { MemoryService } from "../services/memory.js";
 
 declare global {
   namespace Express {
