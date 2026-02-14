@@ -99,7 +99,7 @@ export async function refresh() {
         console.error("Drydock refresh failed:", err);
         const area = $("#drydock-area");
         if (area) {
-            area.innerHTML = `<div class="dock-error">Failed to load drydock data: ${err.message}</div>`;
+            area.innerHTML = `<div class="dock-error">Failed to load drydock data: ${escHtml(err.message)}</div>`;
         }
     }
 }

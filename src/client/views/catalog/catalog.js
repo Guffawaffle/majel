@@ -70,7 +70,7 @@ export async function refresh() {
     } catch (err) {
         console.error("Catalog refresh failed:", err);
         const area = $("#catalog-area");
-        if (area) area.innerHTML = `<div class="cat-error">Failed to load catalog: ${err.message}</div>`;
+        if (area) area.innerHTML = `<div class="cat-error">Failed to load catalog: ${esc(err.message)}</div>`;
     } finally {
         loading = false;
     }
