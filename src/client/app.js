@@ -420,7 +420,7 @@ if (titleBackBtn) {
 // Logout
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
-        try { await fetch("/api/auth/logout", { method: "POST", headers: { 'X-Requested-With': 'majel-client' } }); } catch { }
+        try { await api._fetch("/api/auth/logout", { method: "POST" }); } catch { }
         window.location.href = "/";
     });
 }

@@ -10,6 +10,8 @@
  * 4. Schema Browser — table structure from /api/diagnostic/schema
  */
 
+import { _fetch } from './api.js';
+
 // ─── State ──────────────────────────────────────────────────
 let healthData = null;
 let summaryData = null;
@@ -45,8 +47,8 @@ export async function refresh() {
     try {
         // Load health + summary in parallel on first view
         const [healthRes, summaryRes] = await Promise.all([
-            fetch("/api/diagnostic").then(r => r.json()),
-            fetch("/api/diagnostic/summary").then(r => r.json()),
+            _fetch("/api/diagnostic").then(r => r.json()),
+            _fetch("/api/diagnostic/summary").then(r => r.json()),
         ]);
         healthData = healthRes.data;
         summaryData = summaryRes.data;
@@ -71,7 +73,7 @@ function switchSection(section) {
 
 async function loadSchema() {
     try {
-        const res = await fetch("/api/diagnostic/schema");
+        const res = await _fetch("/api/diagnostic/schema");
         const json = await res.json();
         schemaData = json.data;
         render();
@@ -88,7 +90,7 @@ async function executeQuery(sql) {
     resultsEl.innerHTML = '<p class="diag-loading">Executing...</p>';
 
     try {
-        const res = await fetch(`/api/diagnostic/query?sql=${encodeURIComponent(sql)}&limit=200`);
+        const res = await _fetch(`/api/diagnostic/query?sql=${encodeURIComponent(sql)}&limit=200`);
         const json = await res.json();
 
         if (json.status === "error") {

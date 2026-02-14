@@ -8,7 +8,7 @@
 // CSRF + credentials wrapper (ADR-023 Phase 0)
 // All fetch calls go through this to add the X-Requested-With header.
 // Replaced by api/_fetch.js in Phase 1.
-const _fetch = (url, opts = {}) => fetch(url, {
+export const _fetch = (url, opts = {}) => fetch(url, {
     ...opts,
     credentials: 'same-origin',
     headers: {
