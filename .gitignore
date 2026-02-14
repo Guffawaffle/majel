@@ -22,6 +22,9 @@ dist/
 .vscode/
 coverage/
 
+# Cloud auth (see scripts/cloud.ts)
+.cloud-auth
+
 # Logs
 logs/
 .dev.pid

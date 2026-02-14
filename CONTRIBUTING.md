@@ -282,6 +282,11 @@ Major architectural decisions are documented in `docs/ADR-*.md`. **Read these be
 - [ADR-015: Canonical Entity Identity](docs/ADR-015-canonical-entity-identity.md) — Wiki-based entity IDs
 - [ADR-016: Catalog-Overlay Model](docs/ADR-016-catalog-overlay-model.md) — Reference + overlay architecture
 - [ADR-017: Fleet Tab & Player Roadmap](docs/ADR-017-fleet-tab-and-player-roadmap.md) — Inline-editable roster
+- [ADR-018: Cloud Deployment](docs/ADR-018-cloud-deployment.md) — GCP Cloud Run + Cloud SQL
+- [ADR-019: User System](docs/ADR-019-user-system.md) — 4-tier RBAC (visitor → admiral)
+- [ADR-020: Admiral Console](docs/ADR-020-admiral-console.md) — Admin diagnostic tooling
+- [ADR-021: Postgres Frame Store](docs/ADR-021-postgres-frame-store.md) — Lex memory on PostgreSQL with RLS
+- [ADR-022: Loadout Architecture](docs/ADR-022-loadout-architecture.md) — Store-inversion pattern
 
 If your change challenges an ADR decision, discuss it in an issue before coding.
 
@@ -308,15 +313,15 @@ Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.yml):
 
 These are explicitly shelved for v1.0 or later. PRs adding these will be declined:
 
-- Multi-user authentication or authorization
-- Cloud deployment configurations
 - Plugin/extension systems
 - SvelteKit migration (v1.0 scope)
 - Mobile native apps
-- Alliance/guild features (multi-user)
-- Custom model selection UI
+- Alliance/guild features (multi-tenant)
+- Third-party OAuth providers (Google, Discord, etc.)
+- Horizontal scaling / multi-region deployment
 
-See [ADR-006](docs/ADR-006-open-alpha.md) for the full shelved features list.
+Note: Multi-user auth (ADR-019), cloud deployment (ADR-018), and model selection (ADR-020) have shipped.
+See [ADR-006](docs/ADR-006-open-alpha.md) for the original shelved features list.
 
 ## Communication
 
@@ -328,7 +333,7 @@ Response times are best-effort. Majel is a side project.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same [MIT License](LICENSE) that covers the project.
+By contributing, you agree that your contributions will be licensed under the same [ISC License](LICENSE) that covers the project.
 
 ---
 

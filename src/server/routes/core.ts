@@ -5,9 +5,22 @@
  */
 
 import { Router } from "express";
+import { readFileSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, createTimeoutMiddleware } from "../envelope.js";
+import { requireVisitor } from "../auth.js";
+
+// Read version from package.json once at module load
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const APP_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, "../../../package.json"), "utf-8"));
+    return pkg.version ?? "unknown";
+  } catch { return "unknown"; }
+})();
 
 export function createCoreRoutes(appState: AppState): Router {
   const router = Router();
@@ -15,87 +28,109 @@ export function createCoreRoutes(appState: AppState): Router {
   // ─── Health ─────────────────────────────────────────────────
 
   router.get("/api/health", createTimeoutMiddleware(2000), async (_req, res) => {
+    const status = appState.startupComplete ? "online" : "initializing";
+    if (!appState.startupComplete) {
+      res.setHeader("Retry-After", "2");
+    }
+
+    const safeCounts = async (store: { counts(): Promise<unknown> } | null | undefined, label: string) => {
+      if (!store) return { active: false };
+      try { return { active: true, ...await store.counts() as Record<string, unknown> }; }
+      catch (err) { log.root.warn({ err, store: label }, "Health check: store counts failed"); return { active: true, error: "unavailable" }; }
+    };
+
     sendOk(res, {
-      status: appState.startupComplete ? "online" : "initializing",
+      status,
+      ...(!appState.startupComplete ? { retryAfterMs: 2000 } : {}),
       gemini: appState.geminiEngine ? "connected" : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
-      dockStore: appState.dockStore ? { active: true, ...await appState.dockStore.counts() } : { active: false },
-      referenceStore: appState.referenceStore ? { active: true, ...await appState.referenceStore.counts() } : { active: false },
-      overlayStore: appState.overlayStore ? { active: true, ...await appState.overlayStore.counts() } : { active: false },
+      dockStore: await safeCounts(appState.dockStore, "dockStore"),
+      referenceStore: await safeCounts(appState.referenceStore, "referenceStore"),
+      overlayStore: await safeCounts(appState.overlayStore, "overlayStore"),
     });
   });
 
   // ─── API Discovery ──────────────────────────────────────────
+  // CANONICAL ROUTE LIST — update this when adding/removing routes.
+  // See docs/AX-SCHEMA.md for the API envelope specification.
 
   router.get("/api", (_req, res) => {
     sendOk(res, {
       name: "Majel",
-      version: "0.4.0",
+      version: APP_VERSION,
       description: "STFC Fleet Intelligence System API",
-      envelope: "All responses wrapped in { ok, data, meta } / { ok, error, meta } (ADR-004)",
+      envelope: "All responses wrapped in { ok, data, meta } / { ok, error: { code, message, detail?, hints? }, meta } (ADR-004)",
+      auth: {
+        none: "No authentication required",
+        lieutenant: "Requires session cookie or Bearer token (visitor-level)",
+        admiral: "Requires Admiral-level Bearer token or session",
+      },
       endpoints: [
-        { method: "GET", path: "/api", description: "API discovery (this endpoint)" },
-        { method: "GET", path: "/api/health", description: "Fast health check" },
-        { method: "GET", path: "/api/diagnostic", description: "Deep subsystem status" },
-        { method: "POST", path: "/api/chat", description: "Send a message, get a Gemini response" },
-        { method: "GET", path: "/api/history", description: "Conversation history (session + Lex)" },
-        { method: "GET", path: "/api/recall", description: "Search Lex memory by meaning" },
-        { method: "GET", path: "/api/settings", description: "All settings with resolved values" },
-        { method: "PATCH", path: "/api/settings", description: "Update one or more settings" },
-        { method: "DELETE", path: "/api/settings/:key", description: "Reset a setting to its default" },
-        { method: "GET", path: "/api/sessions", description: "List saved chat sessions" },
-        { method: "GET", path: "/api/sessions/:id", description: "Get a session with all messages" },
-        { method: "PATCH", path: "/api/sessions/:id", description: "Update session title" },
-        { method: "DELETE", path: "/api/sessions/:id", description: "Delete a session" },
-        { method: "GET", path: "/api/dock/intents", description: "List intent catalog" },
-        { method: "POST", path: "/api/dock/intents", description: "Create a custom intent" },
-        { method: "DELETE", path: "/api/dock/intents/:key", description: "Delete a custom intent" },
-        { method: "GET", path: "/api/dock/docks", description: "List all dock loadouts" },
-        { method: "GET", path: "/api/dock/docks/:num", description: "Get a single dock" },
-        { method: "PUT", path: "/api/dock/docks/:num", description: "Create or update a dock" },
-        { method: "DELETE", path: "/api/dock/docks/:num", description: "Clear a dock" },
-        { method: "PUT", path: "/api/dock/docks/:num/intents", description: "Set dock intents" },
-        { method: "POST", path: "/api/dock/docks/:num/ships", description: "Add ship to dock" },
-        { method: "DELETE", path: "/api/dock/docks/:num/ships/:shipId", description: "Remove ship from dock" },
-        { method: "PATCH", path: "/api/dock/docks/:num/ships/:shipId", description: "Update dock ship" },
-        { method: "GET", path: "/api/dock/presets", description: "List crew presets" },
-        { method: "GET", path: "/api/dock/presets/:id", description: "Get a crew preset" },
-        { method: "POST", path: "/api/dock/presets", description: "Create a crew preset" },
-        { method: "PATCH", path: "/api/dock/presets/:id", description: "Update preset" },
-        { method: "DELETE", path: "/api/dock/presets/:id", description: "Delete a crew preset" },
-        { method: "PUT", path: "/api/dock/presets/:id/members", description: "Set preset crew members" },
-        { method: "PUT", path: "/api/dock/presets/:id/tags", description: "Set preset tags" },
-        { method: "GET", path: "/api/dock/tags", description: "List all unique preset tags" },
-        { method: "GET", path: "/api/dock/docks/:num/presets", description: "Find presets for a dock" },
-        { method: "GET", path: "/api/dock/docks/summary", description: "Computed dock briefing" },
-        { method: "GET", path: "/api/dock/docks/conflicts", description: "Officer conflict report" },
+        { method: "GET", path: "/api", auth: "none", description: "API discovery (this endpoint)" },
+        { method: "GET", path: "/api/health", auth: "none", description: "Fast health check (returns retryAfterMs when initializing)" },
+        { method: "GET", path: "/api/diagnostic", auth: "lieutenant", description: "Deep subsystem status" },
+        { method: "POST", path: "/api/chat", auth: "admiral", description: "Send a message, get a Gemini response", body: { message: "string (required)" } },
+        { method: "GET", path: "/api/history", auth: "lieutenant", description: "Conversation history (session + Lex)", params: { source: "session|lex|both", limit: "1-100", sessionId: "string" } },
+        { method: "GET", path: "/api/recall", auth: "lieutenant", description: "Search Lex memory by meaning", params: { q: "string (required)", limit: "1-100" } },
+        { method: "GET", path: "/api/settings", auth: "lieutenant", description: "All settings with resolved values" },
+        { method: "PATCH", path: "/api/settings", auth: "admiral", description: "Update one or more settings" },
+        { method: "DELETE", path: "/api/settings/:key", auth: "admiral", description: "Reset a setting to its default" },
+        { method: "GET", path: "/api/sessions", auth: "lieutenant", description: "List saved chat sessions" },
+        { method: "GET", path: "/api/sessions/:id", auth: "lieutenant", description: "Get a session with all messages" },
+        { method: "PATCH", path: "/api/sessions/:id", auth: "lieutenant", description: "Update session title" },
+        { method: "DELETE", path: "/api/sessions/:id", auth: "lieutenant", description: "Delete a session" },
+        { method: "GET", path: "/api/dock/intents", auth: "lieutenant", description: "List intent catalog" },
+        { method: "POST", path: "/api/dock/intents", auth: "admiral", description: "Create a custom intent" },
+        { method: "DELETE", path: "/api/dock/intents/:key", auth: "admiral", description: "Delete a custom intent" },
+        { method: "GET", path: "/api/dock/docks", auth: "lieutenant", description: "List all dock loadouts" },
+        { method: "GET", path: "/api/dock/docks/:num", auth: "lieutenant", description: "Get a single dock" },
+        { method: "PUT", path: "/api/dock/docks/:num", auth: "admiral", description: "Create or update a dock" },
+        { method: "DELETE", path: "/api/dock/docks/:num", auth: "admiral", description: "Clear a dock" },
+        { method: "PUT", path: "/api/dock/docks/:num/intents", auth: "admiral", description: "Set dock intents" },
+        { method: "POST", path: "/api/dock/docks/:num/ships", auth: "admiral", description: "Add ship to dock" },
+        { method: "DELETE", path: "/api/dock/docks/:num/ships/:shipId", auth: "admiral", description: "Remove ship from dock" },
+        { method: "PATCH", path: "/api/dock/docks/:num/ships/:shipId", auth: "admiral", description: "Update dock ship" },
+        { method: "GET", path: "/api/dock/presets", auth: "lieutenant", description: "List crew presets" },
+        { method: "GET", path: "/api/dock/presets/:id", auth: "lieutenant", description: "Get a crew preset" },
+        { method: "POST", path: "/api/dock/presets", auth: "admiral", description: "Create a crew preset" },
+        { method: "PATCH", path: "/api/dock/presets/:id", auth: "admiral", description: "Update preset" },
+        { method: "DELETE", path: "/api/dock/presets/:id", auth: "admiral", description: "Delete a crew preset" },
+        { method: "PUT", path: "/api/dock/presets/:id/members", auth: "admiral", description: "Set preset crew members" },
+        { method: "PUT", path: "/api/dock/presets/:id/tags", auth: "admiral", description: "Set preset tags" },
+        { method: "GET", path: "/api/dock/tags", auth: "lieutenant", description: "List all unique preset tags" },
+        { method: "GET", path: "/api/dock/docks/:num/presets", auth: "lieutenant", description: "Find presets for a dock" },
+        { method: "GET", path: "/api/dock/docks/summary", auth: "lieutenant", description: "Computed dock briefing" },
+        { method: "GET", path: "/api/dock/docks/conflicts", auth: "lieutenant", description: "Officer conflict report" },
         // ── Catalog (ADR-016) ──
-        { method: "GET", path: "/api/catalog/officers", description: "List reference officers" },
-        { method: "GET", path: "/api/catalog/officers/:id", description: "Get a reference officer" },
-        { method: "GET", path: "/api/catalog/officers/merged", description: "Officers with overlay state" },
-        { method: "GET", path: "/api/catalog/ships", description: "List reference ships" },
-        { method: "GET", path: "/api/catalog/ships/:id", description: "Get a reference ship" },
-        { method: "GET", path: "/api/catalog/ships/merged", description: "Ships with overlay state" },
-        { method: "GET", path: "/api/catalog/counts", description: "Reference + overlay counts" },
-        { method: "PATCH", path: "/api/catalog/officers/:id/overlay", description: "Set officer overlay" },
-        { method: "DELETE", path: "/api/catalog/officers/:id/overlay", description: "Reset officer overlay" },
-        { method: "PATCH", path: "/api/catalog/ships/:id/overlay", description: "Set ship overlay" },
-        { method: "DELETE", path: "/api/catalog/ships/:id/overlay", description: "Reset ship overlay" },
-        { method: "POST", path: "/api/catalog/officers/bulk-overlay", description: "Bulk set officer overlays" },
-        { method: "POST", path: "/api/catalog/ships/bulk-overlay", description: "Bulk set ship overlays" },
-        { method: "POST", path: "/api/catalog/sync", description: "Sync reference data from STFC wiki" },
+        { method: "GET", path: "/api/catalog/officers", auth: "lieutenant", description: "List reference officers" },
+        { method: "GET", path: "/api/catalog/officers/:id", auth: "lieutenant", description: "Get a reference officer" },
+        { method: "GET", path: "/api/catalog/officers/merged", auth: "lieutenant", description: "Officers with overlay state" },
+        { method: "GET", path: "/api/catalog/ships", auth: "lieutenant", description: "List reference ships" },
+        { method: "GET", path: "/api/catalog/ships/:id", auth: "lieutenant", description: "Get a reference ship" },
+        { method: "GET", path: "/api/catalog/ships/merged", auth: "lieutenant", description: "Ships with overlay state" },
+        { method: "GET", path: "/api/catalog/counts", auth: "lieutenant", description: "Reference + overlay counts" },
+        { method: "PATCH", path: "/api/catalog/officers/:id/overlay", auth: "admiral", description: "Set officer overlay" },
+        { method: "DELETE", path: "/api/catalog/officers/:id/overlay", auth: "admiral", description: "Reset officer overlay" },
+        { method: "PATCH", path: "/api/catalog/ships/:id/overlay", auth: "admiral", description: "Set ship overlay" },
+        { method: "DELETE", path: "/api/catalog/ships/:id/overlay", auth: "admiral", description: "Reset ship overlay" },
+        { method: "POST", path: "/api/catalog/officers/bulk-overlay", auth: "admiral", description: "Bulk set officer overlays" },
+        { method: "POST", path: "/api/catalog/ships/bulk-overlay", auth: "admiral", description: "Bulk set ship overlays" },
+        { method: "POST", path: "/api/catalog/sync", auth: "admiral", description: "Sync reference data from STFC wiki" },
+        // ── Model Selector (Admiral only) ──
+        { method: "GET", path: "/api/models", auth: "admiral", description: "List available AI models + current selection" },
+        { method: "POST", path: "/api/models/select", auth: "admiral", description: "Hot-swap the active Gemini model", body: { model: "string (required) — model ID from GET /api/models" } },
         // ── Diagnostic Query (AI Tool) ──
-        { method: "GET", path: "/api/diagnostic/schema", description: "DB schema introspection (tables, columns, indexes)" },
-        { method: "GET", path: "/api/diagnostic/query", description: "Execute read-only SQL (AI consumption)" },
-        { method: "GET", path: "/api/diagnostic/summary", description: "Pre-built reference + overlay summary" },
+        { method: "GET", path: "/api/diagnostic/schema", auth: "admiral", description: "DB schema introspection (tables, columns, indexes)" },
+        { method: "GET", path: "/api/diagnostic/query", auth: "admiral", description: "Execute read-only SQL (AI consumption)", params: { sql: "string (required)" } },
+        { method: "GET", path: "/api/diagnostic/summary", auth: "admiral", description: "Pre-built reference + overlay summary" },
       ],
     });
   });
 
   // ─── Diagnostic ─────────────────────────────────────────────
 
-  router.get("/api/diagnostic", async (_req, res) => {
+  router.get("/api/diagnostic", requireVisitor(appState), async (_req, res) => {
     const uptimeSeconds = process.uptime();
     const hours = Math.floor(uptimeSeconds / 3600);
     const minutes = Math.floor((uptimeSeconds % 3600) / 60);
@@ -103,7 +138,7 @@ export function createCoreRoutes(appState: AppState): Router {
 
     sendOk(res, {
       system: {
-        version: "0.4.0",
+        version: APP_VERSION,
         uptime,
         uptimeSeconds: Math.round(uptimeSeconds),
         nodeVersion: process.version,
@@ -111,7 +146,7 @@ export function createCoreRoutes(appState: AppState): Router {
         startupComplete: appState.startupComplete,
       },
       gemini: appState.geminiEngine
-        ? { status: "connected", model: "gemini-2.5-flash-lite", activeSessions: appState.geminiEngine.getSessionCount() }
+        ? { status: "connected", model: appState.geminiEngine.getModel(), activeSessions: appState.geminiEngine.getSessionCount() }
         : { status: "not configured" },
       memory: await (async () => {
         if (!appState.memoryService) return { status: "not configured" };

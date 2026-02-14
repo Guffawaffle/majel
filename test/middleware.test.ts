@@ -16,7 +16,8 @@ import {
   errorHandler, 
   createTimeoutMiddleware, 
   ErrorCode,
-  asyncHandler
+  asyncHandler,
+  sendOk,
 } from "../src/server/envelope.js";
 
 // ─── Request ID Tests ───────────────────────────────────────────
@@ -335,17 +336,9 @@ describe("Middleware integration", () => {
     app.use(express.json({ limit: "100kb" }));
     app.use(envelopeMiddleware);
     
-    app.post("/api/process", createTimeoutMiddleware(500), async (req, res) => {
-      await new Promise((r) => setTimeout(r, 100));
-      res.json({
-        ok: true,
-        data: { processed: req.body },
-        meta: {
-          requestId: res.locals._requestId,
-          timestamp: new Date().toISOString(),
-          durationMs: Date.now() - res.locals._startTime,
-        },
-      });
+    // Use the production sendOk() path — not a hand-rolled res.json()
+    app.post("/api/process", createTimeoutMiddleware(500), (req, res) => {
+      sendOk(res, { processed: req.body });
     });
     
     app.use(errorHandler);
@@ -358,7 +351,10 @@ describe("Middleware integration", () => {
     expect(res.body.data.processed.message).toBe("test data");
     expect(res.body.meta.requestId).toBeDefined();
     expect(res.headers["x-request-id"]).toBe(res.body.meta.requestId);
-    expect(res.body.meta.durationMs).toBeGreaterThan(90);
+    // Verify duration is computed (non-negative number) — don't assert wall-clock
+    // precision. Date.now() is not monotonic; NTP corrections can push it backward,
+    // which caused the original flake (durationMs: -530).
+    expect(res.body.meta.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   it("request ID is consistent across middleware chain", async () => {
