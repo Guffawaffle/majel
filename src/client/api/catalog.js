@@ -1,0 +1,171 @@
+/**
+ * catalog.js — Reference Data & Overlay API
+ *
+ * @module  api/catalog
+ * @layer   api-client
+ * @domain  catalog
+ * @depends api/_fetch
+ * @exports syncWikiData, fetchCatalogOfficers, fetchCatalogShips,
+ *          fetchCatalogCounts, setOfficerOverlay, setShipOverlay,
+ *          bulkSetOfficerOverlay, bulkSetShipOverlay,
+ *          fetchShips, fetchOfficers
+ * @emits   none
+ * @state   none
+ */
+
+import { _fetch } from './_fetch.js';
+
+// ─── Merged Lookups (used by docks, fleet) ──────────────────
+
+/**
+ * Fetch all ships (merged reference + overlay)
+ * @returns {Promise<Array>} Array of ship objects
+ */
+export async function fetchShips() {
+    const res = await _fetch("/api/catalog/ships/merged");
+    const env = await res.json();
+    return env.data?.ships || [];
+}
+
+/**
+ * Fetch all officers (merged reference + overlay)
+ * @returns {Promise<Array>} Array of officer objects
+ */
+export async function fetchOfficers() {
+    const res = await _fetch("/api/catalog/officers/merged");
+    const env = await res.json();
+    return env.data?.officers || [];
+}
+
+// ─── Filtered Catalog Queries ───────────────────────────────
+
+/**
+ * Fetch merged catalog officers (reference + overlay)
+ * @param {Object} filters - { q?, rarity?, group?, ownership?, target? }
+ * @returns {Promise<Array>} Merged officer records
+ */
+export async function fetchCatalogOfficers(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.q) params.set("q", filters.q);
+    if (filters.rarity) params.set("rarity", filters.rarity);
+    if (filters.group) params.set("group", filters.group);
+    if (filters.ownership) params.set("ownership", filters.ownership);
+    if (filters.target !== undefined) params.set("target", String(filters.target));
+    const qs = params.toString();
+    const res = await _fetch(`/api/catalog/officers/merged${qs ? "?" + qs : ""}`);
+    const env = await res.json();
+    return env.data?.officers || [];
+}
+
+/**
+ * Fetch merged catalog ships (reference + overlay)
+ * @param {Object} filters - { q?, rarity?, faction?, class?, ownership?, target? }
+ * @returns {Promise<Array>} Merged ship records
+ */
+export async function fetchCatalogShips(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.q) params.set("q", filters.q);
+    if (filters.rarity) params.set("rarity", filters.rarity);
+    if (filters.faction) params.set("faction", filters.faction);
+    if (filters.class) params.set("class", filters.class);
+    if (filters.ownership) params.set("ownership", filters.ownership);
+    if (filters.target !== undefined) params.set("target", String(filters.target));
+    const qs = params.toString();
+    const res = await _fetch(`/api/catalog/ships/merged${qs ? "?" + qs : ""}`);
+    const env = await res.json();
+    return env.data?.ships || [];
+}
+
+/**
+ * Fetch catalog counts (reference + overlay summary)
+ * @returns {Promise<Object>} { reference: {officers, ships}, overlay: {...} }
+ */
+export async function fetchCatalogCounts() {
+    const res = await _fetch("/api/catalog/counts");
+    const env = await res.json();
+    return env.data || { reference: { officers: 0, ships: 0 }, overlay: {} };
+}
+
+// ─── Overlay Mutations ──────────────────────────────────────
+
+/**
+ * Set overlay for a single officer
+ * @param {string} id - Reference officer ID
+ * @param {Object} overlay - { ownershipState?, target?, level?, rank? }
+ * @returns {Promise<Object>}
+ */
+export async function setOfficerOverlay(id, overlay) {
+    const res = await _fetch(`/api/catalog/officers/${encodeURIComponent(id)}/overlay`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(overlay),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Set overlay for a single ship
+ * @param {string} id - Reference ship ID
+ * @param {Object} overlay - { ownershipState?, target?, tier?, level? }
+ * @returns {Promise<Object>}
+ */
+export async function setShipOverlay(id, overlay) {
+    const res = await _fetch(`/api/catalog/ships/${encodeURIComponent(id)}/overlay`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(overlay),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Bulk set officer overlays
+ * @param {string[]} refIds - Officer reference IDs
+ * @param {Object} overlay - { ownershipState?, target? }
+ * @returns {Promise<Object>}
+ */
+export async function bulkSetOfficerOverlay(refIds, overlay) {
+    const res = await _fetch("/api/catalog/officers/bulk-overlay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refIds, ...overlay }),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+/**
+ * Bulk set ship overlays
+ * @param {string[]} refIds - Ship reference IDs
+ * @param {Object} overlay - { ownershipState?, target? }
+ * @returns {Promise<Object>}
+ */
+export async function bulkSetShipOverlay(refIds, overlay) {
+    const res = await _fetch("/api/catalog/ships/bulk-overlay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refIds, ...overlay }),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}
+
+// ─── Wiki Sync ──────────────────────────────────────────────
+
+/**
+ * Sync reference data from the STFC Fandom Wiki.
+ * User-initiated: fetches Officers + Ships via Special:Export.
+ * @param {Object} options - { officers?: boolean, ships?: boolean }
+ * @returns {Promise<Object>} { ok, data: { officers, ships, provenance } }
+ */
+export async function syncWikiData(options = {}) {
+    const res = await _fetch("/api/catalog/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ consent: true, ...options }),
+    });
+    const env = await res.json();
+    return { ok: res.ok, data: env.data, error: env.error };
+}

@@ -10,7 +10,11 @@
  * - History & roster refresh tools
  */
 
-import * as api from './api.js';
+import { getMe } from './api/auth.js';
+import { checkHealth } from './api/health.js';
+import { loadHistory as apiLoadHistory, searchRecall as apiSearchRecall } from './api/chat.js';
+import { saveFleetSetting, loadFleetSettings } from './api/settings.js';
+import { _fetch } from './api/_fetch.js';
 import * as chat from './chat.js';
 import * as sessions from './sessions.js';
 import * as drydock from './drydock.js';
@@ -67,7 +71,7 @@ let viewHistory = []; // stack for back button
 // ─── Ops Level ──────────────────────────────────────────────
 async function initOpsLevel() {
     try {
-        const settings = await api.loadFleetSettings();
+        const settings = await loadFleetSettings();
         if (settings.settings) {
             const ol = settings.settings.find(s => s.key === "fleet.opsLevel");
             if (ol) opsLevel = parseInt(ol.value, 10) || 1;
@@ -86,7 +90,7 @@ export function getOpsLevel() { return opsLevel; }
 
 // ─── Health Check & Status Updates ─────────────────────────
 async function checkHealthAndUpdateUI() {
-    const data = await api.checkHealth();
+    const data = await checkHealth();
 
     if (!data) {
         // Offline
@@ -128,7 +132,7 @@ async function checkHealthAndUpdateUI() {
 // ─── History Tool ───────────────────────────────────────────
 async function loadHistory() {
     try {
-        const data = await api.loadHistory();
+        const data = await apiLoadHistory();
 
         if (data.lex && data.lex.length > 0) {
             chat.addMessage("system", `── Lex Memory: ${data.lex.length} past conversations ──`);
@@ -152,7 +156,7 @@ async function searchRecall(query) {
     recallResults.innerHTML = '<p style="color: var(--text-muted); padding: 8px 0;">Searching...</p>';
 
     try {
-        const result = await api.searchRecall(query);
+        const result = await apiSearchRecall(query);
 
         if (!result.ok) {
             recallResults.innerHTML = `<p class="recall-item" style="color: var(--accent-red)">${result.error?.message || "Error"}</p>`;
@@ -384,7 +388,7 @@ if (opsBtn) {
             return;
         }
         opsLevel = val;
-        api.saveFleetSetting("fleet.opsLevel", val);
+        saveFleetSetting("fleet.opsLevel", val);
         updateOpsDisplay();
     });
 }
@@ -420,7 +424,7 @@ if (titleBackBtn) {
 // Logout
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
-        try { await api._fetch("/api/auth/logout", { method: "POST" }); } catch { }
+        try { await _fetch("/api/auth/logout", { method: "POST" }); } catch { }
         window.location.href = "/";
     });
 }
@@ -438,7 +442,7 @@ if (logoutBtn) {
     await admin.init();
 
     // Fetch user identity for sidebar gating
-    const me = await api.getMe();
+    const me = await getMe();
     userRole = me?.role ?? null;
     applySidebarGating();
     catalog.setAdminMode(userRole === 'admiral');

@@ -6,7 +6,14 @@
  * Docks are dynamically created/deleted — no fixed count.
  */
 
-import * as api from './api.js';
+import {
+    fetchDocks, updateDock, deleteDock, previewDeleteDock,
+    fetchNextDockNumber, saveDockIntents, addDockShip,
+    removeDockShip, setActiveShip, fetchIntents,
+    fetchConflicts, fetchPresetsForDock,
+    createPreset, deletePreset, setPresetMembers,
+} from './api/docks.js';
+import { fetchShips, fetchOfficers } from './api/catalog.js';
 import { showConfirmDialog } from './confirm-dialog.js';
 
 // ─── State ──────────────────────────────────────────────────
@@ -40,11 +47,11 @@ export async function init() {
 export async function refresh() {
     try {
         const [docksData, shipsData, officersData, intentsData, conflictsData] = await Promise.all([
-            api.fetchDocks(),
-            api.fetchShips(),
-            api.fetchOfficers(),
-            api.fetchIntents(),
-            api.fetchConflicts(),
+            fetchDocks(),
+            fetchShips(),
+            fetchOfficers(),
+            fetchIntents(),
+            fetchConflicts(),
         ]);
 
         docks = docksData;
@@ -61,7 +68,7 @@ export async function refresh() {
         // Load crew presets for active dock
         if (activeDockNum) {
             try {
-                dockPresets = await api.fetchPresetsForDock(activeDockNum);
+                dockPresets = await fetchPresetsForDock(activeDockNum);
             } catch {
                 dockPresets = [];
             }
@@ -553,8 +560,8 @@ function bindEvents() {
     const addBtn = area.querySelector("[data-action='add-dock']");
     if (addBtn) {
         addBtn.addEventListener("click", async () => {
-            const nextNum = await api.fetchNextDockNumber();
-            await api.updateDock(nextNum, { label: `Dock ${nextNum}` });
+            const nextNum = await fetchNextDockNumber();
+            await updateDock(nextNum, { label: `Dock ${nextNum}` });
             activeDockNum = nextNum;
             await refresh();
         });
@@ -569,7 +576,7 @@ function bindEvents() {
             const label = dock?.label || `Dock ${num}`;
 
             // Fetch cascade preview from backend
-            const preview = await api.previewDeleteDock(num);
+            const preview = await previewDeleteDock(num);
             const sections = [];
             if (preview.ships?.length > 0) {
                 sections.push({ label: "Ship assignments", items: preview.ships.map(s => s.shipName) });
@@ -586,7 +593,7 @@ function bindEvents() {
             });
             if (!confirmed) return;
 
-            await api.deleteDock(num);
+            await deleteDock(num);
             activeDockNum = null;
             await refresh();
         });
@@ -613,7 +620,7 @@ function bindEvents() {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(async () => {
                 const num = parseInt(labelInput.dataset.dock, 10);
-                await api.updateDock(num, { label: labelInput.value.trim() });
+                await updateDock(num, { label: labelInput.value.trim() });
                 // Update local cache
                 const dock = docks.find(d => d.dockNumber === num);
                 if (dock) dock.label = labelInput.value.trim();
@@ -638,7 +645,7 @@ function bindEvents() {
     area.querySelectorAll("[data-action='set-active-ship']").forEach(radio => {
         radio.addEventListener("change", async () => {
             const shipId = radio.dataset.ship;
-            await api.setActiveShip(activeDockNum, shipId);
+            await setActiveShip(activeDockNum, shipId);
             await refresh();
         });
     });
@@ -649,7 +656,7 @@ function bindEvents() {
             e.preventDefault();
             e.stopPropagation();
             const shipId = btn.dataset.ship;
-            await api.removeDockShip(activeDockNum, shipId);
+            await removeDockShip(activeDockNum, shipId);
             await refresh();
         });
     });
@@ -662,7 +669,7 @@ function bindEvents() {
             if (!shipId) return;
             const dock = docks.find(d => d.dockNumber === activeDockNum);
             const isFirst = !dock || (dock.ships || []).length === 0;
-            await api.addDockShip(activeDockNum, shipId, isFirst);
+            await addDockShip(activeDockNum, shipId, isFirst);
             await refresh();
         });
     }
@@ -674,7 +681,7 @@ function bindEvents() {
             area.querySelectorAll("[data-action='toggle-intent']").forEach(el => {
                 if (el.checked) checked.push(el.dataset.key);
             });
-            await api.saveDockIntents(activeDockNum, checked);
+            await saveDockIntents(activeDockNum, checked);
             const dock = docks.find(d => d.dockNumber === activeDockNum);
             if (dock) {
                 dock.intents = allIntents.filter(i => checked.includes(i.key));
@@ -705,7 +712,7 @@ function bindEvents() {
                 ? `${shipName} — Crew`
                 : `${shipName} — ${intentObj?.label || intentKey}`;
 
-            const result = await api.createPreset({ shipId, intentKey, presetName });
+            const result = await createPreset({ shipId, intentKey, presetName });
             if (result.ok && result.data) {
                 activePresetId = result.data.id;
             }
@@ -730,7 +737,7 @@ function bindEvents() {
             });
             if (!confirmed) return;
 
-            await api.deletePreset(presetId);
+            await deletePreset(presetId);
             activePresetId = null;
             await refresh();
         });
@@ -771,8 +778,8 @@ function bindTabEvents() {
     const addBtn = area.querySelector("[data-action='add-dock']");
     if (addBtn) {
         addBtn.addEventListener("click", async () => {
-            const nextNum = await api.fetchNextDockNumber();
-            await api.updateDock(nextNum, { label: `Dock ${nextNum}` });
+            const nextNum = await fetchNextDockNumber();
+            await updateDock(nextNum, { label: `Dock ${nextNum}` });
             activeDockNum = nextNum;
             await refresh();
         });
@@ -789,7 +796,7 @@ async function switchDock(dockNum) {
     activeDockNum = dockNum;
     activePresetId = null;
     try {
-        dockPresets = await api.fetchPresetsForDock(dockNum);
+        dockPresets = await fetchPresetsForDock(dockNum);
         if (dockPresets.length > 0) {
             activePresetId = dockPresets[0].id;
         }
@@ -839,7 +846,7 @@ async function saveSlotAssignment(presetId, slotKey, officerId) {
         members.push({ officerId: slots['officer-2'], roleType: 'bridge', slot: 'officer' });
     }
 
-    await api.setPresetMembers(presetId, members);
+    await setPresetMembers(presetId, members);
     await refresh();
 }
 

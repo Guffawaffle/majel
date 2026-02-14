@@ -5,7 +5,7 @@
  * Handles chat UI, message rendering, markdown, and input controls.
  */
 
-import * as api from './api.js';
+import { sendChat } from './api/chat.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -294,7 +294,7 @@ async function sendChat(message, onRefreshSessions) {
     addTypingIndicator();
 
     try {
-        const result = await api.sendChat(currentSessionId, message);
+        const result = await sendChat(currentSessionId, message);
         removeTypingIndicator();
         const data = result.data.data || {};
 

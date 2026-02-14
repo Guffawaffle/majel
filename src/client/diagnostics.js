@@ -10,7 +10,7 @@
  * 4. Schema Browser — table structure from /api/diagnostic/schema
  */
 
-import { _fetch } from './api.js';
+import { _fetch } from './api/_fetch.js';
 
 // ─── State ──────────────────────────────────────────────────
 let healthData = null;
