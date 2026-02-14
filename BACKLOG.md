@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-14 | Branch: `arch/loadout-inversion`
+> Updated: 2026-02-14 | Branch: `main` (merged PR #46)
 
 ---
 
@@ -120,14 +120,22 @@
 
 ---
 
-## In Progress — Phase 2: Loadout API (#43)
+## Done — Phase 2: Loadout API (#43) ✅
 
-- [ ] Loadout CRUD routes (`/api/loadouts`)
-- [ ] Dock routes (`/api/docks`)
-- [ ] Plan item routes (`/api/plan`)
-- [ ] Intent routes (`/api/intents`)
-- [ ] Plan briefing builder (`plan-briefing.ts`)
-- [ ] Route + briefing tests
+Merged to `main` in PR #46 (`ff05f39`). 800/800 tests.
+
+- [x] Loadout CRUD routes — 7 endpoints (`/api/loadouts`)
+- [x] Dock routes — 5 endpoints (`/api/docks`)
+- [x] Plan item routes — 8 endpoints (`/api/plan`)
+- [x] Intent routes — 3 endpoints (`/api/intents`)
+- [x] Officer cascade preview — 1 endpoint
+- [x] Plan briefing builder — 3 tiers (`plan-briefing.ts`)
+- [x] Route + briefing tests — 62 tests (`loadout-routes.test.ts`)
+- [x] Flaky middleware timing test fixed
+
+## Next — Phase 3: Client Rewrite (#44)
+
+Unblocked. BASIC mode loadout UI to replace dock-tab.
 
 ---
 
