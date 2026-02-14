@@ -4,326 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ariadne — STFC Fleet Intelligence</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg-primary: #0a0e1a;
-      --bg-secondary: #111827;
-      --bg-tertiary: #1a2236;
-      --bg-card: #151c2e;
-      --text-primary: #e2e8f0;
-      --text-secondary: #94a3b8;
-      --text-muted: #64748b;
-      --accent-gold: #f0a030;
-      --accent-gold-dim: #b07820;
-      --accent-blue: #60a0ff;
-      --accent-blue-dim: #3070cc;
-      --accent-green: #34d399;
-      --accent-purple: #a78bfa;
-      --border: #1e293b;
-      --radius: 8px;
-    }
-
-    html, body {
-      height: 100%;
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      font-size: 16px;
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* ── Layout ───────────────────────────── */
-    .landing {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* ── Header ──────────────────────────── */
-    .landing-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 1rem 2rem;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-secondary);
-    }
-    .landing-logo {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: var(--accent-gold);
-      letter-spacing: 0.05em;
-    }
-    .landing-nav {
-      display: flex;
-      gap: 0.75rem;
-    }
-    .nav-btn {
-      padding: 0.5rem 1.25rem;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text-primary);
-      font-size: 0.875rem;
-      cursor: pointer;
-      text-decoration: none;
-      transition: all 0.15s ease;
-    }
-    .nav-btn:hover {
-      background: var(--bg-tertiary);
-      border-color: var(--accent-gold-dim);
-    }
-    .nav-btn-primary {
-      background: var(--accent-gold);
-      color: var(--bg-primary);
-      border-color: var(--accent-gold);
-      font-weight: 600;
-    }
-    .nav-btn-primary:hover {
-      background: var(--accent-gold-dim);
-      border-color: var(--accent-gold-dim);
-    }
-
-    /* ── Hero ─────────────────────────────── */
-    .hero {
-      flex: 0 0 auto;
-      text-align: center;
-      padding: 5rem 2rem 3rem;
-      background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
-    }
-    .hero-icon {
-      font-size: 3.5rem;
-      margin-bottom: 1rem;
-    }
-    .hero h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      color: var(--accent-gold);
-      margin-bottom: 0.5rem;
-      letter-spacing: 0.03em;
-    }
-    .hero .subtitle {
-      font-size: 1.125rem;
-      color: var(--text-secondary);
-      margin-bottom: 2rem;
-    }
-    .hero-desc {
-      max-width: 600px;
-      margin: 0 auto 2.5rem;
-      color: var(--text-secondary);
-      font-size: 1rem;
-      line-height: 1.7;
-    }
-    .hero-actions {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-    .hero-btn {
-      padding: 0.75rem 2rem;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      font-size: 1rem;
-      cursor: pointer;
-      text-decoration: none;
-      transition: all 0.15s ease;
-      font-weight: 500;
-    }
-    .hero-btn-gold {
-      background: var(--accent-gold);
-      color: var(--bg-primary);
-      border-color: var(--accent-gold);
-      font-weight: 700;
-    }
-    .hero-btn-gold:hover { background: var(--accent-gold-dim); }
-    .hero-btn-outline {
-      background: transparent;
-      color: var(--text-primary);
-    }
-    .hero-btn-outline:hover {
-      background: var(--bg-tertiary);
-      border-color: var(--accent-gold-dim);
-    }
-
-    /* ── Features ─────────────────────────── */
-    .features {
-      padding: 3rem 2rem 4rem;
-      max-width: 960px;
-      margin: 0 auto;
-    }
-    .features h2 {
-      text-align: center;
-      font-size: 1.5rem;
-      color: var(--accent-gold);
-      margin-bottom: 2rem;
-      letter-spacing: 0.03em;
-    }
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 1.5rem;
-    }
-    .feature-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.5rem;
-      transition: border-color 0.15s;
-    }
-    .feature-card:hover {
-      border-color: var(--accent-gold-dim);
-    }
-    .feature-icon {
-      font-size: 1.75rem;
-      margin-bottom: 0.75rem;
-    }
-    .feature-card h3 {
-      font-size: 1rem;
-      color: var(--text-primary);
-      margin-bottom: 0.5rem;
-    }
-    .feature-card p {
-      font-size: 0.875rem;
-      color: var(--text-secondary);
-      line-height: 1.6;
-    }
-
-    /* ── Footer ───────────────────────────── */
-    .landing-footer {
-      margin-top: auto;
-      padding: 1.5rem 2rem;
-      border-top: 1px solid var(--border);
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 0.8rem;
-      background: var(--bg-secondary);
-    }
-    .landing-footer a {
-      color: var(--text-secondary);
-      text-decoration: none;
-    }
-    .landing-footer a:hover {
-      color: var(--accent-gold);
-    }
-    .footer-links {
-      display: flex;
-      gap: 1.5rem;
-      justify-content: center;
-      margin-bottom: 0.5rem;
-    }
-
-    /* ── Auth Forms ───────────────────────── */
-    .auth-section {
-      display: none;
-      max-width: 420px;
-      margin: 3rem auto;
-      padding: 2rem;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-    }
-    .auth-section.active { display: block; }
-    .auth-section h2 {
-      font-size: 1.25rem;
-      color: var(--accent-gold);
-      margin-bottom: 1.5rem;
-      text-align: center;
-    }
-    .form-group {
-      margin-bottom: 1rem;
-    }
-    .form-group label {
-      display: block;
-      font-size: 0.8rem;
-      color: var(--text-secondary);
-      margin-bottom: 0.25rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .form-group input {
-      width: 100%;
-      padding: 0.625rem 0.75rem;
-      background: var(--bg-primary);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text-primary);
-      font-size: 0.9375rem;
-      font-family: inherit;
-      transition: border-color 0.15s;
-    }
-    .form-group input:focus {
-      outline: none;
-      border-color: var(--accent-gold);
-    }
-    .form-submit {
-      width: 100%;
-      padding: 0.75rem;
-      margin-top: 0.5rem;
-      background: var(--accent-gold);
-      color: var(--bg-primary);
-      border: none;
-      border-radius: var(--radius);
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .form-submit:hover { background: var(--accent-gold-dim); }
-    .form-submit:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .form-footer {
-      text-align: center;
-      margin-top: 1rem;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-    }
-    .form-footer a {
-      color: var(--accent-blue);
-      cursor: pointer;
-      text-decoration: none;
-    }
-    .form-footer a:hover { text-decoration: underline; }
-    .form-message {
-      padding: 0.75rem;
-      border-radius: var(--radius);
-      font-size: 0.85rem;
-      margin-bottom: 1rem;
-      display: none;
-    }
-    .form-message.error {
-      display: block;
-      background: rgba(248, 113, 113, 0.15);
-      border: 1px solid rgba(248, 113, 113, 0.3);
-      color: #f87171;
-    }
-    .form-message.success {
-      display: block;
-      background: rgba(52, 211, 153, 0.15);
-      border: 1px solid rgba(52, 211, 153, 0.3);
-      color: #34d399;
-    }
-    .password-hint {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 0.25rem;
-    }
-
-    /* ── Responsive ───────────────────────── */
-    @media (max-width: 640px) {
-      .hero { padding: 3rem 1.5rem 2rem; }
-      .hero h1 { font-size: 1.75rem; }
-      .hero-desc { font-size: 0.9rem; }
-      .hero-actions { flex-direction: column; align-items: center; }
-      .features { padding: 2rem 1.5rem 3rem; }
-      .landing-header { padding: 0.75rem 1rem; }
-    }
-  </style>
+  <link rel="stylesheet" href="landing.css" />
 </head>
 <body>
   <div class="landing">
@@ -331,8 +12,8 @@
     <header class="landing-header">
       <div class="landing-logo">⟐ ARIADNE</div>
       <nav class="landing-nav">
-        <a href="#" class="nav-btn" onclick="showSection('login'); return false;">Log In</a>
-        <a href="#" class="nav-btn nav-btn-primary" onclick="showSection('signup'); return false;">Sign Up</a>
+        <a href="#" class="nav-btn" data-nav="login">Log In</a>
+        <a href="#" class="nav-btn nav-btn-primary" data-nav="signup">Sign Up</a>
       </nav>
     </header>
 
@@ -347,8 +28,8 @@
         and keep your entire fleet dialed in — all from one command bridge.
       </p>
       <div class="hero-actions">
-        <a href="#" class="hero-btn hero-btn-gold" onclick="showSection('signup'); return false;">Create Account</a>
-        <a href="#" class="hero-btn hero-btn-outline" onclick="showSection('login'); return false;">Sign In</a>
+        <a href="#" class="hero-btn hero-btn-gold" data-nav="signup">Create Account</a>
+        <a href="#" class="hero-btn hero-btn-outline" data-nav="login">Sign In</a>
       </div>
     </section>
 
@@ -381,9 +62,9 @@
           <h3>Privacy First</h3>
           <p>Your data is yours. No tracking, no analytics, no third-party scripts. Full GDPR compliance with data export and deletion.</p>
         </div>
-        <div class="feature-card" style="border-color: var(--accent-gold-dim); background: linear-gradient(135deg, var(--bg-card) 0%, rgba(240,160,48,0.05) 100%);">
+        <div class="feature-card feature-card-highlight">
           <div class="feature-icon">💬</div>
-          <h3>AI Fleet Advisor <span style="font-size: 0.7rem; color: var(--accent-gold); vertical-align: middle;">ALPHA</span></h3>
+          <h3>AI Fleet Advisor <span class="alpha-badge">ALPHA</span></h3>
           <p>Chat with Aria, an AI advisor powered by Gemini that understands your fleet data. Crew recommendations, strategy tips, and meta analysis. <em>Currently in alpha — available by invite only.</em></p>
         </div>
       </div>
@@ -393,7 +74,7 @@
     <section class="auth-section" id="signup-section">
       <h2>🖖 Create Account</h2>
       <div class="form-message" id="signup-message"></div>
-      <form id="signup-form" onsubmit="handleSignup(event)">
+      <form id="signup-form">
         <div class="form-group">
           <label for="signup-name">Display Name</label>
           <input type="text" id="signup-name" placeholder="Commander Riker" required maxlength="100" autocomplete="name" />
@@ -410,7 +91,7 @@
         <button type="submit" class="form-submit" id="signup-submit">Create Account</button>
       </form>
       <p class="form-footer">
-        Already have an account? <a href="#" onclick="showSection('login'); return false;">Sign in</a>
+        Already have an account? <a href="#" data-nav="login">Sign in</a>
       </p>
     </section>
 
@@ -418,7 +99,7 @@
     <section class="auth-section" id="login-section">
       <h2>Welcome Back</h2>
       <div class="form-message" id="login-message"></div>
-      <form id="login-form" onsubmit="handleLogin(event)">
+      <form id="login-form">
         <div class="form-group">
           <label for="login-email">Email</label>
           <input type="email" id="login-email" placeholder="riker@enterprise.fed" required autocomplete="email" />
@@ -430,9 +111,9 @@
         <button type="submit" class="form-submit" id="login-submit">Sign In</button>
       </form>
       <p class="form-footer">
-        <a href="#" onclick="showSection('forgot'); return false;">Forgot password?</a>
+        <a href="#" data-nav="forgot">Forgot password?</a>
         &nbsp;·&nbsp;
-        Don't have an account? <a href="#" onclick="showSection('signup'); return false;">Sign up</a>
+        Don't have an account? <a href="#" data-nav="signup">Sign up</a>
       </p>
     </section>
 
@@ -440,7 +121,7 @@
     <section class="auth-section" id="forgot-section">
       <h2>Reset Password</h2>
       <div class="form-message" id="forgot-message"></div>
-      <form id="forgot-form" onsubmit="handleForgot(event)">
+      <form id="forgot-form">
         <div class="form-group">
           <label for="forgot-email">Email</label>
           <input type="email" id="forgot-email" placeholder="riker@enterprise.fed" required autocomplete="email" />
@@ -448,23 +129,23 @@
         <button type="submit" class="form-submit">Send Reset Link</button>
       </form>
       <p class="form-footer">
-        <a href="#" onclick="showSection('login'); return false;">Back to sign in</a>
+        <a href="#" data-nav="login">Back to sign in</a>
       </p>
     </section>
 
     <!-- Verify Email Notice -->
     <section class="auth-section" id="verify-section">
       <h2>📧 Check Your Email</h2>
-      <p style="text-align:center; color: var(--text-secondary); margin-bottom: 1rem;">
+      <p class="verify-text">
         We've sent a verification link to your email address.
         Please click it to activate your account.
       </p>
-      <p style="text-align:center; color: var(--text-muted); font-size: 0.8rem;">
+      <p class="verify-hint">
         Didn't receive it? Check your spam folder or
-        <a href="#" onclick="showSection('signup'); return false;" style="color: var(--accent-blue);">try again</a>.
+        <a href="#" data-nav="signup">try again</a>.
       </p>
-      <p class="form-footer" style="margin-top: 1.5rem;">
-        <a href="#" onclick="showSection('login'); return false;">Go to sign in</a>
+      <p class="form-footer form-footer-spaced">
+        <a href="#" data-nav="login">Go to sign in</a>
       </p>
     </section>
 
@@ -481,162 +162,6 @@
     </footer>
   </div>
 
-  <script>
-    // ── Section switching ────────────────────
-    const sections = ['hero', 'features', 'signup', 'login', 'forgot', 'verify'];
-
-    function showSection(target) {
-      // Show/hide auth forms
-      sections.forEach(s => {
-        const el = document.getElementById(`${s}-section`);
-        if (!el) return;
-        if (s === 'hero' || s === 'features') {
-          el.style.display = (target === 'hero' || target === 'features' || target === target) ? '' : '';
-          // Hero and features are always visible unless an auth form is shown
-          if (['signup', 'login', 'forgot', 'verify'].includes(target)) {
-            el.style.display = 'none';
-          } else {
-            el.style.display = '';
-          }
-        } else {
-          el.classList.toggle('active', s === target);
-        }
-      });
-      // Clear messages
-      document.querySelectorAll('.form-message').forEach(m => { m.className = 'form-message'; m.textContent = ''; });
-    }
-
-    function showMessage(formId, text, type) {
-      const el = document.getElementById(`${formId}-message`);
-      if (el) {
-        el.textContent = text;
-        el.className = `form-message ${type}`;
-      }
-    }
-
-    // ── Sign Up ──────────────────────────────
-    async function handleSignup(e) {
-      e.preventDefault();
-      const btn = document.getElementById('signup-submit');
-      btn.disabled = true;
-      btn.textContent = 'Creating…';
-
-      try {
-        const resp = await fetch('/api/auth/signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: document.getElementById('signup-email').value.trim(),
-            password: document.getElementById('signup-password').value,
-            displayName: document.getElementById('signup-name').value.trim(),
-          }),
-        });
-        const data = await resp.json();
-
-        if (data.ok) {
-          showSection('verify');
-        } else {
-          showMessage('signup', data.error?.message || 'Sign-up failed', 'error');
-        }
-      } catch {
-        showMessage('signup', 'Network error. Please try again.', 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Create Account';
-      }
-    }
-
-    // ── Sign In ──────────────────────────────
-    async function handleLogin(e) {
-      e.preventDefault();
-      const btn = document.getElementById('login-submit');
-      btn.disabled = true;
-      btn.textContent = 'Signing in…';
-
-      try {
-        const resp = await fetch('/api/auth/signin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: document.getElementById('login-email').value.trim(),
-            password: document.getElementById('login-password').value,
-          }),
-        });
-        const data = await resp.json();
-
-        if (data.ok) {
-          // Redirect to app
-          window.location.href = '/app';
-        } else {
-          showMessage('login', data.error?.message || 'Sign-in failed', 'error');
-        }
-      } catch {
-        showMessage('login', 'Network error. Please try again.', 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Sign In';
-      }
-    }
-
-    // ── Forgot Password ─────────────────────
-    async function handleForgot(e) {
-      e.preventDefault();
-      try {
-        await fetch('/api/auth/forgot-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: document.getElementById('forgot-email').value.trim(),
-          }),
-        });
-        showMessage('forgot', 'If that email is registered, a reset link has been sent.', 'success');
-      } catch {
-        showMessage('forgot', 'Network error. Please try again.', 'error');
-      }
-    }
-
-    // ── Auto-detect verify token in URL ─────
-    (function() {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('token');
-      const page = window.location.pathname;
-
-      if (page === '/verify' && token) {
-        fetch('/api/auth/verify-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        })
-        .then(r => r.json())
-        .then(data => {
-          if (data.ok) {
-            showSection('login');
-            showMessage('login', 'Email verified! You can now sign in.', 'success');
-          } else {
-            showSection('login');
-            showMessage('login', 'Verification failed — link may be expired. Try signing up again.', 'error');
-          }
-        })
-        .catch(() => {
-          showSection('login');
-          showMessage('login', 'Verification failed. Please try again.', 'error');
-        });
-      } else if (page === '/login') {
-        showSection('login');
-      } else if (page === '/signup') {
-        showSection('signup');
-      }
-
-      // Check if user is already authenticated → redirect to app
-      fetch('/api/auth/me')
-        .then(r => r.json())
-        .then(data => {
-          if (data.ok && data.data?.user?.id) {
-            window.location.href = '/app';
-          }
-        })
-        .catch(() => {});
-    })();
-  </script>
+  <script src="landing.js"></script>
 </body>
 </html>

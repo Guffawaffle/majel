@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-14 | Branch: `main` (merged PR #46)
+> Updated: 2026-02-14 | Branch: `arch/loadout-inversion`
 
 ---
 
@@ -120,22 +120,32 @@
 
 ---
 
-## Done — Phase 2: Loadout API (#43) ✅
+## In Progress — Architecture Restructure (#47, ADR-023)
 
-Merged to `main` in PR #46 (`ff05f39`). 800/800 tests.
+MVC-by-concern restructure of the client. Inserted between Phase 2 (API, done) and Phase 3 (UI).
 
-- [x] Loadout CRUD routes — 7 endpoints (`/api/loadouts`)
-- [x] Dock routes — 5 endpoints (`/api/docks`)
-- [x] Plan item routes — 8 endpoints (`/api/plan`)
-- [x] Intent routes — 3 endpoints (`/api/intents`)
-- [x] Officer cascade preview — 1 endpoint
-- [x] Plan briefing builder — 3 tiers (`plan-briefing.ts`)
-- [x] Route + briefing tests — 62 tests (`loadout-routes.test.ts`)
-- [x] Flaky middleware timing test fixed
+| Issue | Phase | Title | Status |
+|---|---|---|---|
+| #48 | 0 | Scaffolding — directories + READMEs | Not started |
+| #49 | 1 | API decomposition — split api.js | Not started |
+| #50 | 2 | CSS decomposition — split styles.css | Not started |
+| #51 | 3 | View extraction + router registry | Not started |
+| #52 | 4 | Admiral-dashboard rename | Not started |
+| #53 | 5 | Server grouping (stores/types/services) | Not started |
 
-## Next — Phase 3: Client Rewrite (#44)
+Key decisions:
+- `admin` → `admiral-dashboard` (DOM/CSS/routes) to reduce bot scanning noise
+- View registry pattern replaces manual `show*()` coupling in app.js
+- Lazy CSS loading per view (no bundler, browser-native)
+- `api.js` (51 exports) → `api/` directory with 11 domain modules + shared `_fetch.js`
+- File header manifests (`@module`, `@domain`, `@depends`) for agent navigation
+- README breadcrumbs per directory
 
-Unblocked. BASIC mode loadout UI to replace dock-tab.
+### Loadout Pipeline (updated)
+
+```
+ADR-022 ✅ → #42 (store) ✅ → #43 (API) ✅ → #47 (restructure) → #44 (UI) → #41 (ADVANCED) → #45 (solver)
+```
 
 ---
 

@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
+import { testRequest } from "./helpers/test-request.js";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { 
   envelopeMiddleware, 
@@ -29,8 +30,8 @@ describe("Request ID middleware", () => {
     app.use(envelopeMiddleware);
     app.get("/test", (_req, res) => res.json({ ok: true }));
 
-    const res1 = await request(app).get("/test");
-    const res2 = await request(app).get("/test");
+    const res1 = await testRequest(app).get("/test");
+    const res2 = await testRequest(app).get("/test");
 
     expect(res1.headers["x-request-id"]).toBeDefined();
     expect(res2.headers["x-request-id"]).toBeDefined();
@@ -53,7 +54,7 @@ describe("Request ID middleware", () => {
       });
     });
 
-    const res = await request(app).get("/test");
+    const res = await testRequest(app).get("/test");
     const requestId = res.headers["x-request-id"];
     expect(res.body.meta.requestId).toBe(requestId);
   });
@@ -64,7 +65,7 @@ describe("Request ID middleware", () => {
     app.use(envelopeMiddleware);
     app.get("/test", (_req, res) => res.json({ ok: true }));
 
-    const res = await request(app).get("/test");
+    const res = await testRequest(app).get("/test");
     const requestId = res.headers["x-request-id"] as string;
     
     // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
@@ -84,7 +85,7 @@ describe("Body limits middleware", () => {
 
     // ~50kb payload
     const payload = { data: "x".repeat(50 * 1024) };
-    const res = await request(app).post("/test").send(payload);
+    const res = await testRequest(app).post("/test").send(payload);
 
     expect(res.status).toBe(200);
     expect(res.body.received.data).toBe(payload.data);
@@ -99,7 +100,7 @@ describe("Body limits middleware", () => {
 
     // ~150kb payload (over limit)
     const payload = { data: "x".repeat(150 * 1024) };
-    const res = await request(app).post("/test").send(payload);
+    const res = await testRequest(app).post("/test").send(payload);
 
     expect(res.status).toBe(413);
     expect(res.body.ok).toBe(false);
@@ -114,7 +115,7 @@ describe("Body limits middleware", () => {
     app.use(errorHandler);
 
     const payload = { data: "x".repeat(150 * 1024) };
-    const res = await request(app).post("/test").send(payload);
+    const res = await testRequest(app).post("/test").send(payload);
 
     expect(res.status).toBe(413);
     expect(res.body.meta.requestId).toBeDefined();
@@ -134,7 +135,7 @@ describe("Timeout middleware", () => {
       res.json({ ok: true, data: { completed: true } });
     });
 
-    const res = await request(app).get("/fast");
+    const res = await testRequest(app).get("/fast");
     expect(res.status).toBe(200);
     expect(res.body.data.completed).toBe(true);
   });
@@ -151,7 +152,7 @@ describe("Timeout middleware", () => {
       }
     });
 
-    const res = await request(app).get("/slow");
+    const res = await testRequest(app).get("/slow");
     expect(res.status).toBe(504);
     expect(res.body.ok).toBe(false);
     expect(res.body.error.code).toBe(ErrorCode.REQUEST_TIMEOUT);
@@ -169,7 +170,7 @@ describe("Timeout middleware", () => {
       }
     });
 
-    const res = await request(app).get("/slow");
+    const res = await testRequest(app).get("/slow");
     expect(res.status).toBe(504);
     expect(res.body.meta.requestId).toBeDefined();
     expect(res.headers["x-request-id"]).toBe(res.body.meta.requestId);
@@ -186,7 +187,7 @@ describe("Timeout middleware", () => {
       await new Promise((r) => setTimeout(r, 600));
     });
 
-    const res = await request(app).get("/race");
+    const res = await testRequest(app).get("/race");
     expect(res.status).toBe(200);
     expect(res.body.data.fast).toBe(true);
   });
@@ -206,11 +207,11 @@ describe("Timeout middleware", () => {
       res.json({ ok: true, data: { route: "patient" } });
     });
 
-    const quickRes = await request(app).get("/quick");
+    const quickRes = await testRequest(app).get("/quick");
     expect(quickRes.status).toBe(200);
     expect(quickRes.body.data.route).toBe("quick");
 
-    const patientRes = await request(app).get("/patient");
+    const patientRes = await testRequest(app).get("/patient");
     expect(patientRes.status).toBe(200);
     expect(patientRes.body.data.route).toBe("patient");
   });
@@ -228,7 +229,7 @@ describe("Error handler middleware", () => {
     });
     app.use(errorHandler);
 
-    const res = await request(app).get("/error");
+    const res = await testRequest(app).get("/error");
     expect(res.status).toBe(500);
     expect(res.body.ok).toBe(false);
     expect(res.body.error.code).toBe(ErrorCode.INTERNAL_ERROR);
@@ -244,7 +245,7 @@ describe("Error handler middleware", () => {
     });
     app.use(errorHandler);
 
-    const res = await request(app).get("/error");
+    const res = await testRequest(app).get("/error");
     expect(res.body.meta.requestId).toBeDefined();
     expect(res.headers["x-request-id"]).toBe(res.body.meta.requestId);
   });
@@ -260,7 +261,7 @@ describe("Error handler middleware", () => {
     });
     app.use(errorHandler);
 
-    const res = await request(app).get("/error");
+    const res = await testRequest(app).get("/error");
     expect(res.status).toBe(404);
     expect(res.body.error.message).toBe("Not found");
   });
@@ -276,7 +277,7 @@ describe("Error handler middleware", () => {
     });
     app.use(errorHandler);
 
-    const res = await request(app).get("/error");
+    const res = await testRequest(app).get("/error");
     expect(res.status).toBe(401);
     expect(res.body.error.message).toBe("Unauthorized");
   });
@@ -291,7 +292,7 @@ describe("Error handler middleware", () => {
     }));
     app.use(errorHandler);
 
-    const res = await request(app).get("/timeout-then-error");
+    const res = await testRequest(app).get("/timeout-then-error");
     // Should get timeout response, not error
     expect(res.status).toBe(504);
     expect(res.body.error.code).toBe(ErrorCode.REQUEST_TIMEOUT);
@@ -307,7 +308,7 @@ describe("Error handler middleware", () => {
     }));
     app.use(errorHandler);
 
-    const res = await request(app).get("/async-error");
+    const res = await testRequest(app).get("/async-error");
     expect(res.status).toBe(500);
     expect(res.body.error.message).toBe("Async failure");
   });
@@ -322,7 +323,7 @@ describe("Error handler middleware", () => {
     }));
     app.use(errorHandler);
 
-    const res = await request(app).get("/error");
+    const res = await testRequest(app).get("/error");
     expect(res.body.meta.durationMs).toBeGreaterThan(40);
     expect(res.body.meta.timestamp).toBeDefined();
   });
@@ -344,7 +345,7 @@ describe("Middleware integration", () => {
     app.use(errorHandler);
 
     const payload = { message: "test data" };
-    const res = await request(app).post("/api/process").send(payload);
+    const res = await testRequest(app).post("/api/process").send(payload);
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -377,7 +378,7 @@ describe("Middleware integration", () => {
     
     app.use(errorHandler);
 
-    const res = await request(app).get("/test");
+    const res = await testRequest(app).get("/test");
     
     // All captured IDs should be the same
     expect(requestIds).toHaveLength(2);

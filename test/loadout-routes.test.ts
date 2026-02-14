@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import request from "supertest";
+import { testRequest } from "./helpers/test-request.js";
 import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
 import type { AppState } from "../src/server/app-context.js";
@@ -67,23 +68,23 @@ describe("Loadout routes — store not available", () => {
   });
 
   it("GET /api/loadouts returns 503 when store is null", async () => {
-    const res = await request(app).get("/api/loadouts");
+    const res = await testRequest(app).get("/api/loadouts");
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe("LOADOUT_STORE_NOT_AVAILABLE");
   });
 
   it("GET /api/docks returns 503 when store is null", async () => {
-    const res = await request(app).get("/api/docks");
+    const res = await testRequest(app).get("/api/docks");
     expect(res.status).toBe(503);
   });
 
   it("GET /api/plan returns 503 when store is null", async () => {
-    const res = await request(app).get("/api/plan");
+    const res = await testRequest(app).get("/api/plan");
     expect(res.status).toBe(503);
   });
 
   it("GET /api/intents returns 503 when store is null", async () => {
-    const res = await request(app).get("/api/intents");
+    const res = await testRequest(app).get("/api/intents");
     expect(res.status).toBe(503);
   });
 });
@@ -104,7 +105,7 @@ describe("Loadout routes — Intents", () => {
   });
 
   it("GET /api/intents lists seeded intents", async () => {
-    const res = await request(app).get("/api/intents");
+    const res = await testRequest(app).get("/api/intents");
     expect(res.status).toBe(200);
     expect(res.body.data.count).toBeGreaterThan(0);
     expect(res.body.data.intents[0]).toHaveProperty("key");
@@ -112,7 +113,7 @@ describe("Loadout routes — Intents", () => {
   });
 
   it("GET /api/intents?category=mining filters by category", async () => {
-    const res = await request(app).get("/api/intents?category=mining");
+    const res = await testRequest(app).get("/api/intents?category=mining");
     expect(res.status).toBe(200);
     for (const i of res.body.data.intents) {
       expect(i.category).toBe("mining");
@@ -120,13 +121,13 @@ describe("Loadout routes — Intents", () => {
   });
 
   it("GET /api/intents?category=bogus returns 400", async () => {
-    const res = await request(app).get("/api/intents?category=bogus");
+    const res = await testRequest(app).get("/api/intents?category=bogus");
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("UNKNOWN_CATEGORY");
   });
 
   it("POST /api/intents creates a custom intent", async () => {
-    const res = await request(app).post("/api/intents").send({
+    const res = await testRequest(app).post("/api/intents").send({
       key: "test_custom", label: "Test Custom", category: "custom",
       description: "A test intent", icon: "🧪",
     });
@@ -136,43 +137,43 @@ describe("Loadout routes — Intents", () => {
   });
 
   it("POST /api/intents rejects missing fields", async () => {
-    const res = await request(app).post("/api/intents").send({ key: "x" });
+    const res = await testRequest(app).post("/api/intents").send({ key: "x" });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("MISSING_PARAM");
   });
 
   it("POST /api/intents rejects duplicate key", async () => {
-    await request(app).post("/api/intents").send({
+    await testRequest(app).post("/api/intents").send({
       key: "dupe", label: "Dupe", category: "custom",
     });
-    const res = await request(app).post("/api/intents").send({
+    const res = await testRequest(app).post("/api/intents").send({
       key: "dupe", label: "Dupe 2", category: "custom",
     });
     expect(res.status).toBe(409);
   });
 
   it("DELETE /api/intents/:key deletes a custom intent", async () => {
-    await request(app).post("/api/intents").send({
+    await testRequest(app).post("/api/intents").send({
       key: "to_delete", label: "Delete Me", category: "custom",
     });
-    const res = await request(app).delete("/api/intents/to_delete");
+    const res = await testRequest(app).delete("/api/intents/to_delete");
     expect(res.status).toBe(200);
     expect(res.body.data.deleted).toBe(true);
   });
 
   it("DELETE /api/intents/:key rejects built-in intents", async () => {
     // First intent from seed should be built-in
-    const list = await request(app).get("/api/intents");
+    const list = await testRequest(app).get("/api/intents");
     const builtinKey = list.body.data.intents.find((i: { isBuiltin: boolean }) => i.isBuiltin)?.key;
     if (builtinKey) {
-      const res = await request(app).delete(`/api/intents/${builtinKey}`);
+      const res = await testRequest(app).delete(`/api/intents/${builtinKey}`);
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe("BUILTIN_IMMUTABLE");
     }
   });
 
   it("DELETE /api/intents/:key returns 404 for unknown key", async () => {
-    const res = await request(app).delete("/api/intents/nonexistent");
+    const res = await testRequest(app).delete("/api/intents/nonexistent");
     expect(res.status).toBe(404);
   });
 });
@@ -196,14 +197,14 @@ describe("Loadout routes — Loadout CRUD", () => {
   });
 
   it("GET /api/loadouts returns empty list initially", async () => {
-    const res = await request(app).get("/api/loadouts");
+    const res = await testRequest(app).get("/api/loadouts");
     expect(res.status).toBe(200);
     expect(res.body.data.loadouts).toEqual([]);
     expect(res.body.data.count).toBe(0);
   });
 
   it("POST /api/loadouts creates a loadout", async () => {
-    const res = await request(app).post("/api/loadouts").send({
+    const res = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "PvP Enterprise",
       intentKeys: ["hostile_grinding"], tags: ["pvp"],
     });
@@ -214,13 +215,13 @@ describe("Loadout routes — Loadout CRUD", () => {
   });
 
   it("POST /api/loadouts rejects missing fields", async () => {
-    const res = await request(app).post("/api/loadouts").send({ name: "No Ship" });
+    const res = await testRequest(app).post("/api/loadouts").send({ name: "No Ship" });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("MISSING_PARAM");
   });
 
   it("POST /api/loadouts rejects invalid shipId", async () => {
-    const res = await request(app).post("/api/loadouts").send({
+    const res = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:nonexistent", name: "Bad Ship",
     });
     expect(res.status).toBe(400);
@@ -228,35 +229,35 @@ describe("Loadout routes — Loadout CRUD", () => {
   });
 
   it("GET /api/loadouts/:id returns a specific loadout", async () => {
-    const create = await request(app).post("/api/loadouts").send({
+    const create = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Test Loadout",
     });
     const id = create.body.data.loadout.id;
 
-    const res = await request(app).get(`/api/loadouts/${id}`);
+    const res = await testRequest(app).get(`/api/loadouts/${id}`);
     expect(res.status).toBe(200);
     expect(res.body.data.loadout.id).toBe(id);
     expect(res.body.data.loadout.members).toEqual([]);
   });
 
   it("GET /api/loadouts/:id returns 404 for nonexistent", async () => {
-    const res = await request(app).get("/api/loadouts/99999");
+    const res = await testRequest(app).get("/api/loadouts/99999");
     expect(res.status).toBe(404);
   });
 
   it("GET /api/loadouts/:id returns 400 for invalid ID", async () => {
-    const res = await request(app).get("/api/loadouts/abc");
+    const res = await testRequest(app).get("/api/loadouts/abc");
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_PARAM");
   });
 
   it("PATCH /api/loadouts/:id updates a loadout", async () => {
-    const create = await request(app).post("/api/loadouts").send({
+    const create = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Original",
     });
     const id = create.body.data.loadout.id;
 
-    const res = await request(app).patch(`/api/loadouts/${id}`).send({
+    const res = await testRequest(app).patch(`/api/loadouts/${id}`).send({
       name: "Updated", priority: 5, isActive: false,
     });
     expect(res.status).toBe(200);
@@ -266,60 +267,60 @@ describe("Loadout routes — Loadout CRUD", () => {
   });
 
   it("PATCH /api/loadouts/:id returns 404 for nonexistent", async () => {
-    const res = await request(app).patch("/api/loadouts/99999").send({ name: "Nope" });
+    const res = await testRequest(app).patch("/api/loadouts/99999").send({ name: "Nope" });
     expect(res.status).toBe(404);
   });
 
   it("DELETE /api/loadouts/:id deletes a loadout", async () => {
-    const create = await request(app).post("/api/loadouts").send({
+    const create = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "To Delete",
     });
     const id = create.body.data.loadout.id;
 
-    const res = await request(app).delete(`/api/loadouts/${id}`);
+    const res = await testRequest(app).delete(`/api/loadouts/${id}`);
     expect(res.status).toBe(200);
     expect(res.body.data.deleted).toBe(true);
 
     // Verify gone
-    const get = await request(app).get(`/api/loadouts/${id}`);
+    const get = await testRequest(app).get(`/api/loadouts/${id}`);
     expect(get.status).toBe(404);
   });
 
   it("DELETE /api/loadouts/:id returns 404 for nonexistent", async () => {
-    const res = await request(app).delete("/api/loadouts/99999");
+    const res = await testRequest(app).delete("/api/loadouts/99999");
     expect(res.status).toBe(404);
   });
 
   it("GET /api/loadouts filters by shipId", async () => {
-    await request(app).post("/api/loadouts").send({ shipId: "wiki:ship:1", name: "A" });
-    await request(app).post("/api/loadouts").send({ shipId: "wiki:ship:2", name: "B" });
+    await testRequest(app).post("/api/loadouts").send({ shipId: "wiki:ship:1", name: "A" });
+    await testRequest(app).post("/api/loadouts").send({ shipId: "wiki:ship:2", name: "B" });
 
-    const res = await request(app).get("/api/loadouts?shipId=wiki:ship:1");
+    const res = await testRequest(app).get("/api/loadouts?shipId=wiki:ship:1");
     expect(res.status).toBe(200);
     expect(res.body.data.count).toBe(1);
     expect(res.body.data.loadouts[0].name).toBe("A");
   });
 
   it("GET /api/loadouts filters by active", async () => {
-    await request(app).post("/api/loadouts").send({ shipId: "wiki:ship:1", name: "Active" });
-    const inactive = await request(app).post("/api/loadouts").send({
+    await testRequest(app).post("/api/loadouts").send({ shipId: "wiki:ship:1", name: "Active" });
+    const inactive = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:2", name: "Inactive", isActive: false,
     });
     expect(inactive.status).toBe(201);
 
-    const res = await request(app).get("/api/loadouts?active=true");
+    const res = await testRequest(app).get("/api/loadouts?active=true");
     expect(res.status).toBe(200);
     expect(res.body.data.count).toBe(1);
     expect(res.body.data.loadouts[0].name).toBe("Active");
   });
 
   it("GET /api/loadouts/:id/preview-delete returns cascade preview", async () => {
-    const create = await request(app).post("/api/loadouts").send({
+    const create = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Preview Me",
     });
     const id = create.body.data.loadout.id;
 
-    const res = await request(app).get(`/api/loadouts/${id}/preview-delete`);
+    const res = await testRequest(app).get(`/api/loadouts/${id}/preview-delete`);
     expect(res.status).toBe(200);
     expect(res.body.data.preview).toHaveProperty("planItems");
     expect(res.body.data.preview).toHaveProperty("memberCount");
@@ -346,12 +347,12 @@ describe("Loadout routes — Members", () => {
   });
 
   it("PUT /api/loadouts/:id/members sets crew", async () => {
-    const create = await request(app).post("/api/loadouts").send({
+    const create = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Crew Test",
     });
     const id = create.body.data.loadout.id;
 
-    const res = await request(app).put(`/api/loadouts/${id}/members`).send({
+    const res = await testRequest(app).put(`/api/loadouts/${id}/members`).send({
       members: [
         { officerId: "wiki:officer:1", roleType: "bridge", slot: "captain" },
         { officerId: "wiki:officer:2", roleType: "below_deck" },
@@ -362,23 +363,23 @@ describe("Loadout routes — Members", () => {
   });
 
   it("PUT /api/loadouts/:id/members rejects missing array", async () => {
-    const create = await request(app).post("/api/loadouts").send({
+    const create = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Bad Members",
     });
     const id = create.body.data.loadout.id;
 
-    const res = await request(app).put(`/api/loadouts/${id}/members`).send({});
+    const res = await testRequest(app).put(`/api/loadouts/${id}/members`).send({});
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("MISSING_PARAM");
   });
 
   it("PUT /api/loadouts/:id/members rejects invalid roleType", async () => {
-    const create = await request(app).post("/api/loadouts").send({
+    const create = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Bad Role",
     });
     const id = create.body.data.loadout.id;
 
-    const res = await request(app).put(`/api/loadouts/${id}/members`).send({
+    const res = await testRequest(app).put(`/api/loadouts/${id}/members`).send({
       members: [{ officerId: "wiki:officer:1", roleType: "captain" }],
     });
     expect(res.status).toBe(400);
@@ -386,22 +387,22 @@ describe("Loadout routes — Members", () => {
   });
 
   it("PUT /api/loadouts/:id/members returns 404 for nonexistent loadout", async () => {
-    const res = await request(app).put("/api/loadouts/99999/members").send({
+    const res = await testRequest(app).put("/api/loadouts/99999/members").send({
       members: [{ officerId: "wiki:officer:1", roleType: "bridge" }],
     });
     expect(res.status).toBe(404);
   });
 
   it("GET /api/loadouts/:id includes members after set", async () => {
-    const create = await request(app).post("/api/loadouts").send({
+    const create = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "With Crew",
     });
     const id = create.body.data.loadout.id;
-    await request(app).put(`/api/loadouts/${id}/members`).send({
+    await testRequest(app).put(`/api/loadouts/${id}/members`).send({
       members: [{ officerId: "wiki:officer:1", roleType: "bridge", slot: "captain" }],
     });
 
-    const res = await request(app).get(`/api/loadouts/${id}`);
+    const res = await testRequest(app).get(`/api/loadouts/${id}`);
     expect(res.status).toBe(200);
     expect(res.body.data.loadout.members).toHaveLength(1);
     expect(res.body.data.loadout.members[0].officerName).toBe("Kirk");
@@ -423,13 +424,13 @@ describe("Loadout routes — Docks", () => {
   });
 
   it("GET /api/docks returns empty list initially", async () => {
-    const res = await request(app).get("/api/docks");
+    const res = await testRequest(app).get("/api/docks");
     expect(res.status).toBe(200);
     expect(res.body.data.docks).toEqual([]);
   });
 
   it("PUT /api/docks/:num creates or updates a dock", async () => {
-    const res = await request(app).put("/api/docks/1").send({
+    const res = await testRequest(app).put("/api/docks/1").send({
       label: "Main Dock", notes: "Primary berth",
     });
     expect(res.status).toBe(200);
@@ -438,38 +439,38 @@ describe("Loadout routes — Docks", () => {
   });
 
   it("GET /api/docks/:num returns a specific dock", async () => {
-    await request(app).put("/api/docks/3").send({ label: "Dock 3" });
-    const res = await request(app).get("/api/docks/3");
+    await testRequest(app).put("/api/docks/3").send({ label: "Dock 3" });
+    const res = await testRequest(app).get("/api/docks/3");
     expect(res.status).toBe(200);
     expect(res.body.data.dock.dockNumber).toBe(3);
   });
 
   it("GET /api/docks/:num returns 404 for nonexistent", async () => {
-    const res = await request(app).get("/api/docks/99");
+    const res = await testRequest(app).get("/api/docks/99");
     expect(res.status).toBe(404);
   });
 
   it("DELETE /api/docks/:num deletes a dock", async () => {
-    await request(app).put("/api/docks/2").send({ label: "Temp" });
-    const res = await request(app).delete("/api/docks/2");
+    await testRequest(app).put("/api/docks/2").send({ label: "Temp" });
+    const res = await testRequest(app).delete("/api/docks/2");
     expect(res.status).toBe(200);
     expect(res.body.data.deleted).toBe(true);
   });
 
   it("DELETE /api/docks/:num returns 404 for nonexistent", async () => {
-    const res = await request(app).delete("/api/docks/99");
+    const res = await testRequest(app).delete("/api/docks/99");
     expect(res.status).toBe(404);
   });
 
   it("GET /api/docks/:num/preview-delete returns cascade preview", async () => {
-    await request(app).put("/api/docks/1").send({ label: "Preview" });
-    const res = await request(app).get("/api/docks/1/preview-delete");
+    await testRequest(app).put("/api/docks/1").send({ label: "Preview" });
+    const res = await testRequest(app).get("/api/docks/1/preview-delete");
     expect(res.status).toBe(200);
     expect(res.body.data.preview).toHaveProperty("planItems");
   });
 
   it("rejects invalid dock number", async () => {
-    const res = await request(app).get("/api/docks/abc");
+    const res = await testRequest(app).get("/api/docks/abc");
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_PARAM");
   });
@@ -491,21 +492,21 @@ describe("Loadout routes — Plan Items", () => {
     app = createApp(makeState({ loadoutStore: store }));
 
     // Create a loadout + dock for plan items to reference
-    const loadout = await request(app).post("/api/loadouts").send({
+    const loadout = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Plan Loadout",
     });
     loadoutId = loadout.body.data.loadout.id;
-    await request(app).put("/api/docks/1").send({ label: "Dock 1" });
+    await testRequest(app).put("/api/docks/1").send({ label: "Dock 1" });
   });
 
   it("GET /api/plan returns empty list initially", async () => {
-    const res = await request(app).get("/api/plan");
+    const res = await testRequest(app).get("/api/plan");
     expect(res.status).toBe(200);
     expect(res.body.data.planItems).toEqual([]);
   });
 
   it("POST /api/plan creates a plan item", async () => {
-    const res = await request(app).post("/api/plan").send({
+    const res = await testRequest(app).post("/api/plan").send({
       label: "Borg Loop", loadoutId, dockNumber: 1, priority: 1, isActive: true,
     });
     expect(res.status).toBe(201);
@@ -515,28 +516,28 @@ describe("Loadout routes — Plan Items", () => {
   });
 
   it("GET /api/plan/:id returns a specific plan item", async () => {
-    const create = await request(app).post("/api/plan").send({
+    const create = await testRequest(app).post("/api/plan").send({
       label: "Mining Run", loadoutId,
     });
     const id = create.body.data.planItem.id;
 
-    const res = await request(app).get(`/api/plan/${id}`);
+    const res = await testRequest(app).get(`/api/plan/${id}`);
     expect(res.status).toBe(200);
     expect(res.body.data.planItem.id).toBe(id);
   });
 
   it("GET /api/plan/:id returns 404 for nonexistent", async () => {
-    const res = await request(app).get("/api/plan/99999");
+    const res = await testRequest(app).get("/api/plan/99999");
     expect(res.status).toBe(404);
   });
 
   it("PATCH /api/plan/:id updates a plan item", async () => {
-    const create = await request(app).post("/api/plan").send({
+    const create = await testRequest(app).post("/api/plan").send({
       label: "Original Plan", loadoutId,
     });
     const id = create.body.data.planItem.id;
 
-    const res = await request(app).patch(`/api/plan/${id}`).send({
+    const res = await testRequest(app).patch(`/api/plan/${id}`).send({
       label: "Updated Plan", priority: 10, isActive: false,
     });
     expect(res.status).toBe(200);
@@ -545,41 +546,41 @@ describe("Loadout routes — Plan Items", () => {
   });
 
   it("PATCH /api/plan/:id returns 404 for nonexistent", async () => {
-    const res = await request(app).patch("/api/plan/99999").send({ label: "Nope" });
+    const res = await testRequest(app).patch("/api/plan/99999").send({ label: "Nope" });
     expect(res.status).toBe(404);
   });
 
   it("DELETE /api/plan/:id deletes a plan item", async () => {
-    const create = await request(app).post("/api/plan").send({
+    const create = await testRequest(app).post("/api/plan").send({
       label: "Delete Me",
     });
     const id = create.body.data.planItem.id;
 
-    const res = await request(app).delete(`/api/plan/${id}`);
+    const res = await testRequest(app).delete(`/api/plan/${id}`);
     expect(res.status).toBe(200);
     expect(res.body.data.deleted).toBe(true);
   });
 
   it("DELETE /api/plan/:id returns 404 for nonexistent", async () => {
-    const res = await request(app).delete("/api/plan/99999");
+    const res = await testRequest(app).delete("/api/plan/99999");
     expect(res.status).toBe(404);
   });
 
   it("GET /api/plan filters by active", async () => {
-    await request(app).post("/api/plan").send({ label: "Active", isActive: true });
-    await request(app).post("/api/plan").send({ label: "Inactive", isActive: false });
+    await testRequest(app).post("/api/plan").send({ label: "Active", isActive: true });
+    await testRequest(app).post("/api/plan").send({ label: "Inactive", isActive: false });
 
-    const res = await request(app).get("/api/plan?active=true");
+    const res = await testRequest(app).get("/api/plan?active=true");
     expect(res.status).toBe(200);
     expect(res.body.data.count).toBe(1);
     expect(res.body.data.planItems[0].label).toBe("Active");
   });
 
   it("GET /api/plan filters by dockNumber", async () => {
-    await request(app).post("/api/plan").send({ label: "Docked", dockNumber: 1 });
-    await request(app).post("/api/plan").send({ label: "Undocked" });
+    await testRequest(app).post("/api/plan").send({ label: "Docked", dockNumber: 1 });
+    await testRequest(app).post("/api/plan").send({ label: "Undocked" });
 
-    const res = await request(app).get("/api/plan?dockNumber=1");
+    const res = await testRequest(app).get("/api/plan?dockNumber=1");
     expect(res.status).toBe(200);
     expect(res.body.data.count).toBe(1);
     expect(res.body.data.planItems[0].label).toBe("Docked");
@@ -604,10 +605,10 @@ describe("Loadout routes — Away Members", () => {
   });
 
   it("PUT /api/plan/:id/away-members sets away team", async () => {
-    const item = await request(app).post("/api/plan").send({ label: "Away Mission" });
+    const item = await testRequest(app).post("/api/plan").send({ label: "Away Mission" });
     const id = item.body.data.planItem.id;
 
-    const res = await request(app).put(`/api/plan/${id}/away-members`).send({
+    const res = await testRequest(app).put(`/api/plan/${id}/away-members`).send({
       officerIds: ["wiki:officer:1", "wiki:officer:2"],
     });
     expect(res.status).toBe(200);
@@ -615,16 +616,16 @@ describe("Loadout routes — Away Members", () => {
   });
 
   it("PUT /api/plan/:id/away-members rejects missing array", async () => {
-    const item = await request(app).post("/api/plan").send({ label: "Bad Away" });
+    const item = await testRequest(app).post("/api/plan").send({ label: "Bad Away" });
     const id = item.body.data.planItem.id;
 
-    const res = await request(app).put(`/api/plan/${id}/away-members`).send({});
+    const res = await testRequest(app).put(`/api/plan/${id}/away-members`).send({});
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("MISSING_PARAM");
   });
 
   it("PUT /api/plan/:id/away-members returns 404 for nonexistent item", async () => {
-    const res = await request(app).put("/api/plan/99999/away-members").send({
+    const res = await testRequest(app).put("/api/plan/99999/away-members").send({
       officerIds: ["wiki:officer:1"],
     });
     expect(res.status).toBe(404);
@@ -648,7 +649,7 @@ describe("Loadout routes — Plan Validation + Conflicts + Briefing", () => {
   });
 
   it("GET /api/plan/validate returns validation result", async () => {
-    const res = await request(app).get("/api/plan/validate");
+    const res = await testRequest(app).get("/api/plan/validate");
     expect(res.status).toBe(200);
     expect(res.body.data.validation).toHaveProperty("valid");
     expect(res.body.data.validation).toHaveProperty("dockConflicts");
@@ -656,14 +657,14 @@ describe("Loadout routes — Plan Validation + Conflicts + Briefing", () => {
   });
 
   it("GET /api/plan/conflicts returns officer conflicts", async () => {
-    const res = await request(app).get("/api/plan/conflicts");
+    const res = await testRequest(app).get("/api/plan/conflicts");
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveProperty("conflicts");
     expect(res.body.data.count).toBe(0); // No overlapping officers
   });
 
   it("GET /api/plan/briefing returns tier 1 briefing", async () => {
-    const res = await request(app).get("/api/plan/briefing");
+    const res = await testRequest(app).get("/api/plan/briefing");
     expect(res.status).toBe(200);
     expect(res.body.data.briefing.tier).toBe(1);
     expect(res.body.data.briefing).toHaveProperty("text");
@@ -672,35 +673,35 @@ describe("Loadout routes — Plan Validation + Conflicts + Briefing", () => {
   });
 
   it("GET /api/plan/briefing?tier=2 returns tier 2 briefing", async () => {
-    const res = await request(app).get("/api/plan/briefing?tier=2");
+    const res = await testRequest(app).get("/api/plan/briefing?tier=2");
     expect(res.status).toBe(200);
     expect(res.body.data.briefing.tier).toBe(2);
   });
 
   it("GET /api/plan/briefing?tier=3 returns tier 3 briefing", async () => {
-    const res = await request(app).get("/api/plan/briefing?tier=3");
+    const res = await testRequest(app).get("/api/plan/briefing?tier=3");
     expect(res.status).toBe(200);
     expect(res.body.data.briefing.tier).toBe(3);
   });
 
   it("GET /api/plan/briefing?tier=4 returns 400", async () => {
-    const res = await request(app).get("/api/plan/briefing?tier=4");
+    const res = await testRequest(app).get("/api/plan/briefing?tier=4");
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_PARAM");
   });
 
   it("briefing reflects active plan items", async () => {
     // Create a loadout, dock, and plan item
-    const loadout = await request(app).post("/api/loadouts").send({
+    const loadout = await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Enterprise PvP",
     });
-    await request(app).put("/api/docks/1").send({ label: "Main" });
-    await request(app).post("/api/plan").send({
+    await testRequest(app).put("/api/docks/1").send({ label: "Main" });
+    await testRequest(app).post("/api/plan").send({
       label: "Hostile Grinding", loadoutId: loadout.body.data.loadout.id,
       dockNumber: 1, isActive: true,
     });
 
-    const res = await request(app).get("/api/plan/briefing?tier=1");
+    const res = await testRequest(app).get("/api/plan/briefing?tier=1");
     expect(res.status).toBe(200);
     expect(res.body.data.briefing.summary.activePlanItems).toBe(1);
     expect(res.body.data.briefing.summary.dockedItems).toBe(1);
@@ -725,23 +726,23 @@ describe("Loadout routes — By Intent + Officer Preview", () => {
   });
 
   it("GET /api/loadouts/by-intent/:key returns matching loadouts", async () => {
-    await request(app).post("/api/loadouts").send({
+    await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Miner",
       intentKeys: ["tritanium_mining"],
     });
-    await request(app).post("/api/loadouts").send({
+    await testRequest(app).post("/api/loadouts").send({
       shipId: "wiki:ship:1", name: "Fighter",
       intentKeys: ["hostile_grinding"],
     });
 
-    const res = await request(app).get("/api/loadouts/by-intent/tritanium_mining");
+    const res = await testRequest(app).get("/api/loadouts/by-intent/tritanium_mining");
     expect(res.status).toBe(200);
     expect(res.body.data.count).toBe(1);
     expect(res.body.data.loadouts[0].name).toBe("Miner");
   });
 
   it("GET /api/loadouts/officers/:id/preview-delete returns preview", async () => {
-    const res = await request(app).get("/api/loadouts/officers/wiki:officer:1/preview-delete");
+    const res = await testRequest(app).get("/api/loadouts/officers/wiki:officer:1/preview-delete");
     expect(res.status).toBe(200);
     expect(res.body.data.preview).toHaveProperty("loadoutMemberships");
     expect(res.body.data.preview).toHaveProperty("awayMemberships");

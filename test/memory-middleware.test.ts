@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express, { type Request, type Response, type NextFunction } from "express";
 import request from "supertest";
+import { testRequest } from "./helpers/test-request.js";
 import { attachScopedMemory } from "../src/server/memory-middleware.js";
 import type { AppState } from "../src/server/app-context.js";
 import type { MemoryService } from "../src/server/memory.js";
@@ -90,7 +91,7 @@ describe("attachScopedMemory middleware", () => {
     const state = makeState();
     const app = buildTestApp(state, "user-1");
 
-    const res = await request(app).get("/test");
+    const res = await testRequest(app).get("/test");
     expect(res.body.hasMemory).toBe(false);
   });
 
@@ -99,7 +100,7 @@ describe("attachScopedMemory middleware", () => {
     const state = makeState({ memoryService: memory });
     const app = buildTestApp(state, "user-1");
 
-    const res = await request(app).get("/test");
+    const res = await testRequest(app).get("/test");
     expect(res.body.hasMemory).toBe(true);
     expect(res.body.memoryType).toBe("mock");
   });
@@ -111,7 +112,7 @@ describe("attachScopedMemory middleware", () => {
     // No userId set (no auth middleware)
     const app = buildTestApp(state);
 
-    const res = await request(app).get("/test");
+    const res = await testRequest(app).get("/test");
     expect(res.body.hasMemory).toBe(true);
     // Should NOT have called factory.forUser
     expect(factory.forUser).not.toHaveBeenCalled();
@@ -122,7 +123,7 @@ describe("attachScopedMemory middleware", () => {
     const state = makeState({ frameStoreFactory: factory });
     const app = buildTestApp(state, "user-42");
 
-    const res = await request(app).get("/test");
+    const res = await testRequest(app).get("/test");
     expect(res.body.hasMemory).toBe(true);
     expect(factory.forUser).toHaveBeenCalledWith("user-42");
   });
@@ -133,7 +134,7 @@ describe("attachScopedMemory middleware", () => {
     const state = makeState({ memoryService: sharedMemory, frameStoreFactory: factory });
     const app = buildTestApp(state, "user-99");
 
-    await request(app).get("/test");
+    await testRequest(app).get("/test");
     // Factory should be used, not the shared service
     expect(factory.forUser).toHaveBeenCalledWith("user-99");
   });

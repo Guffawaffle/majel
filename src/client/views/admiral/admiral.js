@@ -1,5 +1,5 @@
 /**
- * admin.js — Admiral Console Module (ADR-020)
+ * admiral.js — Admiral Console Module (ADR-020)
  *
  * Majel — STFC Fleet Intelligence System
  *
@@ -9,7 +9,12 @@
  * 3. Sessions — list, kill tenant sessions
  */
 
-import * as api from './api.js';
+import {
+    adminListUsers, adminSetRole, adminSetLock, adminDeleteUser,
+    adminListInvites, adminCreateInvite, adminRevokeInvite,
+    adminListSessions, adminDeleteSession, adminDeleteAllSessions,
+} from 'api/admiral.js';
+import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
 let users = [];
@@ -20,6 +25,17 @@ let loading = false;
 let currentUserEmail = null; // set from app.js
 
 const $ = (sel) => document.querySelector(sel);
+
+// ─── View Registration ──────────────────────────────────────
+// View ID 'admin' matches sidebar data-view and DOM #admin-area.
+// Phase 4 (#52) will rename these to 'admiral' across the full stack.
+registerView('admin', {
+    area: $('#admin-area'),
+    icon: '🛡️', title: 'Admiral Console', subtitle: 'User management, invites & sessions',
+    cssHref: 'views/admiral/admiral.css',
+    init, refresh,
+    gate: 'admiral',
+});
 
 // ─── Public API ─────────────────────────────────────────────
 
@@ -39,9 +55,9 @@ export async function refresh() {
     render();
     try {
         const [u, i, s] = await Promise.all([
-            api.adminListUsers(),
-            api.adminListInvites(),
-            api.adminListSessions(),
+            adminListUsers(),
+            adminListInvites(),
+            adminListSessions(),
         ]);
         users = u;
         invites = i;
@@ -276,7 +292,7 @@ function wireActions(area) {
                 await refresh();
                 return;
             }
-            const res = await api.adminSetRole(email, role);
+            const res = await adminSetRole(email, role);
             if (!res.ok) alert(res.error?.message || "Failed to set role");
             await refresh();
         });
@@ -289,7 +305,7 @@ function wireActions(area) {
             const isLocked = btn.dataset.locked === 'true';
             const action = isLocked ? 'unlock' : 'lock';
             if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${email}?`)) return;
-            const res = await api.adminSetLock(email, !isLocked);
+            const res = await adminSetLock(email, !isLocked);
             if (!res.ok) alert(res.error?.message || `Failed to ${action}`);
             await refresh();
         });
@@ -300,7 +316,7 @@ function wireActions(area) {
         btn.addEventListener("click", async () => {
             const email = btn.dataset.email;
             if (!confirm(`⚠️ Permanently delete ${email}? This cannot be undone.`)) return;
-            const res = await api.adminDeleteUser(email);
+            const res = await adminDeleteUser(email);
             if (!res.ok) alert(res.error?.message || "Failed to delete user");
             await refresh();
         });
@@ -313,7 +329,7 @@ function wireActions(area) {
             const label = area.querySelector("#invite-label")?.value?.trim() || undefined;
             const maxUses = parseInt(area.querySelector("#invite-max-uses")?.value, 10) || undefined;
             const expiresIn = area.querySelector("#invite-expiry")?.value || undefined;
-            const res = await api.adminCreateInvite({ label, maxUses, expiresIn });
+            const res = await adminCreateInvite({ label, maxUses, expiresIn });
             if (!res.ok) {
                 alert(res.error?.message || "Failed to create invite");
             } else if (res.data?.code) {
@@ -342,7 +358,7 @@ function wireActions(area) {
     area.querySelectorAll(".admin-btn-revoke").forEach(btn => {
         btn.addEventListener("click", async () => {
             if (!confirm("Revoke this invite code?")) return;
-            const res = await api.adminRevokeInvite(btn.dataset.code);
+            const res = await adminRevokeInvite(btn.dataset.code);
             if (!res.ok) alert(res.error?.message || "Failed to revoke");
             await refresh();
         });
@@ -352,7 +368,7 @@ function wireActions(area) {
     area.querySelectorAll(".admin-btn-kill-session").forEach(btn => {
         btn.addEventListener("click", async () => {
             if (!confirm("Kill this session?")) return;
-            const res = await api.adminDeleteSession(btn.dataset.id);
+            const res = await adminDeleteSession(btn.dataset.id);
             if (!res.ok) alert(res.error?.message || "Failed to kill session");
             await refresh();
         });
@@ -363,7 +379,7 @@ function wireActions(area) {
     if (killAllBtn) {
         killAllBtn.addEventListener("click", async () => {
             if (!confirm(`⚠️ Kill all ${sessions.length} tenant session(s)?`)) return;
-            const res = await api.adminDeleteAllSessions();
+            const res = await adminDeleteAllSessions();
             if (!res.ok) alert(res.error?.message || "Failed to kill sessions");
             await refresh();
         });

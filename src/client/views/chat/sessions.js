@@ -5,7 +5,7 @@
  * Handles session list, creation, switching, deletion, and sidebar navigation.
  */
 
-import * as api from './api.js';
+import { fetchSessions, getCachedSessions, restoreSession as apiRestoreSession, deleteSession } from 'api/sessions.js';
 import * as chat from './chat.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
@@ -63,7 +63,7 @@ function closeSidebar() {
 function renderSessionList() {
     if (!sessionListEl) return;
 
-    const sessions = api.getCachedSessions();
+    const sessions = getCachedSessions();
 
     if (sessions.length === 0) {
         sessionListEl.innerHTML = '<div class="session-empty">No saved chats yet</div>';
@@ -105,8 +105,8 @@ function renderSessionList() {
             e.stopPropagation();
             const id = btn.dataset.deleteId;
             if (!id) return;
-            
-            const success = await api.deleteSession(id);
+
+            const success = await deleteSession(id);
             if (success) {
                 await refreshSessionList();
                 // If we deleted the active session, start fresh
@@ -124,7 +124,7 @@ function renderSessionList() {
  */
 async function restoreSession(id) {
     try {
-        const session = await api.restoreSession(id);
+        const session = await apiRestoreSession(id);
         if (!session) return;
 
         // Update session tracking
@@ -160,7 +160,7 @@ async function restoreSession(id) {
  * Refresh the session list from the server
  */
 async function refreshSessionList() {
-    await api.fetchSessions();
+    await fetchSessions();
     renderSessionList();
 }
 
