@@ -24,9 +24,32 @@ const DEFAULT_ROWS = 100;
 /** Only these statement types are allowed. */
 const ALLOWED_PREFIXES = ["select", "explain", "with"];
 
-function isSafeQuery(sql: string): boolean {
-  const trimmed = sql.trim().toLowerCase();
-  return ALLOWED_PREFIXES.some((p) => trimmed.startsWith(p));
+/** Statements that must NOT appear after a WITH prefix (writable CTEs). */
+const DANGEROUS_KEYWORDS = /\b(insert|update|delete|drop|alter|truncate|create|grant|revoke)\b/i;
+
+function isSafeQuery(sql: string): { safe: boolean; reason?: string } {
+  const trimmed = sql.trim();
+
+  // Reject multi-statement queries (semicolons not at the very end)
+  const withoutTrailingSemicolon = trimmed.replace(/;\s*$/, "");
+  if (withoutTrailingSemicolon.includes(";")) {
+    return { safe: false, reason: "Multi-statement queries are not allowed" };
+  }
+
+  const lower = trimmed.toLowerCase();
+
+  // Must start with an allowed prefix
+  if (!ALLOWED_PREFIXES.some((p) => lower.startsWith(p))) {
+    return { safe: false, reason: `Only SELECT, EXPLAIN, and WITH statements are allowed. Got: "${trimmed.split(/\s/)[0]}"` };
+  }
+
+  // WITH (CTE) queries must not contain writable operations
+  if (lower.startsWith("with") && DANGEROUS_KEYWORDS.test(lower)) {
+    const match = lower.match(DANGEROUS_KEYWORDS);
+    return { safe: false, reason: `Writable CTE operations are not allowed: "${match?.[0]}"` };
+  }
+
+  return { safe: true };
 }
 
 // ─── Route Factory ──────────────────────────────────────────
@@ -139,13 +162,9 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing required query param: sql", 400);
     }
 
-    if (!isSafeQuery(sql)) {
-      return sendFail(
-        res,
-        ErrorCode.INVALID_PARAM,
-        `Only SELECT, EXPLAIN, and WITH statements are allowed. Got: "${sql.trim().split(/\s/)[0]}"`,
-        400,
-      );
+    const safety = isSafeQuery(sql);
+    if (!safety.safe) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, safety.reason!, 400);
     }
 
     const limit = Math.min(
@@ -160,7 +179,21 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
 
     try {
       const start = performance.now();
-      const result = await pool.query(sql);
+
+      // Belt-and-suspenders: execute inside a read-only transaction
+      // so even if isSafeQuery misses something, PostgreSQL rejects writes.
+      const client = await pool.connect();
+      let result;
+      try {
+        await client.query("BEGIN TRANSACTION READ ONLY");
+        result = await client.query(sql);
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
 
       const allRows = result.rows as Record<string, unknown>[];
       const truncated = allRows.length > limit;

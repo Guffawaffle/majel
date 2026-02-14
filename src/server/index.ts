@@ -35,6 +35,7 @@ import { createFrameStoreFactory } from "./postgres-frame-store.js";
 import { createSettingsStore } from "./settings.js";
 import { createSessionStore } from "./sessions.js";
 import { createDockStore } from "./dock-store.js";
+import { createLoadoutStore } from "./loadout-store.js";
 import { createBehaviorStore } from "./behavior-store.js";
 import { createReferenceStore } from "./reference-store.js";
 import { createOverlayStore } from "./overlay-store.js";
@@ -65,6 +66,7 @@ import { createSessionRoutes } from "./routes/sessions.js";
 import { createDockRoutes } from "./routes/docks.js";
 import { createCatalogRoutes } from "./routes/catalog.js";
 import { createDiagnosticQueryRoutes } from "./routes/diagnostic-query.js";
+import { createLoadoutRoutes } from "./routes/loadouts.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createAdminRoutes } from "./routes/admin.js";
 
@@ -90,6 +92,7 @@ const state: AppState = {
   settingsStore: null,
   sessionStore: null,
   dockStore: null,
+  loadoutStore: null,
   behaviorStore: null,
   referenceStore: null,
   overlayStore: null,
@@ -159,6 +162,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createDockRoutes(appState));
   app.use(createCatalogRoutes(appState));
   app.use(createDiagnosticQueryRoutes(appState));
+  app.use(createLoadoutRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
   app.get("/app/*", (_req, res) => {
@@ -224,6 +228,19 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "dock store init failed");
   }
 
+  // 2d2. Initialize loadout store (ADR-022 Phase 2)
+  try {
+    state.loadoutStore = await createLoadoutStore(pool);
+    const loadoutCounts = await state.loadoutStore.counts();
+    log.boot.info({
+      intents: loadoutCounts.intents,
+      loadouts: loadoutCounts.loadouts,
+      planItems: loadoutCounts.planItems,
+    }, "loadout store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "loadout store init failed");
+  }
+
   // 2e. Initialize behavior store
   try {
     state.behaviorStore = await createBehaviorStore(pool);
@@ -278,13 +295,17 @@ async function boot(): Promise<void> {
   // 3. Initialize Gemini engine
   if (geminiApiKey) {
     const runner = await buildMicroRunnerFromState(state);
+    const modelName = state.settingsStore
+      ? await state.settingsStore.get("model.name")
+      : undefined;
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,
       await readFleetConfig(state.settingsStore),
       await readDockBriefing(state.dockStore),
       runner,
+      modelName,
     );
-    log.boot.info({ model: "gemini-2.5-flash-lite", microRunner: !!runner }, "gemini engine online");
+    log.boot.info({ model: state.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
   } else {
     log.boot.warn("GEMINI_API_KEY not set — chat disabled");
   }
@@ -305,6 +326,7 @@ async function shutdown(): Promise<void> {
   state.settingsStore?.close();
   state.sessionStore?.close();
   state.dockStore?.close();
+  state.loadoutStore?.close();
   state.behaviorStore?.close();
   state.overlayStore?.close();
   state.inviteStore?.close();

@@ -43,6 +43,7 @@ function makeMockMemory(frames: Frame[] = []): MemoryService {
 
 function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
   const sessions = new Map<string, Array<{ role: string; text: string }>>();
+  let currentModel = "gemini-2.5-flash-lite";
   const getSessionHistory = (sid: string) => {
     if (!sessions.has(sid)) sessions.set(sid, []);
     return sessions.get(sid)!;
@@ -57,6 +58,9 @@ function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
     getHistory: vi.fn().mockImplementation((sessionId = "default") => [...getSessionHistory(sessionId)]),
     getSessionCount: vi.fn().mockImplementation(() => sessions.size),
     closeSession: vi.fn().mockImplementation((sessionId: string) => { sessions.delete(sessionId); }),
+    getModel: vi.fn().mockImplementation(() => currentModel),
+    setModel: vi.fn().mockImplementation((id: string) => { currentModel = id; sessions.clear(); }),
+    close: vi.fn(),
   };
 }
 
@@ -69,6 +73,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     settingsStore: null,
     sessionStore: null,
     dockStore: null,
+    loadoutStore: null,
     behaviorStore: null,
     referenceStore: null,
     overlayStore: null,
@@ -215,7 +220,7 @@ describe("POST /api/chat", () => {
 
     const res = await request(app).post("/api/chat").send({ message: "Hi" });
     expect(res.status).toBe(500);
-    expect(res.body.error.message).toContain("API quota exceeded");
+    expect(res.body.error.message).toBe("AI request failed");
   });
 
   it("routes messages to the session specified by X-Session-Id header", async () => {
@@ -411,7 +416,7 @@ describe("GET /api/recall", () => {
 
     const res = await request(app).get("/api/recall?q=test");
     expect(res.status).toBe(500);
-    expect(res.body.error.message).toContain("Search index corrupt");
+    expect(res.body.error.message).toBe("Memory recall failed");
   });
 });
 
@@ -475,7 +480,7 @@ describe("edge cases", () => {
 
     const res = await request(app).get("/api/recall?q=test");
     expect(res.status).toBe(500);
-    expect(res.body.error.message).toBe("string error");
+    expect(res.body.error.message).toBe("Memory recall failed");
   });
 
   it("chat handles non-Error throw from engine", async () => {
@@ -490,7 +495,7 @@ describe("edge cases", () => {
       .post("/api/chat")
       .send({ message: "Hi" });
     expect(res.status).toBe(500);
-    expect(res.body.error.message).toBe("raw string error");
+    expect(res.body.error.message).toBe("AI request failed");
   });
 
   it("health returns referenceStore/overlayStore status", async () => {
