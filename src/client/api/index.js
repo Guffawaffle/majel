@@ -21,7 +21,7 @@
  * barrels are banned in production code (ADR-023 §Barrel Convention).
  */
 
-export { _fetch } from './_fetch.js';
+export { _fetch, apiFetch, ApiError } from './_fetch.js';
 export { getMe } from './auth.js';
 export { checkHealth } from './health.js';
 export { sendChat, loadHistory, searchRecall } from './chat.js';
