@@ -505,7 +505,7 @@ import * as api from 'api/index.js';
 import { fetchShips } from 'api/index.js';
 ```
 
-**Why this matters:** With no bundler, the browser executes barrel re-exports literally. `import` from the barrel causes the browser to fetch, parse, and execute every re-exported module. On Cloud Run, each fetch is a billable request. With 12 API modules, a single barrel import turns 1 request into 12.
+**Why this matters:** With no bundler, the browser executes barrel re-exports literally. `import` from the barrel causes the browser to fetch, parse, and execute every re-exported module. On Cloud Run, each fetch is a billable request. With 11 API modules, a single barrel import turns 1 request into 12 (barrel + 11 modules).
 
 The barrel exists for **migration only** (Phase 1) — so existing code that does `import { fn } from './api.js'` can temporarily switch to `import { fn } from 'api/index.js'` before being updated to direct domain imports. After Phase 1 is complete, no view should reference the barrel.
 
@@ -545,7 +545,7 @@ Zero behavior change — existing code untouched, new middleware is additive.
 Extract `api/` modules from monolithic `api.js`.
 
 1. Create `_fetch.js` with CSRF header, credential mode, 5xx sanitization.
-2. Split 51 functions into 12 domain files (auth, chat, sessions, settings, catalog, fleet, docks, loadouts, plan, intents, admiral).
+2. Split 51 functions into 11 domain files (auth, chat, sessions, settings, catalog, fleet, docks, loadouts, plan, intents, admiral).
 3. Create `api/index.js` barrel re-export for backward compatibility.
 4. Update all consumer imports to use import map paths.
 5. Delete original `api.js`.

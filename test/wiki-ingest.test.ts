@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 import request from "supertest";
+import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
@@ -353,7 +354,7 @@ describe("parseShipTable", () => {
 describe("POST /api/catalog/sync", () => {
   it("requires consent flag", async () => {
     const app = createApp(makeState({ referenceStore: refStore }));
-    const res = await request(app)
+    const res = await testRequest(app)
       .post("/api/catalog/sync")
       .send({});
     expect(res.status).toBe(400);
@@ -363,7 +364,7 @@ describe("POST /api/catalog/sync", () => {
 
   it("returns 503 when reference store unavailable", async () => {
     const app = createApp(makeState({ referenceStore: null }));
-    const res = await request(app)
+    const res = await testRequest(app)
       .post("/api/catalog/sync")
       .send({ consent: true });
     expect(res.status).toBe(503);
@@ -388,7 +389,7 @@ describe("POST /api/catalog/sync", () => {
 
     try {
       const app = createApp(makeState({ referenceStore: refStore }));
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/catalog/sync")
         .send({ consent: true });
 
@@ -444,7 +445,7 @@ describe("POST /api/catalog/sync", () => {
 
     try {
       const app = createApp(makeState({ referenceStore: refStore }));
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/catalog/sync")
         .send({ consent: true, ships: false });
 
@@ -475,12 +476,12 @@ describe("POST /api/catalog/sync", () => {
       const app = createApp(makeState({ referenceStore: refStore }));
 
       // First sync — creates
-      const res1 = await request(app).post("/api/catalog/sync").send({ consent: true });
+      const res1 = await testRequest(app).post("/api/catalog/sync").send({ consent: true });
       expect(res1.body.data.officers.created).toBe(4);
       expect(res1.body.data.officers.updated).toBe(0);
 
       // Second sync — updates
-      const res2 = await request(app).post("/api/catalog/sync").send({ consent: true });
+      const res2 = await testRequest(app).post("/api/catalog/sync").send({ consent: true });
       expect(res2.body.data.officers.created).toBe(0);
       expect(res2.body.data.officers.updated).toBe(4);
       expect(res2.body.data.ships.created).toBe(0);
@@ -498,7 +499,7 @@ describe("POST /api/catalog/sync", () => {
 
     try {
       const app = createApp(makeState({ referenceStore: refStore }));
-      const res = await request(app)
+      const res = await testRequest(app)
         .post("/api/catalog/sync")
         .send({ consent: true });
 

@@ -5,6 +5,18 @@
  * Central module for all backend API communication.
  */
 
+// CSRF + credentials wrapper (ADR-023 Phase 0)
+// All fetch calls go through this to add the X-Requested-With header.
+// Replaced by api/_fetch.js in Phase 1.
+const _fetch = (url, opts = {}) => fetch(url, {
+    ...opts,
+    credentials: 'same-origin',
+    headers: {
+        'X-Requested-With': 'majel-client',
+        ...opts.headers,
+    },
+});
+
 let cachedSessions = [];
 
 /**
@@ -13,7 +25,7 @@ let cachedSessions = [];
  */
 export async function getMe() {
     try {
-        const res = await fetch("/api/auth/me");
+        const res = await _fetch("/api/auth/me");
         if (!res.ok) return null;
         const body = await res.json();
         return body.data?.user ?? null;
@@ -28,7 +40,7 @@ export async function getMe() {
  */
 export async function checkHealth() {
     try {
-        const res = await fetch("/api/health");
+        const res = await _fetch("/api/health");
         const data = (await res.json()).data;
         return data;
     } catch {
@@ -43,7 +55,7 @@ export async function checkHealth() {
  * @returns {Promise<Object>} Response envelope with data or error
  */
 export async function sendChat(sessionId, message) {
-    const res = await fetch("/api/chat", {
+    const res = await _fetch("/api/chat", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -63,7 +75,7 @@ export async function sendChat(sessionId, message) {
  * @returns {Promise<Object>} History data
  */
 export async function loadHistory() {
-    const res = await fetch("/api/history?source=lex&limit=20");
+    const res = await _fetch("/api/history?source=lex&limit=20");
     const data = (await res.json()).data || {};
     return data;
 }
@@ -74,7 +86,7 @@ export async function loadHistory() {
  * @returns {Promise<Object>} Search results
  */
 export async function searchRecall(query) {
-    const res = await fetch(`/api/recall?q=${encodeURIComponent(query)}`);
+    const res = await _fetch(`/api/recall?q=${encodeURIComponent(query)}`);
     const _env = await res.json();
     return {
         ok: res.ok,
@@ -89,7 +101,7 @@ export async function searchRecall(query) {
  */
 export async function fetchSessions() {
     try {
-        const res = await fetch("/api/sessions?limit=30");
+        const res = await _fetch("/api/sessions?limit=30");
         const data = (await res.json()).data || {};
         cachedSessions = data.sessions || [];
         return cachedSessions;
@@ -114,7 +126,7 @@ export function getCachedSessions() {
  */
 export async function restoreSession(id) {
     try {
-        const res = await fetch(`/api/sessions/${id}`);
+        const res = await _fetch(`/api/sessions/${id}`);
         if (!res.ok) return null;
         const session = (await res.json()).data;
         return session;
@@ -130,7 +142,7 @@ export async function restoreSession(id) {
  */
 export async function deleteSession(id) {
     try {
-        await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+        await _fetch(`/api/sessions/${id}`, { method: "DELETE" });
         return true;
     } catch {
         return false;
@@ -145,7 +157,7 @@ export async function deleteSession(id) {
  */
 export async function saveFleetSetting(key, value) {
     try {
-        await fetch("/api/settings", {
+        await _fetch("/api/settings", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ [key]: String(value) }),
@@ -161,7 +173,7 @@ export async function saveFleetSetting(key, value) {
  */
 export async function loadFleetSettings() {
     try {
-        const res = await fetch("/api/settings?category=fleet");
+        const res = await _fetch("/api/settings?category=fleet");
         if (!res.ok) return { settings: [] };
         const data = (await res.json()).data || {};
         return data;
@@ -177,7 +189,7 @@ export async function loadFleetSettings() {
  * @returns {Promise<Array>} Array of dock objects
  */
 export async function fetchDocks() {
-    const res = await fetch("/api/dock/docks");
+    const res = await _fetch("/api/dock/docks");
     const env = await res.json();
     return env.data?.docks || [];
 }
@@ -188,7 +200,7 @@ export async function fetchDocks() {
  * @returns {Promise<Object|null>} Dock detail or null
  */
 export async function fetchDock(num) {
-    const res = await fetch(`/api/dock/docks/${num}`);
+    const res = await _fetch(`/api/dock/docks/${num}`);
     if (!res.ok) return null;
     const env = await res.json();
     return env.data?.dock || null;
@@ -201,7 +213,7 @@ export async function fetchDock(num) {
  * @returns {Promise<Object>} Updated dock
  */
 export async function updateDock(num, fields) {
-    const res = await fetch(`/api/dock/docks/${num}`, {
+    const res = await _fetch(`/api/dock/docks/${num}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
@@ -216,7 +228,7 @@ export async function updateDock(num, fields) {
  * @returns {Promise<Object>}
  */
 export async function deleteDock(num) {
-    const res = await fetch(`/api/dock/docks/${num}`, {
+    const res = await _fetch(`/api/dock/docks/${num}`, {
         method: "DELETE",
     });
     const env = await res.json();
@@ -229,7 +241,7 @@ export async function deleteDock(num) {
  * @returns {Promise<Object>} - { ships, intents, shipCount, intentCount }
  */
 export async function previewDeleteDock(num) {
-    const res = await fetch(`/api/dock/docks/${num}/cascade-preview`);
+    const res = await _fetch(`/api/dock/docks/${num}/cascade-preview`);
     const env = await res.json();
     return env.data || {};
 }
@@ -240,7 +252,7 @@ export async function previewDeleteDock(num) {
  * @returns {Promise<Object>} - { dockAssignments, crewPresets, crewAssignments }
  */
 export async function previewDeleteShip(id) {
-    const res = await fetch(`/api/dock/ships/${encodeURIComponent(id)}/cascade-preview`);
+    const res = await _fetch(`/api/dock/ships/${encodeURIComponent(id)}/cascade-preview`);
     const env = await res.json();
     return env.data || {};
 }
@@ -251,7 +263,7 @@ export async function previewDeleteShip(id) {
  * @returns {Promise<Object>} - { presetMemberships, crewAssignments }
  */
 export async function previewDeleteOfficer(id) {
-    const res = await fetch(`/api/dock/officers/${encodeURIComponent(id)}/cascade-preview`);
+    const res = await _fetch(`/api/dock/officers/${encodeURIComponent(id)}/cascade-preview`);
     const env = await res.json();
     return env.data || {};
 }
@@ -261,7 +273,7 @@ export async function previewDeleteOfficer(id) {
  * @returns {Promise<number>}
  */
 export async function fetchNextDockNumber() {
-    const res = await fetch("/api/dock/docks/next-number");
+    const res = await _fetch("/api/dock/docks/next-number");
     const env = await res.json();
     return env.data?.nextDockNumber || 1;
 }
@@ -273,7 +285,7 @@ export async function fetchNextDockNumber() {
  * @returns {Promise<Object>}
  */
 export async function saveDockIntents(num, intents) {
-    const res = await fetch(`/api/dock/docks/${num}/intents`, {
+    const res = await _fetch(`/api/dock/docks/${num}/intents`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intents }),
@@ -290,7 +302,7 @@ export async function saveDockIntents(num, intents) {
  * @returns {Promise<Object>}
  */
 export async function addDockShip(num, shipId, isActive = false) {
-    const res = await fetch(`/api/dock/docks/${num}/ships`, {
+    const res = await _fetch(`/api/dock/docks/${num}/ships`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ shipId, isActive }),
@@ -306,7 +318,7 @@ export async function addDockShip(num, shipId, isActive = false) {
  * @returns {Promise<Object>}
  */
 export async function removeDockShip(num, shipId) {
-    const res = await fetch(`/api/dock/docks/${num}/ships/${encodeURIComponent(shipId)}`, {
+    const res = await _fetch(`/api/dock/docks/${num}/ships/${encodeURIComponent(shipId)}`, {
         method: "DELETE",
     });
     const env = await res.json();
@@ -320,7 +332,7 @@ export async function removeDockShip(num, shipId) {
  * @returns {Promise<Object>}
  */
 export async function setActiveShip(num, shipId) {
-    const res = await fetch(`/api/dock/docks/${num}/ships/${encodeURIComponent(shipId)}`, {
+    const res = await _fetch(`/api/dock/docks/${num}/ships/${encodeURIComponent(shipId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: true }),
@@ -334,7 +346,7 @@ export async function setActiveShip(num, shipId) {
  * @returns {Promise<Array>} Array of intent objects
  */
 export async function fetchIntents() {
-    const res = await fetch("/api/dock/intents");
+    const res = await _fetch("/api/dock/intents");
     const env = await res.json();
     return env.data?.intents || [];
 }
@@ -344,7 +356,7 @@ export async function fetchIntents() {
  * @returns {Promise<Array>} Array of ship objects
  */
 export async function fetchShips() {
-    const res = await fetch("/api/catalog/ships/merged");
+    const res = await _fetch("/api/catalog/ships/merged");
     const env = await res.json();
     return env.data?.ships || [];
 }
@@ -354,7 +366,7 @@ export async function fetchShips() {
  * @returns {Promise<Array>} Array of officer objects
  */
 export async function fetchOfficers() {
-    const res = await fetch("/api/catalog/officers/merged");
+    const res = await _fetch("/api/catalog/officers/merged");
     const env = await res.json();
     return env.data?.officers || [];
 }
@@ -364,7 +376,7 @@ export async function fetchOfficers() {
  * @returns {Promise<Object>} Conflicts data
  */
 export async function fetchConflicts() {
-    const res = await fetch("/api/dock/docks/conflicts");
+    const res = await _fetch("/api/dock/docks/conflicts");
     const env = await res.json();
     return env.data || {};
 }
@@ -374,7 +386,7 @@ export async function fetchConflicts() {
  * @returns {Promise<Array>} Dock summaries
  */
 export async function fetchDockSummary() {
-    const res = await fetch("/api/dock/docks/summary");
+    const res = await _fetch("/api/dock/docks/summary");
     const env = await res.json();
     return env.data?.summary || [];
 }
@@ -387,7 +399,7 @@ export async function fetchDockSummary() {
  * @returns {Promise<Array>} Array of preset objects with members and tags
  */
 export async function fetchPresetsForDock(dockNumber) {
-    const res = await fetch(`/api/dock/docks/${dockNumber}/presets`);
+    const res = await _fetch(`/api/dock/docks/${dockNumber}/presets`);
     const env = await res.json();
     return env.data?.presets || [];
 }
@@ -404,7 +416,7 @@ export async function listPresets(filters = {}) {
     if (filters.tag) params.set("tag", filters.tag);
     if (filters.officerId) params.set("officerId", filters.officerId);
     const qs = params.toString();
-    const res = await fetch(`/api/dock/presets${qs ? "?" + qs : ""}`);
+    const res = await _fetch(`/api/dock/presets${qs ? "?" + qs : ""}`);
     const env = await res.json();
     return env.data?.presets || [];
 }
@@ -415,7 +427,7 @@ export async function listPresets(filters = {}) {
  * @returns {Promise<Object>} { ok, data, error }
  */
 export async function createPreset(fields) {
-    const res = await fetch("/api/dock/presets", {
+    const res = await _fetch("/api/dock/presets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
@@ -430,7 +442,7 @@ export async function createPreset(fields) {
  * @returns {Promise<Object>} { ok, data, error }
  */
 export async function deletePreset(id) {
-    const res = await fetch(`/api/dock/presets/${id}`, { method: "DELETE" });
+    const res = await _fetch(`/api/dock/presets/${id}`, { method: "DELETE" });
     const env = await res.json();
     return { ok: res.ok, data: env.data, error: env.error };
 }
@@ -442,7 +454,7 @@ export async function deletePreset(id) {
  * @returns {Promise<Object>} { ok, data, error }
  */
 export async function setPresetMembers(presetId, members) {
-    const res = await fetch(`/api/dock/presets/${presetId}/members`, {
+    const res = await _fetch(`/api/dock/presets/${presetId}/members`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ members }),
@@ -460,7 +472,7 @@ export async function setPresetMembers(presetId, members) {
  * @returns {Promise<Object>} { ok, data: { officers, ships, provenance } }
  */
 export async function syncWikiData(options = {}) {
-    const res = await fetch("/api/catalog/sync", {
+    const res = await _fetch("/api/catalog/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ consent: true, ...options }),
@@ -482,7 +494,7 @@ export async function fetchCatalogOfficers(filters = {}) {
     if (filters.ownership) params.set("ownership", filters.ownership);
     if (filters.target !== undefined) params.set("target", String(filters.target));
     const qs = params.toString();
-    const res = await fetch(`/api/catalog/officers/merged${qs ? "?" + qs : ""}`);
+    const res = await _fetch(`/api/catalog/officers/merged${qs ? "?" + qs : ""}`);
     const env = await res.json();
     return env.data?.officers || [];
 }
@@ -501,7 +513,7 @@ export async function fetchCatalogShips(filters = {}) {
     if (filters.ownership) params.set("ownership", filters.ownership);
     if (filters.target !== undefined) params.set("target", String(filters.target));
     const qs = params.toString();
-    const res = await fetch(`/api/catalog/ships/merged${qs ? "?" + qs : ""}`);
+    const res = await _fetch(`/api/catalog/ships/merged${qs ? "?" + qs : ""}`);
     const env = await res.json();
     return env.data?.ships || [];
 }
@@ -511,7 +523,7 @@ export async function fetchCatalogShips(filters = {}) {
  * @returns {Promise<Object>} { reference: {officers, ships}, overlay: {...} }
  */
 export async function fetchCatalogCounts() {
-    const res = await fetch("/api/catalog/counts");
+    const res = await _fetch("/api/catalog/counts");
     const env = await res.json();
     return env.data || { reference: { officers: 0, ships: 0 }, overlay: {} };
 }
@@ -523,7 +535,7 @@ export async function fetchCatalogCounts() {
  * @returns {Promise<Object>}
  */
 export async function setOfficerOverlay(id, overlay) {
-    const res = await fetch(`/api/catalog/officers/${encodeURIComponent(id)}/overlay`, {
+    const res = await _fetch(`/api/catalog/officers/${encodeURIComponent(id)}/overlay`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(overlay),
@@ -539,7 +551,7 @@ export async function setOfficerOverlay(id, overlay) {
  * @returns {Promise<Object>}
  */
 export async function setShipOverlay(id, overlay) {
-    const res = await fetch(`/api/catalog/ships/${encodeURIComponent(id)}/overlay`, {
+    const res = await _fetch(`/api/catalog/ships/${encodeURIComponent(id)}/overlay`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(overlay),
@@ -555,7 +567,7 @@ export async function setShipOverlay(id, overlay) {
  * @returns {Promise<Object>}
  */
 export async function bulkSetOfficerOverlay(refIds, overlay) {
-    const res = await fetch("/api/catalog/officers/bulk-overlay", {
+    const res = await _fetch("/api/catalog/officers/bulk-overlay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refIds, ...overlay }),
@@ -571,7 +583,7 @@ export async function bulkSetOfficerOverlay(refIds, overlay) {
  * @returns {Promise<Object>}
  */
 export async function bulkSetShipOverlay(refIds, overlay) {
-    const res = await fetch("/api/catalog/ships/bulk-overlay", {
+    const res = await _fetch("/api/catalog/ships/bulk-overlay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refIds, ...overlay }),
@@ -587,7 +599,7 @@ export async function bulkSetShipOverlay(refIds, overlay) {
  * @returns {Promise<Array>} Array of user objects
  */
 export async function adminListUsers() {
-    const res = await fetch("/api/auth/admin/users");
+    const res = await _fetch("/api/auth/admin/users");
     const env = await res.json();
     return env.data?.users || [];
 }
@@ -599,7 +611,7 @@ export async function adminListUsers() {
  * @returns {Promise<Object>}
  */
 export async function adminSetRole(email, role) {
-    const res = await fetch("/api/auth/admin/set-role", {
+    const res = await _fetch("/api/auth/admin/set-role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, role }),
@@ -616,7 +628,7 @@ export async function adminSetRole(email, role) {
  * @returns {Promise<Object>}
  */
 export async function adminSetLock(email, locked, reason) {
-    const res = await fetch("/api/auth/admin/lock", {
+    const res = await _fetch("/api/auth/admin/lock", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, locked, reason }),
@@ -631,7 +643,7 @@ export async function adminSetLock(email, locked, reason) {
  * @returns {Promise<Object>}
  */
 export async function adminDeleteUser(email) {
-    const res = await fetch("/api/auth/admin/user", {
+    const res = await _fetch("/api/auth/admin/user", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -645,7 +657,7 @@ export async function adminDeleteUser(email) {
  * @returns {Promise<Array>} Array of invite code objects
  */
 export async function adminListInvites() {
-    const res = await fetch("/api/admin/invites");
+    const res = await _fetch("/api/admin/invites");
     const env = await res.json();
     return env.data?.codes || [];
 }
@@ -656,7 +668,7 @@ export async function adminListInvites() {
  * @returns {Promise<Object>}
  */
 export async function adminCreateInvite(opts = {}) {
-    const res = await fetch("/api/admin/invites", {
+    const res = await _fetch("/api/admin/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(opts),
@@ -671,7 +683,7 @@ export async function adminCreateInvite(opts = {}) {
  * @returns {Promise<Object>}
  */
 export async function adminRevokeInvite(code) {
-    const res = await fetch(`/api/admin/invites/${encodeURIComponent(code)}`, {
+    const res = await _fetch(`/api/admin/invites/${encodeURIComponent(code)}`, {
         method: "DELETE",
     });
     const env = await res.json();
@@ -683,7 +695,7 @@ export async function adminRevokeInvite(code) {
  * @returns {Promise<Array>} Array of session objects
  */
 export async function adminListSessions() {
-    const res = await fetch("/api/admin/sessions");
+    const res = await _fetch("/api/admin/sessions");
     const env = await res.json();
     return env.data?.sessions || [];
 }
@@ -694,7 +706,7 @@ export async function adminListSessions() {
  * @returns {Promise<Object>}
  */
 export async function adminDeleteSession(id) {
-    const res = await fetch(`/api/admin/sessions/${encodeURIComponent(id)}`, {
+    const res = await _fetch(`/api/admin/sessions/${encodeURIComponent(id)}`, {
         method: "DELETE",
     });
     const env = await res.json();
@@ -706,7 +718,7 @@ export async function adminDeleteSession(id) {
  * @returns {Promise<Object>}
  */
 export async function adminDeleteAllSessions() {
-    const res = await fetch("/api/admin/sessions", {
+    const res = await _fetch("/api/admin/sessions", {
         method: "DELETE",
     });
     const env = await res.json();
