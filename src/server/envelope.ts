@@ -9,6 +9,7 @@
  *   import { sendOk, sendFail, ErrorCode } from "../envelope.js";
  *   sendOk(res, { ships, count: ships.length });
  *   sendFail(res, ErrorCode.MISSING_PARAM, "Missing id", 400);
+ *   sendFail(res, ErrorCode.GEMINI_ERROR, "AI failed", 500, { hints: ["Try again"] });
  */
 
 import { randomUUID } from "node:crypto";
@@ -111,15 +112,22 @@ export function sendOk(res: Response, data: unknown, statusCode = 200): void {
   });
 }
 
+/** Options for extended error details passed to sendFail. */
+export interface FailOptions {
+  detail?: unknown;
+  hints?: string[];
+}
+
 /** Send an error envelope. */
 export function sendFail(
   res: Response,
   code: string,
   message: string,
   statusCode = 400,
-  detail?: unknown,
-  hints?: string[],
+  options?: FailOptions,
 ): void {
+  const detail = options?.detail;
+  const hints = options?.hints;
   res.status(statusCode).json({
     ok: false,
     error: {

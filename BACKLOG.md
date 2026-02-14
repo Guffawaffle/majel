@@ -42,9 +42,9 @@
 ### [ ] Self-Review Findings (pending)
 
 #### Footguns
-- [ ] **F1/E1 (IMPORTANT):** `sendFail()` has 6 positional params → switch to options object
-  - Files: `envelope.ts` + all callers (~30 callsites)
-  - Risk: devs will mix up `detail` and `hints`
+- [x] **F1/E1 (IMPORTANT):** `sendFail()` has 6 positional params → switch to options object
+  - Files: `envelope.ts` + all callers — 5th param now `FailOptions` object with `{ detail?, hints? }`
+  - 167 basic callsites (4 args) unchanged, 14 callsites migrated
 - [x] **F2 (CRITICAL):** Health `await`s store `.counts()` with no try/catch — one flaky store kills liveness probe
   - File: `src/server/routes/core.ts` — wrapped in `safeCounts()` helper
 - [x] **F3 (IMPORTANT):** Version hardcoded `"0.4.0"` in discovery + diagnostic — drifts from `package.json`
@@ -59,27 +59,28 @@
 #### Security
 - [x] **S1 (CRITICAL):** `/api/diagnostic` has NO auth — exposes Node version, model, uptime, session count, DB path
   - File: `src/server/routes/core.ts` — added `requireVisitor(appState)` middleware
-- [ ] **S2 (IMPORTANT):** `isSafeQuery` bypassable with writable CTEs and multi-statement queries
-  - File: `src/server/routes/diagnostic-query.ts` L27-30
-  - Fix: `SET TRANSACTION READ ONLY` + reject semicolons
+- [x] **S2 (IMPORTANT):** `isSafeQuery` bypassable with writable CTEs and multi-statement queries
+  - File: `src/server/routes/diagnostic-query.ts`
+  - Fix: Semicolon rejection + writable CTE keyword detection + `BEGIN TRANSACTION READ ONLY`
 - [x] **S3 (IMPORTANT):** Discovery auth tiers mismatch for diagnostic-query endpoints
   - Same root cause as F4 — both fixed
 - [x] **S4 (MINOR):** Auth hint reveals env var name `MAJEL_ADMIN_TOKEN`
   - File: `src/server/auth.ts` — removed hint entirely
 - [x] **S5 (MINOR):** `INSUFFICIENT_RANK` detail leaks user's current role
   - File: `src/server/auth.ts` — removed `currentRole` from detail and hints
-- [ ] **S6 (MINOR):** `sendFail` passes raw `err.message` from Gemini — could leak internals
-  - File: `src/server/routes/chat.ts`
+- [x] **S6 (MINOR):** `sendFail` passes raw `err.message` from Gemini — could leak internals
+  - File: `src/server/routes/chat.ts` — chat and recall errors now return generic messages
 - [—] S7 (MINOR): `GEMINI_NOT_READY` detail.reason leaks config — acceptable behind admiral auth
 
 #### Extensibility
-- [ ] **E1 (IMPORTANT):** `sendFail` positional signature (same fix as F1)
+- [x] **E1 (IMPORTANT):** `sendFail` positional signature (same fix as F1)
 - [ ] **E2 (MINOR):** `ErrorCode` is frozen const — no module-specific extension mechanism
 - [ ] **E3 (IMPORTANT):** CLI `AxOutput` and API `ApiErrorResponse` schemas will diverge
   - Mitigation: `docs/AX-SCHEMA.md` documents both
 - [x] **E4 (MINOR):** Health response spreads raw store `counts()` — no type guard
   - File: `src/server/routes/core.ts` — `safeCounts()` now wraps with `active` + `error` fallback
-- [ ] **E5 (MINOR):** `res.locals` untyped — `tenantId = userId` conflation
+- [x] **E5 (MINOR):** `res.locals` untyped — `tenantId = userId` conflation
+  - File: `src/server/express-locals.d.ts` — Express module augmentation with typed Locals
 
 ---
 
@@ -129,4 +130,4 @@ See [ADR-006](docs/ADR-006-open-alpha.md) for the full list. Key items:
 
 ---
 
-*Last updated by PM sweep — 2026-02-12*
+*Last updated by PM sweep — 2026-02-14*
