@@ -55,9 +55,9 @@ function renderMarkdown(text) {
     html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<em>$1</em>");
 
     // Headers (## ... at start of line)
-    html = html.replace(/^### (.+)$/gm, '<p><strong style="font-size:1em">$1</strong></p>');
-    html = html.replace(/^## (.+)$/gm, '<p><strong style="font-size:1.05em">$1</strong></p>');
-    html = html.replace(/^# (.+)$/gm, '<p><strong style="font-size:1.1em">$1</strong></p>');
+    html = html.replace(/^### (.+)$/gm, '<p><strong class="md-h3">$1</strong></p>');
+    html = html.replace(/^## (.+)$/gm, '<p><strong class="md-h2">$1</strong></p>');
+    html = html.replace(/^# (.+)$/gm, '<p><strong class="md-h1">$1</strong></p>');
 
     // Blockquotes (> ...)
     html = html.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
@@ -249,9 +249,9 @@ export function addTypingIndicator() {
     row.id = "typing";
     row.innerHTML = `
     <div class="message-content">
-      <div class="message-avatar" style="background: var(--accent-gold); color: var(--bg-primary);">A</div>
+      <div class="message-avatar">A</div>
       <div class="message-body">
-        <div class="message-sender" style="color: var(--accent-gold);">Aria</div>
+        <div class="message-sender">Aria</div>
         <div class="typing-dots"><span></span><span></span><span></span></div>
       </div>
     </div>

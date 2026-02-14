@@ -158,6 +158,12 @@
 .action-btn:hover { color: var(--text-primary); border-color: var(--border); }
 .action-btn.copied { color: var(--accent-green); }
 
+/* ── Markdown Headings ── */
+
+.md-h1 { font-size: 1.1em; }
+.md-h2 { font-size: 1.05em; }
+.md-h3 { font-size: 1em; }
+
 /* ── Typing Indicator ── */
 
 .typing-row { padding: 16px 0; }

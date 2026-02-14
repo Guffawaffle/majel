@@ -54,29 +54,26 @@ async function initOpsLevel() {
     if (el) el.textContent = opsLevel;
 }
 
-/** Exported so drydock can read the current ops level */
-export function getOpsLevel() { return opsLevel; }
-
 // ─── Health Check ───────────────────────────────────────────
 async function checkHealthAndUpdateUI() {
     const data = await checkHealth();
     if (!data) {
-        statusDot.className = "status-dot offline";
+        if (statusDot) statusDot.className = "status-dot offline";
         if (mobileStatusDot) mobileStatusDot.className = "status-dot offline";
-        statusText.textContent = "Offline";
-        chatInput.disabled = true;
-        sendBtn.disabled = true;
+        if (statusText) statusText.textContent = "Offline";
+        if (chatInput) chatInput.disabled = true;
+        if (sendBtn) sendBtn.disabled = true;
         return null;
     }
 
     const online = data.status === "online";
     const connected = online && data.gemini === "connected";
-    const dotClass = connected ? "status-dot online" : "status-dot loading";
-    statusDot.className = dotClass;
+    const dotClass = connected ? "status-dot online" : online ? "status-dot loading" : "status-dot offline";
+    if (statusDot) statusDot.className = dotClass;
     if (mobileStatusDot) mobileStatusDot.className = dotClass;
-    statusText.textContent = connected ? "Online" : online ? "Setup needed" : "Initializing...";
-    chatInput.disabled = !connected;
-    if (!connected) sendBtn.disabled = true;
+    if (statusText) statusText.textContent = connected ? "Online" : online ? "Setup needed" : "Offline";
+    if (chatInput) chatInput.disabled = !connected;
+    if (sendBtn && !connected) sendBtn.disabled = true;
     return data;
 }
 
