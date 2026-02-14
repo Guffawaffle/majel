@@ -17,6 +17,7 @@ import {
     bulkSetOfficerOverlay, bulkSetShipOverlay,
     syncWikiData,
 } from 'api/catalog.js';
+import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
 let officers = [];
@@ -32,6 +33,14 @@ let letterFilter = ''; // Active letter filter ('A', 'B', ... or '' for all)
 let isAdmin = false; // Set by app.js — gates sync button
 
 const $ = (sel) => document.querySelector(sel);
+
+// ─── View Registration ──────────────────────────────────────
+registerView('catalog', {
+    area: $('#catalog-area'),
+    icon: '📋', title: 'Catalog', subtitle: 'Reference data & ownership tracking',
+    cssHref: 'views/catalog/catalog.css',
+    init, refresh,
+});
 
 // ─── Public API ─────────────────────────────────────────────
 
