@@ -1,0 +1,110 @@
+/* ═══════════════════════════════════════════════════════════
+   Base — Reset, typography, shared UI
+   Source: styles.css (ADR-023 Phase 2)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Reset ── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Root Typography ── */
+
+html, body {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Dialogs (Recall)
+   ═══════════════════════════════════════════════════════════ */
+
+dialog {
+  background: var(--bg-secondary); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0; max-width: 560px; width: 90%; overflow: hidden;
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); }
+.dialog-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+}
+.dialog-header h3 { color: var(--accent-gold); font-size: 1rem; }
+.dialog-close {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; padding: 4px; border-radius: 4px; transition: color var(--transition);
+}
+.dialog-close:hover { color: var(--text-primary); }
+
+#recall-form { display: flex; gap: 8px; padding: 16px 20px; }
+#recall-input {
+  flex: 1; padding: 10px 14px; background: var(--bg-tertiary); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.9rem;
+  outline: none; font-family: inherit;
+}
+#recall-input:focus { border-color: var(--accent-gold); }
+#recall-form button {
+  padding: 10px 18px; background: var(--accent-blue); color: white; border: none;
+  border-radius: var(--radius); cursor: pointer; font-size: 0.85rem; font-weight: 500;
+  transition: opacity var(--transition);
+}
+#recall-form button:hover { opacity: 0.85; }
+#recall-results { max-height: 320px; overflow-y: auto; padding: 0 20px 16px; }
+.recall-item { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+.recall-item:last-child { border-bottom: none; }
+.recall-item .timestamp { color: var(--text-muted); font-size: 0.73rem; margin-top: 4px; }
+
+/* ═══════════════════════════════════════════════════════════
+   Setup Guide
+   ═══════════════════════════════════════════════════════════ */
+
+#setup-guide { flex: 1; overflow-y: auto; padding: 32px 24px; }
+.setup-container { max-width: var(--max-content); margin: 0 auto; }
+#setup-guide h2 { color: var(--accent-gold); margin-bottom: 8px; font-size: 1.3rem; }
+.setup-container > p { color: var(--text-muted); margin-bottom: 24px; }
+.setup-section {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px; margin-bottom: 14px;
+}
+.setup-section.done { border-color: var(--accent-green); opacity: 0.6; }
+.setup-section.done h3::after { content: " ✅"; }
+.setup-section h3 { color: var(--accent-blue); font-size: 0.95rem; margin-bottom: 8px; }
+.setup-section p, .setup-section ol { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; }
+.setup-section ol { padding-left: 20px; }
+.setup-section li { margin-bottom: 4px; }
+.setup-section a { color: var(--accent-blue); }
+.setup-section pre {
+  background: var(--bg-tertiary); padding: 10px 14px; border-radius: var(--radius);
+  font-size: 0.82rem; overflow-x: auto; color: var(--accent-gold);
+}
+.setup-section code { background: var(--bg-tertiary); padding: 1px 5px; border-radius: 3px; font-size: 0.85em; }
+.setup-section details { margin-top: 8px; }
+.setup-section details summary { cursor: pointer; color: var(--accent-blue); font-size: 0.85rem; padding: 4px 0; }
+.setup-section details summary:hover { text-decoration: underline; }
+.setup-section details[open] summary { margin-bottom: 8px; }
+.required-badge {
+  background: var(--accent-red); color: white; font-size: 0.62rem; padding: 1px 6px;
+  border-radius: 3px; vertical-align: middle; font-weight: 600; text-transform: uppercase;
+}
+.optional-badge {
+  background: var(--border); color: var(--text-muted); font-size: 0.62rem; padding: 1px 6px;
+  border-radius: 3px; vertical-align: middle; font-weight: 600; text-transform: uppercase;
+}
+.hint { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Scrollbar ── */
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
