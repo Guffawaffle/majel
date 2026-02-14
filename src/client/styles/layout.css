@@ -310,6 +310,10 @@
 }
 .mobile-status { padding: 4px; }
 
+/* ── Logout Button ── */
+
+#logout-btn { color: var(--text-muted); }
+
 /* ═══════════════════════════════════════════════════════════
    Sidebar Overlay (mobile)
    ═══════════════════════════════════════════════════════════ */
