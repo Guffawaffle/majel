@@ -23,6 +23,7 @@
  */
 
 import express from "express";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import { IncomingMessage } from "node:http";
 import * as path from "node:path";
@@ -56,7 +57,7 @@ import {
 import { bootstrapConfigSync, resolveConfig } from "./config.js";
 
 // Envelope (ADR-004)
-import { envelopeMiddleware, errorHandler, createTimeoutMiddleware } from "./envelope.js";
+import { envelopeMiddleware, errorHandler, createTimeoutMiddleware, sendFail, ErrorCode } from "./envelope.js";
 
 // Route modules
 import { createCoreRoutes } from "./routes/core.js";
@@ -120,6 +121,9 @@ export function createApp(appState: AppState): express.Express {
   // Cookie parser (ADR-018 Phase 2 — tenant cookies)
   app.use(cookieParser());
 
+  // Response compression — 60-70% smaller JS/CSS/JSON responses (ADR-023)
+  app.use(compression());
+
   // Structured HTTP request logging
   app.use(
     pinoHttp({
@@ -137,11 +141,51 @@ export function createApp(appState: AppState): express.Express {
     }),
   );
 
+  // ─── Security headers (ADR-023 Phase 0) ───────────────────
+  // Content-Security-Policy — locks down resource loading.
+  // style-src 'unsafe-inline': all inline style="" attrs were removed in
+  // Phase 2-3. JS `.style.*` (CSSOM) is not affected by this directive.
+  // Removing 'unsafe-inline' is now safe — tracked as Phase 4 (#52) scope.
+  // img-src/connect-src 'self' blocks CSS-based data exfiltration vectors.
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Security-Policy', [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "connect-src 'self'",
+      "font-src 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join('; '));
+    next();
+  });
+
+  // CSRF protection — require custom header on state-changing requests.
+  // X-Requested-With cannot be set cross-origin without CORS preflight.
+  // Combined with sameSite: strict cookies, this is defense-in-depth.
+  app.use('/api', (req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    if (req.headers['x-requested-with'] !== 'majel-client') {
+      return sendFail(res, ErrorCode.FORBIDDEN, 'Missing CSRF header', 403);
+    }
+    next();
+  });
+
   // Static files (for /app/* — the authenticated SPA)
-  app.use("/app", express.static(clientDir));
+  // Cache headers: 1 day browser cache, etag for conditional revalidation (ADR-023)
+  app.use("/app", express.static(clientDir, {
+    maxAge: '1d',
+    etag: true,
+  }));
 
   // ─── Landing page routes (ADR-019 Phase 1) ────────────────
   const landingFile = path.join(clientDir, "landing.html");
+
+  // Landing page static assets (landing.css, landing.js)
+  app.get('/landing.css', (_req, res) => res.sendFile(path.join(clientDir, 'landing.css')));
+  app.get('/landing.js', (_req, res) => res.sendFile(path.join(clientDir, 'landing.js')));
 
   // Public landing page routes → landing.html
   for (const route of ["/", "/login", "/signup", "/verify", "/reset-password"]) {

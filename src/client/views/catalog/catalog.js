@@ -11,7 +11,13 @@
  * - Undo support for bulk actions
  */
 
-import * as api from './api.js';
+import {
+    fetchCatalogOfficers, fetchCatalogShips, fetchCatalogCounts,
+    setOfficerOverlay, setShipOverlay,
+    bulkSetOfficerOverlay, bulkSetShipOverlay,
+    syncWikiData,
+} from 'api/catalog.js';
+import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
 let officers = [];
@@ -27,6 +33,14 @@ let letterFilter = ''; // Active letter filter ('A', 'B', ... or '' for all)
 let isAdmin = false; // Set by app.js — gates sync button
 
 const $ = (sel) => document.querySelector(sel);
+
+// ─── View Registration ──────────────────────────────────────
+registerView('catalog', {
+    area: $('#catalog-area'),
+    icon: '📋', title: 'Catalog', subtitle: 'Reference data & ownership tracking',
+    cssHref: 'views/catalog/catalog.css',
+    init, refresh,
+});
 
 // ─── Public API ─────────────────────────────────────────────
 
@@ -45,9 +59,9 @@ export async function refresh() {
     try {
         const filterArgs = buildFilterArgs();
         const [officerData, shipData, countData] = await Promise.all([
-            api.fetchCatalogOfficers(filterArgs),
-            api.fetchCatalogShips(filterArgs),
-            api.fetchCatalogCounts(),
+            fetchCatalogOfficers(filterArgs),
+            fetchCatalogShips(filterArgs),
+            fetchCatalogCounts(),
         ]);
         officers = officerData;
         ships = shipData;
@@ -489,7 +503,7 @@ function bindGridEvents(area) {
             if (!item) return;
 
             const next = item.ownershipState === 'owned' ? 'unowned' : 'owned';
-            const setFn = activeTab === 'officers' ? api.setOfficerOverlay : api.setShipOverlay;
+            const setFn = activeTab === 'officers' ? setOfficerOverlay : setShipOverlay;
             await setFn(id, { ownershipState: next });
             await refresh();
         });
@@ -504,7 +518,7 @@ function bindGridEvents(area) {
             const item = items.find(i => i.id === id);
             if (!item) return;
 
-            const setFn = activeTab === 'officers' ? api.setOfficerOverlay : api.setShipOverlay;
+            const setFn = activeTab === 'officers' ? setOfficerOverlay : setShipOverlay;
             await setFn(id, { target: !item.target });
             await refresh();
         });
@@ -544,7 +558,7 @@ async function bulkAction(ownershipState) {
     const previousStates = items.map(i => ({ id: i.id, ownershipState: i.ownershipState }));
     const refIds = items.map(i => i.id);
 
-    const bulkFn = activeTab === 'officers' ? api.bulkSetOfficerOverlay : api.bulkSetShipOverlay;
+    const bulkFn = activeTab === 'officers' ? bulkSetOfficerOverlay : bulkSetShipOverlay;
     await bulkFn(refIds, { ownershipState });
 
     undoStack.push({ type: 'ownership', refIds, previousStates, count: refIds.length, tab: activeTab });
@@ -562,7 +576,7 @@ async function bulkToggleTarget() {
     const previousStates = items.map(i => ({ id: i.id, target: i.target }));
     const refIds = items.map(i => i.id);
 
-    const bulkFn = activeTab === 'officers' ? api.bulkSetOfficerOverlay : api.bulkSetShipOverlay;
+    const bulkFn = activeTab === 'officers' ? bulkSetOfficerOverlay : bulkSetShipOverlay;
     await bulkFn(refIds, { target });
 
     undoStack.push({ type: 'target', refIds, previousStates, count: refIds.length, tab: activeTab });
@@ -573,7 +587,7 @@ async function performUndo() {
     if (undoStack.length === 0) return;
     const action = undoStack.pop();
 
-    const bulkFn = action.tab === 'officers' ? api.bulkSetOfficerOverlay : api.bulkSetShipOverlay;
+    const bulkFn = action.tab === 'officers' ? bulkSetOfficerOverlay : bulkSetShipOverlay;
 
     if (action.type === 'ownership') {
         // Restore each item's previous ownership state individually
@@ -605,7 +619,7 @@ async function performSync() {
     render(); // Show syncing state immediately
 
     try {
-        const result = await api.syncWikiData();
+        const result = await syncWikiData();
         if (!result.ok) {
             throw new Error(result.error?.message || 'Sync failed');
         }

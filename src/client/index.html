@@ -4,7 +4,39 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ariadne — STFC Fleet Intelligence</title>
-  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Foundation CSS (always loaded) -->
+  <link rel="stylesheet" href="styles/variables.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/layout.css" />
+
+  <!-- View CSS (eagerly loaded + tracked by router.js ensureCSS to prevent duplicates) -->
+  <link rel="stylesheet" href="views/chat/chat.css" />
+  <link rel="stylesheet" href="views/diagnostics/diagnostics.css" />
+  <link rel="stylesheet" href="views/drydock/drydock.css" />
+  <link rel="stylesheet" href="views/catalog/catalog.css" />
+  <link rel="stylesheet" href="views/fleet/fleet.css" />
+  <link rel="stylesheet" href="views/admiral/admiral.css" />
+
+  <!-- Component CSS -->
+  <link rel="stylesheet" href="components/confirm-dialog.css" />
+
+  <!-- Responsive (last — overrides at breakpoints) -->
+  <link rel="stylesheet" href="styles/responsive.css" />
+
+  <!-- Import map — flat module paths, no ../../ counting (ADR-023) -->
+  <!-- Phase 1: bare-specifier aliases used after module split (ADR-023) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "api/":        "./api/",
+      "views/":      "./views/",
+      "components/": "./components/",
+      "router":      "./router.js",
+      "app":         "./app.js"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="app">
@@ -49,7 +81,7 @@
 
       <div class="sidebar-spacer"></div>
 
-      <button id="logout-btn" class="sidebar-nav-btn" style="color: var(--text-muted);">
+      <button id="logout-btn" class="sidebar-nav-btn logout-btn">
         <span class="icon">🚪</span> Log Out
       </button>
 
