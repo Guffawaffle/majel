@@ -32,7 +32,7 @@
   .fleet-grid-cards { grid-template-columns: 1fr; }
   .fleet-card-fields { gap: 6px; }
 
-  .admin-area { padding: 12px; }
+  .admiral-area { padding: 12px; }
   .admin-invite-form { flex-direction: column; }
   .admin-table-wrap { font-size: 0.82rem; }
 }

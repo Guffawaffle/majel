@@ -325,7 +325,7 @@ export function createAuthRoutes(appState: AppState): Router {
   // ── Admiral Console Routes ────────────────────────────────
   // These routes accept both Bearer token AND session-cookie admirals.
   // Bearer token is still needed for the very first promotion (no admirals yet).
-  router.use("/api/auth/admin", (req, res, next) => {
+  router.use("/api/auth/admiral", (req, res, next) => {
     // Try Bearer token first (always works for bootstrapping)
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
@@ -338,9 +338,9 @@ export function createAuthRoutes(appState: AppState): Router {
     return requireAdmiral(appState)(req, res, next);
   });
 
-  // ── POST /api/auth/admin/set-role ─────────────────────────
+  // ── POST /api/auth/admiral/set-role ─────────────────────
   // Admin-only: set a user's role (the only way to create the first Admiral)
-  router.post("/api/auth/admin/set-role", asyncHandler(async (req, res) => {
+  router.post("/api/auth/admiral/set-role", asyncHandler(async (req, res) => {
 
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
@@ -371,9 +371,9 @@ export function createAuthRoutes(appState: AppState): Router {
     });
   }));
 
-  // ── GET /api/auth/admin/users ─────────────────────────────
+  // ── GET /api/auth/admiral/users ─────────────────────
   // Admin-only: list all users
-  router.get("/api/auth/admin/users", asyncHandler(async (_req, res) => {
+  router.get("/api/auth/admiral/users", asyncHandler(async (_req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -381,9 +381,9 @@ export function createAuthRoutes(appState: AppState): Router {
     sendOk(res, { users, count: users.length });
   }));
 
-  // ── PATCH /api/auth/admin/lock ────────────────────────────
+  // ── PATCH /api/auth/admiral/lock ────────────────────
   // Admin-only: lock or unlock a user account
-  router.patch("/api/auth/admin/lock", asyncHandler(async (req, res) => {
+  router.patch("/api/auth/admiral/lock", asyncHandler(async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -412,9 +412,9 @@ export function createAuthRoutes(appState: AppState): Router {
     sendOk(res, { message: `${user.displayName} ${locked ? "locked" : "unlocked"}.` });
   }));
 
-  // ── DELETE /api/auth/admin/user ───────────────────────────
+  // ── DELETE /api/auth/admiral/user ───────────────────
   // Admin-only: delete a user by email
-  router.delete("/api/auth/admin/user", asyncHandler(async (req, res) => {
+  router.delete("/api/auth/admiral/user", asyncHandler(async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
