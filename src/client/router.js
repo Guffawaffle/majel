@@ -12,6 +12,12 @@ const views = new Map();
 const initialized = new Set();
 const loadedCSS = new Set();
 
+// Seed loadedCSS with CSS already present via <link> tags (prevents duplicates)
+document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+    const href = link.getAttribute('href');
+    if (href) loadedCSS.add(href);
+});
+
 // Security: whitelist valid CSS href patterns (ADR-023 §3)
 const CSS_HREF_PATTERN = /^(views\/[\w-]+\/[\w-]+\.css|components\/[\w-]+\.css|styles\/[\w-]+\.css)$/;
 
@@ -203,6 +209,9 @@ export function initRouting() {
         if (view && view !== currentView) {
             if (viewHistory.length > 0) viewHistory.pop();
             navigateToView(view, { pushHistory: false, updateUrl: false });
+        } else if (!view && currentView) {
+            // Unknown hash — redirect to chat
+            navigateToView('chat', { pushHistory: false, updateUrl: true });
         }
     });
 
