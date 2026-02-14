@@ -16,7 +16,7 @@ import {
     setOfficerOverlay, setShipOverlay,
     bulkSetOfficerOverlay, bulkSetShipOverlay,
     syncWikiData,
-} from './api/catalog.js';
+} from 'api/catalog.js';
 
 // ─── State ──────────────────────────────────────────────────
 let officers = [];

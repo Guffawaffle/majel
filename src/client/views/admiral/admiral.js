@@ -13,7 +13,7 @@ import {
     adminListUsers, adminSetRole, adminSetLock, adminDeleteUser,
     adminListInvites, adminCreateInvite, adminRevokeInvite,
     adminListSessions, adminDeleteSession, adminDeleteAllSessions,
-} from './api/admiral.js';
+} from 'api/admiral.js';
 
 // ─── State ──────────────────────────────────────────────────
 let users = [];

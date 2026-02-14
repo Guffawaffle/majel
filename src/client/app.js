@@ -19,11 +19,11 @@ import { saveFleetSetting, loadFleetSettings } from 'api/settings.js';
 import { _fetch } from 'api/_fetch.js';
 import * as chat from 'views/chat/chat.js';
 import * as sessions from 'views/chat/sessions.js';
-import * as drydock from './drydock.js';
-import * as catalog from './catalog.js';
-import * as fleet from './fleet.js';
-import * as diagnostics from './diagnostics.js';
-import * as admin from './admin.js';
+import * as drydock from 'views/drydock/drydock.js';
+import * as catalog from 'views/catalog/catalog.js';
+import * as fleet from 'views/fleet/fleet.js';
+import * as diagnostics from 'views/diagnostics/diagnostics.js';
+import * as admin from 'views/admiral/admiral.js';
 import * as router from 'router';
 
 // ─── DOM Elements ───────────────────────────────────────────
@@ -227,7 +227,7 @@ if (logoutBtn) {
         extraAreas: [inputArea],
         icon: '💬', title: 'Chat', subtitle: 'Gemini-powered fleet advisor',
         cssHref: 'views/chat/chat.css',
-        refresh: () => {},
+        refresh: () => { },
     });
     router.registerView('drydock', {
         area: drydockArea,
@@ -320,7 +320,7 @@ if (logoutBtn) {
             chatInput.focus();
             appState = "active";
         } else if (appState === "active" && h.gemini !== "connected"
-                   && router.getCurrentView() === 'chat') {
+            && router.getCurrentView() === 'chat') {
             // Only show setup when on chat — don't interrupt other views
             showSetup(h);
             appState = "setup";
