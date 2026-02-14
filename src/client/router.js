@@ -23,8 +23,8 @@ document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
 // No dots in directory names, no subdirectories within view folders.
 const CSS_HREF_PATTERN = /^(views\/[\w-]+\/[\w-]+\.css|components\/[\w-]+\.css|styles\/[\w-]+\.css)$/;
 
-// Hash redirect map — backward compatibility (Phase 4 adds 'admin' → 'admiral-dashboard')
-const HASH_REDIRECTS = {};
+// Hash redirect map — backward compatibility
+const HASH_REDIRECTS = { 'admin': 'admiral' };
 
 // ─── State ──────────────────────────────────────────────────
 let currentView = null;

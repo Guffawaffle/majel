@@ -2,7 +2,7 @@
    Source: styles.css (ADR-023 Phase 2)
    ═══════════════════════════════════════════════════════════ */
 
-.admin-area {
+.admiral-area {
   padding: 20px 28px;
   overflow-y: auto;
   max-height: calc(100vh - 60px);
