@@ -136,36 +136,40 @@ export function requireRole(appState: AppState, minRole: Role): RequestHandler {
     const identity = await resolveIdentity(req, appState);
 
     if (!identity) {
-      sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401, undefined, [
-        "Provide a Bearer token in the Authorization header",
-        "Or authenticate via the session cookie flow",
-      ]);
+      sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401, {
+        hints: [
+          "Provide a Bearer token in the Authorization header",
+          "Or authenticate via the session cookie flow",
+        ],
+      });
       return;
     }
 
     // Check email verified (skip for admin-token virtual admiral)
     if (identity.source !== "admin-token" && !identity.emailVerified) {
-      sendFail(res, ErrorCode.EMAIL_NOT_VERIFIED, "Please verify your email before accessing this resource", 403, undefined, [
-        "Check your email for the verification link",
-        "Contact an Admiral to resend the verification email",
-      ]);
+      sendFail(res, ErrorCode.EMAIL_NOT_VERIFIED, "Please verify your email before accessing this resource", 403, {
+        hints: [
+          "Check your email for the verification link",
+          "Contact an Admiral to resend the verification email",
+        ],
+      });
       return;
     }
 
     // Check account locked
     if (identity.lockedAt) {
-      sendFail(res, ErrorCode.ACCOUNT_LOCKED, "Account is temporarily locked", 403, undefined, [
-        "Contact an Admiral to unlock your account",
-      ]);
+      sendFail(res, ErrorCode.ACCOUNT_LOCKED, "Account is temporarily locked", 403, {
+        hints: ["Contact an Admiral to unlock your account"],
+      });
       return;
     }
 
     // Check role level
     if (roleLevel(identity.role) < roleLevel(minRole)) {
-      sendFail(res, ErrorCode.INSUFFICIENT_RANK, `Minimum rank required: ${minRole}`, 403,
-        { requiredRole: minRole },
-        [`This endpoint requires ${minRole} or higher`],
-      );
+      sendFail(res, ErrorCode.INSUFFICIENT_RANK, `Minimum rank required: ${minRole}`, 403, {
+        detail: { requiredRole: minRole },
+        hints: [`This endpoint requires ${minRole} or higher`],
+      });
       return;
     }
 
