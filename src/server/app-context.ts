@@ -11,6 +11,7 @@ import type { FrameStoreFactory } from "./postgres-frame-store.js";
 import type { SettingsStore } from "./settings.js";
 import type { SessionStore } from "./sessions.js";
 import type { DockStore } from "./dock-store.js";
+import type { LoadoutStore } from "./loadout-store.js";
 import type { BehaviorStore } from "./behavior-store.js";
 import type { ReferenceStore } from "./reference-store.js";
 import type { OverlayStore } from "./overlay-store.js";
@@ -31,6 +32,7 @@ export interface AppState {
   settingsStore: SettingsStore | null;
   sessionStore: SessionStore | null;
   dockStore: DockStore | null;
+  loadoutStore: LoadoutStore | null;
   behaviorStore: BehaviorStore | null;
   referenceStore: ReferenceStore | null;
   overlayStore: OverlayStore | null;
