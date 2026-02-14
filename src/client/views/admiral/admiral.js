@@ -1,5 +1,5 @@
 /**
- * admin.js — Admiral Console Module (ADR-020)
+ * admiral.js — Admiral Console Module (ADR-020)
  *
  * Majel — STFC Fleet Intelligence System
  *

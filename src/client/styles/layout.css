@@ -314,6 +314,12 @@
 
 #logout-btn { color: var(--text-muted); }
 
+/* ── Recall Search States ── */
+
+.recall-searching { color: var(--text-muted); padding: 8px 0; }
+.recall-empty { color: var(--text-muted); }
+.recall-error { color: var(--accent-red); }
+
 /* ═══════════════════════════════════════════════════════════
    Sidebar Overlay (mobile)
    ═══════════════════════════════════════════════════════════ */

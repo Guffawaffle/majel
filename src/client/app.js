@@ -80,28 +80,33 @@ async function checkHealthAndUpdateUI() {
     return data;
 }
 
+// ─── Helpers ────────────────────────────────────────────────
+function escapeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ─── Recall Search ──────────────────────────────────────────
 async function searchRecall(query) {
-    recallResults.innerHTML = '<p style="color: var(--text-muted); padding: 8px 0;">Searching...</p>';
+    recallResults.innerHTML = '<p class="recall-searching">Searching...</p>';
     try {
         const result = await apiSearchRecall(query);
         if (!result.ok) {
-            recallResults.innerHTML = `<p class="recall-item" style="color: var(--accent-red)">${result.error?.message || "Error"}</p>`;
+            recallResults.innerHTML = `<p class="recall-item recall-error">${escapeHtml(result.error?.message || "Error")}</p>`;
             return;
         }
         if (result.data.results.length === 0) {
-            recallResults.innerHTML = '<p class="recall-item" style="color: var(--text-muted)">No results found.</p>';
+            recallResults.innerHTML = '<p class="recall-item recall-empty">No results found.</p>';
             return;
         }
         recallResults.innerHTML = result.data.results
             .map((r) => `
         <div class="recall-item">
-          <div>${r.summary}</div>
+          <div>${escapeHtml(r.summary)}</div>
           <div class="timestamp">${new Date(r.timestamp).toLocaleString()}</div>
-          ${r.keywords?.length ? `<div class="timestamp">Keywords: ${r.keywords.join(", ")}</div>` : ""}
+          ${r.keywords?.length ? `<div class="timestamp">Keywords: ${escapeHtml(r.keywords.join(", "))}</div>` : ""}
         </div>`).join("");
     } catch (err) {
-        recallResults.innerHTML = `<p class="recall-item" style="color: var(--accent-red)">Error: ${err.message}</p>`;
+        recallResults.innerHTML = `<p class="recall-item recall-error">Error: ${escapeHtml(err.message)}</p>`;
     }
 }
 
@@ -167,6 +172,7 @@ if (logoutBtn) {
     // Chat + sessions: eager init (sidebar UI must be ready immediately)
     chat.init(sessions.refreshSessionList);
     sessions.init();
+    router.markInitialized('chat');
     await initOpsLevel();
 
     // Auth & gating
@@ -202,10 +208,13 @@ if (logoutBtn) {
     setInterval(async () => {
         const h = await checkHealthAndUpdateUI();
         if (!h) return;
-        if (appState === "setup" && h.gemini === "connected") {
+        if ((appState === "setup" || appState === "loading") && h.gemini === "connected") {
             await router.navigateToView('chat');
             chatInput.focus();
             appState = "active";
+        } else if (appState === "loading" && h.gemini !== "connected") {
+            showSetup(h);
+            appState = "setup";
         } else if (appState === "active" && h.gemini !== "connected"
             && router.getCurrentView() === 'chat') {
             showSetup(h);
