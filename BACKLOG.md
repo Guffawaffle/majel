@@ -120,14 +120,32 @@
 
 ---
 
-## In Progress — Phase 2: Loadout API (#43)
+## In Progress — Architecture Restructure (#47, ADR-023)
 
-- [ ] Loadout CRUD routes (`/api/loadouts`)
-- [ ] Dock routes (`/api/docks`)
-- [ ] Plan item routes (`/api/plan`)
-- [ ] Intent routes (`/api/intents`)
-- [ ] Plan briefing builder (`plan-briefing.ts`)
-- [ ] Route + briefing tests
+MVC-by-concern restructure of the client. Inserted between Phase 2 (API, done) and Phase 3 (UI).
+
+| Issue | Phase | Title | Status |
+|---|---|---|---|
+| #48 | 0 | Scaffolding — directories + READMEs | Not started |
+| #49 | 1 | API decomposition — split api.js | Not started |
+| #50 | 2 | CSS decomposition — split styles.css | Not started |
+| #51 | 3 | View extraction + router registry | Not started |
+| #52 | 4 | Admiral-dashboard rename | Not started |
+| #53 | 5 | Server grouping (stores/types/services) | Not started |
+
+Key decisions:
+- `admin` → `admiral-dashboard` (DOM/CSS/routes) to reduce bot scanning noise
+- View registry pattern replaces manual `show*()` coupling in app.js
+- Lazy CSS loading per view (no bundler, browser-native)
+- `api.js` (51 exports) → `api/` directory with 11 domain modules + shared `_fetch.js`
+- File header manifests (`@module`, `@domain`, `@depends`) for agent navigation
+- README breadcrumbs per directory
+
+### Loadout Pipeline (updated)
+
+```
+ADR-022 ✅ → #42 (store) ✅ → #43 (API) ✅ → #47 (restructure) → #44 (UI) → #41 (ADVANCED) → #45 (solver)
+```
 
 ---
 
