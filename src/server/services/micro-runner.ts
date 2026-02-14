@@ -11,8 +11,8 @@
  * See PROMPT_GUIDE.md for the authority ladder this enforces at runtime.
  */
 
-import { log } from "./logger.js";
-import type { BehaviorStore } from "./behavior-store.js";
+import { log } from "../logger.js";
+import type { BehaviorStore } from "../stores/behavior-store.js";
 
 // ─── Types ──────────────────────────────────────────────────
 

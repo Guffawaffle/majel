@@ -11,7 +11,7 @@ import { fileURLToPath } from "url";
 import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, createTimeoutMiddleware } from "../envelope.js";
-import { requireVisitor } from "../auth.js";
+import { requireVisitor } from "../services/auth.js";
 
 // Read version from package.json once at module load
 const __dirname = dirname(fileURLToPath(import.meta.url));

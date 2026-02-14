@@ -22,9 +22,9 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode, asyncHandler } from "../envelope.js";
-import { SESSION_COOKIE, TENANT_COOKIE, requireRole, requireAdmiral } from "../auth.js";
+import { SESSION_COOKIE, TENANT_COOKIE, requireRole, requireAdmiral } from "../services/auth.js";
 import { authRateLimiter } from "../rate-limit.js";
-import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../email.js";
+import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../services/email.js";
 
 export function createAuthRoutes(appState: AppState): Router {
   const router = Router();

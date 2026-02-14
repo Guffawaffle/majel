@@ -20,7 +20,7 @@ import {
   type TaskContract,
   type GatedContext,
   type ReferenceEntry,
-} from "../src/server/micro-runner.js";
+} from "../src/server/services/micro-runner.js";
 
 // ─── Test Helpers ───────────────────────────────────────────
 

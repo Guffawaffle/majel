@@ -12,8 +12,8 @@ import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
 import type { AppState } from "../src/server/app-context.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
-import { createLoadoutStore, type LoadoutStore } from "../src/server/loadout-store.js";
-import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
+import { createLoadoutStore, type LoadoutStore } from "../src/server/stores/loadout-store.js";
+import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;

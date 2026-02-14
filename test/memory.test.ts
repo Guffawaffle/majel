@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest";
-import { createMemoryService, extractKeywords } from "../src/server/memory.js";
+import { createMemoryService, extractKeywords } from "../src/server/services/memory.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

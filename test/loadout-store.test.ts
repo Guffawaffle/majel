@@ -10,8 +10,8 @@ import {
   createLoadoutStore,
   VALID_INTENT_CATEGORIES,
   type LoadoutStore,
-} from "../src/server/loadout-store.js";
-import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
+} from "../src/server/stores/loadout-store.js";
+import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;

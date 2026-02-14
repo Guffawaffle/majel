@@ -14,8 +14,8 @@ import {
   PRIOR_BETA,
   MIN_OBSERVATIONS,
   MIN_CONFIDENCE,
-} from "../src/server/behavior-store.js";
-import { createMicroRunner, type ContextSources } from "../src/server/micro-runner.js";
+} from "../src/server/stores/behavior-store.js";
+import { createMicroRunner, type ContextSources } from "../src/server/services/micro-runner.js";
 
 // ─── Test Helpers ───────────────────────────────────────────
 

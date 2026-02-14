@@ -14,7 +14,7 @@ import { Router } from "express";
 import type { Pool } from "../db.js";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { requireAdmiral } from "../auth.js";
+import { requireAdmiral } from "../services/auth.js";
 
 // ─── Safety ─────────────────────────────────────────────────
 

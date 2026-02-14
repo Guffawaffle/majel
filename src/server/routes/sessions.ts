@@ -5,7 +5,7 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { requireVisitor } from "../auth.js";
+import { requireVisitor } from "../services/auth.js";
 
 export function createSessionRoutes(appState: AppState): Router {
   const router = Router();

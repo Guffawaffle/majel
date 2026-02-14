@@ -5,21 +5,21 @@
  * between the main app factory and route modules.
  */
 
-import type { GeminiEngine, FleetConfig } from "./gemini.js";
-import type { MemoryService } from "./memory.js";
-import type { FrameStoreFactory } from "./postgres-frame-store.js";
-import type { SettingsStore } from "./settings.js";
+import type { GeminiEngine, FleetConfig } from "./services/gemini.js";
+import type { MemoryService } from "./services/memory.js";
+import type { FrameStoreFactory } from "./stores/postgres-frame-store.js";
+import type { SettingsStore } from "./stores/settings.js";
 import type { SessionStore } from "./sessions.js";
-import type { DockStore } from "./dock-store.js";
-import type { LoadoutStore } from "./loadout-store.js";
-import type { BehaviorStore } from "./behavior-store.js";
-import type { ReferenceStore } from "./reference-store.js";
-import type { OverlayStore } from "./overlay-store.js";
-import type { InviteStore } from "./invite-store.js";
-import type { UserStore } from "./user-store.js";
+import type { DockStore } from "./stores/dock-store.js";
+import type { LoadoutStore } from "./stores/loadout-store.js";
+import type { BehaviorStore } from "./stores/behavior-store.js";
+import type { ReferenceStore } from "./stores/reference-store.js";
+import type { OverlayStore } from "./stores/overlay-store.js";
+import type { InviteStore } from "./stores/invite-store.js";
+import type { UserStore } from "./stores/user-store.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
-import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./micro-runner.js";
+import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./services/micro-runner.js";
 
 // ─── App State ──────────────────────────────────────────────────
 

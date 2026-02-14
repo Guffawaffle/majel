@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vites
 import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
-import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
+import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
 import {
   cleanWikitext,
@@ -18,7 +18,7 @@ import {
   parseExportXml,
   parseOfficerTable,
   parseShipTable,
-} from "../src/server/wiki-ingest.js";
+} from "../src/server/services/wiki-ingest.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";

@@ -19,7 +19,7 @@
 import { createFrameStore } from "@smartergpt/lex/store";
 import { createFrame } from "@smartergpt/lex/types";
 import type { Frame, FrameStore } from "@smartergpt/lex/store";
-import { log } from "./logger.js";
+import { log } from "../logger.js";
 
 // Re-export Frame type for consumers
 export type { Frame };

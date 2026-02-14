@@ -11,9 +11,9 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { VALID_INTENT_CATEGORIES } from "../loadout-store.js";
-import { requireVisitor } from "../auth.js";
-import { buildPlanBriefing } from "../plan-briefing.js";
+import { VALID_INTENT_CATEGORIES } from "../stores/loadout-store.js";
+import { requireVisitor } from "../services/auth.js";
+import { buildPlanBriefing } from "../services/plan-briefing.js";
 
 export function createLoadoutRoutes(appState: AppState): Router {
   const router = Router();

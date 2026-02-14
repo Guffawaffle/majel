@@ -7,8 +7,8 @@ import {
   createDockStore,
   VALID_INTENT_CATEGORIES,
   type DockStore,
-} from "../src/server/dock-store.js";
-import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
+} from "../src/server/stores/dock-store.js";
+import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;

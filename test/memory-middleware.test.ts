@@ -6,10 +6,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express, { type Request, type Response, type NextFunction } from "express";
 import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";
-import { attachScopedMemory } from "../src/server/memory-middleware.js";
+import { attachScopedMemory } from "../src/server/services/memory-middleware.js";
 import type { AppState } from "../src/server/app-context.js";
-import type { MemoryService } from "../src/server/memory.js";
-import type { FrameStoreFactory } from "../src/server/postgres-frame-store.js";
+import type { MemoryService } from "../src/server/services/memory.js";
+import type { FrameStoreFactory } from "../src/server/stores/postgres-frame-store.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
 
 // ─── Helpers ────────────────────────────────────────────────────

@@ -16,9 +16,9 @@
  */
 
 import type { FrameStore } from "@smartergpt/lex/store";
-import { log } from "./logger.js";
-import type { Pool } from "./db.js";
-import { withUserScope } from "./postgres-frame-store.js";
+import { log } from "../logger.js";
+import type { Pool } from "../db.js";
+import { withUserScope } from "../stores/postgres-frame-store.js";
 
 // ─── Configuration ──────────────────────────────────────────────
 

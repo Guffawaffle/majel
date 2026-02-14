@@ -12,7 +12,7 @@ import {
   getSettingDef,
   getCategories,
   type SettingsStore,
-} from "../src/server/settings.js";
+} from "../src/server/stores/settings.js";
 
 // ─── Helpers ────────────────────────────────────────────────────
 

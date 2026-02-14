@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import {
   createFrameStoreFactory,
   FrameStoreFactory,
-} from "../src/server/postgres-frame-store.js";
+} from "../src/server/stores/postgres-frame-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 import { createPool } from "../src/server/db.js";
 import type { Frame, FrameStore } from "@smartergpt/lex/store";

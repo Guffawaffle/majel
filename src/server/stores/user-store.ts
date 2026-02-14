@@ -12,9 +12,9 @@
  */
 
 import { randomBytes, randomUUID, createHmac } from "node:crypto";
-import { initSchema, type Pool } from "./db.js";
-import { log } from "./logger.js";
-import { hashPassword, verifyPassword, validatePassword, timingSafeCompare } from "./password.js";
+import { initSchema, type Pool } from "../db.js";
+import { log } from "../logger.js";
+import { hashPassword, verifyPassword, validatePassword, timingSafeCompare } from "../services/password.js";
 
 // ─── Constants ──────────────────────────────────────────────────
 

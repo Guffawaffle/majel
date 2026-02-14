@@ -9,8 +9,8 @@ import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vites
 import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
-import { createReferenceStore, type ReferenceStore } from "../src/server/reference-store.js";
-import { createOverlayStore, type OverlayStore } from "../src/server/overlay-store.js";
+import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
+import { createOverlayStore, type OverlayStore } from "../src/server/stores/overlay-store.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 

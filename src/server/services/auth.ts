@@ -16,10 +16,10 @@
  */
 
 import type { Request, Response, NextFunction, RequestHandler } from "express";
-import type { AppState } from "./app-context.js";
-import { sendFail, ErrorCode } from "./envelope.js";
+import type { AppState } from "../app-context.js";
+import { sendFail, ErrorCode } from "../envelope.js";
 import { timingSafeCompare } from "./password.js";
-import { roleLevel, deriveAdminUserId, type Role } from "./user-store.js";
+import { roleLevel, deriveAdminUserId, type Role } from "../stores/user-store.js";
 
 // ─── Cookie Names ───────────────────────────────────────────────
 

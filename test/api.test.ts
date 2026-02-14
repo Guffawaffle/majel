@@ -9,9 +9,9 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vites
 import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
-import type { GeminiEngine } from "../src/server/gemini.js";
-import type { MemoryService, Frame } from "../src/server/memory.js";
-import { createSettingsStore, type SettingsStore } from "../src/server/settings.js";
+import type { GeminiEngine } from "../src/server/services/gemini.js";
+import type { MemoryService, Frame } from "../src/server/services/memory.js";
+import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
