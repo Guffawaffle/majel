@@ -27,6 +27,8 @@ let currentUserEmail = null; // set from app.js
 const $ = (sel) => document.querySelector(sel);
 
 // ─── View Registration ──────────────────────────────────────
+// View ID 'admin' matches sidebar data-view and DOM #admin-area.
+// Phase 4 (#52) will rename these to 'admiral' across the full stack.
 registerView('admin', {
     area: $('#admin-area'),
     icon: '🛡️', title: 'Admiral Console', subtitle: 'User management, invites & sessions',

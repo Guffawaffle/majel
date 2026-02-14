@@ -19,6 +19,8 @@ document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
 });
 
 // Security: whitelist valid CSS href patterns (ADR-023 §3)
+// Constraint: directory and file names may only contain [a-zA-Z0-9_-].
+// No dots in directory names, no subdirectories within view folders.
 const CSS_HREF_PATTERN = /^(views\/[\w-]+\/[\w-]+\.css|components\/[\w-]+\.css|styles\/[\w-]+\.css)$/;
 
 // Hash redirect map — backward compatibility (Phase 4 adds 'admin' → 'admiral-dashboard')
@@ -50,7 +52,7 @@ function ensureCSS(href) {
         link.rel = 'stylesheet';
         link.href = href;
         link.onload = resolve;
-        link.onerror = resolve; // degrade gracefully — unstyled > broken
+        link.onerror = () => { console.warn(`ensureCSS: failed to load "${href}"`); resolve(); };
         document.head.appendChild(link);
         loadedCSS.add(href);
     });
