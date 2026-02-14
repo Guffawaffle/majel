@@ -64,7 +64,7 @@ export async function refresh() {
     } catch (err) {
         console.error("Fleet refresh failed:", err);
         const area = $("#fleet-area");
-        if (area) area.innerHTML = `<div class="fleet-error">Failed to load fleet: ${err.message}</div>`;
+        if (area) area.innerHTML = `<div class="fleet-error">Failed to load fleet: ${esc(err.message)}</div>`;
     } finally {
         loading = false;
     }
