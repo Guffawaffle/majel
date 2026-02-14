@@ -5,7 +5,7 @@
  * Handles chat UI, message rendering, markdown, and input controls.
  */
 
-import { sendChat as apiSendChat } from './api/chat.js';
+import { sendChat as apiSendChat } from 'api/chat.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);

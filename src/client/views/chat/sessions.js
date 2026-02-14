@@ -5,7 +5,7 @@
  * Handles session list, creation, switching, deletion, and sidebar navigation.
  */
 
-import { fetchSessions, getCachedSessions, restoreSession as apiRestoreSession, deleteSession } from './api/sessions.js';
+import { fetchSessions, getCachedSessions, restoreSession as apiRestoreSession, deleteSession } from 'api/sessions.js';
 import * as chat from './chat.js';
 
 // ─── DOM Elements ───────────────────────────────────────────

@@ -4,24 +4,27 @@
  * Majel — STFC Fleet Intelligence System
  * Named in honor of Majel Barrett-Roddenberry (1932–2008)
  *
- * Thin initialization shell that coordinates modules:
- * - Health check & view switching (setup vs chat)
- * - Diagnostic & recall dialogs
- * - History & roster refresh tools
+ * Thin initialization shell:
+ * - View registration & router setup
+ * - Health check & setup guide
+ * - Ops level management
+ * - Recall dialog
+ * - Auth & logout
  */
 
-import { getMe } from './api/auth.js';
-import { checkHealth } from './api/health.js';
-import { loadHistory as apiLoadHistory, searchRecall as apiSearchRecall } from './api/chat.js';
-import { saveFleetSetting, loadFleetSettings } from './api/settings.js';
-import { _fetch } from './api/_fetch.js';
-import * as chat from './chat.js';
-import * as sessions from './sessions.js';
+import { getMe } from 'api/auth.js';
+import { checkHealth } from 'api/health.js';
+import { searchRecall as apiSearchRecall } from 'api/chat.js';
+import { saveFleetSetting, loadFleetSettings } from 'api/settings.js';
+import { _fetch } from 'api/_fetch.js';
+import * as chat from 'views/chat/chat.js';
+import * as sessions from 'views/chat/sessions.js';
 import * as drydock from './drydock.js';
 import * as catalog from './catalog.js';
 import * as fleet from './fleet.js';
 import * as diagnostics from './diagnostics.js';
 import * as admin from './admin.js';
+import * as router from 'router';
 
 // ─── DOM Elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -31,18 +34,15 @@ const statusText = $("#status-text");
 const chatInput = $("#chat-input");
 const sendBtn = $("#send-btn");
 
-// Dialogs & tools
-const historyBtn = $("#history-btn");
-const recallBtn = $("#recall-btn");
+// Recall dialog
 const recallDialog = $("#recall-dialog");
 const recallForm = $("#recall-form");
 const recallInput = $("#recall-input");
 const recallResults = $("#recall-results");
 const recallClose = $("#recall-close");
-const titleBackBtn = $("#title-back-btn");
 const logoutBtn = $("#logout-btn");
 
-// View switching elements
+// View areas (for registration — views self-register in Phase 3b)
 const setupGuide = $("#setup-guide");
 const chatArea = $("#chat-area");
 const inputArea = $("#input-area");
@@ -52,21 +52,12 @@ const catalogArea = $("#catalog-area");
 const fleetArea = $("#fleet-area");
 const diagnosticsArea = $("#diagnostics-area");
 const adminArea = $("#admin-area");
-const titleBar = $("#title-bar");
-const titleBarHeading = $("#title-bar-heading");
-const titleBarSubtitle = $("#title-bar-subtitle");
-const sidebarNavBtns = document.querySelectorAll(".sidebar-nav-btn[data-view]");
-
-// Mobile sidebar
-const sidebar = $("#sidebar");
-const sidebarOverlay = $("#sidebar-overlay");
 
 // ─── State ──────────────────────────────────────────────────
 let isOnline = false;
-let currentMode = "loading";
+let appState = "loading"; // "loading" | "setup" | "active"
 let opsLevel = 1;
-let userRole = null; // set after getMe()
-let viewHistory = []; // stack for back button
+let userRole = null;
 
 // ─── Ops Level ──────────────────────────────────────────────
 async function initOpsLevel() {
@@ -76,7 +67,7 @@ async function initOpsLevel() {
             const ol = settings.settings.find(s => s.key === "fleet.opsLevel");
             if (ol) opsLevel = parseInt(ol.value, 10) || 1;
         }
-    } catch { /* ignore — will show 1 */ }
+    } catch { /* ignore */ }
     updateOpsDisplay();
 }
 
@@ -88,12 +79,11 @@ function updateOpsDisplay() {
 /** Exported so drydock can read the current ops level */
 export function getOpsLevel() { return opsLevel; }
 
-// ─── Health Check & Status Updates ─────────────────────────
+// ─── Health Check ───────────────────────────────────────────
 async function checkHealthAndUpdateUI() {
     const data = await checkHealth();
 
     if (!data) {
-        // Offline
         isOnline = false;
         statusDot.className = "status-dot offline";
         if (mobileStatusDot) mobileStatusDot.className = "status-dot offline";
@@ -105,12 +95,9 @@ async function checkHealthAndUpdateUI() {
 
     isOnline = data.status === "online";
 
-    // Status dots
     const dotClass = isOnline && data.gemini === "connected"
         ? "status-dot online"
-        : isOnline
-            ? "status-dot loading"
-            : "status-dot loading";
+        : "status-dot loading";
 
     statusDot.className = dotClass;
     if (mobileStatusDot) mobileStatusDot.className = dotClass;
@@ -121,34 +108,11 @@ async function checkHealthAndUpdateUI() {
             ? "Setup needed"
             : "Initializing...";
 
-    // Enable/disable input
     const canChat = data.gemini === "connected";
     chatInput.disabled = !canChat;
     if (!canChat) sendBtn.disabled = true;
 
     return data;
-}
-
-// ─── History Tool ───────────────────────────────────────────
-async function loadHistory() {
-    try {
-        const data = await apiLoadHistory();
-
-        if (data.lex && data.lex.length > 0) {
-            chat.addMessage("system", `── Lex Memory: ${data.lex.length} past conversations ──`);
-            data.lex.forEach((item) => {
-                const time = new Date(item.timestamp).toLocaleString();
-                chat.addMessage("system", `[${time}] ${item.summary}`);
-            });
-        } else {
-            chat.addMessage("system", "No conversation history found in Lex memory.");
-        }
-    } catch (err) {
-        chat.addMessage("error", `Failed to load history: ${err.message}`);
-    }
-    // Close sidebar on mobile
-    sidebar.classList.remove("open");
-    sidebarOverlay.classList.add("hidden");
 }
 
 // ─── Recall Search ──────────────────────────────────────────
@@ -184,58 +148,17 @@ async function searchRecall(query) {
     }
 }
 
-// ─── View Switching & Hash Routing ──────────────────────────
-const VALID_VIEWS = ['chat', 'drydock', 'catalog', 'fleet', 'diagnostics', 'admin'];
-
-function setActiveNav(view) {
-    sidebarNavBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
-}
-
-function updateHash(view) {
-    if (window.location.hash !== `#/${view}`) {
-        history.pushState(null, '', `#/${view}`);
-    }
-}
-
-function getViewFromHash() {
-    const hash = window.location.hash.replace(/^#\/?/, '');
-    return VALID_VIEWS.includes(hash) ? hash : null;
-}
-
-function setTitleBar(icon, heading, subtitle = "") {
-    if (titleBarHeading) titleBarHeading.textContent = `${icon} ${heading}`;
-    if (titleBarSubtitle) titleBarSubtitle.textContent = subtitle;
-    if (titleBar) titleBar.classList.remove("hidden");
-}
-
-/**
- * Show/hide sidebar items based on the current userRole.
- * - Diagnostics: Admiral only
- * - Lex Memory + Memory Recall: hidden (not yet wired to user accounts)
- */
-function applySidebarGating() {
-    // Diagnostics — Admiral only
-    const diagBtn = document.querySelector('.sidebar-nav-btn[data-view="diagnostics"]');
-    if (diagBtn) diagBtn.classList.toggle("hidden", userRole !== "admiral");
-
-    // Admiral Console — Admiral only
-    const adminBtn = document.querySelector('.sidebar-nav-btn[data-view="admin"]');
-    if (adminBtn) adminBtn.classList.toggle("hidden", userRole !== "admiral");
-
-    // Lex Memory & Recall — hidden for now (QA-001-6)
-    if (historyBtn) historyBtn.classList.add("hidden");
-    if (recallBtn) recallBtn.classList.add("hidden");
-}
-
+// ─── Setup Guide ────────────────────────────────────────────
 function showSetup(health) {
+    // Hide all registered view areas
+    for (const [, v] of router.getRegisteredViews()) {
+        if (v.area) v.area.classList.add('hidden');
+        for (const extra of v.extraAreas) {
+            if (extra) extra.classList.add('hidden');
+        }
+    }
     setupGuide.classList.remove("hidden");
-    chatArea.classList.add("hidden");
-    inputArea.classList.add("hidden");
-    if (drydockArea) drydockArea.classList.add("hidden");
-    if (catalogArea) catalogArea.classList.add("hidden");
-    if (fleetArea) fleetArea.classList.add("hidden");
-    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
-    if (adminArea) adminArea.classList.add("hidden");
+    const titleBar = $("#title-bar");
     if (titleBar) titleBar.classList.add("hidden");
 
     if (health.gemini === "connected") {
@@ -245,138 +168,9 @@ function showSetup(health) {
     }
 }
 
-function showChat() {
-    setupGuide.classList.add("hidden");
-    chatArea.classList.remove("hidden");
-    inputArea.classList.remove("hidden");
-    if (drydockArea) drydockArea.classList.add("hidden");
-    if (catalogArea) catalogArea.classList.add("hidden");
-    if (fleetArea) fleetArea.classList.add("hidden");
-    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
-    if (adminArea) adminArea.classList.add("hidden");
-    setActiveNav("chat");
-    setTitleBar("💬", "Chat", "Gemini-powered fleet advisor");
-}
-
-function showDrydock() {
-    setupGuide.classList.add("hidden");
-    chatArea.classList.add("hidden");
-    inputArea.classList.add("hidden");
-    if (drydockArea) drydockArea.classList.remove("hidden");
-    if (catalogArea) catalogArea.classList.add("hidden");
-    if (fleetArea) fleetArea.classList.add("hidden");
-    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
-    if (adminArea) adminArea.classList.add("hidden");
-    setActiveNav("drydock");
-    setTitleBar("🔧", "Drydock", "Configure docks, ships & crew");
-    drydock.refresh();
-}
-
-function showCatalog() {
-    setupGuide.classList.add("hidden");
-    chatArea.classList.add("hidden");
-    inputArea.classList.add("hidden");
-    if (drydockArea) drydockArea.classList.add("hidden");
-    if (catalogArea) catalogArea.classList.remove("hidden");
-    if (fleetArea) fleetArea.classList.add("hidden");
-    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
-    if (adminArea) adminArea.classList.add("hidden");
-    setActiveNav("catalog");
-    setTitleBar("📋", "Catalog", "Reference data & ownership tracking");
-    catalog.refresh();
-}
-
-function showDiagnostics() {
-    setupGuide.classList.add("hidden");
-    chatArea.classList.add("hidden");
-    inputArea.classList.add("hidden");
-    if (drydockArea) drydockArea.classList.add("hidden");
-    if (catalogArea) catalogArea.classList.add("hidden");
-    if (fleetArea) fleetArea.classList.add("hidden");
-    if (diagnosticsArea) diagnosticsArea.classList.remove("hidden");
-    if (adminArea) adminArea.classList.add("hidden");
-    setActiveNav("diagnostics");
-    setTitleBar("⚡", "Diagnostics", "System health, data summary & query console");
-    diagnostics.refresh();
-}
-
-function showAdmin() {
-    setupGuide.classList.add("hidden");
-    chatArea.classList.add("hidden");
-    inputArea.classList.add("hidden");
-    if (drydockArea) drydockArea.classList.add("hidden");
-    if (catalogArea) catalogArea.classList.add("hidden");
-    if (fleetArea) fleetArea.classList.add("hidden");
-    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
-    if (adminArea) adminArea.classList.remove("hidden");
-    setActiveNav("admin");
-    setTitleBar("🛡️", "Admiral Console", "User management, invites & sessions");
-    admin.refresh();
-}
-
-function showFleet() {
-    setupGuide.classList.add("hidden");
-    chatArea.classList.add("hidden");
-    inputArea.classList.add("hidden");
-    if (drydockArea) drydockArea.classList.add("hidden");
-    if (catalogArea) catalogArea.classList.add("hidden");
-    if (fleetArea) fleetArea.classList.remove("hidden");
-    if (diagnosticsArea) diagnosticsArea.classList.add("hidden");
-    if (adminArea) adminArea.classList.add("hidden");
-    setActiveNav("fleet");
-    setTitleBar("🚀", "Fleet", "Your owned roster — levels, ranks & power");
-    fleet.refresh();
-}
-
-function navigateToView(view, { pushHistory = true, updateUrl = true } = {}) {
-    // Track view history for in-app back button
-    if (pushHistory && currentMode && currentMode !== "loading" && currentMode !== "setup" && currentMode !== view) {
-        viewHistory.push(currentMode);
-        if (viewHistory.length > 20) viewHistory.shift();
-    }
-
-    if (view === 'drydock') { showDrydock(); currentMode = 'drydock'; }
-    else if (view === 'catalog') { showCatalog(); currentMode = 'catalog'; }
-    else if (view === 'fleet') { showFleet(); currentMode = 'fleet'; }
-    else if (view === 'diagnostics' && userRole === 'admiral') { showDiagnostics(); currentMode = 'diagnostics'; }
-    else if (view === 'admin' && userRole === 'admiral') { showAdmin(); currentMode = 'admin'; }
-    else { showChat(); currentMode = 'chat'; }
-
-    // Push URL state (skip when responding to browser back/forward — URL already changed)
-    if (updateUrl) updateHash(currentMode);
-
-    // In-app back button: visible when there's history and not on chat (home)
-    if (titleBackBtn) {
-        titleBackBtn.classList.toggle("hidden", viewHistory.length === 0 || currentMode === 'chat');
-    }
-}
-
 // ─── Event Handlers ─────────────────────────────────────────
-historyBtn.addEventListener("click", () => loadHistory());
 
-// Sidebar navigation
-sidebarNavBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-        navigateToView(btn.dataset.view);
-        // Close sidebar on mobile
-        sidebar.classList.remove("open");
-        sidebarOverlay.classList.add("hidden");
-    });
-});
-
-// Browser back/forward: popstate fires when user presses back/forward.
-// Navigate without pushing new history — the browser already changed the URL.
-// Also pop our internal viewHistory to keep the in-app back button in sync.
-window.addEventListener('popstate', () => {
-    const view = getViewFromHash();
-    if (view && view !== currentMode) {
-        // Pop viewHistory so in-app back button stays consistent
-        if (viewHistory.length > 0) viewHistory.pop();
-        navigateToView(view, { pushHistory: false, updateUrl: false });
-    }
-});
-
-// Ops level badge click
+// Ops level badge
 const opsBtn = $("#ops-level-global");
 if (opsBtn) {
     opsBtn.addEventListener("click", () => {
@@ -393,15 +187,21 @@ if (opsBtn) {
     });
 }
 
-recallBtn.addEventListener("click", () => {
-    recallResults.innerHTML = "";
-    recallInput.value = "";
-    recallDialog.showModal();
-    recallInput.focus();
-    // Close sidebar on mobile
-    sidebar.classList.remove("open");
-    sidebarOverlay.classList.add("hidden");
-});
+// Recall dialog
+const recallBtn = $("#recall-btn");
+if (recallBtn) {
+    recallBtn.addEventListener("click", () => {
+        recallResults.innerHTML = "";
+        recallInput.value = "";
+        recallDialog.showModal();
+        recallInput.focus();
+        // Close sidebar on mobile
+        const sidebar = $("#sidebar");
+        const overlay = $("#sidebar-overlay");
+        if (sidebar) sidebar.classList.remove("open");
+        if (overlay) overlay.classList.add("hidden");
+    });
+}
 
 recallForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -410,16 +210,6 @@ recallForm.addEventListener("submit", (e) => {
 });
 
 recallClose.addEventListener("click", () => recallDialog.close());
-
-// In-app back button — triggers browser back which fires popstate,
-// keeping browser history and app state in sync.
-if (titleBackBtn) {
-    titleBackBtn.addEventListener("click", () => {
-        if (viewHistory.length > 0) {
-            history.back();
-        }
-    });
-}
 
 // Logout
 if (logoutBtn) {
@@ -431,7 +221,51 @@ if (logoutBtn) {
 
 // ─── Init ───────────────────────────────────────────────────
 (async () => {
-    // Initialize all modules
+    // ── Register views ──
+    router.registerView('chat', {
+        area: chatArea,
+        extraAreas: [inputArea],
+        icon: '💬', title: 'Chat', subtitle: 'Gemini-powered fleet advisor',
+        cssHref: 'views/chat/chat.css',
+        refresh: () => {},
+    });
+    router.registerView('drydock', {
+        area: drydockArea,
+        icon: '🔧', title: 'Drydock', subtitle: 'Configure docks, ships & crew',
+        cssHref: 'views/drydock/drydock.css',
+        refresh: () => drydock.refresh(),
+    });
+    router.registerView('catalog', {
+        area: catalogArea,
+        icon: '📋', title: 'Catalog', subtitle: 'Reference data & ownership tracking',
+        cssHref: 'views/catalog/catalog.css',
+        refresh: () => catalog.refresh(),
+    });
+    router.registerView('fleet', {
+        area: fleetArea,
+        icon: '🚀', title: 'Fleet', subtitle: 'Your owned roster — levels, ranks & power',
+        cssHref: 'views/fleet/fleet.css',
+        refresh: () => fleet.refresh(),
+    });
+    router.registerView('diagnostics', {
+        area: diagnosticsArea,
+        icon: '⚡', title: 'Diagnostics', subtitle: 'System health, data summary & query console',
+        cssHref: 'views/diagnostics/diagnostics.css',
+        refresh: () => diagnostics.refresh(),
+        gate: 'admiral',
+    });
+    router.registerView('admin', {
+        area: adminArea,
+        icon: '🛡️', title: 'Admiral Console', subtitle: 'User management, invites & sessions',
+        cssHref: 'views/admiral/admiral.css',
+        refresh: () => admin.refresh(),
+        gate: 'admiral',
+    });
+
+    // ── Initialize routing ──
+    router.initRouting();
+
+    // ── Eager-initialize all modules (lazy init deferred to Phase 3b) ──
     chat.init(sessions.refreshSessionList);
     sessions.init();
     await initOpsLevel();
@@ -441,48 +275,55 @@ if (logoutBtn) {
     await diagnostics.init();
     await admin.init();
 
-    // Fetch user identity for sidebar gating
+    // Mark all as initialized (router won't re-init on first navigation)
+    ['chat', 'drydock', 'catalog', 'fleet', 'diagnostics', 'admin'].forEach(
+        v => router.markInitialized(v)
+    );
+
+    // ── Auth & gating ──
     const me = await getMe();
     userRole = me?.role ?? null;
-    applySidebarGating();
+    router.setUserRoleFn(() => userRole);
+    router.applySidebarGating();
     catalog.setAdminMode(userRole === 'admiral');
     admin.setCurrentUser(me?.email ?? null);
 
-    // Initial health check
+    // ── Initial health check ──
     const health = await checkHealthAndUpdateUI();
 
     if (!health) {
-        chatArea.classList.remove("hidden");
-        inputArea.classList.add("hidden");
-        chat.addMessage("error", "Could not connect to Ariadne server. Is it running?");
-        chat.addMessage("system", "Expected: npm run dev");
-        currentMode = "loading";
+        // Offline — status indicators show state. Show chat with input hidden.
+        await router.navigateToView('chat');
+        if (inputArea) inputArea.classList.add('hidden');
+        appState = "loading";
     } else if (health.gemini !== "connected") {
         showSetup(health);
-        currentMode = "setup";
+        appState = "setup";
     } else {
-        // Restore view from URL hash, default to chat
-        const savedView = getViewFromHash();
+        const savedView = router.getViewFromHash();
         if (savedView && savedView !== 'chat') {
-            navigateToView(savedView);
+            await router.navigateToView(savedView);
         } else {
-            navigateToView('chat');
+            await router.navigateToView('chat');
             chatInput.focus();
         }
+        appState = "active";
     }
 
-    // Poll health every 10s
+    // ── Health polling (10s) ──
     setInterval(async () => {
         const h = await checkHealthAndUpdateUI();
         if (!h) return;
 
-        if (currentMode === "setup" && h.gemini === "connected") {
-            navigateToView('chat');
-            chat.addMessage("system", "✅ Configuration detected — Aria is online, Admiral.");
+        if (appState === "setup" && h.gemini === "connected") {
+            await router.navigateToView('chat');
             chatInput.focus();
-        } else if (currentMode !== "setup" && currentMode !== "drydock" && currentMode !== "catalog" && currentMode !== "fleet" && currentMode !== "diagnostics" && currentMode !== "admin" && h.gemini !== "connected") {
+            appState = "active";
+        } else if (appState === "active" && h.gemini !== "connected"
+                   && router.getCurrentView() === 'chat') {
+            // Only show setup when on chat — don't interrupt other views
             showSetup(h);
-            currentMode = "setup";
+            appState = "setup";
         }
     }, 10000);
 })();
