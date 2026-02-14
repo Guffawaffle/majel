@@ -23,6 +23,7 @@
  */
 
 import express from "express";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import { IncomingMessage } from "node:http";
 import * as path from "node:path";
@@ -120,6 +121,9 @@ export function createApp(appState: AppState): express.Express {
   // Cookie parser (ADR-018 Phase 2 — tenant cookies)
   app.use(cookieParser());
 
+  // Response compression — 60-70% smaller JS/CSS/JSON responses (ADR-023)
+  app.use(compression());
+
   // Structured HTTP request logging
   app.use(
     pinoHttp({
@@ -138,7 +142,11 @@ export function createApp(appState: AppState): express.Express {
   );
 
   // Static files (for /app/* — the authenticated SPA)
-  app.use("/app", express.static(clientDir));
+  // Cache headers: 1 day browser cache, etag for conditional revalidation (ADR-023)
+  app.use("/app", express.static(clientDir, {
+    maxAge: '1d',
+    etag: true,
+  }));
 
   // ─── Landing page routes (ADR-019 Phase 1) ────────────────
   const landingFile = path.join(clientDir, "landing.html");

@@ -34,7 +34,9 @@ export function createPool(connectionString?: string): Pool {
     process.env.DATABASE_URL ||
     "postgres://majel:majel@localhost:5432/majel";
 
-  return new Pool({ connectionString: url });
+  // max: 5 — Cloud SQL db-f1-micro supports ~25 connections.
+  // With Cloud Run max-instances=3, this caps at 15 (safe headroom). (ADR-023)
+  return new Pool({ connectionString: url, max: 5 });
 }
 
 /**

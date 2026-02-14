@@ -490,6 +490,29 @@ Every view module MAY export:
 
 The view registry eliminates app.js needing to know what views exist. Import maps (§5) eliminate relative path navigation — agents write imports by convention, not by counting `../` segments.
 
+### Barrel Import Convention
+
+The `api/index.js` barrel re-exports all domain modules for backward compatibility. However, **views must import directly from domain modules, not the barrel:**
+
+```js
+// ✅ YES — 1 network request, loads only fleet module
+import { fetchShips, fetchOfficers } from 'api/fleet.js';
+
+// ❌ NO — triggers browser to fetch ALL 12 API modules (barrel fan-out)
+import * as api from 'api/index.js';
+
+// ❌ NO — same problem, named import still triggers full barrel parse
+import { fetchShips } from 'api/index.js';
+```
+
+**Why this matters:** With no bundler, the browser executes barrel re-exports literally. `import` from the barrel causes the browser to fetch, parse, and execute every re-exported module. On Cloud Run, each fetch is a billable request. With 12 API modules, a single barrel import turns 1 request into 12.
+
+The barrel exists for **migration only** (Phase 1) — so existing code that does `import { fn } from './api.js'` can temporarily switch to `import { fn } from 'api/index.js'` before being updated to direct domain imports. After Phase 1 is complete, no view should reference the barrel.
+
+### No-Bundler Ceiling
+
+Browser-native ES modules are the right choice at current scale (~250KB total JS, ~20 modules). If the client grows past **500KB total JS** or **50+ modules**, evaluate `esbuild` as a zero-config bundler for minification + tree-shaking. This is a future decision, not a current concern.
+
 ### Import Verification
 
 Every phase includes a verification step to catch broken imports:
@@ -664,15 +687,50 @@ Two existing files need explicit lifecycle plans:
 - Backward-compatible hash redirect preserves bookmarks
 
 ### Negative
-- HTTP requests increase (more CSS files) — mitigated by HTTP/2 on Cloud Run, acceptable on HTTP/1.1 local dev
+- HTTP requests increase (more CSS files) — mitigated by HTTP/2 on Cloud Run + browser cache headers (`maxAge: '1d'`)
 - Migration has 5 phases (7 sub-PRs) — requires discipline to avoid mixing concerns
 - File header manifests add ~10 lines of metadata per file
 
 ### Neutral
 - Total line count stays roughly the same (structure, not rewrite)
 - Server behavior unchanged (only import paths and route file names move)
-- No bundler introduced — still browser-native ES modules
+- No bundler introduced — still browser-native ES modules (ceiling: 500KB / 50 modules)
 - Import paths don't get longer (import maps make them shorter)
+
+## Cost & Infrastructure
+
+Reviewed for cost footguns at $20/month hobby budget (GCP Cloud Run + Cloud SQL).
+
+### Budget Floor
+
+| Scenario | Monthly Cost | Notes |
+|----------|-------------|-------|
+| **Idle** | ~$8–9 | Cloud SQL db-f1-micro is 80% ($7.67 always-on) |
+| **Hobby** (you + friends) | ~$10–12 | Cloud Run free tier covers compute |
+| **Light use** (50 DAU) | ~$12–15 | Still within free tier |
+| **Growth** (500 DAU) | ~$20–30 | Cloud SQL becomes undersized |
+
+Cloud Run free tier: 2M requests/month, 360K vCPU-seconds. Hobby use never touches these limits.
+
+### Cost Mitigations (implemented)
+
+| # | Mitigation | Impact | Status |
+|---|-----------|--------|--------|
+| 1 | `compression` middleware | 60–70% smaller responses | ✅ Implemented |
+| 2 | `maxAge: '1d'` + `etag` on static files | 90% fewer repeat requests | ✅ Implemented |
+| 3 | PG pool `max: 5` (was unbounded default 10) | Prevents connection exhaustion at 3 instances | ✅ Implemented |
+| 4 | Barrel import convention (direct domain imports) | Prevents 12x request fan-out per view | ✅ Documented |
+| 5 | `startup-cpu-boost` on Cloud Run | 50% faster cold starts, free | ⏳ Enable on next deploy |
+
+### Deferred Until Real Users
+
+| # | Action | Trigger |
+|---|--------|---------|
+| 1 | Cloud CDN + Load Balancer | > 1,000 DAU or egress > $5/month |
+| 2 | Bundler (esbuild) | Total JS > 500KB or > 50 modules |
+| 3 | Neon PG migration | Cloud SQL bill pressure |
+| 4 | `min-instances=1` | Cold starts annoying real users |
+| 5 | Content hashing for immutable caching | After bundler is added |
 
 ## Review Findings Addressed
 
