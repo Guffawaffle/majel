@@ -42,6 +42,7 @@ import { createReferenceStore } from "./stores/reference-store.js";
 import { createOverlayStore } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
+import { createTargetStore } from "./stores/target-store.js";
 import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
@@ -70,6 +71,7 @@ import { createDiagnosticQueryRoutes } from "./routes/diagnostic-query.js";
 import { createLoadoutRoutes } from "./routes/loadouts.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createAdmiralRoutes } from "./routes/admiral.js";
+import { createTargetRoutes } from "./routes/targets.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -100,6 +102,7 @@ const state: AppState = {
   overlayStore: null,
   inviteStore: null,
   userStore: null,
+  targetStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -207,6 +210,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createCatalogRoutes(appState));
   app.use(createDiagnosticQueryRoutes(appState));
   app.use(createLoadoutRoutes(appState));
+  app.use(createTargetRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
   app.get("/app/*", (_req, res) => {
@@ -354,6 +358,15 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "user store init failed");
   }
 
+  // 2j. Initialize target store (#17)
+  try {
+    state.targetStore = await createTargetStore(adminPool, pool);
+    const targetCounts = await state.targetStore.counts();
+    log.boot.info({ targets: targetCounts.total, active: targetCounts.active }, "target store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "target store init failed");
+  }
+
   // Resolve config from settings store
   const { geminiApiKey } = state.config;
 
@@ -373,6 +386,7 @@ async function boot(): Promise<void> {
         referenceStore: state.referenceStore,
         overlayStore: state.overlayStore,
         loadoutStore: state.loadoutStore,
+        targetStore: state.targetStore,
       },
     );
     log.boot.info({ model: state.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
@@ -401,6 +415,7 @@ async function shutdown(): Promise<void> {
   state.overlayStore?.close();
   state.inviteStore?.close();
   state.userStore?.close();
+  state.targetStore?.close();
   state.referenceStore?.close();
   if (state.memoryService) {
     await state.memoryService.close();

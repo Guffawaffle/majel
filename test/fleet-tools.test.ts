@@ -18,6 +18,7 @@ import {
 import type { ReferenceStore, ReferenceOfficer, ReferenceShip } from "../src/server/stores/reference-store.js";
 import type { OverlayStore, OfficerOverlay, ShipOverlay } from "../src/server/stores/overlay-store.js";
 import type { LoadoutStore } from "../src/server/stores/loadout-store.js";
+import type { TargetStore } from "../src/server/stores/target-store.js";
 
 // ─── Test Fixtures ──────────────────────────────────────────
 
@@ -219,12 +220,30 @@ function createMockLoadoutStore(overrides: Partial<LoadoutStore> = {}): LoadoutS
   } as unknown as LoadoutStore;
 }
 
+function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStore {
+  return {
+    list: vi.fn().mockResolvedValue([]),
+    get: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    markAchieved: vi.fn(),
+    listByRef: vi.fn(),
+    counts: vi.fn().mockResolvedValue({
+      total: 3, active: 2, achieved: 1, abandoned: 0,
+      byType: { officer: 1, ship: 1, crew: 1 },
+    }),
+    close: vi.fn(),
+    ...overrides,
+  } as unknown as TargetStore;
+}
+
 // ─── Tool Declarations ──────────────────────────────────────
 
 describe("FLEET_TOOL_DECLARATIONS", () => {
   it("exports an array of tool declarations", () => {
     expect(Array.isArray(FLEET_TOOL_DECLARATIONS)).toBe(true);
-    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(16);
+    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(18);
   });
 
   it("each declaration has name and description", () => {
@@ -261,6 +280,9 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("analyze_fleet");
     expect(names).toContain("resolve_conflict");
     expect(names).toContain("what_if_remove_officer");
+    // Target tools
+    expect(names).toContain("list_targets");
+    expect(names).toContain("suggest_targets");
   });
 
   it("search tools have required query parameter", () => {
@@ -991,5 +1013,217 @@ describe("what_if_remove_officer", () => {
     const result = await executeFleetTool("what_if_remove_officer", { officer_id: "" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("required");
+  });
+});
+
+// ─── Target/Goal Tracking Tools (#17) ─────────────────────
+
+describe("list_targets", () => {
+  const FIXTURE_TARGET = {
+    id: 1,
+    targetType: "officer" as const,
+    refId: "officer-kirk",
+    loadoutId: null,
+    targetTier: null,
+    targetRank: "Commander",
+    targetLevel: 40,
+    reason: "Strong captain maneuver",
+    priority: 1,
+    status: "active" as const,
+    autoSuggested: false,
+    createdAt: "2024-06-01T00:00:00.000Z",
+    updatedAt: "2024-06-01T00:00:00.000Z",
+    achievedAt: null,
+  };
+
+  it("returns active targets by default", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([FIXTURE_TARGET]),
+      }),
+    };
+    const result = await executeFleetTool("list_targets", {}, ctx) as Record<string, unknown>;
+    expect(result.totalTargets).toBe(1);
+    const targets = result.targets as Array<Record<string, unknown>>;
+    expect(targets[0].refId).toBe("officer-kirk");
+    expect(targets[0].priority).toBe(1);
+    expect(targets[0].status).toBe("active");
+    // Verify default status filter
+    expect(ctx.targetStore!.list).toHaveBeenCalledWith({ status: "active" });
+  });
+
+  it("passes target_type filter", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([]),
+      }),
+    };
+    await executeFleetTool("list_targets", { target_type: "ship" }, ctx);
+    expect(ctx.targetStore!.list).toHaveBeenCalledWith({
+      targetType: "ship",
+      status: "active",
+    });
+  });
+
+  it("passes explicit status filter", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([]),
+      }),
+    };
+    await executeFleetTool("list_targets", { status: "achieved" }, ctx);
+    expect(ctx.targetStore!.list).toHaveBeenCalledWith({ status: "achieved" });
+  });
+
+  it("passes both filters together", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([]),
+      }),
+    };
+    await executeFleetTool("list_targets", { target_type: "crew", status: "abandoned" }, ctx);
+    expect(ctx.targetStore!.list).toHaveBeenCalledWith({
+      targetType: "crew",
+      status: "abandoned",
+    });
+  });
+
+  it("maps all target fields to response", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([FIXTURE_TARGET]),
+      }),
+    };
+    const result = await executeFleetTool("list_targets", {}, ctx) as Record<string, unknown>;
+    const target = (result.targets as Array<Record<string, unknown>>)[0];
+    expect(target).toEqual({
+      id: 1,
+      targetType: "officer",
+      refId: "officer-kirk",
+      loadoutId: null,
+      targetTier: null,
+      targetRank: "Commander",
+      targetLevel: 40,
+      reason: "Strong captain maneuver",
+      priority: 1,
+      status: "active",
+      autoSuggested: false,
+      achievedAt: null,
+    });
+  });
+
+  it("returns error when target store unavailable", async () => {
+    const result = await executeFleetTool("list_targets", {}, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("suggest_targets", () => {
+  it("gathers comprehensive fleet state for suggestions", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn()
+          .mockResolvedValueOnce([FIXTURE_OFFICER_OVERLAY]) // owned officers
+          .mockResolvedValueOnce([FIXTURE_OFFICER_OVERLAY]), // targeted overlay officers
+        listShipOverlays: vi.fn()
+          .mockResolvedValueOnce([FIXTURE_SHIP_OVERLAY]) // owned ships
+          .mockResolvedValueOnce([FIXTURE_SHIP_OVERLAY]), // targeted overlay ships
+      }),
+      loadoutStore: createMockLoadoutStore({
+        listLoadouts: vi.fn().mockResolvedValue([{
+          id: 10,
+          name: "Kirk Crew",
+          shipName: "USS Enterprise",
+          intentKeys: ["pvp"],
+          members: [
+            { officerName: "James T. Kirk", roleType: "captain" },
+            { officerName: "Spock", roleType: "bridge" },
+          ],
+        }]),
+        getOfficerConflicts: vi.fn().mockResolvedValue([{
+          officerId: "officer-kirk",
+          officerName: "James T. Kirk",
+          appearances: [
+            { loadoutId: 10, loadoutName: "Kirk Crew", roleType: "captain" },
+            { loadoutId: 20, loadoutName: "Backup Crew", roleType: "bridge" },
+          ],
+        }]),
+      }),
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([{
+          id: 1,
+          targetType: "officer",
+          refId: "officer-spock",
+          loadoutId: null,
+          reason: "Need for science team",
+          priority: 2,
+        }]),
+      }),
+    };
+
+    const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
+
+    // Catalog size
+    expect(result.catalogSize).toEqual({ officers: 42, ships: 18 });
+
+    // Owned officers
+    const officers = result.ownedOfficers as Array<Record<string, unknown>>;
+    expect(officers).toHaveLength(1);
+    expect(officers[0].name).toBe("James T. Kirk");
+    expect(officers[0].captainManeuver).toBe("Inspirational");
+
+    // Owned ships
+    const ships = result.ownedShips as Array<Record<string, unknown>>;
+    expect(ships).toHaveLength(1);
+    expect(ships[0].name).toBe("USS Enterprise");
+
+    // Loadouts
+    const loadouts = result.loadouts as Array<Record<string, unknown>>;
+    expect(loadouts).toHaveLength(1);
+    expect(loadouts[0].name).toBe("Kirk Crew");
+    expect(loadouts[0].memberCount).toBe(2);
+
+    // Existing targets
+    const targets = result.existingTargets as Array<Record<string, unknown>>;
+    expect(targets).toHaveLength(1);
+    expect(targets[0].refId).toBe("officer-spock");
+
+    // Officer conflicts
+    const conflicts = result.officerConflicts as Array<Record<string, unknown>>;
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].officerName).toBe("James T. Kirk");
+    expect(conflicts[0].appearances).toBe(2);
+
+    // Overlay targets
+    expect(result.overlayTargets).toEqual({ officers: 1, ships: 1 });
+  });
+
+  it("works with minimal context (no stores)", async () => {
+    const result = await executeFleetTool("suggest_targets", {}, {}) as Record<string, unknown>;
+    // Should return empty object, no errors
+    expect(result).toBeDefined();
+    expect(result).not.toHaveProperty("error");
+  });
+
+  it("works with only reference store", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+    };
+    const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
+    expect(result.catalogSize).toEqual({ officers: 42, ships: 18 });
+    expect(result).not.toHaveProperty("ownedOfficers");
+    expect(result).not.toHaveProperty("loadouts");
+  });
+
+  it("works with only target store", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([]),
+      }),
+    };
+    const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
+    expect(result.existingTargets).toEqual([]);
+    expect(result).not.toHaveProperty("catalogSize");
   });
 });

@@ -17,6 +17,7 @@ import type { ReferenceStore } from "./stores/reference-store.js";
 import type { OverlayStore } from "./stores/overlay-store.js";
 import type { InviteStore } from "./stores/invite-store.js";
 import type { UserStore } from "./stores/user-store.js";
+import type { TargetStore } from "./stores/target-store.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./services/micro-runner.js";
@@ -41,6 +42,7 @@ export interface AppState {
   overlayStore: OverlayStore | null;
   inviteStore: InviteStore | null;
   userStore: UserStore | null;
+  targetStore: TargetStore | null;
   startupComplete: boolean;
   config: AppConfig;
 }
