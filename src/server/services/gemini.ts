@@ -15,12 +15,20 @@ import {
   GoogleGenerativeAI,
   HarmCategory,
   HarmBlockThreshold,
+  SchemaType,
   type ChatSession,
   type SafetySetting,
   type GenerativeModel,
+  type Part,
+  type FunctionCall,
 } from "@google/generative-ai";
 import { log } from "../logger.js";
 import { type MicroRunner, VALIDATION_DISCLAIMER } from "./micro-runner.js";
+import {
+  type ToolContext,
+  FLEET_TOOL_DECLARATIONS,
+  executeFleetTool,
+} from "./fleet-tools.js";
 
 // ─── Model Registry ───────────────────────────────────────────
 
@@ -316,6 +324,7 @@ export function createGeminiEngine(
   dockBriefing?: string | null,
   microRunner?: MicroRunner | null,
   initialModelId?: string | null,
+  toolContext?: ToolContext | null,
 ): GeminiEngine {
   // I5: Fail fast with clear message if API key is missing
   if (!apiKey) {
@@ -327,11 +336,19 @@ export function createGeminiEngine(
 
   let currentModelId = resolveModelId(initialModelId);
 
+  // Build tools array if tool context is available and has any stores
+  const hasToolContext = toolContext &&
+    (toolContext.referenceStore || toolContext.overlayStore || toolContext.loadoutStore);
+  const tools = hasToolContext
+    ? [{ functionDeclarations: FLEET_TOOL_DECLARATIONS }]
+    : undefined;
+
   function createModel(modelId: string): GenerativeModel {
     return genAI.getGenerativeModel({
       model: modelId,
       systemInstruction,
       safetySettings: SAFETY_SETTINGS,
+      ...(tools ? { tools } : {}),
     });
   }
 
@@ -343,6 +360,8 @@ export function createGeminiEngine(
     hasFleetConfig: !!fleetConfig,
     hasDockBriefing: !!dockBriefing,
     hasMicroRunner: !!microRunner,
+    hasToolContext: !!hasToolContext,
+    toolCount: hasToolContext ? FLEET_TOOL_DECLARATIONS.length : 0,
     promptLen: systemInstruction.length,
   }, "init");
 
@@ -385,6 +404,73 @@ export function createGeminiEngine(
     cleanupTimer.unref();
   }
 
+  /** Max rounds of function calling before forcing a text response */
+  const MAX_TOOL_ROUNDS = 5;
+
+  /**
+   * Handle the function call loop: execute tool calls, send responses back,
+   * repeat until Gemini produces a text response.
+   *
+   * Returns the final text response from the model.
+   */
+  async function handleFunctionCalls(
+    chatSession: ChatSession,
+    initialFunctionCalls: FunctionCall[],
+    sessionId: string,
+  ): Promise<string> {
+    let functionCalls = initialFunctionCalls;
+    let round = 0;
+
+    while (functionCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
+      round++;
+      log.gemini.debug({
+        sessionId,
+        round,
+        calls: functionCalls.map((fc) => fc.name),
+      }, "tool:round");
+
+      // Execute all function calls in parallel
+      const responses = await Promise.all(
+        functionCalls.map(async (fc) => {
+          const result = await executeFleetTool(
+            fc.name,
+            fc.args as Record<string, unknown>,
+            toolContext!,
+          );
+          return {
+            functionResponse: {
+              name: fc.name,
+              response: result,
+            },
+          } as Part;
+        }),
+      );
+
+      // Send function responses back to the model
+      const result = await chatSession.sendMessage(responses);
+      const nextCalls = result.response.functionCalls();
+
+      if (nextCalls && nextCalls.length > 0) {
+        functionCalls = nextCalls;
+        continue;
+      }
+
+      // Model produced a text response — we're done
+      return result.response.text();
+    }
+
+    // Safety: max rounds exceeded — force a text response
+    if (round >= MAX_TOOL_ROUNDS) {
+      log.gemini.warn({ sessionId, rounds: round }, "tool:max-rounds");
+    }
+
+    // If we get here with no text, ask the model to summarize
+    const summaryResult = await chatSession.sendMessage(
+      "Please provide a text response summarizing the tool results.",
+    );
+    return summaryResult.response.text();
+  }
+
   return {
     async chat(message: string, sessionId = "default"): Promise<string> {
       const session = getSession(sessionId);
@@ -400,7 +486,17 @@ export function createGeminiEngine(
 
         // Send augmented message (with gated context prepended)
         const result = await session.chatSession.sendMessage(augmentedMessage);
-        let responseText = result.response.text();
+
+        // Check for function calls before text extraction
+        let responseText: string;
+        const functionCalls = hasToolContext ? result.response.functionCalls() : undefined;
+
+        if (functionCalls && functionCalls.length > 0) {
+          // Handle function call loop — tool results feed back to model
+          responseText = await handleFunctionCalls(session.chatSession, functionCalls, sessionId);
+        } else {
+          responseText = result.response.text();
+        }
 
         // Validate response against contract
         const validation = await microRunner.validate(
@@ -441,7 +537,16 @@ export function createGeminiEngine(
 
       // ── Standard path (no MicroRunner) ────────────────────
       const result = await session.chatSession.sendMessage(message);
-      const responseText = result.response.text();
+
+      // Check for function calls before text extraction
+      let responseText: string;
+      const functionCalls = hasToolContext ? result.response.functionCalls() : undefined;
+
+      if (functionCalls && functionCalls.length > 0) {
+        responseText = await handleFunctionCalls(session.chatSession, functionCalls, sessionId);
+      } else {
+        responseText = result.response.text();
+      }
 
       session.history.push({ role: "model", text: responseText });
 
