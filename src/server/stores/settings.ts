@@ -107,6 +107,14 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     default: "3000",
     envVar: "MAJEL_PORT",
   },
+  {
+    key: "system.uiMode",
+    category: "system",
+    label: "UI Mode",
+    description: "Controls UI complexity. BASIC hides power-user features; ADVANCED shows crew builder, conflict matrix, and bulk operations.",
+    type: "string",
+    default: "basic",
+  },
 
   // ── Fleet ───────────────────────────────────────────────────
   {

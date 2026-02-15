@@ -1,15 +1,17 @@
 /**
- * loadouts.js — Loadout Management View (ADR-022, Phase 3)
+ * loadouts.js — Loadout Management View (ADR-022, Phases 3–4)
  *
  * Majel — STFC Fleet Intelligence System
  *
- * Three-tab loadout management interface (BASIC mode):
+ * Three-tab loadout management interface:
  * 1. Loadouts — Card grid of ship+crew configurations
  * 2. Plan — Active plan items with dock/away assignments
  * 3. Dock Status — Read-only dock dashboard
  *
- * BASIC mode: no manual crew builder. Model assists via chat.
- * ADVANCED mode (Phase 4, #41): adds drag-and-drop crew management.
+ * Progressive disclosure via `system.uiMode` setting:
+ * - BASIC: read-only detail view, model assists via chat
+ * - ADVANCED: inline editing, crew preset builder, officer conflict
+ *   matrix, priority reordering, bulk plan operations
  */
 
 import {
@@ -21,6 +23,7 @@ import {
     fetchIntents,
 } from 'api/loadouts.js';
 import { fetchCatalogShips, fetchCatalogOfficers } from 'api/catalog.js';
+import { loadSetting } from 'api/settings.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -31,9 +34,12 @@ let intents = [];
 let ships = [];         // catalog ships for create form
 let officers = [];      // catalog officers for reference
 let validation = null;  // plan validation result
+let conflicts = null;   // officer conflict data (ADVANCED)
 let activeTab = 'loadouts'; // 'loadouts' | 'plan' | 'docks'
 let loading = false;
 let editingId = null;   // loadout ID being edited (null = list view)
+let editMode = false;   // inline editing active in detail view (ADVANCED)
+let uiMode = 'basic';   // 'basic' | 'advanced' — from system.uiMode setting
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -58,23 +64,30 @@ export async function refresh() {
     loading = true;
     render();
     try {
-        const results = await Promise.all([
+        const [lo, pi, dk, it, mode] = await Promise.all([
             fetchLoadouts(),
             fetchPlanItems(),
             fetchDocks(),
             fetchIntents(),
+            loadSetting('system.uiMode', 'basic'),
         ]);
-        loadouts = results[0];
-        planItems = results[1];
-        docks = results[2];
-        intents = results[3];
+        loadouts = lo;
+        planItems = pi;
+        docks = dk;
+        intents = it;
+        uiMode = mode;
 
-        // Lazy-load catalog data for create form (non-blocking)
+        // Lazy-load catalog data for create form + crew builder (non-blocking)
         if (!ships.length) {
             Promise.all([
                 fetchCatalogShips({ ownership: 'owned' }).catch(() => []),
                 fetchCatalogOfficers({ ownership: 'owned' }).catch(() => []),
             ]).then(([s, o]) => { ships = s; officers = o; });
+        }
+
+        // Fetch officer conflicts when in ADVANCED mode (non-blocking)
+        if (uiMode === 'advanced') {
+            fetchPlanConflicts().then(c => { conflicts = c; }).catch(() => { conflicts = null; });
         }
     } catch (err) {
         console.error('Loadouts fetch failed:', err);
@@ -128,6 +141,7 @@ function renderActiveTab() {
 
 function renderLoadoutList() {
     const createBtn = `<button class="loadout-action-btn loadout-create-btn" data-action="create-loadout">+ New Loadout</button>`;
+    const isAdv = uiMode === 'advanced';
 
     if (!loadouts.length) {
         return `
@@ -138,7 +152,8 @@ function renderLoadoutList() {
             </div>`;
     }
 
-    const cards = loadouts.map(lo => {
+    const sorted = [...loadouts].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+    const cards = sorted.map((lo, idx) => {
         const memberCount = lo.members?.length ?? 0;
         const intentLabels = (lo.intentKeys || [])
             .map(k => intents.find(i => i.key === k))
@@ -149,13 +164,23 @@ function renderLoadoutList() {
         const shipName = lo.shipName || `Ship #${lo.shipId}`;
         const activeClass = lo.isActive ? 'loadout-card-active' : 'loadout-card-inactive';
 
+        const priorityControls = isAdv ? `
+            <div class="loadout-priority-controls">
+                <button class="priority-btn" data-action="priority-up" data-id="${lo.id}" ${idx === 0 ? 'disabled' : ''} title="Move up">▲</button>
+                <span class="priority-rank">#${idx + 1}</span>
+                <button class="priority-btn" data-action="priority-down" data-id="${lo.id}" ${idx === sorted.length - 1 ? 'disabled' : ''} title="Move down">▼</button>
+            </div>` : '';
+
         return `
             <div class="loadout-card ${activeClass}" data-id="${lo.id}">
                 <div class="loadout-card-header">
                     <span class="loadout-card-ship">${esc(shipName)}</span>
-                    <button class="loadout-toggle-btn" data-action="toggle-active" data-id="${lo.id}" title="${lo.isActive ? 'Deactivate' : 'Activate'}">
-                        ${lo.isActive ? '🟢' : '⚪'}
-                    </button>
+                    <div class="loadout-card-header-actions">
+                        ${priorityControls}
+                        <button class="loadout-toggle-btn" data-action="toggle-active" data-id="${lo.id}" title="${lo.isActive ? 'Deactivate' : 'Activate'}">
+                            ${lo.isActive ? '🟢' : '⚪'}
+                        </button>
+                    </div>
                 </div>
                 <div class="loadout-card-name">${esc(lo.name)}</div>
                 <div class="loadout-card-crew">👥 ${memberCount} crew${memberCount !== 1 ? '' : ''}</div>
@@ -188,39 +213,88 @@ function renderLoadoutDetail() {
         .filter(Boolean)
         .map(i => `<span class="loadout-intent-tag">${esc(i.icon || '🏷️')} ${esc(i.label)}</span>`)
         .join('');
+    const isAdv = uiMode === 'advanced';
 
-    const renderMemberRow = (m) => {
+    const renderMemberRow = (m, idx) => {
         const name = m.officerName || `Officer #${m.officerId}`;
-        return `<tr><td>${esc(name)}</td><td>${m.roleType}</td><td>${m.slot ?? '—'}</td></tr>`;
+        const removeBtn = isAdv && editMode
+            ? `<td><button class="loadout-action-btn loadout-danger-btn crew-remove-btn" data-action="remove-crew" data-officer-id="${m.officerId}">✕</button></td>`
+            : '';
+        return `<tr><td>${esc(name)}</td><td>${m.roleType}</td><td>${m.slot ?? '—'}</td>${removeBtn}</tr>`;
     };
+
+    // ADVANCED: inline editing header
+    const header = isAdv && editMode
+        ? `<div class="inline-edit-group">
+               <label class="inline-edit-label">Name</label>
+               <input class="inline-edit-input" type="text" data-field="name" value="${esc(lo.name)}" />
+           </div>`
+        : `<h2>${esc(lo.name)}</h2>`;
+
+    // ADVANCED: inline notes editing
+    const notesSection = isAdv && editMode
+        ? `<div class="inline-edit-group">
+               <label class="inline-edit-label">Notes</label>
+               <textarea class="inline-edit-textarea" data-field="notes" rows="2">${esc(lo.notes || '')}</textarea>
+           </div>`
+        : (lo.notes ? `<p class="loadout-detail-notes">${esc(lo.notes)}</p>` : '');
+
+    // ADVANCED: inline priority editing
+    const priorityDisplay = isAdv && editMode
+        ? `<span>Priority: <input class="inline-edit-input inline-edit-small" type="number" data-field="priority" value="${lo.priority}" min="1" /></span>`
+        : `<span>Priority: ${lo.priority}</span>`;
+
+    // ADVANCED: edit toggle + save button
+    const editControls = isAdv
+        ? (editMode
+            ? `<div class="inline-edit-actions">
+                   <button class="loadout-action-btn loadout-create-btn" data-action="save-inline-edit" data-id="${lo.id}">💾 Save</button>
+                   <button class="loadout-action-btn" data-action="cancel-inline-edit">Cancel</button>
+               </div>`
+            : `<button class="loadout-action-btn" data-action="start-inline-edit">✏️ Edit</button>`)
+        : '';
+
+    // ADVANCED: crew builder (add officer form)
+    const crewBuilder = isAdv && editMode ? renderCrewBuilder(members) : '';
+
+    // Crew assignment hint (BASIC only)
+    const crewHint = !isAdv
+        ? `<p class="loadout-hint">💡 To change crew, ask Aria: "Update the crew for ${esc(lo.name)}"</p>`
+        : '';
+
+    const removeHeader = isAdv && editMode ? '<th></th>' : '';
 
     return `
         <div class="loadout-detail">
-            <button class="loadout-action-btn" data-action="back-to-list">← Back</button>
-            <h2>${esc(lo.name)}</h2>
+            <div class="loadout-detail-toolbar">
+                <button class="loadout-action-btn" data-action="back-to-list">← Back</button>
+                ${editControls}
+            </div>
+            ${header}
             <div class="loadout-detail-meta">
                 <span>🚀 ${esc(lo.shipName || `Ship #${lo.shipId}`)}</span>
                 <span>${lo.isActive ? '🟢 Active' : '⚪ Inactive'}</span>
-                <span>Priority: ${lo.priority}</span>
+                ${priorityDisplay}
             </div>
             ${intentLabels ? `<div class="loadout-detail-intents">${intentLabels}</div>` : ''}
-            ${lo.notes ? `<p class="loadout-detail-notes">${esc(lo.notes)}</p>` : ''}
+            ${notesSection}
 
             <h3>Bridge Crew (${bridgeCrew.length})</h3>
             ${bridgeCrew.length ? `
                 <table class="loadout-crew-table">
-                    <thead><tr><th>Officer</th><th>Role</th><th>Slot</th></tr></thead>
+                    <thead><tr><th>Officer</th><th>Role</th><th>Slot</th>${removeHeader}</tr></thead>
                     <tbody>${bridgeCrew.map(renderMemberRow).join('')}</tbody>
                 </table>` : '<p class="loadout-empty-crew">No bridge crew assigned.</p>'}
 
             <h3>Below Deck (${belowDeck.length})</h3>
             ${belowDeck.length ? `
                 <table class="loadout-crew-table">
-                    <thead><tr><th>Officer</th><th>Role</th><th>Slot</th></tr></thead>
+                    <thead><tr><th>Officer</th><th>Role</th><th>Slot</th>${removeHeader}</tr></thead>
                     <tbody>${belowDeck.map(renderMemberRow).join('')}</tbody>
                 </table>` : '<p class="loadout-empty-crew">No below-deck crew assigned.</p>'}
 
-            <p class="loadout-hint">💡 To change crew, ask Aria: "Update the crew for ${esc(lo.name)}"</p>
+            ${crewBuilder}
+            ${crewHint}
         </div>`;
 }
 
@@ -229,6 +303,19 @@ function renderLoadoutDetail() {
 function renderPlan() {
     const createBtn = `<button class="loadout-action-btn loadout-create-btn" data-action="create-plan-item">+ New Plan Item</button>`;
     const validateBtn = `<button class="loadout-action-btn" data-action="validate-plan">✓ Validate Plan</button>`;
+    const isAdv = uiMode === 'advanced';
+
+    // ADVANCED: bulk operations toolbar
+    const bulkOps = isAdv ? `
+        <div class="bulk-ops-bar">
+            <span class="bulk-ops-label">Bulk:</span>
+            <select class="bulk-ops-intent-select" id="bulk-intent-filter">
+                <option value="">— Select intent —</option>
+                ${intents.map(i => `<option value="${esc(i.key)}">${esc(i.icon || '')} ${esc(i.label)}</option>`).join('')}
+            </select>
+            <button class="loadout-action-btn" data-action="bulk-deactivate-intent" title="Deactivate all plan items with selected intent">⏸ Deactivate by Intent</button>
+            <button class="loadout-action-btn" data-action="bulk-clear-docks" title="Unassign all dock assignments">🧹 Clear Docks</button>
+        </div>` : '';
 
     if (!planItems.length) {
         return `
@@ -264,10 +351,15 @@ function renderPlan() {
             </div>`;
     }).join('');
 
+    // ADVANCED: officer conflict matrix
+    const conflictSection = isAdv ? renderConflictMatrix() : '';
+
     return `
         <div class="loadout-toolbar">${createBtn} ${validateBtn}</div>
+        ${bulkOps}
         ${validation ? renderValidation() : ''}
-        <div class="plan-grid">${items}</div>`;
+        <div class="plan-grid">${items}</div>
+        ${conflictSection}`;
 }
 
 function renderValidation() {
@@ -328,14 +420,24 @@ function wireActions(area) {
 
         switch (action) {
             case 'create-loadout': return showCreateForm();
-            case 'view-loadout': editingId = id; return render();
-            case 'back-to-list': editingId = null; return render();
+            case 'view-loadout': editingId = id; editMode = false; return render();
+            case 'back-to-list': editingId = null; editMode = false; return render();
             case 'toggle-active': return toggleLoadoutActive(id);
             case 'delete-loadout': return handleDeleteLoadout(id);
             case 'create-plan-item': return showCreatePlanForm();
             case 'toggle-plan-active': return togglePlanActive(id);
             case 'delete-plan-item': return handleDeletePlanItem(id);
             case 'validate-plan': return handleValidatePlan();
+            // ADVANCED actions
+            case 'start-inline-edit': editMode = true; return render();
+            case 'cancel-inline-edit': editMode = false; return render();
+            case 'save-inline-edit': return handleSaveInlineEdit(id);
+            case 'priority-up': return handlePriorityChange(id, -1);
+            case 'priority-down': return handlePriorityChange(id, 1);
+            case 'add-crew': return handleAddCrew();
+            case 'remove-crew': return handleRemoveCrew(Number(btn.dataset.officerId));
+            case 'bulk-deactivate-intent': return handleBulkDeactivateByIntent();
+            case 'bulk-clear-docks': return handleBulkClearDocks();
         }
     });
 }
@@ -503,6 +605,237 @@ function showCreatePlanForm() {
             alert(`Create failed: ${err.message}`);
         }
     });
+}
+
+// ─── Helpers ────────────────────────────────────────────────
+
+// ─── ADVANCED: Crew Builder ─────────────────────────────────
+
+function renderCrewBuilder(currentMembers) {
+    const currentIds = new Set(currentMembers.map(m => m.officerId));
+    const available = officers.filter(o => !currentIds.has(o.id));
+
+    if (!available.length && !officers.length) {
+        return `<div class="crew-builder">
+            <h3>Add Crew</h3>
+            <p class="loadout-hint">Officer catalog loading… refresh to see available officers.</p>
+        </div>`;
+    }
+
+    const officerOptions = available
+        .map(o => `<option value="${o.id}">${esc(o.name)}${o.rarity ? ` (${esc(o.rarity)})` : ''}</option>`)
+        .join('');
+
+    return `
+        <div class="crew-builder">
+            <h3>Add Crew Member</h3>
+            <div class="crew-builder-form">
+                <select class="crew-builder-select" id="crew-officer-select">
+                    <option value="">— Select officer —</option>
+                    ${officerOptions}
+                </select>
+                <select class="crew-builder-role" id="crew-role-select">
+                    <option value="bridge">Bridge</option>
+                    <option value="below_deck">Below Deck</option>
+                </select>
+                <input class="crew-builder-slot" type="text" id="crew-slot-input" placeholder="Slot (e.g. captain)" />
+                <button class="loadout-action-btn loadout-create-btn" data-action="add-crew">+ Add</button>
+            </div>
+            ${!available.length ? '<p class="loadout-hint">All owned officers already assigned to this loadout.</p>' : ''}
+        </div>`;
+}
+
+// ─── ADVANCED: Officer Conflict Matrix ──────────────────────
+
+function renderConflictMatrix() {
+    if (!conflicts) return '';
+
+    const officerConflicts = conflicts.officerConflicts || conflicts || [];
+    if (!Array.isArray(officerConflicts) || !officerConflicts.length) {
+        return `<div class="conflict-matrix">
+            <h3>⚔️ Officer Conflicts</h3>
+            <p class="plan-validation plan-valid">No officer conflicts detected.</p>
+        </div>`;
+    }
+
+    const rows = officerConflicts.map(c => {
+        const name = c.officerName || `Officer #${c.officerId}`;
+        const appearances = (c.loadoutNames || c.appearances || [])
+            .map(a => `<span class="conflict-loadout">${esc(typeof a === 'string' ? a : a.loadoutName || '?')}</span>`)
+            .join(' ');
+        return `<tr><td>${esc(name)}</td><td>${appearances}</td><td class="conflict-count">${c.count ?? (c.loadoutNames || c.appearances || []).length}</td></tr>`;
+    }).join('');
+
+    return `
+        <div class="conflict-matrix">
+            <h3>⚔️ Officer Conflicts (${officerConflicts.length})</h3>
+            <table class="loadout-crew-table conflict-table">
+                <thead><tr><th>Officer</th><th>Appears In</th><th>#</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
+}
+
+// ─── ADVANCED: Inline Edit Save ─────────────────────────────
+
+async function handleSaveInlineEdit(id) {
+    const area = $('#loadouts-area');
+    if (!area) return;
+
+    const updates = {};
+    const nameInput = area.querySelector('[data-field="name"]');
+    const notesInput = area.querySelector('[data-field="notes"]');
+    const priorityInput = area.querySelector('[data-field="priority"]');
+
+    if (nameInput) updates.name = nameInput.value.trim();
+    if (notesInput) updates.notes = notesInput.value.trim();
+    if (priorityInput) updates.priority = Number(priorityInput.value);
+
+    if (updates.name === '') {
+        alert('Name cannot be empty.');
+        return;
+    }
+
+    try {
+        await updateLoadout(id, updates);
+        editMode = false;
+        await refresh();
+        // Re-open detail view after refresh
+        editingId = id;
+        render();
+    } catch (err) {
+        console.error('Save failed:', err);
+        alert(`Save failed: ${err.message}`);
+    }
+}
+
+// ─── ADVANCED: Priority Reorder ─────────────────────────────
+
+async function handlePriorityChange(id, direction) {
+    const sorted = [...loadouts].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+    const idx = sorted.findIndex(l => l.id === id);
+    if (idx < 0) return;
+
+    const swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+
+    const current = sorted[idx];
+    const target = sorted[swapIdx];
+
+    try {
+        // Swap priorities
+        const curPri = current.priority ?? (idx + 1);
+        const tarPri = target.priority ?? (swapIdx + 1);
+        await Promise.all([
+            updateLoadout(current.id, { priority: tarPri }),
+            updateLoadout(target.id, { priority: curPri }),
+        ]);
+        await refresh();
+    } catch (err) {
+        console.error('Priority change failed:', err);
+        alert(`Priority change failed: ${err.message}`);
+    }
+}
+
+// ─── ADVANCED: Crew Modification ────────────────────────────
+
+async function handleAddCrew() {
+    const area = $('#loadouts-area');
+    if (!area || !editingId) return;
+
+    const officerId = Number(area.querySelector('#crew-officer-select')?.value);
+    const roleType = area.querySelector('#crew-role-select')?.value || 'bridge';
+    const slot = (area.querySelector('#crew-slot-input')?.value || '').trim() || null;
+
+    if (!officerId) {
+        alert('Please select an officer.');
+        return;
+    }
+
+    const lo = loadouts.find(l => l.id === editingId);
+    if (!lo) return;
+
+    const currentMembers = (lo.members || []).map(m => ({
+        officerId: m.officerId,
+        roleType: m.roleType,
+        slot: m.slot ?? null,
+    }));
+    currentMembers.push({ officerId, roleType, slot });
+
+    try {
+        await setLoadoutMembers(editingId, currentMembers);
+        await refresh();
+        editingId = editingId; // keep on detail view
+        editMode = true;
+        render();
+    } catch (err) {
+        console.error('Add crew failed:', err);
+        alert(`Add crew failed: ${err.message}`);
+    }
+}
+
+async function handleRemoveCrew(officerId) {
+    if (!editingId) return;
+    const lo = loadouts.find(l => l.id === editingId);
+    if (!lo) return;
+
+    const updated = (lo.members || [])
+        .filter(m => m.officerId !== officerId)
+        .map(m => ({ officerId: m.officerId, roleType: m.roleType, slot: m.slot ?? null }));
+
+    try {
+        await setLoadoutMembers(editingId, updated);
+        await refresh();
+        editingId = editingId;
+        editMode = true;
+        render();
+    } catch (err) {
+        console.error('Remove crew failed:', err);
+        alert(`Remove crew failed: ${err.message}`);
+    }
+}
+
+// ─── ADVANCED: Bulk Plan Operations ─────────────────────────
+
+async function handleBulkDeactivateByIntent() {
+    const area = $('#loadouts-area');
+    if (!area) return;
+    const intentKey = area.querySelector('#bulk-intent-filter')?.value;
+    if (!intentKey) {
+        alert('Select an intent first.');
+        return;
+    }
+    const matching = planItems.filter(pi => pi.intentKey === intentKey && pi.isActive);
+    if (!matching.length) {
+        alert('No active plan items with that intent.');
+        return;
+    }
+    if (!confirm(`Deactivate ${matching.length} active plan item(s) with intent "${intentKey}"?`)) return;
+
+    try {
+        await Promise.all(matching.map(pi => updatePlanItem(pi.id, { isActive: false })));
+        await refresh();
+    } catch (err) {
+        console.error('Bulk deactivate failed:', err);
+        alert(`Bulk deactivate failed: ${err.message}`);
+    }
+}
+
+async function handleBulkClearDocks() {
+    const docked = planItems.filter(pi => pi.dockNumber != null);
+    if (!docked.length) {
+        alert('No plan items are assigned to docks.');
+        return;
+    }
+    if (!confirm(`Unassign ${docked.length} plan item(s) from their docks?`)) return;
+
+    try {
+        await Promise.all(docked.map(pi => updatePlanItem(pi.id, { dockNumber: null })));
+        await refresh();
+    } catch (err) {
+        console.error('Bulk clear docks failed:', err);
+        alert(`Bulk clear docks failed: ${err.message}`);
+    }
 }
 
 // ─── Helpers ────────────────────────────────────────────────

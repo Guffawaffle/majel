@@ -5,7 +5,7 @@
  * @layer   api-client
  * @domain  settings
  * @depends api/_fetch
- * @exports saveFleetSetting, loadFleetSettings
+ * @exports saveFleetSetting, loadFleetSettings, loadSetting
  * @emits   none
  * @state   none
  */
@@ -42,5 +42,23 @@ export async function loadFleetSettings() {
         return data;
     } catch {
         return { settings: [] };
+    }
+}
+
+/**
+ * Load a single setting value by key (any category).
+ * @param {string} key - Setting key (e.g. "system.uiMode")
+ * @param {string} [fallback] - Default if not found
+ * @returns {Promise<string>} Resolved setting value
+ */
+export async function loadSetting(key, fallback = '') {
+    try {
+        const res = await _fetch('/api/settings');
+        if (!res.ok) return fallback;
+        const data = (await res.json()).data || {};
+        const entry = (data.settings || []).find(s => s.key === key);
+        return entry?.value ?? fallback;
+    } catch {
+        return fallback;
     }
 }
