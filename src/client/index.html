@@ -25,8 +25,12 @@
   <!-- Responsive (last — overrides at breakpoints) -->
   <link rel="stylesheet" href="styles/responsive.css" />
 
+  <!-- Suppress favicon 404 -->
+  <link rel="icon" href="data:,">
+
   <!-- Import map — flat module paths, no ../../ counting (ADR-023) -->
   <!-- Phase 1: bare-specifier aliases used after module split (ADR-023) -->
+  <!-- CSP hash: update script-src in index.ts if this block changes -->
   <script type="importmap">
   {
     "imports": {

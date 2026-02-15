@@ -150,10 +150,12 @@ export function createApp(appState: AppState): express.Express {
   // All inline style="" attrs were removed in Phases 2-3.
   // JS `.style.*` (CSSOM) is not affected by style-src.
   // img-src/connect-src 'self' blocks CSS-based data exfiltration vectors.
+  // Import map hash: update if <script type="importmap"> content changes.
+  //   node -e "const c=require('crypto'),f=require('fs'); const m=f.readFileSync('src/client/index.html','utf8').match(/<script type=\"importmap\">(.*?)<\\/script>/s); console.log(\"'sha256-\"+c.createHash('sha256').update(m[1]).digest('base64')+\"'\")"
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
-      "script-src 'self'",
+      "script-src 'self' 'sha256-hUjiFqMqfWo4/kcWIuymFcU/6ecfjyIGpBnWbHZA/H4='",
       "style-src 'self'",
       "img-src 'self' data:",
       "connect-src 'self'",
