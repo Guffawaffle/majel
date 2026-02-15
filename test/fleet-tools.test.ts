@@ -243,7 +243,7 @@ function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStor
 describe("FLEET_TOOL_DECLARATIONS", () => {
   it("exports an array of tool declarations", () => {
     expect(Array.isArray(FLEET_TOOL_DECLARATIONS)).toBe(true);
-    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(18);
+    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(19);
   });
 
   it("each declaration has name and description", () => {
@@ -283,6 +283,8 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     // Target tools
     expect(names).toContain("list_targets");
     expect(names).toContain("suggest_targets");
+    // Conflict detection
+    expect(names).toContain("detect_target_conflicts");
   });
 
   it("search tools have required query parameter", () => {
@@ -1225,5 +1227,41 @@ describe("suggest_targets", () => {
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
     expect(result.existingTargets).toEqual([]);
     expect(result).not.toHaveProperty("catalogSize");
+  });
+});
+
+describe("detect_target_conflicts", () => {
+  it("returns conflicts with summary", async () => {
+    // Mock the detection: we test the detection engine separately in target-conflicts.test.ts.
+    // Here we verify that the tool wiring works and returns the expected shape.
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([]),
+      }),
+      loadoutStore: createMockLoadoutStore({
+        getOfficerConflicts: vi.fn().mockResolvedValue([]),
+        listPlanItems: vi.fn().mockResolvedValue([]),
+      }),
+    };
+    const result = await executeFleetTool("detect_target_conflicts", {}, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("conflicts");
+    expect(result).toHaveProperty("summary");
+    const summary = result.summary as Record<string, unknown>;
+    expect(summary.totalConflicts).toBe(0);
+  });
+
+  it("returns error when target store unavailable", async () => {
+    const result = await executeFleetTool("detect_target_conflicts", {}, {});
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("Target");
+  });
+
+  it("returns error when loadout store unavailable", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore(),
+    };
+    const result = await executeFleetTool("detect_target_conflicts", {}, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("Loadout");
   });
 });

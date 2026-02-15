@@ -12,6 +12,7 @@ import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES, type TargetType, type TargetStatus } from "../stores/target-store.js";
 import { requireVisitor } from "../services/auth.js";
+import { detectTargetConflicts } from "../services/target-conflicts.js";
 
 export function createTargetRoutes(appState: AppState): Router {
   const router = Router();
@@ -189,6 +190,16 @@ export function createTargetRoutes(appState: AppState): Router {
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
     const counts = await store.counts();
     sendOk(res, counts);
+  });
+
+  // ─── Conflicts (#18) ─────────────────────────────────────
+
+  router.get("/api/targets/conflicts", async (_req, res) => {
+    const store = getStore();
+    if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
+    if (!appState.loadoutStore) return sendFail(res, ErrorCode.LOADOUT_STORE_NOT_AVAILABLE, "Loadout store not available", 503);
+    const conflicts = await detectTargetConflicts(store, appState.loadoutStore);
+    sendOk(res, { conflicts, total: conflicts.length });
   });
 
   return router;
