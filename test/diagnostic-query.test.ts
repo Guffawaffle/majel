@@ -41,42 +41,42 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
 
 async function seedData(store: ReferenceStore) {
   await store.upsertOfficer({
-    id: "wiki:officer:100",
+    id: "raw:officer:100",
     name: "Kirk",
     rarity: "epic",
     groupName: "Command",
     captainManeuver: "Inspirational",
     officerAbility: "Lead By Example",
     belowDeckAbility: null,
-    source: "stfc-fandom-wiki",
+    source: "gamedata",
     sourceUrl: null,
     sourcePageId: "100",
     sourceRevisionId: null,
     sourceRevisionTimestamp: null,
   });
   await store.upsertOfficer({
-    id: "wiki:officer:101",
+    id: "raw:officer:101",
     name: "Spock",
     rarity: "epic",
     groupName: "Science",
     captainManeuver: "Logical Analysis",
     officerAbility: "Science Officer",
     belowDeckAbility: null,
-    source: "stfc-fandom-wiki",
+    source: "gamedata",
     sourceUrl: null,
     sourcePageId: "101",
     sourceRevisionId: null,
     sourceRevisionTimestamp: null,
   });
   await store.upsertShip({
-    id: "wiki:ship:200",
+    id: "raw:ship:200",
     name: "USS Enterprise",
     shipClass: "Explorer",
     grade: 3,
     rarity: "epic",
     faction: "Federation",
     tier: 8,
-    source: "stfc-fandom-wiki",
+    source: "gamedata",
     sourceUrl: null,
     sourcePageId: "200",
     sourceRevisionId: null,
@@ -211,7 +211,7 @@ describe("GET /api/diagnostic/query", () => {
     // Seed many officers
     for (let i = 0; i < 15; i++) {
       await refStore.upsertOfficer({
-        id: `wiki:officer:${1000 + i}`,
+        id: `raw:officer:${1000 + i}`,
         name: `Officer ${i}`,
         rarity: "common",
         groupName: null,
@@ -279,8 +279,8 @@ describe("GET /api/diagnostic/summary", () => {
 
   it("includes overlay breakdown", async () => {
     await seedData(refStore);
-    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:100", ownershipState: "owned" });
-    await overlayStore.setOfficerOverlay({ refId: "wiki:officer:101", ownershipState: "unowned" });
+    await overlayStore.setOfficerOverlay({ refId: "raw:officer:100", ownershipState: "owned" });
+    await overlayStore.setOfficerOverlay({ refId: "raw:officer:101", ownershipState: "unowned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await testRequest(app).get("/api/diagnostic/summary");
 

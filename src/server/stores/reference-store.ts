@@ -3,8 +3,9 @@
  *
  * Majel — STFC Fleet Intelligence System
  *
- * PostgreSQL-backed store for wiki-imported reference entities (officers, ships).
- * These are canonical game data with full provenance — not user-specific state.
+ * PostgreSQL-backed store for reference entities (officers, ships).
+ * Officers are sourced from structured game data (raw-officers.json).
+ * Ships table retained for future data sourcing.
  *
  * User state (ownership, targeting, level) lives in overlay-store.ts.
  * This module is the T2 reference tier in the MicroRunner authority ladder.
@@ -26,6 +27,12 @@ export interface ReferenceOfficer {
   captainManeuver: string | null;
   officerAbility: string | null;
   belowDeckAbility: string | null;
+  /** Structured ability data from game data (JSONB) */
+  abilities: Record<string, unknown> | null;
+  /** Activity suitability tags from game data (JSONB) */
+  tags: Record<string, unknown> | null;
+  /** Stable numeric game ID from game data */
+  officerGameId: number | null;
   source: string;
   sourceUrl: string | null;
   sourcePageId: string | null;
@@ -56,9 +63,12 @@ export interface ReferenceShip {
   updatedAt: string;
 }
 
-export type CreateReferenceOfficerInput = Omit<ReferenceOfficer, "createdAt" | "updatedAt" | "license" | "attribution"> & {
+export type CreateReferenceOfficerInput = Omit<ReferenceOfficer, "createdAt" | "updatedAt" | "license" | "attribution" | "abilities" | "tags" | "officerGameId"> & {
   license?: string;
   attribution?: string;
+  abilities?: Record<string, unknown> | null;
+  tags?: Record<string, unknown> | null;
+  officerGameId?: number | null;
 };
 
 export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "updatedAt" | "license" | "attribution"> & {
@@ -94,8 +104,8 @@ export interface ReferenceStore {
 
 // ─── Constants ──────────────────────────────────────────────
 
-const DEFAULT_LICENSE = "CC BY-SA 3.0";
-const DEFAULT_ATTRIBUTION = "Community contributors to the Star Trek: Fleet Command Wiki";
+const DEFAULT_LICENSE = "Community Data";
+const DEFAULT_ATTRIBUTION = "STFC community data";
 
 // ─── SQL ────────────────────────────────────────────────────
 
@@ -108,16 +118,30 @@ const SCHEMA_STATEMENTS = [
     captain_maneuver TEXT,
     officer_ability TEXT,
     below_deck_ability TEXT,
+    abilities JSONB,
+    tags JSONB,
+    officer_game_id BIGINT,
     source TEXT NOT NULL,
     source_url TEXT,
     source_page_id TEXT,
     source_revision_id TEXT,
     source_revision_timestamp TEXT,
-    license TEXT NOT NULL DEFAULT 'CC BY-SA 3.0',
-    attribution TEXT NOT NULL DEFAULT 'Community contributors to the Star Trek: Fleet Command Wiki',
+    license TEXT NOT NULL DEFAULT 'Community Data',
+    attribution TEXT NOT NULL DEFAULT 'STFC community data',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'abilities') THEN
+      ALTER TABLE reference_officers ADD COLUMN abilities JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'tags') THEN
+      ALTER TABLE reference_officers ADD COLUMN tags JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'officer_game_id') THEN
+      ALTER TABLE reference_officers ADD COLUMN officer_game_id BIGINT;
+    END IF;
+  END $$`,
   `CREATE INDEX IF NOT EXISTS idx_ref_officers_name ON reference_officers(name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_officers_group ON reference_officers(group_name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_officers_rarity ON reference_officers(rarity)`,
@@ -134,8 +158,8 @@ const SCHEMA_STATEMENTS = [
     source_page_id TEXT,
     source_revision_id TEXT,
     source_revision_timestamp TEXT,
-    license TEXT NOT NULL DEFAULT 'CC BY-SA 3.0',
-    attribution TEXT NOT NULL DEFAULT 'Community contributors to the Star Trek: Fleet Command Wiki',
+    license TEXT NOT NULL DEFAULT 'Community Data',
+    attribution TEXT NOT NULL DEFAULT 'STFC community data',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
@@ -146,6 +170,7 @@ const SCHEMA_STATEMENTS = [
 
 const OFFICER_COLS = `id, name, rarity, group_name AS "groupName", captain_maneuver AS "captainManeuver",
   officer_ability AS "officerAbility", below_deck_ability AS "belowDeckAbility",
+  abilities, tags, officer_game_id AS "officerGameId",
   source, source_url AS "sourceUrl", source_page_id AS "sourcePageId",
   source_revision_id AS "sourceRevisionId", source_revision_timestamp AS "sourceRevisionTimestamp",
   license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -158,11 +183,13 @@ const SHIP_COLS = `id, name, ship_class AS "shipClass", grade, rarity, faction, 
 const SQL = {
   // Officers
   insertOfficer: `INSERT INTO reference_officers (id, name, rarity, group_name, captain_maneuver, officer_ability, below_deck_ability,
+    abilities, tags, officer_game_id,
     source, source_url, source_page_id, source_revision_id, source_revision_timestamp, license, attribution, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
   updateOfficer: `UPDATE reference_officers SET name = $1, rarity = $2, group_name = $3, captain_maneuver = $4, officer_ability = $5,
-    below_deck_ability = $6, source = $7, source_url = $8, source_page_id = $9, source_revision_id = $10,
-    source_revision_timestamp = $11, license = $12, attribution = $13, updated_at = $14 WHERE id = $15`,
+    below_deck_ability = $6, abilities = $7, tags = $8, officer_game_id = $9,
+    source = $10, source_url = $11, source_page_id = $12, source_revision_id = $13,
+    source_revision_timestamp = $14, license = $15, attribution = $16, updated_at = $17 WHERE id = $18`,
   getOfficer: `SELECT ${OFFICER_COLS} FROM reference_officers WHERE id = $1`,
   findOfficerByName: `SELECT ${OFFICER_COLS} FROM reference_officers WHERE LOWER(name) = LOWER($1)`,
   listOfficers: `SELECT ${OFFICER_COLS} FROM reference_officers ORDER BY name`,
@@ -235,6 +262,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
       await pool.query(SQL.insertOfficer, [
         input.id, input.name, input.rarity, input.groupName,
         input.captainManeuver, input.officerAbility, input.belowDeckAbility,
+        input.abilities ? JSON.stringify(input.abilities) : null,
+        input.tags ? JSON.stringify(input.tags) : null,
+        input.officerGameId ?? null,
         input.source, input.sourceUrl, input.sourcePageId,
         input.sourceRevisionId, input.sourceRevisionTimestamp,
         license, attribution, now, now,
@@ -274,6 +304,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
         await pool.query(SQL.updateOfficer, [
           input.name, input.rarity, input.groupName,
           input.captainManeuver, input.officerAbility, input.belowDeckAbility,
+          input.abilities ? JSON.stringify(input.abilities) : null,
+          input.tags ? JSON.stringify(input.tags) : null,
+          input.officerGameId ?? null,
           input.source, input.sourceUrl, input.sourcePageId,
           input.sourceRevisionId, input.sourceRevisionTimestamp,
           input.license ?? DEFAULT_LICENSE, input.attribution ?? DEFAULT_ATTRIBUTION,
@@ -367,6 +400,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
             await client.query(SQL.updateOfficer, [
               officer.name, officer.rarity, officer.groupName,
               officer.captainManeuver, officer.officerAbility, officer.belowDeckAbility,
+              officer.abilities ? JSON.stringify(officer.abilities) : null,
+              officer.tags ? JSON.stringify(officer.tags) : null,
+              officer.officerGameId ?? null,
               officer.source, officer.sourceUrl, officer.sourcePageId,
               officer.sourceRevisionId, officer.sourceRevisionTimestamp,
               officer.license ?? DEFAULT_LICENSE, officer.attribution ?? DEFAULT_ATTRIBUTION,
@@ -377,6 +413,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
             await client.query(SQL.insertOfficer, [
               officer.id, officer.name, officer.rarity, officer.groupName,
               officer.captainManeuver, officer.officerAbility, officer.belowDeckAbility,
+              officer.abilities ? JSON.stringify(officer.abilities) : null,
+              officer.tags ? JSON.stringify(officer.tags) : null,
+              officer.officerGameId ?? null,
               officer.source, officer.sourceUrl, officer.sourcePageId,
               officer.sourceRevisionId, officer.sourceRevisionTimestamp,
               officer.license ?? DEFAULT_LICENSE, officer.attribution ?? DEFAULT_ATTRIBUTION,
