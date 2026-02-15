@@ -1,9 +1,10 @@
 /**
- * fleet-tools.test.ts — Tests for Gemini function calling tools (ADR-007 Phase C)
+ * fleet-tools.test.ts — Tests for Gemini function calling tools (ADR-007 Phase C, ADR-010 §6)
  *
  * Covers:
  * - Tool declaration validation (names, schemas)
  * - Tool executor dispatch for each Phase 1 tool
+ * - Phase 2 drydock management tools (data gathering + analysis)
  * - Error handling (missing stores, unknown tools, missing args)
  * - ToolContext graceful degradation
  */
@@ -223,7 +224,7 @@ function createMockLoadoutStore(overrides: Partial<LoadoutStore> = {}): LoadoutS
 describe("FLEET_TOOL_DECLARATIONS", () => {
   it("exports an array of tool declarations", () => {
     expect(Array.isArray(FLEET_TOOL_DECLARATIONS)).toBe(true);
-    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(8);
+    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(16);
   });
 
   it("each declaration has name and description", () => {
@@ -245,6 +246,21 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("list_docks");
     expect(names).toContain("get_officer_conflicts");
     expect(names).toContain("validate_plan");
+  });
+
+  it("includes all Phase 2 drydock management tools", () => {
+    const names = FLEET_TOOL_DECLARATIONS.map((t) => t.name);
+    // Data gathering tools
+    expect(names).toContain("list_owned_officers");
+    expect(names).toContain("get_loadout_detail");
+    expect(names).toContain("list_plan_items");
+    expect(names).toContain("list_intents");
+    expect(names).toContain("find_loadouts_for_intent");
+    // Analysis tools
+    expect(names).toContain("suggest_crew");
+    expect(names).toContain("analyze_fleet");
+    expect(names).toContain("resolve_conflict");
+    expect(names).toContain("what_if_remove_officer");
   });
 
   it("search tools have required query parameter", () => {
@@ -508,5 +524,472 @@ describe("validate_plan", () => {
   it("returns error when loadout store unavailable", async () => {
     const result = await executeFleetTool("validate_plan", {}, {});
     expect(result).toHaveProperty("error");
+  });
+});
+
+// ─── Phase 2: Drydock Management Tools ──────────────────────
+
+const FIXTURE_LOADOUT_WITH_MEMBERS = {
+  id: 10,
+  shipId: "ship-enterprise",
+  name: "Kirk Crew",
+  priority: 1,
+  isActive: true,
+  intentKeys: ["pvp"],
+  tags: ["main"],
+  notes: "Primary PvP loadout",
+  createdAt: "2024-01-01T00:00:00Z",
+  updatedAt: "2024-06-01T00:00:00Z",
+  shipName: "USS Enterprise",
+  members: [
+    { id: 1, loadoutId: 10, officerId: "officer-kirk", roleType: "bridge" as const, slot: "captain", officerName: "James T. Kirk" },
+    { id: 2, loadoutId: 10, officerId: "officer-spock", roleType: "bridge" as const, slot: "officer_1", officerName: "Spock" },
+    { id: 3, loadoutId: 10, officerId: "officer-bones", roleType: "below_deck" as const, slot: null, officerName: "Leonard McCoy" },
+  ],
+};
+
+const FIXTURE_PLAN_ITEM_WITH_CONTEXT = {
+  id: 1,
+  intentKey: "pvp",
+  label: "Arena PvP",
+  loadoutId: 10,
+  dockNumber: 1,
+  priority: 1,
+  isActive: true,
+  notes: null,
+  createdAt: "2024-01-01T00:00:00Z",
+  updatedAt: "2024-06-01T00:00:00Z",
+  intentLabel: "PvP/Raiding",
+  loadoutName: "Kirk Crew",
+  shipId: "ship-enterprise",
+  shipName: "USS Enterprise",
+  dockLabel: "PvP Dock",
+  members: [
+    { id: 1, loadoutId: 10, officerId: "officer-kirk", roleType: "bridge" as const, slot: "captain", officerName: "James T. Kirk" },
+  ],
+  awayMembers: [],
+};
+
+const FIXTURE_INTENT = {
+  key: "pvp",
+  label: "PvP/Raiding",
+  category: "combat",
+  description: "Player vs player combat and raiding",
+  icon: "💀",
+  isBuiltin: true,
+  sortOrder: 25,
+  createdAt: "2024-01-01T00:00:00Z",
+};
+
+const FIXTURE_SPOCK_OFFICER: ReferenceOfficer = {
+  ...FIXTURE_OFFICER,
+  id: "officer-spock",
+  name: "Spock",
+  groupName: "TOS Bridge",
+  captainManeuver: "Logical",
+  officerAbility: "Science Officer",
+  belowDeckAbility: "Vulcan Mind",
+};
+
+describe("list_owned_officers", () => {
+  it("returns merged reference + overlay data for owned officers", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([FIXTURE_OFFICER_OVERLAY]),
+      }),
+    };
+    const result = await executeFleetTool("list_owned_officers", {}, ctx) as Record<string, unknown>;
+    expect(result.totalOwned).toBe(1);
+    const officers = result.officers as Array<Record<string, unknown>>;
+    expect(officers[0].name).toBe("James T. Kirk");
+    expect(officers[0].level).toBe(50);
+    expect(officers[0].captainManeuver).toBe("Inspirational");
+  });
+
+  it("filters out officers with missing reference data", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        getOfficer: vi.fn().mockResolvedValue(null),
+      }),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([FIXTURE_OFFICER_OVERLAY]),
+      }),
+    };
+    const result = await executeFleetTool("list_owned_officers", {}, ctx) as Record<string, unknown>;
+    expect(result.totalOwned).toBe(0);
+  });
+
+  it("returns error when overlay store unavailable", async () => {
+    const ctx: ToolContext = { referenceStore: createMockReferenceStore() };
+    const result = await executeFleetTool("list_owned_officers", {}, ctx);
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error when reference store unavailable", async () => {
+    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const result = await executeFleetTool("list_owned_officers", {}, ctx);
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("get_loadout_detail", () => {
+  it("returns full loadout with crew members", async () => {
+    const ctx: ToolContext = {
+      loadoutStore: createMockLoadoutStore({
+        getLoadout: vi.fn().mockResolvedValue(FIXTURE_LOADOUT_WITH_MEMBERS),
+      }),
+    };
+    const result = await executeFleetTool("get_loadout_detail", { loadout_id: 10 }, ctx) as Record<string, unknown>;
+    expect(result.name).toBe("Kirk Crew");
+    expect(result.shipName).toBe("USS Enterprise");
+    expect(result.intentKeys).toEqual(["pvp"]);
+    const members = result.members as Array<Record<string, unknown>>;
+    expect(members).toHaveLength(3);
+    expect(members[0].officerName).toBe("James T. Kirk");
+    expect(members[0].roleType).toBe("bridge");
+    expect(members[0].slot).toBe("captain");
+  });
+
+  it("returns error for nonexistent loadout", async () => {
+    const ctx: ToolContext = {
+      loadoutStore: createMockLoadoutStore({
+        getLoadout: vi.fn().mockResolvedValue(null),
+      }),
+    };
+    const result = await executeFleetTool("get_loadout_detail", { loadout_id: 999 }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("not found");
+  });
+
+  it("returns error when loadout store unavailable", async () => {
+    const result = await executeFleetTool("get_loadout_detail", { loadout_id: 10 }, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("list_plan_items", () => {
+  it("returns plan items with context", async () => {
+    const ctx: ToolContext = {
+      loadoutStore: createMockLoadoutStore({
+        listPlanItems: vi.fn().mockResolvedValue([FIXTURE_PLAN_ITEM_WITH_CONTEXT]),
+      }),
+    };
+    const result = await executeFleetTool("list_plan_items", {}, ctx) as Record<string, unknown>;
+    expect(result.totalItems).toBe(1);
+    const items = result.planItems as Array<Record<string, unknown>>;
+    expect(items[0].label).toBe("Arena PvP");
+    expect(items[0].dockNumber).toBe(1);
+    expect(items[0].loadoutName).toBe("Kirk Crew");
+  });
+
+  it("returns error when loadout store unavailable", async () => {
+    const result = await executeFleetTool("list_plan_items", {}, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("list_intents", () => {
+  it("returns intent catalog", async () => {
+    const ctx: ToolContext = {
+      loadoutStore: createMockLoadoutStore({
+        listIntents: vi.fn().mockResolvedValue([FIXTURE_INTENT]),
+      }),
+    };
+    const result = await executeFleetTool("list_intents", {}, ctx) as Record<string, unknown>;
+    expect(result.totalIntents).toBe(1);
+    const intents = result.intents as Array<Record<string, unknown>>;
+    expect(intents[0].key).toBe("pvp");
+    expect(intents[0].label).toBe("PvP/Raiding");
+    expect(intents[0].category).toBe("combat");
+  });
+
+  it("passes category filter to store", async () => {
+    const listIntentsMock = vi.fn().mockResolvedValue([FIXTURE_INTENT]);
+    const ctx: ToolContext = {
+      loadoutStore: createMockLoadoutStore({ listIntents: listIntentsMock }),
+    };
+    await executeFleetTool("list_intents", { category: "combat" }, ctx);
+    expect(listIntentsMock).toHaveBeenCalledWith({ category: "combat" });
+  });
+
+  it("returns error when loadout store unavailable", async () => {
+    const result = await executeFleetTool("list_intents", {}, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("find_loadouts_for_intent", () => {
+  it("returns loadouts matching an intent", async () => {
+    const ctx: ToolContext = {
+      loadoutStore: createMockLoadoutStore({
+        findLoadoutsForIntent: vi.fn().mockResolvedValue([FIXTURE_LOADOUT_WITH_MEMBERS]),
+      }),
+    };
+    const result = await executeFleetTool("find_loadouts_for_intent", { intent_key: "pvp" }, ctx) as Record<string, unknown>;
+    expect(result.intentKey).toBe("pvp");
+    expect(result.totalLoadouts).toBe(1);
+    const loadouts = result.loadouts as Array<Record<string, unknown>>;
+    expect(loadouts[0].name).toBe("Kirk Crew");
+  });
+
+  it("returns error for empty intent key", async () => {
+    const ctx: ToolContext = { loadoutStore: createMockLoadoutStore() };
+    const result = await executeFleetTool("find_loadouts_for_intent", { intent_key: "" }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("required");
+  });
+
+  it("returns error when loadout store unavailable", async () => {
+    const result = await executeFleetTool("find_loadouts_for_intent", { intent_key: "pvp" }, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("suggest_crew", () => {
+  it("gathers ship, intent, owned officers, and existing loadouts", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([FIXTURE_OFFICER_OVERLAY]),
+      }),
+      loadoutStore: createMockLoadoutStore({
+        getIntent: vi.fn().mockResolvedValue(FIXTURE_INTENT),
+        listLoadouts: vi.fn().mockResolvedValue([FIXTURE_LOADOUT_WITH_MEMBERS]),
+      }),
+    };
+    const result = await executeFleetTool(
+      "suggest_crew", { ship_id: "ship-enterprise", intent_key: "pvp" }, ctx,
+    ) as Record<string, unknown>;
+
+    const ship = result.ship as Record<string, unknown>;
+    expect(ship.name).toBe("USS Enterprise");
+    expect(ship.shipClass).toBe("Explorer");
+
+    const intent = result.intent as Record<string, unknown>;
+    expect(intent.key).toBe("pvp");
+    expect(intent.label).toBe("PvP/Raiding");
+
+    expect(result.totalOwnedOfficers).toBe(1);
+    const officers = result.ownedOfficers as Array<Record<string, unknown>>;
+    expect(officers[0].name).toBe("James T. Kirk");
+
+    const loadouts = result.existingLoadouts as Array<Record<string, unknown>>;
+    expect(loadouts).toHaveLength(1);
+    expect(loadouts[0].name).toBe("Kirk Crew");
+  });
+
+  it("works without intent_key", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+      }),
+      loadoutStore: createMockLoadoutStore({
+        listLoadouts: vi.fn().mockResolvedValue([]),
+      }),
+    };
+    const result = await executeFleetTool(
+      "suggest_crew", { ship_id: "ship-enterprise" }, ctx,
+    ) as Record<string, unknown>;
+    expect(result.intent).toBeNull();
+    expect(result.totalOwnedOfficers).toBe(0);
+  });
+
+  it("returns error for unknown ship", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        getShip: vi.fn().mockResolvedValue(null),
+      }),
+    };
+    const result = await executeFleetTool("suggest_crew", { ship_id: "nonexistent" }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("not found");
+  });
+
+  it("returns error when reference store unavailable", async () => {
+    const result = await executeFleetTool("suggest_crew", { ship_id: "ship-enterprise" }, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("analyze_fleet", () => {
+  it("gathers comprehensive fleet state", async () => {
+    const ctx: ToolContext = {
+      loadoutStore: createMockLoadoutStore({
+        listPlanItems: vi.fn().mockResolvedValue([FIXTURE_PLAN_ITEM_WITH_CONTEXT]),
+        listLoadouts: vi.fn().mockResolvedValue([FIXTURE_LOADOUT_WITH_MEMBERS]),
+      }),
+    };
+    const result = await executeFleetTool("analyze_fleet", {}, ctx) as Record<string, unknown>;
+    expect(result.totalDocks).toBe(2);
+    expect(result.totalLoadouts).toBe(1);
+    expect(result.totalPlanItems).toBe(1);
+    expect(result.totalConflicts).toBe(1);
+
+    const validation = result.validation as Record<string, unknown>;
+    expect(validation.valid).toBe(false);
+
+    const loadouts = result.loadouts as Array<Record<string, unknown>>;
+    expect(loadouts[0].name).toBe("Kirk Crew");
+    expect(loadouts[0].memberCount).toBe(3);
+  });
+
+  it("returns error when loadout store unavailable", async () => {
+    const result = await executeFleetTool("analyze_fleet", {}, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("resolve_conflict", () => {
+  it("gathers officer details, conflicts, alternatives, and cascade preview", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        listOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER, FIXTURE_SPOCK_OFFICER]),
+      }),
+      overlayStore: createMockOverlayStore(),
+      loadoutStore: createMockLoadoutStore({
+        previewDeleteOfficer: vi.fn().mockResolvedValue({
+          loadoutMemberships: [{ loadoutId: 10, loadoutName: "Kirk Crew", shipName: "USS Enterprise" }],
+          awayMemberships: [],
+        }),
+      }),
+    };
+    const result = await executeFleetTool(
+      "resolve_conflict", { officer_id: "officer-kirk" }, ctx,
+    ) as Record<string, unknown>;
+
+    const officer = result.officer as Record<string, unknown>;
+    expect(officer.name).toBe("James T. Kirk");
+    expect(officer.group).toBe("TOS Bridge");
+
+    const conflict = result.conflict as Record<string, unknown>;
+    expect(conflict).not.toBeNull();
+    const appearances = conflict.appearances as Array<Record<string, unknown>>;
+    expect(appearances).toHaveLength(2);
+
+    // Should find Spock as an alternative (same group)
+    const alternatives = result.alternatives as Array<Record<string, unknown>>;
+    expect(alternatives).toHaveLength(1);
+    expect(alternatives[0].name).toBe("Spock");
+    expect(alternatives[0].owned).toBe(true);
+
+    const preview = result.cascadePreview as Record<string, unknown>;
+    expect((preview.loadoutMemberships as unknown[]).length).toBe(1);
+  });
+
+  it("returns null conflict when officer has no conflicts", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        listOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER]),
+      }),
+      overlayStore: createMockOverlayStore(),
+      loadoutStore: createMockLoadoutStore({
+        getOfficerConflicts: vi.fn().mockResolvedValue([]),
+        previewDeleteOfficer: vi.fn().mockResolvedValue({
+          loadoutMemberships: [],
+          awayMemberships: [],
+        }),
+      }),
+    };
+    const result = await executeFleetTool(
+      "resolve_conflict", { officer_id: "officer-kirk" }, ctx,
+    ) as Record<string, unknown>;
+    expect(result.conflict).toBeNull();
+  });
+
+  it("returns error for unknown officer", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        getOfficer: vi.fn().mockResolvedValue(null),
+      }),
+      loadoutStore: createMockLoadoutStore(),
+    };
+    const result = await executeFleetTool("resolve_conflict", { officer_id: "nonexistent" }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("not found");
+  });
+
+  it("returns error when reference store unavailable", async () => {
+    const ctx: ToolContext = { loadoutStore: createMockLoadoutStore() };
+    const result = await executeFleetTool("resolve_conflict", { officer_id: "officer-kirk" }, ctx);
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("what_if_remove_officer", () => {
+  it("returns cascade preview for officer removal", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      loadoutStore: createMockLoadoutStore({
+        previewDeleteOfficer: vi.fn().mockResolvedValue({
+          loadoutMemberships: [
+            { loadoutId: 10, loadoutName: "Kirk Crew", shipName: "USS Enterprise" },
+            { loadoutId: 20, loadoutName: "Hostile Crew", shipName: "USS Defiant" },
+          ],
+          awayMemberships: [
+            { planItemId: 5, planItemLabel: "Away Mission Alpha" },
+          ],
+        }),
+      }),
+    };
+    const result = await executeFleetTool(
+      "what_if_remove_officer", { officer_id: "officer-kirk" }, ctx,
+    ) as Record<string, unknown>;
+    expect(result.officerName).toBe("James T. Kirk");
+    expect(result.totalAffectedLoadouts).toBe(2);
+    expect(result.totalAffectedAwayTeams).toBe(1);
+    expect(result.totalAffected).toBe(3);
+
+    const loadouts = result.loadoutMemberships as Array<Record<string, unknown>>;
+    expect(loadouts[0].loadoutName).toBe("Kirk Crew");
+    expect(loadouts[1].loadoutName).toBe("Hostile Crew");
+
+    const away = result.awayMemberships as Array<Record<string, unknown>>;
+    expect(away[0].planItemLabel).toBe("Away Mission Alpha");
+  });
+
+  it("returns zero affected when officer has no assignments", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      loadoutStore: createMockLoadoutStore({
+        previewDeleteOfficer: vi.fn().mockResolvedValue({
+          loadoutMemberships: [],
+          awayMemberships: [],
+        }),
+      }),
+    };
+    const result = await executeFleetTool(
+      "what_if_remove_officer", { officer_id: "officer-kirk" }, ctx,
+    ) as Record<string, unknown>;
+    expect(result.totalAffected).toBe(0);
+  });
+
+  it("works without reference store (no officer name)", async () => {
+    const ctx: ToolContext = {
+      loadoutStore: createMockLoadoutStore({
+        previewDeleteOfficer: vi.fn().mockResolvedValue({
+          loadoutMemberships: [],
+          awayMemberships: [],
+        }),
+      }),
+    };
+    const result = await executeFleetTool(
+      "what_if_remove_officer", { officer_id: "officer-kirk" }, ctx,
+    ) as Record<string, unknown>;
+    expect(result.officerName).toBeNull();
+    expect(result.totalAffected).toBe(0);
+  });
+
+  it("returns error when loadout store unavailable", async () => {
+    const result = await executeFleetTool("what_if_remove_officer", { officer_id: "officer-kirk" }, {});
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error for empty officer ID", async () => {
+    const ctx: ToolContext = { loadoutStore: createMockLoadoutStore() };
+    const result = await executeFleetTool("what_if_remove_officer", { officer_id: "" }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("required");
   });
 });
