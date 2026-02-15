@@ -23,6 +23,7 @@ import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode, asyncHandler } from "../envelope.js";
 import { SESSION_COOKIE, TENANT_COOKIE, requireRole, requireAdmiral } from "../services/auth.js";
+import { timingSafeCompare } from "../services/password.js";
 import { authRateLimiter } from "../rate-limit.js";
 import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../services/email.js";
 
@@ -243,11 +244,11 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendOk(res, { tier: "admiral", authEnabled: false, tenantId: "local" });
     }
 
-    // Check for admin bearer token
+    // Check for admin bearer token (timing-safe comparison)
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
-      if (token === appState.config.adminToken) {
+      if (appState.config.adminToken && timingSafeCompare(token, appState.config.adminToken)) {
         return sendOk(res, { tier: "admiral", authEnabled: true, tenantId: "admiral" });
       }
     }
@@ -326,11 +327,11 @@ export function createAuthRoutes(appState: AppState): Router {
   // These routes accept both Bearer token AND session-cookie admirals.
   // Bearer token is still needed for the very first promotion (no admirals yet).
   router.use("/api/auth/admiral", (req, res, next) => {
-    // Try Bearer token first (always works for bootstrapping)
+    // Try Bearer token first (always works for bootstrapping, timing-safe)
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
-      if (token === appState.config.adminToken) {
+      if (appState.config.adminToken && timingSafeCompare(token, appState.config.adminToken)) {
         return next();
       }
     }
