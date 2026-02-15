@@ -698,3 +698,72 @@
     font-size: 0.8rem;
     font-family: inherit;
 }
+
+/* ─── Solver Result ────────────────────────────────────────── */
+
+.solver-result {
+    margin-bottom: 1rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background: rgba(52, 152, 219, 0.05);
+}
+
+.solver-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.solver-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.solver-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.solver-summary {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 0.5rem;
+}
+
+.solver-table {
+    font-size: 0.8rem;
+}
+
+.solver-table th {
+    font-size: 0.7rem;
+}
+
+.solver-explanation {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    max-width: 300px;
+}
+
+.solver-row-assigned {
+    background: rgba(46, 204, 113, 0.06);
+}
+
+.solver-row-conflict {
+    background: rgba(231, 76, 60, 0.06);
+}
+
+.solver-row-queued {
+    background: rgba(241, 196, 15, 0.06);
+}
+
+.solver-warnings {
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.5rem;
+    border-radius: 4px;
+    background: rgba(241, 196, 15, 0.08);
+    border: 1px solid rgba(241, 196, 15, 0.2);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}

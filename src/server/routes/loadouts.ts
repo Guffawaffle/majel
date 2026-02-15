@@ -14,6 +14,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { VALID_INTENT_CATEGORIES } from "../stores/loadout-store.js";
 import { requireVisitor } from "../services/auth.js";
 import { buildPlanBriefing } from "../services/plan-briefing.js";
+import { solvePlan } from "../services/plan-solver.js";
 
 export function createLoadoutRoutes(appState: AppState): Router {
   const router = Router();
@@ -281,6 +282,19 @@ export function createLoadoutRoutes(appState: AppState): Router {
     }
     const briefing = await buildPlanBriefing(store, tier as 1 | 2 | 3);
     sendOk(res, { briefing });
+  });
+
+  router.post("/api/plan/solve", async (req, res) => {
+    const store = getStore();
+    if (!store) return sendFail(res, ErrorCode.LOADOUT_STORE_NOT_AVAILABLE, "Loadout store not available", 503);
+    const apply = req.body.apply === true;
+    try {
+      const result = await solvePlan(store, { apply });
+      sendOk(res, { solver: result });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendFail(res, ErrorCode.INTERNAL_ERROR, `Solver failed: ${msg}`, 500);
+    }
   });
 
   router.get("/api/plan/:id", async (req, res) => {
