@@ -60,6 +60,25 @@ export function createTargetRoutes(appState: AppState): Router {
     sendOk(res, { targets, count: targets.length });
   });
 
+  // ─── Counts (must precede /:id to avoid param match) ─────
+
+  router.get("/api/targets/counts", async (_req, res) => {
+    const store = getStore();
+    if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
+    const counts = await store.counts();
+    sendOk(res, counts);
+  });
+
+  // ─── Conflicts (#18, must precede /:id) ───────────────────
+
+  router.get("/api/targets/conflicts", async (_req, res) => {
+    const store = getStore();
+    if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
+    if (!appState.loadoutStore) return sendFail(res, ErrorCode.LOADOUT_STORE_NOT_AVAILABLE, "Loadout store not available", 503);
+    const conflicts = await detectTargetConflicts(store, appState.loadoutStore);
+    sendOk(res, { conflicts, total: conflicts.length });
+  });
+
   // ─── Get target ───────────────────────────────────────────
 
   router.get("/api/targets/:id", async (req, res) => {
@@ -181,25 +200,6 @@ export function createTargetRoutes(appState: AppState): Router {
     const target = await store.markAchieved(id);
     if (!target) return sendFail(res, ErrorCode.NOT_FOUND, `Target not found: ${id}`, 404);
     sendOk(res, target);
-  });
-
-  // ─── Counts ───────────────────────────────────────────────
-
-  router.get("/api/targets/counts", async (_req, res) => {
-    const store = getStore();
-    if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
-    const counts = await store.counts();
-    sendOk(res, counts);
-  });
-
-  // ─── Conflicts (#18) ─────────────────────────────────────
-
-  router.get("/api/targets/conflicts", async (_req, res) => {
-    const store = getStore();
-    if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
-    if (!appState.loadoutStore) return sendFail(res, ErrorCode.LOADOUT_STORE_NOT_AVAILABLE, "Loadout store not available", 503);
-    const conflicts = await detectTargetConflicts(store, appState.loadoutStore);
-    sendOk(res, { conflicts, total: conflicts.length });
   });
 
   return router;
