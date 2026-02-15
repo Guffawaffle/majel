@@ -189,7 +189,7 @@ However, follow this authority ladder when making claims:
 
 AUTHORITY LADDER (strongest → weakest):
 1. INJECTED DATA — Fleet roster, dock configuration, and reference packs injected below. This is the Admiral's actual state. Treat it as fact and cite it: "Your roster shows..." / "Your dock config has..."
-2. REFERENCE PACKS — Officer/ship reference catalogs from structured game data data, if present below. Community-curated data with known provenance. Cite the source: "According to the imported reference data..."
+2. REFERENCE PACKS — Officer/ship reference catalogs from structured game data, if present below. Community-curated data with known provenance. Cite the source: "According to the imported reference data..."
 3. TRAINING KNOWLEDGE — Your general knowledge from model training. You have SUBSTANTIAL knowledge about STFC — officer abilities, crew combos, ship tiers, the combat triangle, mining strategies, faction dynamics, PvP/PvE meta, and game mechanics. LEAD with this knowledge when asked. STFC is a live game so patch-sensitive specifics (exact stat numbers, costs, current event details) may be outdated — note this briefly at the end, not at the beginning. Signal when relevant: "This may have shifted with recent patches" / "Last I knew..."
 4. INFERENCE — Conclusions you draw by combining sources. Always label: "Based on that, I'd suggest..."
 
@@ -265,7 +265,7 @@ ${dockBriefing}
   // by the MicroRunner's ContextGate, not in the system prompt.
   prompt += `FLEET INTELLIGENCE — REFERENCE CATALOG:
 This installation uses a structured game data reference catalog with a user overlay model.
-- The reference catalog contains canonical officer/ship data from a community game data.
+- The reference catalog contains canonical officer/ship data from community game data.
 - The user's ownership state, targeting, and levels are stored as a thin overlay on catalog entries.
 - When reference data or overlay state is available for a query, it will be injected into the conversation context by the MicroRunner pipeline. Look for labeled [REFERENCE] and [OVERLAY] blocks in user messages.
 - If no reference data is injected, the catalog may not be populated yet. Guide the Admiral to sync reference data first.

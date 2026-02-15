@@ -77,7 +77,7 @@ export interface ReferenceEntry {
   name: string;
   rarity: string | null;
   groupName: string | null;
-  source: string;          // e.g. "game data"
+  source: string;          // e.g. "gamedata"
   importedAt: string;      // ISO timestamp
 }
 
