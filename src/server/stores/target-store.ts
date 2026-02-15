@@ -119,34 +119,22 @@ const COLS = `id, target_type, ref_id, loadout_id, target_tier, target_rank, tar
 
 const SQL = {
   list: `SELECT ${COLS} FROM targets ORDER BY priority ASC, created_at DESC`,
-  listByType: `SELECT ${COLS} FROM targets WHERE target_type = $1 ORDER BY priority ASC, created_at DESC`,
-  listByStatus: `SELECT ${COLS} FROM targets WHERE status = $1 ORDER BY priority ASC, created_at DESC`,
-  listByTypeAndStatus: `SELECT ${COLS} FROM targets WHERE target_type = $1 AND status = $2 ORDER BY priority ASC, created_at DESC`,
-  listByPriority: `SELECT ${COLS} FROM targets WHERE priority = $1 ORDER BY created_at DESC`,
   listByRefId: `SELECT ${COLS} FROM targets WHERE ref_id = $1 ORDER BY priority ASC, created_at DESC`,
   get: `SELECT ${COLS} FROM targets WHERE id = $1`,
   create: `INSERT INTO targets (target_type, ref_id, loadout_id, target_tier, target_rank, target_level, reason, priority, auto_suggested)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING ${COLS}`,
-  update: `UPDATE targets SET
-    target_tier = COALESCE($2, target_tier),
-    target_rank = COALESCE($3, target_rank),
-    target_level = COALESCE($4, target_level),
-    reason = COALESCE($5, reason),
-    priority = COALESCE($6, priority),
-    status = COALESCE($7, status),
-    updated_at = NOW()
-    WHERE id = $1
-    RETURNING ${COLS}`,
   delete: `DELETE FROM targets WHERE id = $1`,
   markAchieved: `UPDATE targets SET status = 'achieved', achieved_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING ${COLS}`,
-  countTotal: `SELECT COUNT(*) AS count FROM targets`,
-  countActive: `SELECT COUNT(*) AS count FROM targets WHERE status = 'active'`,
-  countAchieved: `SELECT COUNT(*) AS count FROM targets WHERE status = 'achieved'`,
-  countAbandoned: `SELECT COUNT(*) AS count FROM targets WHERE status = 'abandoned'`,
-  countByTypeOfficer: `SELECT COUNT(*) AS count FROM targets WHERE target_type = 'officer'`,
-  countByTypeShip: `SELECT COUNT(*) AS count FROM targets WHERE target_type = 'ship'`,
-  countByTypeCrew: `SELECT COUNT(*) AS count FROM targets WHERE target_type = 'crew'`,
+  counts: `SELECT
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE status = 'active') AS active,
+    COUNT(*) FILTER (WHERE status = 'achieved') AS achieved,
+    COUNT(*) FILTER (WHERE status = 'abandoned') AS abandoned,
+    COUNT(*) FILTER (WHERE target_type = 'officer') AS type_officer,
+    COUNT(*) FILTER (WHERE target_type = 'ship') AS type_ship,
+    COUNT(*) FILTER (WHERE target_type = 'crew') AS type_crew
+    FROM targets`,
 };
 
 // ─── Row Mapper ─────────────────────────────────────────────
@@ -243,15 +231,44 @@ export async function createTargetStore(
     },
 
     async update(id, fields) {
-      const result = await pool.query(SQL.update, [
-        id,
-        fields.targetTier,
-        fields.targetRank,
-        fields.targetLevel,
-        fields.reason,
-        fields.priority,
-        fields.status,
-      ]);
+      // Build dynamic SET clause — only update provided fields
+      const setClauses: string[] = [];
+      const params: unknown[] = [id];
+
+      if (fields.targetTier !== undefined) {
+        params.push(fields.targetTier);
+        setClauses.push(`target_tier = $${params.length}`);
+      }
+      if (fields.targetRank !== undefined) {
+        params.push(fields.targetRank);
+        setClauses.push(`target_rank = $${params.length}`);
+      }
+      if (fields.targetLevel !== undefined) {
+        params.push(fields.targetLevel);
+        setClauses.push(`target_level = $${params.length}`);
+      }
+      if (fields.reason !== undefined) {
+        params.push(fields.reason);
+        setClauses.push(`reason = $${params.length}`);
+      }
+      if (fields.priority !== undefined) {
+        params.push(fields.priority);
+        setClauses.push(`priority = $${params.length}`);
+      }
+      if (fields.status !== undefined) {
+        params.push(fields.status);
+        setClauses.push(`status = $${params.length}`);
+      }
+
+      if (setClauses.length === 0) {
+        // Nothing to update — return current state
+        const result = await pool.query(SQL.get, [id]);
+        return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
+      }
+
+      setClauses.push(`updated_at = NOW()`);
+      const sql = `UPDATE targets SET ${setClauses.join(", ")} WHERE id = $1 RETURNING ${COLS}`;
+      const result = await pool.query(sql, params);
       return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
     },
 
@@ -271,24 +288,17 @@ export async function createTargetStore(
     },
 
     async counts() {
-      const [total, active, achieved, abandoned, officer, ship, crew] = await Promise.all([
-        pool.query(SQL.countTotal),
-        pool.query(SQL.countActive),
-        pool.query(SQL.countAchieved),
-        pool.query(SQL.countAbandoned),
-        pool.query(SQL.countByTypeOfficer),
-        pool.query(SQL.countByTypeShip),
-        pool.query(SQL.countByTypeCrew),
-      ]);
+      const result = await pool.query(SQL.counts);
+      const row = result.rows[0];
       return {
-        total: Number(total.rows[0].count),
-        active: Number(active.rows[0].count),
-        achieved: Number(achieved.rows[0].count),
-        abandoned: Number(abandoned.rows[0].count),
+        total: Number(row.total),
+        active: Number(row.active),
+        achieved: Number(row.achieved),
+        abandoned: Number(row.abandoned),
         byType: {
-          officer: Number(officer.rows[0].count),
-          ship: Number(ship.rows[0].count),
-          crew: Number(crew.rows[0].count),
+          officer: Number(row.type_officer),
+          ship: Number(row.type_ship),
+          crew: Number(row.type_crew),
         },
       };
     },
