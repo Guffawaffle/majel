@@ -148,6 +148,28 @@ export interface PlanValidation {
   warnings: string[];
 }
 
+// ─── Solver Types ───────────────────────────────────────────────
+
+/** A single assignment decision made by the solver. */
+export interface SolverAssignment {
+  planItemId: number;
+  planItemLabel: string | null;
+  loadoutId: number | null;
+  loadoutName: string | null;
+  dockNumber: number | null;
+  action: "assigned" | "queued" | "conflict" | "unchanged";
+  explanation: string;
+}
+
+/** Full solver result with explanations and validation. */
+export interface SolverResult {
+  assignments: SolverAssignment[];
+  applied: boolean;           // true if changes were written to DB
+  conflicts: OfficerConflict[];
+  summary: string;            // human-readable summary
+  warnings: string[];
+}
+
 // ─── Seed Data ──────────────────────────────────────────────────
 
 export const SEED_INTENTS: Array<

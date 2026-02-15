@@ -18,7 +18,7 @@ import {
     fetchLoadouts, fetchLoadout, createLoadout, updateLoadout, deleteLoadout,
     previewDeleteLoadout, setLoadoutMembers,
     fetchPlanItems, createPlanItem, updatePlanItem, deletePlanItem,
-    validatePlan, fetchPlanConflicts,
+    validatePlan, fetchPlanConflicts, solvePlan,
     fetchDocks, upsertDock, deleteDock,
     fetchIntents,
 } from 'api/loadouts.js';
@@ -40,6 +40,7 @@ let loading = false;
 let editingId = null;   // loadout ID being edited (null = list view)
 let editMode = false;   // inline editing active in detail view (ADVANCED)
 let uiMode = 'basic';   // 'basic' | 'advanced' — from system.uiMode setting
+let solverResult = null; // last solver run result
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -303,6 +304,7 @@ function renderLoadoutDetail() {
 function renderPlan() {
     const createBtn = `<button class="loadout-action-btn loadout-create-btn" data-action="create-plan-item">+ New Plan Item</button>`;
     const validateBtn = `<button class="loadout-action-btn" data-action="validate-plan">✓ Validate Plan</button>`;
+    const solvePreviewBtn = `<button class="loadout-action-btn" data-action="solve-plan-preview" title="Preview optimal dock assignments (dry run)">🧩 Solve Plan</button>`;
     const isAdv = uiMode === 'advanced';
 
     // ADVANCED: bulk operations toolbar
@@ -355,9 +357,10 @@ function renderPlan() {
     const conflictSection = isAdv ? renderConflictMatrix() : '';
 
     return `
-        <div class="loadout-toolbar">${createBtn} ${validateBtn}</div>
+        <div class="loadout-toolbar">${createBtn} ${validateBtn} ${solvePreviewBtn}</div>
         ${bulkOps}
         ${validation ? renderValidation() : ''}
+        ${solverResult ? renderSolverResult() : ''}
         <div class="plan-grid">${items}</div>
         ${conflictSection}`;
 }
@@ -375,6 +378,49 @@ function renderValidation() {
         return '<div class="plan-validation plan-valid">✅ Plan is valid — no conflicts detected.</div>';
     }
     return `<div class="plan-validation plan-invalid">${issues.join('<br>')}</div>`;
+}
+
+// ─── Solver Result ──────────────────────────────────────────
+
+function renderSolverResult() {
+    if (!solverResult) return '';
+    const { assignments, applied, summary, warnings } = solverResult;
+
+    const icons = { assigned: '✅', unchanged: '➖', queued: '⏳', conflict: '⚠️' };
+    const rows = assignments.map(a => {
+        const icon = icons[a.action] || '❓';
+        const dock = a.dockNumber != null ? `Dock ${a.dockNumber}` : '—';
+        return `<tr class="solver-row-${a.action}">
+            <td>${icon}</td>
+            <td>${esc(a.planItemLabel || '—')}</td>
+            <td>${esc(a.loadoutName || '—')}</td>
+            <td>${dock}</td>
+            <td class="solver-explanation">${esc(a.explanation)}</td>
+        </tr>`;
+    }).join('');
+
+    const warnHtml = warnings.length
+        ? `<div class="solver-warnings">${warnings.map(w => `<div>⚠️ ${esc(w)}</div>`).join('')}</div>`
+        : '';
+
+    const applyBtn = !applied
+        ? `<button class="loadout-action-btn loadout-create-btn" data-action="solve-plan-apply">✅ Apply Assignments</button>`
+        : '';
+    const dismissBtn = `<button class="loadout-action-btn" data-action="solver-dismiss">Dismiss</button>`;
+
+    return `
+        <div class="solver-result">
+            <div class="solver-header">
+                <h3>🧩 ${applied ? 'Solver Applied' : 'Solver Preview'}</h3>
+                <div class="solver-actions">${applyBtn} ${dismissBtn}</div>
+            </div>
+            <p class="solver-summary">${esc(summary)}</p>
+            ${warnHtml}
+            <table class="loadout-crew-table solver-table">
+                <thead><tr><th></th><th>Plan Item</th><th>Loadout</th><th>Dock</th><th>Explanation</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
 }
 
 // ─── Dock Status Tab ────────────────────────────────────────
@@ -438,6 +484,9 @@ function wireActions(area) {
             case 'remove-crew': return handleRemoveCrew(Number(btn.dataset.officerId));
             case 'bulk-deactivate-intent': return handleBulkDeactivateByIntent();
             case 'bulk-clear-docks': return handleBulkClearDocks();
+            case 'solve-plan-preview': return handleSolvePlan(false);
+            case 'solve-plan-apply': return handleSolvePlan(true);
+            case 'solver-dismiss': solverResult = null; return render();
         }
     });
 }
@@ -605,6 +654,22 @@ function showCreatePlanForm() {
             alert(`Create failed: ${err.message}`);
         }
     });
+}
+
+// ─── Plan Solver ────────────────────────────────────────────
+
+async function handleSolvePlan(apply) {
+    try {
+        const result = await solvePlan(apply);
+        solverResult = result;
+        if (apply) {
+            await refresh();
+        }
+        render();
+    } catch (err) {
+        console.error('Solver failed:', err);
+        alert(`Solver failed: ${err.message}`);
+    }
 }
 
 // ─── Helpers ────────────────────────────────────────────────

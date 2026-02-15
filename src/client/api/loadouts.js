@@ -113,5 +113,8 @@ export const fetchPlanConflicts = () => apiFetch('/api/plan/conflicts');
 export const fetchPlanBriefing = (tier = 1) =>
     apiFetch(`/api/plan/briefing?tier=${tier}`);
 
+export const solvePlan = (apply = false) =>
+    apiFetch('/api/plan/solve', { method: 'POST', body: JSON.stringify({ apply }) });
+
 export const setPlanAwayMembers = (id, members) =>
     apiFetch(`/api/plan/${id}/away-members`, { method: 'PUT', body: JSON.stringify({ members }) });
