@@ -233,7 +233,8 @@ describe("Error handler middleware", () => {
     expect(res.status).toBe(500);
     expect(res.body.ok).toBe(false);
     expect(res.body.error.code).toBe(ErrorCode.INTERNAL_ERROR);
-    expect(res.body.error.message).toBe("Something went wrong");
+    // 5xx messages are sanitized — internal details never leak to clients
+    expect(res.body.error.message).toBe("Internal server error");
   });
 
   it("error response includes request ID", async () => {
@@ -310,7 +311,8 @@ describe("Error handler middleware", () => {
 
     const res = await testRequest(app).get("/async-error");
     expect(res.status).toBe(500);
-    expect(res.body.error.message).toBe("Async failure");
+    // 5xx messages are sanitized — internal details never leak to clients
+    expect(res.body.error.message).toBe("Internal server error");
   });
 
   it("includes duration in error response meta", async () => {

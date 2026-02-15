@@ -198,7 +198,6 @@ export function errorHandler(err: Error & { status?: number; statusCode?: number
     return;
   }
 
-  const message = err.message || "Internal server error";
   let statusCode = err.status || err.statusCode || 500;
   let code: ErrorCodeValue = ErrorCode.INTERNAL_ERROR;
 
@@ -208,6 +207,10 @@ export function errorHandler(err: Error & { status?: number; statusCode?: number
     code = ErrorCode.PAYLOAD_TOO_LARGE;
   }
 
-  log.http.error({ err: message, requestId: res.locals._requestId }, "unhandled error");
-  sendFail(res, code, message, statusCode);
+  // Log the real error for debugging, but sanitize 5xx responses.
+  // Client code never sees internal error details (DB strings, file paths, etc.).
+  const internalMessage = err.message || "Internal server error";
+  log.http.error({ err: internalMessage, requestId: res.locals._requestId }, "unhandled error");
+  const clientMessage = statusCode >= 500 ? "Internal server error" : internalMessage;
+  sendFail(res, code, clientMessage, statusCode);
 }

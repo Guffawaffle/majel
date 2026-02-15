@@ -42,6 +42,12 @@ COPY --from=builder /app/dist ./dist
 COPY legacy/ legacy/
 COPY docs/ docs/
 
+# Run as non-root user (defense-in-depth)
+RUN groupadd --gid 1001 majel && \
+    useradd --uid 1001 --gid majel --shell /bin/false majel && \
+    chown -R majel:majel /app
+USER majel
+
 ENV NODE_ENV=production
 ENV MAJEL_PORT=8080
 

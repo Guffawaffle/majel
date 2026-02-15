@@ -160,10 +160,19 @@ export function createApp(appState: AppState): express.Express {
       "img-src 'self' data:",
       "connect-src 'self'",
       "font-src 'self'",
+      "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
       "frame-ancestors 'none'",
     ].join('; '));
+    // Defense-in-depth headers (no Helmet — we set them explicitly)
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    // HSTS: 1 year, include subdomains. Cloud Run terminates TLS, but HSTS
+    // ensures browsers always upgrade to HTTPS on return visits.
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     next();
   });
 
