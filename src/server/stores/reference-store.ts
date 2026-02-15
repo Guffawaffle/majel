@@ -52,6 +52,9 @@ export interface ReferenceShip {
   rarity: string | null;
   faction: string | null;
   tier: number | null;
+  ability: Record<string, unknown> | null;
+  warpRange: number[] | null;
+  link: string | null;
   source: string;
   sourceUrl: string | null;
   sourcePageId: string | null;
@@ -71,9 +74,12 @@ export type CreateReferenceOfficerInput = Omit<ReferenceOfficer, "createdAt" | "
   officerGameId?: number | null;
 };
 
-export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "updatedAt" | "license" | "attribution"> & {
+export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "updatedAt" | "license" | "attribution" | "ability" | "warpRange" | "link"> & {
   license?: string;
   attribution?: string;
+  ability?: Record<string, unknown> | null;
+  warpRange?: number[] | null;
+  link?: string | null;
 };
 
 // ─── Store Interface ────────────────────────────────────────
@@ -163,6 +169,17 @@ const SCHEMA_STATEMENTS = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'ability') THEN
+      ALTER TABLE reference_ships ADD COLUMN ability JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'warp_range') THEN
+      ALTER TABLE reference_ships ADD COLUMN warp_range JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'link') THEN
+      ALTER TABLE reference_ships ADD COLUMN link TEXT;
+    END IF;
+  END $$`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_name ON reference_ships(name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_class ON reference_ships(ship_class)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_faction ON reference_ships(faction)`,
@@ -176,6 +193,7 @@ const OFFICER_COLS = `id, name, rarity, group_name AS "groupName", captain_maneu
   license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SHIP_COLS = `id, name, ship_class AS "shipClass", grade, rarity, faction, tier,
+  ability, warp_range AS "warpRange", link,
   source, source_url AS "sourceUrl", source_page_id AS "sourcePageId",
   source_revision_id AS "sourceRevisionId", source_revision_timestamp AS "sourceRevisionTimestamp",
   license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -200,11 +218,13 @@ const SQL = {
 
   // Ships
   insertShip: `INSERT INTO reference_ships (id, name, ship_class, grade, rarity, faction, tier,
+    ability, warp_range, link,
     source, source_url, source_page_id, source_revision_id, source_revision_timestamp, license, attribution, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
   updateShip: `UPDATE reference_ships SET name = $1, ship_class = $2, grade = $3, rarity = $4, faction = $5, tier = $6,
-    source = $7, source_url = $8, source_page_id = $9, source_revision_id = $10,
-    source_revision_timestamp = $11, license = $12, attribution = $13, updated_at = $14 WHERE id = $15`,
+    ability = $7, warp_range = $8, link = $9,
+    source = $10, source_url = $11, source_page_id = $12, source_revision_id = $13,
+    source_revision_timestamp = $14, license = $15, attribution = $16, updated_at = $17 WHERE id = $18`,
   getShip: `SELECT ${SHIP_COLS} FROM reference_ships WHERE id = $1`,
   findShipByName: `SELECT ${SHIP_COLS} FROM reference_ships WHERE LOWER(name) = LOWER($1)`,
   listShips: `SELECT ${SHIP_COLS} FROM reference_ships ORDER BY name`,
@@ -332,6 +352,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
       const attribution = input.attribution ?? DEFAULT_ATTRIBUTION;
       await pool.query(SQL.insertShip, [
         input.id, input.name, input.shipClass, input.grade, input.rarity, input.faction, input.tier,
+        input.ability ? JSON.stringify(input.ability) : null,
+        input.warpRange ? JSON.stringify(input.warpRange) : null,
+        input.link ?? null,
         input.source, input.sourceUrl, input.sourcePageId,
         input.sourceRevisionId, input.sourceRevisionTimestamp,
         license, attribution, now, now,
@@ -370,6 +393,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
         const now = new Date().toISOString();
         await pool.query(SQL.updateShip, [
           input.name, input.shipClass, input.grade, input.rarity, input.faction, input.tier,
+          input.ability ? JSON.stringify(input.ability) : null,
+          input.warpRange ? JSON.stringify(input.warpRange) : null,
+          input.link ?? null,
           input.source, input.sourceUrl, input.sourcePageId,
           input.sourceRevisionId, input.sourceRevisionTimestamp,
           input.license ?? DEFAULT_LICENSE, input.attribution ?? DEFAULT_ATTRIBUTION,
@@ -439,6 +465,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
           if (existsRes.rows.length > 0) {
             await client.query(SQL.updateShip, [
               ship.name, ship.shipClass, ship.grade, ship.rarity, ship.faction, ship.tier,
+              ship.ability ? JSON.stringify(ship.ability) : null,
+              ship.warpRange ? JSON.stringify(ship.warpRange) : null,
+              ship.link ?? null,
               ship.source, ship.sourceUrl, ship.sourcePageId,
               ship.sourceRevisionId, ship.sourceRevisionTimestamp,
               ship.license ?? DEFAULT_LICENSE, ship.attribution ?? DEFAULT_ATTRIBUTION,
@@ -448,6 +477,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
           } else {
             await client.query(SQL.insertShip, [
               ship.id, ship.name, ship.shipClass, ship.grade, ship.rarity, ship.faction, ship.tier,
+              ship.ability ? JSON.stringify(ship.ability) : null,
+              ship.warpRange ? JSON.stringify(ship.warpRange) : null,
+              ship.link ?? null,
               ship.source, ship.sourceUrl, ship.sourcePageId,
               ship.sourceRevisionId, ship.sourceRevisionTimestamp,
               ship.license ?? DEFAULT_LICENSE, ship.attribution ?? DEFAULT_ATTRIBUTION,
