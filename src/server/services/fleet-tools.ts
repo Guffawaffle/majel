@@ -480,7 +480,7 @@ async function searchOfficers(query: string, ctx: ToolContext): Promise<object> 
 
 async function searchShips(query: string, ctx: ToolContext): Promise<object> {
   if (!ctx.referenceStore) {
-    return { error: "Reference catalog not available. The Admiral may need to import wiki data first." };
+    return { error: "Reference catalog not available. The Admiral may need to sync reference data first." };
   }
   if (!query.trim()) {
     return { error: "Search query is required." };
@@ -670,7 +670,7 @@ async function listOwnedOfficers(ctx: ToolContext): Promise<object> {
     return { error: "Overlay system not available. The Admiral may need to set up ownership data first." };
   }
   if (!ctx.referenceStore) {
-    return { error: "Reference catalog not available. The Admiral may need to import wiki data first." };
+    return { error: "Reference catalog not available. The Admiral may need to sync reference data first." };
   }
 
   const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });

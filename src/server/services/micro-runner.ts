@@ -70,14 +70,14 @@ export interface MicroRunnerReceipt {
 }
 
 /**
- * T2 reference data for an officer or ship, looked up from the wiki import.
+ * T2 reference data for an officer or ship, looked up from the game data import.
  */
 export interface ReferenceEntry {
   id: string;
   name: string;
   rarity: string | null;
   groupName: string | null;
-  source: string;          // e.g. "STFC wiki"
+  source: string;          // e.g. "game data"
   importedAt: string;      // ISO timestamp
 }
 

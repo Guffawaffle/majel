@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * sync-wiki.mjs — CLI wrapper for Majel Wiki Sync
+ * @deprecated Replaced by gamedata-ingest.ts (#55).
+ * Wiki sync has been fully removed. Use POST /api/catalog/sync instead (reads from data/raw-officers.json).
+ *
+ * sync-wiki.mjs — CLI wrapper for Majel Wiki Sync (DEPRECATED)
  *
  * Majel — STFC Fleet Intelligence System
  *

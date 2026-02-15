@@ -4,7 +4,7 @@
  * Endpoints for browsing the reference catalog (officers, ships) and
  * managing the user's overlay state (ownership, targeting).
  *
- * Reference data is read-only via these routes (populated by wiki ingest).
+ * Reference data is sourced from structured game data (raw-officers.json).
  * Overlay data is full CRUD — the user's personal relationship to each entity.
  *
  * All handlers async for @libsql/client (ADR-018 Phase 1).
@@ -15,7 +15,7 @@ import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
-import { syncWikiData } from "../services/wiki-ingest.js";
+import { syncGamedataOfficers, syncGamedataShips } from "../services/gamedata-ingest.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
   const router = Router();
@@ -262,32 +262,22 @@ export function createCatalogRoutes(appState: AppState): Router {
   });
 
   // ═══════════════════════════════════════════════════════════
-  // Wiki Sync
+  // Game Data Sync
   // ═══════════════════════════════════════════════════════════
 
   router.post("/api/catalog/sync", requireAdmiral(appState), async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const store = appState.referenceStore!;
 
-    const { consent, officers, ships } = req.body;
-    if (!consent) {
-      return sendFail(
-        res,
-        ErrorCode.MISSING_PARAM,
-        "consent:true required — acknowledges Fandom wiki data is CC BY-SA 3.0 licensed",
-        400,
-      );
-    }
-
     try {
-      const result = await syncWikiData(store, {
-        officers: officers !== false,
-        ships: ships !== false,
-      });
-      sendOk(res, result);
+      const [officerResult, shipResult] = await Promise.all([
+        syncGamedataOfficers(store),
+        syncGamedataShips(store),
+      ]);
+      sendOk(res, { ...officerResult, ...shipResult });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      sendFail(res, ErrorCode.INTERNAL_ERROR, `Wiki sync failed: ${msg}`, 502);
+      sendFail(res, ErrorCode.INTERNAL_ERROR, `Game data sync failed: ${msg}`, 502);
     }
   });
 

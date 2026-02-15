@@ -400,7 +400,7 @@
 
 .cat-error { padding: 20px; color: var(--accent-red); font-size: 14px; }
 
-/* ── Sync Wiki Data Button ──────────────────────────────── */
+/* ── Sync Button (removed — #55) ──────────────────────────────────── */
 
 .cat-sync-btn {
   display: flex; align-items: center; gap: 6px;
