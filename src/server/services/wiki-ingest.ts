@@ -1,4 +1,9 @@
 /**
+ * @deprecated Replaced by datamine-ingest.ts (#55).
+ * This module is retained for reference only and is no longer imported by any route.
+ * The wiki ingest pipeline was replaced by a structured datamine source (raw-officers.json)
+ * which provides 277 officers with structured ability data, activity tags, and game IDs.
+ *
  * wiki-ingest.ts — Wiki Data Sync (ADR-015 / ADR-016)
  *
  * Majel — STFC Fleet Intelligence System

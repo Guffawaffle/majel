@@ -37,7 +37,7 @@ export {
     deletePreset, setPresetMembers,
 } from './docks.js';
 export {
-    syncWikiData, fetchCatalogOfficers, fetchCatalogShips,
+    fetchCatalogOfficers, fetchCatalogShips,
     fetchCatalogCounts, setOfficerOverlay, setShipOverlay,
     bulkSetOfficerOverlay, bulkSetShipOverlay,
     fetchShips, fetchOfficers,

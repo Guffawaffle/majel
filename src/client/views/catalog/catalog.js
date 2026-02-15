@@ -15,7 +15,6 @@ import {
     fetchCatalogOfficers, fetchCatalogShips, fetchCatalogCounts,
     setOfficerOverlay, setShipOverlay,
     bulkSetOfficerOverlay, bulkSetShipOverlay,
-    syncWikiData,
 } from 'api/catalog.js';
 import { registerView } from 'router';
 
@@ -28,9 +27,8 @@ let filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction:
 let counts = { reference: { officers: 0, ships: 0 }, overlay: {} };
 let undoStack = []; // { type, refIds, previousStates }
 let loading = false;
-let syncing = false;
 let letterFilter = ''; // Active letter filter ('A', 'B', ... or '' for all)
-let isAdmin = false; // Set by app.js — gates sync button
+let isAdmin = false; // Set by app.js
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -44,7 +42,7 @@ registerView('catalog', {
 
 // ─── Public API ─────────────────────────────────────────────
 
-/** Called by app.js to enable/disable admin-only features (e.g. wiki sync). */
+/** Called by app.js to enable/disable admin-only features. */
 export function setAdminMode(admin) { isAdmin = !!admin; }
 
 export async function init() {
@@ -194,13 +192,6 @@ function renderToolbar(totalRef) {
                 ${searchQuery ? '<button class="cat-search-clear" data-action="clear-search" title="Clear search">✕</button>' : ''}
             </div>
             <span class="cat-result-count">${items.length}${totalRef ? ` / ${totalRef}` : ''}</span>
-            ${isAdmin ? `<button class="cat-sync-btn ${syncing ? 'syncing' : ''}" data-action="sync-wiki" title="Sync reference data from STFC Fandom Wiki">
-                <svg class="cat-sync-icon" width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M14 8A6 6 0 1 1 8 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M8 0l3 2-3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                ${syncing ? 'Syncing...' : 'Sync Wiki Data'}
-            </button>` : ''}
         </div>
     `;
 }
@@ -307,8 +298,8 @@ function renderOfficerCard(o) {
                 ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
             </div>
             <div class="cat-card-abilities">
-                ${o.captainManeuver ? `<div class="cat-ability"><span class="cat-ability-label">CM:</span> ${esc(o.captainManeuver)}</div>` : ''}
-                ${o.officerAbility ? `<div class="cat-ability"><span class="cat-ability-label">OA:</span> ${esc(o.officerAbility)}</div>` : ''}
+                ${abilityText(o, 'captainManeuver', 'CM')}
+                ${abilityText(o, 'officerAbility', 'OA')}
             </div>
             <div class="cat-card-overlay">
                 <button class="cat-own-btn ${owned ? 'active' : ''}" data-action="toggle-owned" data-id="${esc(o.id)}" title="Toggle owned">
@@ -363,7 +354,7 @@ function renderEmpty() {
     }
     return `<div class="cat-empty">
         <p>No ${activeTab} in the reference catalog yet.</p>
-        <p class="hint">Use the <strong>Sync Wiki Data</strong> button above to import from the STFC Fandom Wiki.</p>
+        <p class="hint">Reference data will be loaded automatically on first sync.</p>
     </div>`;
 }
 
@@ -455,11 +446,6 @@ function bindEvents() {
     // Undo
     area.querySelectorAll('[data-action="undo"]').forEach(btn => {
         btn.addEventListener('click', () => performUndo());
-    });
-
-    // Sync Wiki Data
-    area.querySelectorAll('[data-action="sync-wiki"]').forEach(btn => {
-        btn.addEventListener('click', () => performSync());
     });
 
     // Bind dynamic sub-sections
@@ -611,52 +597,25 @@ async function performUndo() {
     await refresh();
 }
 
-// ─── Wiki Sync ──────────────────────────────────────────────
-
-async function performSync() {
-    if (syncing) return;
-    syncing = true;
-    render(); // Show syncing state immediately
-
-    try {
-        const result = await syncWikiData();
-        if (!result.ok) {
-            throw new Error(result.error?.message || 'Sync failed');
-        }
-        const d = result.data;
-        const msg = [
-            d.officers ? `Officers: ${d.officers.created} new, ${d.officers.updated} updated (${d.officers.parsed} parsed)` : null,
-            d.ships ? `Ships: ${d.ships.created} new, ${d.ships.updated} updated (${d.ships.parsed} parsed)` : null,
-        ].filter(Boolean).join(' · ');
-        showSyncResult(msg, 'success');
-    } catch (err) {
-        showSyncResult(`Sync failed: ${err.message}`, 'error');
-    } finally {
-        syncing = false;
-        await refresh();
-    }
-}
-
-function showSyncResult(message, type) {
-    const area = $("#catalog-area");
-    if (!area) return;
-
-    // Remove any existing toast
-    area.querySelectorAll('.cat-sync-toast').forEach(el => el.remove());
-
-    const toast = document.createElement('div');
-    toast.className = `cat-sync-toast cat-sync-${type}`;
-    toast.textContent = message;
-    area.prepend(toast);
-
-    setTimeout(() => toast.classList.add('visible'), 10);
-    setTimeout(() => {
-        toast.classList.remove('visible');
-        setTimeout(() => toast.remove(), 300);
-    }, 6000);
-}
-
 // ─── Helpers ────────────────────────────────────────────────
+
+/** Render an ability line from structured or plain-text data */
+function abilityText(officer, key, label) {
+    // Try structured abilities first (datamine format)
+    const structured = officer.abilities?.[key];
+    if (structured?.descriptionShort) {
+        return `<div class="cat-ability"><span class="cat-ability-label">${label}:</span> ${esc(structured.descriptionShort)}</div>`;
+    }
+    if (structured?.description) {
+        return `<div class="cat-ability"><span class="cat-ability-label">${label}:</span> ${esc(structured.description)}</div>`;
+    }
+    // Fall back to plain-text columns (backward compat)
+    const text = officer[key];
+    if (text) {
+        return `<div class="cat-ability"><span class="cat-ability-label">${label}:</span> ${esc(text)}</div>`;
+    }
+    return '';
+}
 
 function esc(str) {
     if (str == null) return '';

@@ -1,4 +1,8 @@
 /**
+ * @deprecated Replaced by datamine-ingest.ts (#55).
+ * Wiki ingest has been fully removed — this test file is retained for reference only.
+ * All tests below are skipped.
+ *
  * wiki-ingest.test.ts — Tests for wiki parsing + sync endpoint
  *
  * Tests the pure parsing functions with realistic fixture data,
@@ -177,7 +181,7 @@ function wrapInExportXml(pageName: string, wikitext: string, pageId = "12345", r
 // Pure Function Tests
 // ═══════════════════════════════════════════════════════════
 
-describe("cleanWikitext", () => {
+describe.skip("cleanWikitext", () => {
   it("strips [[File:...]] image markup", () => {
     expect(cleanWikitext("Hello [[File:image.png|frameless|80px]] world")).toBe("Hello world");
   });
@@ -205,7 +209,7 @@ describe("cleanWikitext", () => {
   });
 });
 
-describe("slugify", () => {
+describe.skip("slugify", () => {
   it("lowercases and replaces spaces with hyphens", () => {
     expect(slugify("Kirk")).toBe("kirk");
     expect(slugify("USS Enterprise")).toBe("uss-enterprise");
@@ -221,7 +225,7 @@ describe("slugify", () => {
   });
 });
 
-describe("normalizeRarity", () => {
+describe.skip("normalizeRarity", () => {
   it("maps standard rarity names", () => {
     expect(normalizeRarity("Common")).toBe("common");
     expect(normalizeRarity("Epic")).toBe("epic");
@@ -244,7 +248,7 @@ describe("normalizeRarity", () => {
 // XML Parsing
 // ═══════════════════════════════════════════════════════════
 
-describe("parseExportXml", () => {
+describe.skip("parseExportXml", () => {
   it("extracts wikitext and provenance from export XML", () => {
     const xml = wrapInExportXml("Officers", "some wiki content", "111", "222");
     const result = parseExportXml(xml, "Officers");
@@ -264,7 +268,7 @@ describe("parseExportXml", () => {
 // Officer Table Parsing
 // ═══════════════════════════════════════════════════════════
 
-describe("parseOfficerTable", () => {
+describe.skip("parseOfficerTable", () => {
   it("parses officers from wikitable", () => {
     const officers = parseOfficerTable(OFFICER_WIKITEXT);
     expect(officers.length).toBe(4);
@@ -311,7 +315,7 @@ Some footer text.`;
 // Ship Table Parsing
 // ═══════════════════════════════════════════════════════════
 
-describe("parseShipTable", () => {
+describe.skip("parseShipTable", () => {
   it("parses ships from wikitable", () => {
     const ships = parseShipTable(SHIP_WIKITEXT);
     expect(ships.length).toBe(5);
@@ -351,7 +355,7 @@ describe("parseShipTable", () => {
 // POST /api/catalog/sync endpoint
 // ═══════════════════════════════════════════════════════════
 
-describe("POST /api/catalog/sync", () => {
+describe.skip("POST /api/catalog/sync", () => {
   it("requires consent flag", async () => {
     const app = createApp(makeState({ referenceStore: refStore }));
     const res = await testRequest(app)

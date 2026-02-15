@@ -116,7 +116,7 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "DELETE", path: "/api/catalog/ships/:id/overlay", auth: "admiral", description: "Reset ship overlay" },
         { method: "POST", path: "/api/catalog/officers/bulk-overlay", auth: "admiral", description: "Bulk set officer overlays" },
         { method: "POST", path: "/api/catalog/ships/bulk-overlay", auth: "admiral", description: "Bulk set ship overlays" },
-        { method: "POST", path: "/api/catalog/sync", auth: "admiral", description: "Sync reference data from STFC wiki" },
+        { method: "POST", path: "/api/catalog/sync", auth: "admiral", description: "Sync reference data from datamine" },
         // ── Model Selector (Admiral only) ──
         { method: "GET", path: "/api/models", auth: "admiral", description: "List available AI models + current selection" },
         { method: "POST", path: "/api/models/select", auth: "admiral", description: "Hot-swap the active Gemini model", body: { model: "string (required) — model ID from GET /api/models" } },

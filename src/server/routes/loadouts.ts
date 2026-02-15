@@ -168,7 +168,7 @@ export function createLoadoutRoutes(appState: AppState): Router {
     const { members } = req.body;
     if (!Array.isArray(members)) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'members' array in request body", 400, {
-        hints: ['Send: { "members": [{ "officerId": "wiki:officer:123", "roleType": "bridge", "slot": "captain" }] }'],
+        hints: ['Send: { "members": [{ "officerId": "raw:officer:123", "roleType": "bridge", "slot": "captain" }] }'],
       });
     }
     // Validate each member entry
@@ -356,7 +356,7 @@ export function createLoadoutRoutes(appState: AppState): Router {
     const { officerIds } = req.body;
     if (!Array.isArray(officerIds)) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'officerIds' array in request body", 400, {
-        hints: ['Send: { "officerIds": ["wiki:officer:123", "wiki:officer:456"] }'],
+        hints: ['Send: { "officerIds": ["raw:officer:123", "raw:officer:456"] }'],
       });
     }
     // Verify plan item exists

@@ -5,7 +5,7 @@
  * @layer   api-client
  * @domain  catalog
  * @depends api/_fetch
- * @exports syncWikiData, fetchCatalogOfficers, fetchCatalogShips,
+ * @exports fetchCatalogOfficers, fetchCatalogShips,
  *          fetchCatalogCounts, setOfficerOverlay, setShipOverlay,
  *          bulkSetOfficerOverlay, bulkSetShipOverlay,
  *          fetchShips, fetchOfficers
