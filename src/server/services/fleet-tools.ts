@@ -21,6 +21,7 @@ import type { ReferenceStore } from "../stores/reference-store.js";
 import type { OverlayStore } from "../stores/overlay-store.js";
 import type { LoadoutStore } from "../stores/loadout-store.js";
 import type { TargetStore } from "../stores/target-store.js";
+import { detectTargetConflicts } from "./target-conflicts.js";
 
 // ─── Tool Context ───────────────────────────────────────────
 
@@ -317,6 +318,20 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "suggest upgrades with high ROI, and propose meta crew compositions the Admiral is missing.",
     // No parameters — gathers everything needed for analysis
   },
+
+  // ─── Resource Conflict Detection (#18) ─────────────────────
+
+  {
+    name: "detect_target_conflicts",
+    description:
+      "Detect resource conflicts across the Admiral's active targets. " +
+      "Finds: officer contention (same officer in multiple crew targets), " +
+      "dock slot contention (same dock needed by multiple targets), " +
+      "cascade effects (officer upgrades affecting multiple loadouts). " +
+      "Each conflict includes severity (blocking/competing/informational) and suggestions. " +
+      "Call when the Admiral asks about conflicts, bottlenecks, or resource competition.",
+    // No parameters — analyzes all active targets automatically
+  },
 ];
 
 // ─── Tool Executor ──────────────────────────────────────────
@@ -397,6 +412,8 @@ async function dispatchTool(
       return listTargets(args.target_type as string | undefined, args.status as string | undefined, ctx);
     case "suggest_targets":
       return suggestTargets(ctx);
+    case "detect_target_conflicts":
+      return detectConflicts(ctx);
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -1212,4 +1229,40 @@ async function suggestTargets(ctx: ToolContext): Promise<object> {
   }
 
   return result;
+}
+
+async function detectConflicts(ctx: ToolContext): Promise<object> {
+  if (!ctx.targetStore) {
+    return { error: "Target system not available." };
+  }
+  if (!ctx.loadoutStore) {
+    return { error: "Loadout system not available." };
+  }
+
+  const conflicts = await detectTargetConflicts(ctx.targetStore, ctx.loadoutStore);
+
+  // Group by type for readability
+  const byType: Record<string, number> = {};
+  const bySeverity: Record<string, number> = {};
+  for (const c of conflicts) {
+    byType[c.conflictType] = (byType[c.conflictType] ?? 0) + 1;
+    bySeverity[c.severity] = (bySeverity[c.severity] ?? 0) + 1;
+  }
+
+  return {
+    conflicts: conflicts.map((c) => ({
+      conflictType: c.conflictType,
+      severity: c.severity,
+      resource: c.resource,
+      description: c.description,
+      suggestion: c.suggestion,
+      targetA: c.targetA,
+      targetB: c.targetB,
+    })),
+    summary: {
+      totalConflicts: conflicts.length,
+      byType,
+      bySeverity,
+    },
+  };
 }
