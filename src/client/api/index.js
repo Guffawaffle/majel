@@ -8,7 +8,7 @@
  *
  * ⚠️  MIGRATION ONLY — Do not add new imports from this barrel.
  * Views should import directly from domain modules:
- *   import { fetchDocks } from './api/docks.js';
+ *   import { fetchBridgeCores } from './api/crews.js';
  * NOT:
  *   import { fetchDocks } from './api/index.js';
  *

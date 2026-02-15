@@ -10,11 +10,12 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { getCategories } from "../stores/settings.js";
 import { createGeminiEngine } from "../services/gemini.js";
 import { resolveConfig } from "../config.js";
-import { requireVisitor } from "../services/auth.js";
+import { requireVisitor, requireAdmiral } from "../services/auth.js";
 
 export function createSettingsRoutes(appState: AppState): Router {
   const router = Router();
   const visitor = requireVisitor(appState);
+  const admiral = requireAdmiral(appState);
   router.use("/api/settings", visitor);
 
   router.get("/api/settings", async (req, res) => {
@@ -41,7 +42,7 @@ export function createSettingsRoutes(appState: AppState): Router {
     });
   });
 
-  router.patch("/api/settings", async (req, res) => {
+  router.patch("/api/settings", admiral, async (req, res) => {
     if (!appState.settingsStore) {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
@@ -49,6 +50,19 @@ export function createSettingsRoutes(appState: AppState): Router {
     const updates = req.body;
     if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Request body must be an object of { key: value } pairs");
+    }
+
+    const keys = Object.keys(updates);
+    if (keys.length > 50) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Too many settings in one request (max 50)", 400);
+    }
+    for (const [key, value] of Object.entries(updates)) {
+      if (typeof key !== "string" || key.length > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "Setting key must be a string of 200 characters or fewer", 400);
+      }
+      if (value !== null && value !== undefined && String(value).length > 2000) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, `Value for "${key}" must be 2000 characters or fewer`, 400);
+      }
     }
 
     const results: Array<{ key: string; status: string; error?: string }> = [];
@@ -85,7 +99,7 @@ export function createSettingsRoutes(appState: AppState): Router {
     sendOk(res, { results });
   });
 
-  router.delete("/api/settings/:key(*)", async (req, res) => {
+  router.delete("/api/settings/:key(*)", admiral, async (req, res) => {
     if (!appState.settingsStore) {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }

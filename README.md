@@ -71,7 +71,8 @@ Majel is a **five-view single-page application** with an LCARS-inspired UI:
 │  API:   Envelope pattern { ok, data|error, meta }         │
 │                                                           │
 │  /api/catalog/*    Officer & ship reference + overlays    │
-│  /api/dock/*       Drydock loadouts, presets, tags        │
+│  /api/crew/*       Crew composition (ADR-025)             │
+│  /api/targets/*    Fleet targets & goals                  │
 │  /api/diagnostic/* AI-powered natural-language queries    │
 │  /api/chat         Gemini conversation via MicroRunner    │
 │  /api/sessions/*   Multi-session management               │
@@ -174,8 +175,8 @@ majel/
 │   │   ├── memory-middleware.ts  # Per-user scoped memory (RLS)
 │   │   ├── reference-store.ts   # Wiki-sourced officer/ship data (read-only)
 │   │   ├── overlay-store.ts     # User overlays (level, tier, notes)
-│   │   ├── dock-store.ts        # Drydock loadouts + presets
-│   │   ├── loadout-store.ts     # PostgreSQL loadout manager (ADR-022)
+│   │   ├── crew-store.ts         # Crew composition store (ADR-025)
+│   │   ├── crew-types.ts        # Crew composition types (ADR-025)
 │   │   ├── wiki-ingest.ts       # STFC Fandom wiki scraper/importer
 │   │   ├── sessions.ts          # Multi-session management
 │   │   ├── settings.ts          # User preferences store
@@ -184,7 +185,9 @@ majel/
 │   │       ├── core.ts          # /api, /api/health, /api/diagnostic
 │   │       ├── chat.ts          # /api/chat, /api/history, /api/recall, /api/models
 │   │       ├── catalog.ts       # /api/catalog/* (officers, ships, overlays, sync)
-│   │       ├── docks.ts         # /api/dock/* (loadouts, presets, tags)
+│   │       ├── crews.ts         # /api/crew/* (ADR-025 composition CRUD)
+│   │       ├── targets.ts       # /api/targets/* (fleet goals)
+│   │       ├── receipts.ts      # /api/import/* (import receipts)
 │   │       ├── diagnostic-query.ts  # /api/diagnostic/* (AI query tool)
 │   │       ├── sessions.ts      # /api/sessions/*
 │   │       └── settings.ts      # /api/settings/*
@@ -192,7 +195,7 @@ majel/
 │       ├── index.html           # SPA shell + LCARS theme
 │       ├── app.js               # Router + tab management
 │       ├── api.js               # Fetch wrapper
-│       ├── chat.js, catalog.js, fleet.js, drydock.js, diagnostics.js
+│       ├── chat.js, catalog.js, fleet.js, diagnostics.js
 │       └── styles.css           # LCARS-inspired dark theme
 ├── scripts/
 │   └── cloud.ts                 # Cloud operations CLI (20 commands, AX mode)

@@ -244,7 +244,7 @@ describe("GET /api/diagnostic/query", () => {
       .query({ sql: "SELECT * FROM nonexistent_table" });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toContain("SQL error");
+    expect(res.body.error.message).toContain("Query execution failed");
   });
 
   it("returns 503 when reference store not available", async () => {

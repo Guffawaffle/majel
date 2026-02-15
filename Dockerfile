@@ -41,6 +41,7 @@ COPY --from=builder /app/dist ./dist
 # Copy non-compiled assets needed at runtime
 COPY legacy/ legacy/
 COPY docs/ docs/
+COPY favicon/ favicon/
 
 # Run as non-root user (defense-in-depth)
 RUN groupadd --gid 1001 majel && \

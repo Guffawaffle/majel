@@ -11,11 +11,12 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { requireVisitor } from "../services/auth.js";
+import { requireVisitor, requireAdmiral } from "../services/auth.js";
 
 export function createReceiptRoutes(appState: AppState): Router {
   const router = Router();
   const visitor = requireVisitor(appState);
+  const admiral = requireAdmiral(appState);
   router.use("/api/import", visitor);
 
   /** Guard: return receipt store or 503 */
@@ -29,6 +30,9 @@ export function createReceiptRoutes(appState: AppState): Router {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.RECEIPT_STORE_NOT_AVAILABLE, "Receipt store not available", 503);
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    if (limit !== undefined && (isNaN(limit) || limit < 1 || limit > 200)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "limit must be an integer between 1 and 200", 400);
+    }
     const layer = req.query.layer as string | undefined;
     if (layer && !["reference", "ownership", "composition"].includes(layer)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, 'layer must be one of: reference, ownership, composition', 400);
@@ -51,7 +55,7 @@ export function createReceiptRoutes(appState: AppState): Router {
 
   // ── Undo receipt ──────────────────────────────────────
 
-  router.post("/api/import/receipts/:id/undo", async (req, res) => {
+  router.post("/api/import/receipts/:id/undo", admiral, async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.RECEIPT_STORE_NOT_AVAILABLE, "Receipt store not available", 503);
     const id = parseInt(req.params.id, 10);
@@ -66,7 +70,7 @@ export function createReceiptRoutes(appState: AppState): Router {
 
   // ── Resolve receipt items (ADR-026a A4) ───────────────
 
-  router.post("/api/import/receipts/:id/resolve", async (req, res) => {
+  router.post("/api/import/receipts/:id/resolve", admiral, async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.RECEIPT_STORE_NOT_AVAILABLE, "Receipt store not available", 503);
     const id = parseInt(req.params.id, 10);
@@ -74,6 +78,14 @@ export function createReceiptRoutes(appState: AppState): Router {
     const { resolvedItems } = req.body;
     if (!Array.isArray(resolvedItems)) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "resolvedItems must be an array", 400);
+    }
+    if (resolvedItems.length > 500) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "resolvedItems must have 500 or fewer entries", 400);
+    }
+    for (const item of resolvedItems) {
+      if (!item || typeof item !== "object") {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "Each resolvedItem must be an object", 400);
+      }
     }
     try {
       const updated = await store.resolveReceiptItems(id, resolvedItems);

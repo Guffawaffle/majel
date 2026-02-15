@@ -13,12 +13,13 @@
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { requireVisitor, requireAdmiral } from "../services/auth.js";
+import { requireAdmiral } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
 import { syncGamedataOfficers, syncGamedataShips } from "../services/gamedata-ingest.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
   const router = Router();
+  const admiral = requireAdmiral(appState);
 
   // ── Helpers ─────────────────────────────────────────────
 
@@ -74,6 +75,9 @@ export function createCatalogRoutes(appState: AppState): Router {
     const store = appState.referenceStore!;
 
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (q.length > 500) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Search query must be 500 characters or fewer", 400);
+    }
     const rarity = typeof req.query.rarity === "string" ? req.query.rarity : undefined;
     const group = typeof req.query.group === "string" ? req.query.group : undefined;
 
@@ -95,6 +99,9 @@ export function createCatalogRoutes(appState: AppState): Router {
     const overlayStore = appState.overlayStore;
 
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (q.length > 500) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Search query must be 500 characters or fewer", 400);
+    }
     const rarity = typeof req.query.rarity === "string" ? req.query.rarity : undefined;
     const group = typeof req.query.group === "string" ? req.query.group : undefined;
     const ownership = typeof req.query.ownership === "string" ? req.query.ownership : undefined;
@@ -157,7 +164,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   router.get("/api/catalog/officers/:id", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const officer = await appState.referenceStore!.getOfficer(req.params.id);
-    if (!officer) return sendFail(res, ErrorCode.NOT_FOUND, `Officer not found: ${req.params.id}`, 404);
+    if (!officer) return sendFail(res, ErrorCode.NOT_FOUND, "Officer not found", 404);
     sendOk(res, officer);
   });
 
@@ -170,6 +177,9 @@ export function createCatalogRoutes(appState: AppState): Router {
     const store = appState.referenceStore!;
 
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (q.length > 500) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Search query must be 500 characters or fewer", 400);
+    }
     const rarity = typeof req.query.rarity === "string" ? req.query.rarity : undefined;
     const faction = typeof req.query.faction === "string" ? req.query.faction : undefined;
     const shipClass = typeof req.query.class === "string" ? req.query.class : undefined;
@@ -193,6 +203,9 @@ export function createCatalogRoutes(appState: AppState): Router {
     const overlayStore = appState.overlayStore;
 
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (q.length > 500) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Search query must be 500 characters or fewer", 400);
+    }
     const rarity = typeof req.query.rarity === "string" ? req.query.rarity : undefined;
     const faction = typeof req.query.faction === "string" ? req.query.faction : undefined;
     const shipClass = typeof req.query.class === "string" ? req.query.class : undefined;
@@ -257,7 +270,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   router.get("/api/catalog/ships/:id", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const ship = await appState.referenceStore!.getShip(req.params.id);
-    if (!ship) return sendFail(res, ErrorCode.NOT_FOUND, `Ship not found: ${req.params.id}`, 404);
+    if (!ship) return sendFail(res, ErrorCode.NOT_FOUND, "Ship not found", 404);
     sendOk(res, ship);
   });
 
@@ -298,7 +311,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Overlay — Officer CRUD
   // ═══════════════════════════════════════════════════════════
 
-  router.patch("/api/catalog/officers/:id/overlay", requireVisitor(appState), async (req, res) => {
+  router.patch("/api/catalog/officers/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const refId = req.params.id;
@@ -348,7 +361,7 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, result);
   });
 
-  router.delete("/api/catalog/officers/:id/overlay", requireVisitor(appState), async (req, res) => {
+  router.delete("/api/catalog/officers/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const deleted = await appState.overlayStore!.deleteOfficerOverlay(req.params.id);
     sendOk(res, { deleted });
@@ -358,7 +371,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Overlay — Ship CRUD
   // ═══════════════════════════════════════════════════════════
 
-  router.patch("/api/catalog/ships/:id/overlay", requireVisitor(appState), async (req, res) => {
+  router.patch("/api/catalog/ships/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const refId = req.params.id;
@@ -408,7 +421,7 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, result);
   });
 
-  router.delete("/api/catalog/ships/:id/overlay", requireVisitor(appState), async (req, res) => {
+  router.delete("/api/catalog/ships/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const deleted = await appState.overlayStore!.deleteShipOverlay(req.params.id);
     sendOk(res, { deleted });
@@ -418,13 +431,19 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Bulk Overlay Operations
   // ═══════════════════════════════════════════════════════════
 
-  router.post("/api/catalog/officers/bulk-overlay", requireVisitor(appState), async (req, res) => {
+  router.post("/api/catalog/officers/bulk-overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const { refIds, ownershipState, target } = req.body;
 
     if (!Array.isArray(refIds) || refIds.length === 0) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "refIds must be a non-empty array", 400);
+    }
+    if (refIds.length > 1000) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "refIds array exceeds maximum of 1000 entries", 400);
+    }
+    if (refIds.some((id: unknown) => typeof id !== "string" || (id as string).length > 200)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Each refId must be a string of 200 characters or fewer", 400);
     }
 
     let updated = 0;
@@ -452,13 +471,19 @@ export function createCatalogRoutes(appState: AppState): Router {
     sendOk(res, { updated, refIds: refIds.length });
   });
 
-  router.post("/api/catalog/ships/bulk-overlay", requireVisitor(appState), async (req, res) => {
+  router.post("/api/catalog/ships/bulk-overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
     const { refIds, ownershipState, target } = req.body;
 
     if (!Array.isArray(refIds) || refIds.length === 0) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "refIds must be a non-empty array", 400);
+    }
+    if (refIds.length > 1000) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "refIds array exceeds maximum of 1000 entries", 400);
+    }
+    if (refIds.some((id: unknown) => typeof id !== "string" || (id as string).length > 200)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Each refId must be a string of 200 characters or fewer", 400);
     }
 
     let updated = 0;

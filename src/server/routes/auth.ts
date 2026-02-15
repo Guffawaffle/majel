@@ -43,11 +43,23 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!email || typeof email !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Email is required", 400);
     }
+    if (email.length > 254) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    }
     if (!password || typeof password !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Password is required", 400);
     }
+    if (password.length < 8) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be at least 8 characters", 400);
+    }
+    if (password.length > 200) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be 200 characters or fewer", 400);
+    }
     if (!displayName || typeof displayName !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Display name is required", 400);
+    }
+    if (displayName.length > 100) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Display name must be 100 characters or fewer", 400);
     }
 
     try {
@@ -61,7 +73,11 @@ export function createAuthRoutes(appState: AppState): Router {
         user: { id: result.user.id, email: result.user.email, displayName: result.user.displayName },
       }, 201);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Sign-up failed";
+      const raw = err instanceof Error ? err.message : "Sign-up failed";
+      // Map known errors to safe messages; suppress internal details
+      const message = /duplicate|already exists|unique/i.test(raw)
+        ? "An account with this email already exists"
+        : "Sign-up failed";
       sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
     }
   }));
@@ -75,6 +91,9 @@ export function createAuthRoutes(appState: AppState): Router {
     const { token } = req.body ?? {};
     if (!token || typeof token !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Verification token is required", 400);
+    }
+    if (token.length > 500) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid verification token", 400);
     }
 
     const verified = await appState.userStore.verifyEmail(token);
@@ -95,8 +114,14 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!email || typeof email !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Email is required", 400);
     }
+    if (email.length > 254) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    }
     if (!password || typeof password !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Password is required", 400);
+    }
+    if (password.length > 200) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be 200 characters or fewer", 400);
     }
 
     try {
@@ -174,8 +199,17 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!currentPassword || typeof currentPassword !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Current password is required", 400);
     }
+    if (currentPassword.length > 200) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Current password must be 200 characters or fewer", 400);
+    }
     if (!newPassword || typeof newPassword !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "New password is required", 400);
+    }
+    if (newPassword.length < 8) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 8 characters", 400);
+    }
+    if (newPassword.length > 200) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be 200 characters or fewer", 400);
     }
 
     try {
@@ -201,6 +235,9 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!email || typeof email !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Email is required", 400);
     }
+    if (email.length > 254) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    }
 
     // Always return 200 — never reveal if email exists
     const token = await appState.userStore.createResetToken(email);
@@ -221,8 +258,17 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!token || typeof token !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Reset token is required", 400);
     }
+    if (token.length > 500) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid reset token", 400);
+    }
     if (!newPassword || typeof newPassword !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "New password is required", 400);
+    }
+    if (newPassword.length < 8) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 8 characters", 400);
+    }
+    if (newPassword.length > 200) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be 200 characters or fewer", 400);
     }
 
     try {
@@ -298,6 +344,9 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!code || typeof code !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing invite code", 400);
     }
+    if (code.length > 100) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid invite code", 400);
+    }
 
     if (!appState.inviteStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Invite store not available", 503);
@@ -351,6 +400,9 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!email || typeof email !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
     }
+    if (email.length > 254) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    }
     if (!role || !["ensign", "lieutenant", "captain", "admiral"].includes(role)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Role must be ensign, lieutenant, captain, or admiral", 400);
     }
@@ -393,8 +445,14 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!email || typeof email !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
     }
+    if (email.length > 254) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    }
     if (typeof locked !== "boolean") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "locked (boolean) required", 400);
+    }
+    if (reason !== undefined && typeof reason === "string" && reason.length > 500) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Reason must be 500 characters or fewer", 400);
     }
 
     const user = await appState.userStore.getUserByEmail(email);
@@ -423,6 +481,9 @@ export function createAuthRoutes(appState: AppState): Router {
     const { email } = req.body ?? {};
     if (!email || typeof email !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    }
+    if (email.length > 254) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
     }
 
     const user = await appState.userStore.getUserByEmail(email);

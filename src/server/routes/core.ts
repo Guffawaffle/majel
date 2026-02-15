@@ -80,36 +80,56 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "GET", path: "/api/sessions/:id", auth: "lieutenant", description: "Get a session with all messages" },
         { method: "PATCH", path: "/api/sessions/:id", auth: "lieutenant", description: "Update session title" },
         { method: "DELETE", path: "/api/sessions/:id", auth: "lieutenant", description: "Delete a session" },
-        { method: "GET", path: "/api/dock/intents", auth: "lieutenant", description: "List intent catalog" },
-        { method: "POST", path: "/api/dock/intents", auth: "admiral", description: "Create a custom intent" },
-        { method: "DELETE", path: "/api/dock/intents/:key", auth: "admiral", description: "Delete a custom intent" },
-        { method: "GET", path: "/api/dock/docks", auth: "lieutenant", description: "List all dock loadouts" },
-        { method: "GET", path: "/api/dock/docks/:num", auth: "lieutenant", description: "Get a single dock" },
-        { method: "PUT", path: "/api/dock/docks/:num", auth: "admiral", description: "Create or update a dock" },
-        { method: "DELETE", path: "/api/dock/docks/:num", auth: "admiral", description: "Clear a dock" },
-        { method: "PUT", path: "/api/dock/docks/:num/intents", auth: "admiral", description: "Set dock intents" },
-        { method: "POST", path: "/api/dock/docks/:num/ships", auth: "admiral", description: "Add ship to dock" },
-        { method: "DELETE", path: "/api/dock/docks/:num/ships/:shipId", auth: "admiral", description: "Remove ship from dock" },
-        { method: "PATCH", path: "/api/dock/docks/:num/ships/:shipId", auth: "admiral", description: "Update dock ship" },
-        { method: "GET", path: "/api/dock/presets", auth: "lieutenant", description: "List crew presets" },
-        { method: "GET", path: "/api/dock/presets/:id", auth: "lieutenant", description: "Get a crew preset" },
-        { method: "POST", path: "/api/dock/presets", auth: "admiral", description: "Create a crew preset" },
-        { method: "PATCH", path: "/api/dock/presets/:id", auth: "admiral", description: "Update preset" },
-        { method: "DELETE", path: "/api/dock/presets/:id", auth: "admiral", description: "Delete a crew preset" },
-        { method: "PUT", path: "/api/dock/presets/:id/members", auth: "admiral", description: "Set preset crew members" },
-        { method: "PUT", path: "/api/dock/presets/:id/tags", auth: "admiral", description: "Set preset tags" },
-        { method: "GET", path: "/api/dock/tags", auth: "lieutenant", description: "List all unique preset tags" },
-        { method: "GET", path: "/api/dock/docks/:num/presets", auth: "lieutenant", description: "Find presets for a dock" },
-        { method: "GET", path: "/api/dock/docks/summary", auth: "lieutenant", description: "Computed dock briefing" },
-        { method: "GET", path: "/api/dock/docks/conflicts", auth: "lieutenant", description: "Officer conflict report" },
+        // ── Crew Composition (ADR-025) ──
+        { method: "GET", path: "/api/bridge-cores", auth: "lieutenant", description: "List all bridge cores" },
+        { method: "GET", path: "/api/bridge-cores/:id", auth: "lieutenant", description: "Get a bridge core" },
+        { method: "POST", path: "/api/bridge-cores", auth: "admiral", description: "Create a bridge core" },
+        { method: "PATCH", path: "/api/bridge-cores/:id", auth: "admiral", description: "Update bridge core name/notes" },
+        { method: "DELETE", path: "/api/bridge-cores/:id", auth: "admiral", description: "Delete a bridge core" },
+        { method: "PUT", path: "/api/bridge-cores/:id/members", auth: "admiral", description: "Set bridge core crew members" },
+        { method: "GET", path: "/api/below-deck-policies", auth: "lieutenant", description: "List below-deck policies" },
+        { method: "GET", path: "/api/below-deck-policies/:id", auth: "lieutenant", description: "Get a below-deck policy" },
+        { method: "POST", path: "/api/below-deck-policies", auth: "admiral", description: "Create a below-deck policy" },
+        { method: "PATCH", path: "/api/below-deck-policies/:id", auth: "admiral", description: "Update a below-deck policy" },
+        { method: "DELETE", path: "/api/below-deck-policies/:id", auth: "admiral", description: "Delete a below-deck policy" },
+        { method: "GET", path: "/api/crew/loadouts", auth: "lieutenant", description: "List loadouts (filter by shipId)" },
+        { method: "GET", path: "/api/crew/loadouts/:id", auth: "lieutenant", description: "Get a loadout" },
+        { method: "POST", path: "/api/crew/loadouts", auth: "admiral", description: "Create a loadout" },
+        { method: "PATCH", path: "/api/crew/loadouts/:id", auth: "admiral", description: "Update a loadout" },
+        { method: "DELETE", path: "/api/crew/loadouts/:id", auth: "admiral", description: "Delete a loadout" },
+        { method: "GET", path: "/api/crew/loadouts/:loadoutId/variants", auth: "lieutenant", description: "List variants for a loadout" },
+        { method: "POST", path: "/api/crew/loadouts/:loadoutId/variants", auth: "admiral", description: "Create a variant" },
+        { method: "PATCH", path: "/api/crew/loadouts/variants/:id", auth: "admiral", description: "Update a variant" },
+        { method: "DELETE", path: "/api/crew/loadouts/variants/:id", auth: "admiral", description: "Delete a variant" },
+        { method: "GET", path: "/api/crew/loadouts/:loadoutId/variants/:variantId/resolve", auth: "lieutenant", description: "Resolve effective crew for a variant" },
+        { method: "GET", path: "/api/crew/docks", auth: "lieutenant", description: "List all docks" },
+        { method: "GET", path: "/api/crew/docks/:num", auth: "lieutenant", description: "Get a single dock" },
+        { method: "PUT", path: "/api/crew/docks/:num", auth: "admiral", description: "Create or update a dock" },
+        { method: "DELETE", path: "/api/crew/docks/:num", auth: "admiral", description: "Clear a dock" },
+        { method: "GET", path: "/api/fleet-presets", auth: "lieutenant", description: "List fleet presets" },
+        { method: "GET", path: "/api/fleet-presets/:id", auth: "lieutenant", description: "Get a fleet preset" },
+        { method: "POST", path: "/api/fleet-presets", auth: "admiral", description: "Create a fleet preset" },
+        { method: "PATCH", path: "/api/fleet-presets/:id", auth: "admiral", description: "Update a fleet preset" },
+        { method: "DELETE", path: "/api/fleet-presets/:id", auth: "admiral", description: "Delete a fleet preset" },
+        { method: "PUT", path: "/api/fleet-presets/:id/slots", auth: "admiral", description: "Set preset dock slots" },
+        { method: "POST", path: "/api/fleet-presets/:id/activate", auth: "admiral", description: "Activate a fleet preset" },
+        { method: "GET", path: "/api/crew/plan", auth: "lieutenant", description: "List plan items" },
+        { method: "GET", path: "/api/crew/plan/:id", auth: "lieutenant", description: "Get a plan item" },
+        { method: "POST", path: "/api/crew/plan", auth: "admiral", description: "Create a plan item" },
+        { method: "PATCH", path: "/api/crew/plan/:id", auth: "admiral", description: "Update a plan item" },
+        { method: "DELETE", path: "/api/crew/plan/:id", auth: "admiral", description: "Delete a plan item" },
+        { method: "GET", path: "/api/officer-reservations", auth: "lieutenant", description: "List officer reservations" },
+        { method: "PUT", path: "/api/officer-reservations/:officerId", auth: "admiral", description: "Reserve an officer" },
+        { method: "DELETE", path: "/api/officer-reservations/:officerId", auth: "admiral", description: "Release an officer reservation" },
+        { method: "GET", path: "/api/effective-state", auth: "lieutenant", description: "Computed effective fleet state" },
         // ── Catalog (ADR-016) ──
-        { method: "GET", path: "/api/catalog/officers", auth: "lieutenant", description: "List reference officers" },
-        { method: "GET", path: "/api/catalog/officers/:id", auth: "lieutenant", description: "Get a reference officer" },
-        { method: "GET", path: "/api/catalog/officers/merged", auth: "lieutenant", description: "Officers with overlay state" },
-        { method: "GET", path: "/api/catalog/ships", auth: "lieutenant", description: "List reference ships" },
-        { method: "GET", path: "/api/catalog/ships/:id", auth: "lieutenant", description: "Get a reference ship" },
-        { method: "GET", path: "/api/catalog/ships/merged", auth: "lieutenant", description: "Ships with overlay state" },
-        { method: "GET", path: "/api/catalog/counts", auth: "lieutenant", description: "Reference + overlay counts" },
+        { method: "GET", path: "/api/catalog/officers", auth: "none", description: "List reference officers" },
+        { method: "GET", path: "/api/catalog/officers/:id", auth: "none", description: "Get a reference officer" },
+        { method: "GET", path: "/api/catalog/officers/merged", auth: "none", description: "Officers with overlay state" },
+        { method: "GET", path: "/api/catalog/ships", auth: "none", description: "List reference ships" },
+        { method: "GET", path: "/api/catalog/ships/:id", auth: "none", description: "Get a reference ship" },
+        { method: "GET", path: "/api/catalog/ships/merged", auth: "none", description: "Ships with overlay state" },
+        { method: "GET", path: "/api/catalog/counts", auth: "none", description: "Reference + overlay counts" },
         { method: "PATCH", path: "/api/catalog/officers/:id/overlay", auth: "admiral", description: "Set officer overlay" },
         { method: "DELETE", path: "/api/catalog/officers/:id/overlay", auth: "admiral", description: "Reset officer overlay" },
         { method: "PATCH", path: "/api/catalog/ships/:id/overlay", auth: "admiral", description: "Set ship overlay" },
@@ -117,6 +137,20 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "POST", path: "/api/catalog/officers/bulk-overlay", auth: "admiral", description: "Bulk set officer overlays" },
         { method: "POST", path: "/api/catalog/ships/bulk-overlay", auth: "admiral", description: "Bulk set ship overlays" },
         { method: "POST", path: "/api/catalog/sync", auth: "admiral", description: "Sync reference data from game data" },
+        // ── Targets (ADR-026) ──
+        { method: "GET", path: "/api/targets", auth: "lieutenant", description: "List targets (filter by type, status, priority)" },
+        { method: "GET", path: "/api/targets/counts", auth: "lieutenant", description: "Target counts by status" },
+        { method: "GET", path: "/api/targets/conflicts", auth: "lieutenant", description: "Officer conflict report across targets" },
+        { method: "GET", path: "/api/targets/:id", auth: "lieutenant", description: "Get a target" },
+        { method: "POST", path: "/api/targets", auth: "admiral", description: "Create a target" },
+        { method: "PATCH", path: "/api/targets/:id", auth: "admiral", description: "Update a target" },
+        { method: "DELETE", path: "/api/targets/:id", auth: "admiral", description: "Delete a target" },
+        { method: "POST", path: "/api/targets/:id/achieve", auth: "admiral", description: "Mark a target as achieved" },
+        // ── Import Receipts (ADR-026) ──
+        { method: "GET", path: "/api/import/receipts", auth: "lieutenant", description: "List import receipts (filter by layer)" },
+        { method: "GET", path: "/api/import/receipts/:id", auth: "lieutenant", description: "Get an import receipt" },
+        { method: "POST", path: "/api/import/receipts/:id/undo", auth: "admiral", description: "Undo an import receipt" },
+        { method: "POST", path: "/api/import/receipts/:id/resolve", auth: "admiral", description: "Resolve import conflicts" },
         // ── Model Selector (Admiral only) ──
         { method: "GET", path: "/api/models", auth: "admiral", description: "List available AI models + current selection" },
         { method: "POST", path: "/api/models/select", auth: "admiral", description: "Hot-swap the active Gemini model", body: { model: "string (required) — model ID from GET /api/models" } },
@@ -130,18 +164,19 @@ export function createCoreRoutes(appState: AppState): Router {
 
   // ─── Diagnostic ─────────────────────────────────────────────
 
-  router.get("/api/diagnostic", requireVisitor(appState), async (_req, res) => {
+  router.get("/api/diagnostic", requireVisitor(appState), async (req, res) => {
     const uptimeSeconds = process.uptime();
     const hours = Math.floor(uptimeSeconds / 3600);
     const minutes = Math.floor((uptimeSeconds % 3600) / 60);
     const uptime = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    const isAdmiral = res.locals.isAdmiral;
 
     sendOk(res, {
       system: {
         version: APP_VERSION,
         uptime,
         uptimeSeconds: Math.round(uptimeSeconds),
-        nodeVersion: process.version,
+        ...(isAdmiral ? { nodeVersion: process.version } : {}),
         timestamp: new Date().toISOString(),
         startupComplete: appState.startupComplete,
       },
@@ -150,7 +185,9 @@ export function createCoreRoutes(appState: AppState): Router {
         : { status: "not configured" },
       memory: await (async () => {
         if (!appState.memoryService) return { status: "not configured" };
-        return { status: "active", frameCount: await appState.memoryService.getFrameCount(), dbPath: appState.memoryService.getDbPath() };
+        const info: Record<string, unknown> = { status: "active", frameCount: await appState.memoryService.getFrameCount() };
+        if (isAdmiral) info.dbPath = appState.memoryService.getDbPath();
+        return info;
       })(),
       settings: await (async () => {
         if (!appState.settingsStore) return { status: "not configured" };

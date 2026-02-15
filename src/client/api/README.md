@@ -33,7 +33,7 @@ and throws `ApiError` on non-2xx responses.
 | `sessions.js` | Sessions | `/api/sessions/*` |
 | `settings.js` | Settings | `/api/settings/*` |
 | `catalog.js` | Catalog | `/api/catalog/*` |
-| `docks.js` | Docks | `/api/dock/*` |
+| `crews.js` | Crews | `/api/crew/*`, `/api/bridge-cores/*`, `/api/fleet-presets/*`, etc. |
 | `admiral.js` | Admiral | `/api/auth/admin/*`, `/api/admin/*` |
 
 ## Barrel Import Warning

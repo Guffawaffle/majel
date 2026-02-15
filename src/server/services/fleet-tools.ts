@@ -1,11 +1,11 @@
 /**
- * fleet-tools.ts — Gemini Function Calling Tools (ADR-007 Phase C, ADR-010 Phase 6)
+ * fleet-tools.ts — Gemini Function Calling Tools (ADR-007 Phase C, ADR-025)
  *
  * Majel — STFC Fleet Intelligence System
  *
  * Defines fleet intelligence tools that Gemini can call during conversation.
  * Phase 1: read-only reference & fleet tools (safe, no confirmation needed).
- * Phase 2: drydock management tools — data gathering + analysis (#11).
+ * Phase 2: crew composition tools — data gathering + analysis (#11).
  * Phase 3 (future): mutation tools with confirmation flow.
  *
  * Architecture:
@@ -147,7 +147,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     // No parameters
   },
 
-  // ─── Phase 2: Drydock Management Tools (ADR-010 §6) ────────
+  // ─── Phase 2: Crew Composition Tools (ADR-025) ─────────
 
   // Data gathering tools — provide model with structured fleet intelligence
 
@@ -389,7 +389,7 @@ async function dispatchTool(
       return getOfficerConflicts(ctx);
     case "validate_plan":
       return validatePlan(ctx);
-    // Phase 2: Drydock management tools
+    // Phase 2: Crew composition tools
     case "list_owned_officers":
       return listOwnedOfficers(ctx);
     case "get_loadout_detail":
@@ -671,7 +671,7 @@ async function validatePlan(ctx: ToolContext): Promise<object> {
   };
 }
 
-// ─── Phase 2: Drydock Management Implementations ────────────
+// ─── Phase 2: Crew Composition Implementations ──────────────
 
 async function listOwnedOfficers(ctx: ToolContext): Promise<object> {
   if (!ctx.overlayStore) {

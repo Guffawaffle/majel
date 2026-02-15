@@ -252,7 +252,7 @@ majel/
 │   │   ├── sessions.ts       # Chat session store
 │   │   ├── reference-store.ts # Reference catalog (wiki-sourced officers/ships)
 │   │   ├── overlay-store.ts  # User ownership & target overlay
-│   │   ├── dock-store.ts     # Drydock loadouts
+│   │   ├── crew-store.ts     # Crew composition (ADR-025)
 │   │   └── [utilities]
 │   └── client/               # Static frontend (vanilla JS)
 ├── test/                     # Vitest test suite

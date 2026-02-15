@@ -34,3 +34,6 @@ logs/
 *.db
 *.db-shm
 *.db-wal
+
+# Large binary data files (see ADR-012)
+*.xlsx

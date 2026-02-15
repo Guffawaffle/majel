@@ -194,6 +194,13 @@ export function createApp(appState: AppState): express.Express {
     etag: true,
   }));
 
+  // Favicon pack (served from project root /favicon/)
+  const faviconDir = path.resolve(__dirname, "../../favicon");
+  app.use(express.static(faviconDir, {
+    maxAge: '7d',
+    etag: true,
+  }));
+
   // ─── Landing page routes (ADR-019 Phase 1) ────────────────
   const landingFile = path.join(clientDir, "landing.html");
 

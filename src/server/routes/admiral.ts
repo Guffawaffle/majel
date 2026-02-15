@@ -32,6 +32,24 @@ export function createAdmiralRoutes(appState: AppState): Router {
 
     const { label, maxUses, expiresIn } = req.body ?? {};
 
+    // Validate inputs
+    if (label !== undefined) {
+      if (typeof label !== "string" || label.length > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "Label must be a string of 200 characters or fewer", 400);
+      }
+    }
+    if (maxUses !== undefined) {
+      const n = Number(maxUses);
+      if (!Number.isInteger(n) || n < 1 || n > 10000) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "maxUses must be an integer between 1 and 10000", 400);
+      }
+    }
+    if (expiresIn !== undefined) {
+      if (typeof expiresIn !== "string" || expiresIn.length > 20) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "expiresIn must be a duration string (e.g. '7d', '24h')", 400);
+      }
+    }
+
     try {
       const invite = await appState.inviteStore.createCode({
         label: label ?? undefined,
@@ -61,6 +79,10 @@ export function createAdmiralRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Invite store not available", 503);
     }
 
+    if (req.params.code.length > 100) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid invite code", 400);
+    }
+
     const revoked = await appState.inviteStore.revokeCode(req.params.code);
     if (!revoked) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Invite code not found", 404);
@@ -82,6 +104,10 @@ export function createAdmiralRoutes(appState: AppState): Router {
   router.delete("/api/admiral/sessions/:id", async (req, res) => {
     if (!appState.inviteStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Invite store not available", 503);
+    }
+
+    if (req.params.id.length > 100) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid session ID", 400);
     }
 
     const deleted = await appState.inviteStore.deleteSession(req.params.id);

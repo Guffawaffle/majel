@@ -233,11 +233,13 @@ function renderHealthSection() {
     if (d.overlayStore?.shipOverlays !== undefined) html += `<div class="diag-row"><span>Ship Overlays</span><span>${d.overlayStore.shipOverlays}</span></div>`;
     html += '</div>';
 
-    // Dock Store
-    html += '<div class="diag-section"><h4>Dock Store</h4>';
-    html += `<div class="diag-row"><span>Status</span>${status(d.dockStore?.status)}</div>`;
-    if (d.dockStore?.intents !== undefined) html += `<div class="diag-row"><span>Intents</span><span>${d.dockStore.intents}</span></div>`;
-    if (d.dockStore?.docks !== undefined) html += `<div class="diag-row"><span>Docks</span><span>${d.dockStore.docks}</span></div>`;
+    // Crew Store (ADR-025)
+    html += '<div class="diag-section"><h4>Crew Store</h4>';
+    html += `<div class="diag-row"><span>Status</span>${status(d.crewStore?.status)}</div>`;
+    if (d.crewStore?.bridgeCores !== undefined) html += `<div class="diag-row"><span>Bridge Cores</span><span>${d.crewStore.bridgeCores}</span></div>`;
+    if (d.crewStore?.loadouts !== undefined) html += `<div class="diag-row"><span>Loadouts</span><span>${d.crewStore.loadouts}</span></div>`;
+    if (d.crewStore?.planItems !== undefined) html += `<div class="diag-row"><span>Plan Items</span><span>${d.crewStore.planItems}</span></div>`;
+    if (d.crewStore?.docks !== undefined) html += `<div class="diag-row"><span>Docks</span><span>${d.crewStore.docks}</span></div>`;
     html += '</div>';
 
     html += '</div></div>';

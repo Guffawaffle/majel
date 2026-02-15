@@ -1,0 +1,19 @@
+{
+  "name": "Ariadne",
+  "short_name": "Ariadne",
+  "icons": [
+    {
+      "src": "ariadne-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "ariadne-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#14161e",
+  "background_color": "#14161e",
+  "display": "standalone"
+}

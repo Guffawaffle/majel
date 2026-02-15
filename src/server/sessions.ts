@@ -41,14 +41,16 @@ export interface SessionSummary {
 }
 
 export interface SessionStore {
-  create(id: string, title?: string): Promise<ChatSession>;
-  list(limit?: number): Promise<SessionSummary[]>;
+  create(id: string, title?: string, userId?: string): Promise<ChatSession>;
+  list(limit?: number, userId?: string): Promise<SessionSummary[]>;
   get(id: string): Promise<(ChatSession & { messages: ChatMessage[] }) | null>;
   updateTitle(id: string, title: string): Promise<boolean>;
-  addMessage(sessionId: string, role: ChatMessage["role"], text: string): Promise<ChatMessage>;
+  addMessage(sessionId: string, role: ChatMessage["role"], text: string, userId?: string): Promise<ChatMessage>;
   delete(id: string): Promise<boolean>;
   touch(id: string): Promise<void>;
   count(): Promise<number>;
+  /** Return the userId that owns a session, or null if unowned/not found. */
+  getOwner(id: string): Promise<string | null>;
   close(): void;
 }
 
@@ -70,11 +72,18 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_messages_session
     ON messages(session_id, created_at)`,
+  // ADR-019 Phase 2: session ownership
+  `DO $$ BEGIN
+    ALTER TABLE sessions ADD COLUMN user_id TEXT;
+  EXCEPTION WHEN duplicate_column THEN NULL;
+  END $$`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_user_id
+    ON sessions(user_id)`,
 ];
 
 const SQL = {
-  insertSession: `INSERT INTO sessions (id, title, created_at, updated_at) VALUES ($1, $2, $3, $4)`,
-  getSession: `SELECT id, title, created_at AS "createdAt", updated_at AS "updatedAt" FROM sessions WHERE id = $1`,
+  insertSession: `INSERT INTO sessions (id, title, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
+  getSession: `SELECT id, title, user_id AS "userId", created_at AS "createdAt", updated_at AS "updatedAt" FROM sessions WHERE id = $1`,
   listSessions: `SELECT
     s.id,
     s.title,
@@ -89,6 +98,22 @@ const SQL = {
   GROUP BY s.id
   ORDER BY s.updated_at DESC
   LIMIT $1`,
+  listSessionsByUser: `SELECT
+    s.id,
+    s.title,
+    s.created_at AS "createdAt",
+    s.updated_at AS "updatedAt",
+    COUNT(m.id) AS "messageCount",
+    (SELECT text FROM messages
+     WHERE session_id = s.id AND role = 'user'
+     ORDER BY created_at ASC LIMIT 1) AS preview
+  FROM sessions s
+  LEFT JOIN messages m ON m.session_id = s.id
+  WHERE s.user_id = $2
+  GROUP BY s.id
+  ORDER BY s.updated_at DESC
+  LIMIT $1`,
+  getOwner: `SELECT user_id AS "userId" FROM sessions WHERE id = $1`,
   updateTitle: `UPDATE sessions SET title = $1, updated_at = $2 WHERE id = $3`,
   touchSession: `UPDATE sessions SET updated_at = $1 WHERE id = $2`,
   deleteSession: `DELETE FROM sessions WHERE id = $1`,
@@ -119,16 +144,18 @@ export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): P
   log.boot.debug("session store initialized (pg)");
 
   const store: SessionStore = {
-    async create(id: string, title?: string): Promise<ChatSession> {
+    async create(id: string, title?: string, userId?: string): Promise<ChatSession> {
       const now = new Date().toISOString();
       const resolvedTitle = title || generateTimestampTitle();
-      await pool.query(SQL.insertSession, [id, resolvedTitle, now, now]);
-      log.settings.debug({ id, title: resolvedTitle }, "session created");
+      await pool.query(SQL.insertSession, [id, resolvedTitle, userId ?? null, now, now]);
+      log.settings.debug({ id, title: resolvedTitle, userId }, "session created");
       return { id, title: resolvedTitle, createdAt: now, updatedAt: now };
     },
 
-    async list(limit = 50): Promise<SessionSummary[]> {
-      const result = await pool.query(SQL.listSessions, [limit]);
+    async list(limit = 50, userId?: string): Promise<SessionSummary[]> {
+      const result = userId
+        ? await pool.query(SQL.listSessionsByUser, [limit, userId])
+        : await pool.query(SQL.listSessions, [limit]);
       return result.rows.map((r) => ({
         ...r,
         messageCount: Number(r.messageCount),
@@ -150,11 +177,11 @@ export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): P
       return (result.rowCount ?? 0) > 0;
     },
 
-    async addMessage(sessionId, role, text) {
+    async addMessage(sessionId, role, text, userId?) {
       // Auto-create session if it doesn't exist
       const existsResult = await pool.query(SQL.sessionExists, [sessionId]);
       if (existsResult.rows.length === 0) {
-        await store.create(sessionId);
+        await store.create(sessionId, undefined, userId);
       }
 
       const now = new Date().toISOString();
@@ -184,6 +211,12 @@ export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): P
     async count(): Promise<number> {
       const result = await pool.query(SQL.countSessions);
       return Number((result.rows[0] as { count: string | number }).count);
+    },
+
+    async getOwner(id: string): Promise<string | null> {
+      const result = await pool.query(SQL.getOwner, [id]);
+      if (result.rows.length === 0) return null;
+      return (result.rows[0] as { userId: string | null }).userId;
     },
 
     close(): void {

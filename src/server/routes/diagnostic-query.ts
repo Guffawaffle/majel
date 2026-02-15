@@ -15,6 +15,7 @@ import type { Pool } from "../db.js";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireAdmiral } from "../services/auth.js";
+import { log } from "../logger.js";
 
 // ─── Safety ─────────────────────────────────────────────────
 
@@ -138,8 +139,8 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
         hint: "Use GET /api/diagnostic/query?sql=SELECT ... to run read-only queries. Max 1000 rows.",
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sendFail(res, ErrorCode.INTERNAL_ERROR, `Schema introspection failed: ${message}`, 500);
+      log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "schema introspection error");
+      sendFail(res, ErrorCode.INTERNAL_ERROR, "Schema introspection failed", 500);
     }
   });
 
@@ -160,6 +161,9 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
     const sql = req.query.sql as string | undefined;
     if (!sql) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing required query param: sql", 400);
+    }
+    if (sql.length > 10000) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "SQL query must be 10,000 characters or fewer", 400);
     }
 
     const safety = isSafeQuery(sql);
@@ -213,8 +217,8 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
         sql,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sendFail(res, ErrorCode.INVALID_PARAM, `SQL error: ${message}`, 400);
+      log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "diagnostic query error");
+      sendFail(res, ErrorCode.INVALID_PARAM, "Query execution failed", 400);
     }
   });
 

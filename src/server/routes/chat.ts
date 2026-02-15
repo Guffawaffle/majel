@@ -19,10 +19,17 @@ export function createChatRoutes(appState: AppState): Router {
     const { message } = req.body;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 
+    if (sessionId.length > 200 || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid session ID", 400);
+    }
+
     if (!message || typeof message !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'message' in request body", 400, {
         hints: ["Send JSON body: { \"message\": \"your question\" }"],
       });
+    }
+    if (message.length > 10000) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Message must be 10,000 characters or fewer", 400);
     }
 
     if (!appState.geminiEngine) {
@@ -49,7 +56,8 @@ export function createChatRoutes(appState: AppState): Router {
 
       // Persist both messages to session store
       if (appState.sessionStore) {
-        await appState.sessionStore.addMessage(sessionId, "user", message);
+        const userId = res.locals.userId as string | undefined;
+        await appState.sessionStore.addMessage(sessionId, "user", message, userId);
         await appState.sessionStore.addMessage(sessionId, "model", answer);
       }
 
@@ -77,6 +85,9 @@ export function createChatRoutes(appState: AppState): Router {
 
     if (source === "session" || source === "both") {
       const sessionId = (req.query.sessionId as string) || "default";
+      if (sessionId.length > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid session ID", 400);
+      }
       result.session = appState.geminiEngine?.getHistory(sessionId) || [];
     }
 
@@ -110,6 +121,9 @@ export function createChatRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Missing query parameter 'q'", 400, {
         hints: ["Example: GET /api/recall?q=warp+drive&limit=10"],
       });
+    }
+    if (query.length > 1000) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Query must be 1000 characters or fewer", 400);
     }
 
     const memory = res.locals.memory ?? appState.memoryService;

@@ -11,12 +11,13 @@ import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES, type TargetType, type TargetStatus } from "../stores/target-store.js";
-import { requireVisitor } from "../services/auth.js";
+import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { detectTargetConflicts } from "../services/target-conflicts.js";
 
 export function createTargetRoutes(appState: AppState): Router {
   const router = Router();
   const visitor = requireVisitor(appState);
+  const admiral = requireAdmiral(appState);
   router.use("/api/targets", visitor);
 
   /** Guard: return the store or 503 */
@@ -48,6 +49,9 @@ export function createTargetRoutes(appState: AppState): Router {
     }
     if (priority !== undefined && (priority < 1 || priority > 3 || !Number.isInteger(priority))) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Priority must be 1, 2, or 3", 400);
+    }
+    if (refId && refId.length > 200) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "ref_id must be 200 characters or fewer", 400);
     }
 
     const filters: Record<string, unknown> = {};
@@ -95,7 +99,7 @@ export function createTargetRoutes(appState: AppState): Router {
 
   // ─── Create target ───────────────────────────────────────
 
-  router.post("/api/targets", async (req, res) => {
+  router.post("/api/targets", admiral, async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
@@ -114,9 +118,15 @@ export function createTargetRoutes(appState: AppState): Router {
     if ((targetType === "officer" || targetType === "ship") && !refId) {
       return sendFail(res, ErrorCode.MISSING_PARAM, `${targetType} targets require refId`, 400);
     }
+    if (refId && (typeof refId !== "string" || refId.length > 200)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "refId must be a string of 200 characters or fewer", 400);
+    }
     // Crew targets require loadoutId
     if (targetType === "crew" && !loadoutId) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Crew targets require loadoutId", 400);
+    }
+    if (loadoutId && (typeof loadoutId !== "string" || loadoutId.length > 200)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "loadoutId must be a string of 200 characters or fewer", 400);
     }
 
     if (priority !== undefined && (priority < 1 || priority > 3)) {
@@ -125,6 +135,25 @@ export function createTargetRoutes(appState: AppState): Router {
 
     if (reason && typeof reason === "string" && reason.length > 500) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Reason must be 500 characters or fewer", 400);
+    }
+
+    // Validate targetTier (integer 1–10)
+    if (targetTier !== undefined && targetTier !== null) {
+      if (typeof targetTier !== "number" || !Number.isInteger(targetTier) || targetTier < 1 || targetTier > 10) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "targetTier must be an integer between 1 and 10", 400);
+      }
+    }
+    // Validate targetRank (string, max 50 chars)
+    if (targetRank !== undefined && targetRank !== null) {
+      if (typeof targetRank !== "string" || targetRank.length > 50) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "targetRank must be a string of 50 characters or fewer", 400);
+      }
+    }
+    // Validate targetLevel (integer 1–200)
+    if (targetLevel !== undefined && targetLevel !== null) {
+      if (typeof targetLevel !== "number" || !Number.isInteger(targetLevel) || targetLevel < 1 || targetLevel > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "targetLevel must be an integer between 1 and 200", 400);
+      }
     }
 
     try {
@@ -148,7 +177,7 @@ export function createTargetRoutes(appState: AppState): Router {
 
   // ─── Update target ───────────────────────────────────────
 
-  router.patch("/api/targets/:id", async (req, res) => {
+  router.patch("/api/targets/:id", admiral, async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
@@ -168,6 +197,24 @@ export function createTargetRoutes(appState: AppState): Router {
     if (reason && typeof reason === "string" && reason.length > 500) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Reason must be 500 characters or fewer", 400);
     }
+    // Validate targetTier (integer 1–10)
+    if (targetTier !== undefined && targetTier !== null) {
+      if (typeof targetTier !== "number" || !Number.isInteger(targetTier) || targetTier < 1 || targetTier > 10) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "targetTier must be an integer between 1 and 10", 400);
+      }
+    }
+    // Validate targetRank (string, max 50 chars)
+    if (targetRank !== undefined && targetRank !== null) {
+      if (typeof targetRank !== "string" || targetRank.length > 50) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "targetRank must be a string of 50 characters or fewer", 400);
+      }
+    }
+    // Validate targetLevel (integer 1–200)
+    if (targetLevel !== undefined && targetLevel !== null) {
+      if (typeof targetLevel !== "number" || !Number.isInteger(targetLevel) || targetLevel < 1 || targetLevel > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "targetLevel must be an integer between 1 and 200", 400);
+      }
+    }
 
     const target = await store.update(id, { targetTier, targetRank, targetLevel, reason, priority, status });
     if (!target) return sendFail(res, ErrorCode.NOT_FOUND, `Target not found: ${id}`, 404);
@@ -176,7 +223,7 @@ export function createTargetRoutes(appState: AppState): Router {
 
   // ─── Delete target ───────────────────────────────────────
 
-  router.delete("/api/targets/:id", async (req, res) => {
+  router.delete("/api/targets/:id", admiral, async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
@@ -190,7 +237,7 @@ export function createTargetRoutes(appState: AppState): Router {
 
   // ─── Mark achieved ───────────────────────────────────────
 
-  router.post("/api/targets/:id/achieve", async (req, res) => {
+  router.post("/api/targets/:id/achieve", admiral, async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
