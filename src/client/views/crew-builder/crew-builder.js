@@ -68,7 +68,7 @@ export async function refresh() {
         bridgeCores = coresData?.bridgeCores ?? coresData ?? [];
         belowDeckPolicies = policiesData?.belowDeckPolicies ?? policiesData ?? [];
         loadouts = loadoutsData?.loadouts ?? loadoutsData ?? [];
-        officers = Array.isArray(officerData) ? officerData : (officerData?.data ?? []);
+        officers = Array.isArray(officerData) ? officerData : (officerData?.officers ?? []);
         render();
     } catch (err) {
         console.error('Crew builder refresh failed:', err);
@@ -79,23 +79,12 @@ export async function refresh() {
     }
 }
 
-// ─── Sorting ────────────────────────────────────────────────
-
-function sortItems(items) {
-    const sorted = [...items];
-    sorted.sort((a, b) => {
-        let cmp = 0;
-        switch (sortField) {
-            case 'level':
-                cmp = (a.userLevel || 0) - (b.userLevel || 0);
-                break;
-            default: // name
-                cmp = (a.name || '').localeCompare(b.name || '');
-        }
-        return sortDir === 'desc' ? -cmp : cmp;
-    });
-    return sorted;
-}
+const SLOT_NAMES = { captain: 'Captain', bridge_1: 'Bridge 1', bridge_2: 'Bridge 2' };
+const MODE_LABELS = {
+    stats_then_bda: 'Stats → BDA',
+    pinned_only: 'Pinned Only',
+    stat_fill_only: 'Stats Fill Only',
+};
 
 // ─── Rendering ──────────────────────────────────────────────
 
@@ -115,18 +104,16 @@ function render() {
 }
 
 function renderTabBar() {
-    const coreCount = bridgeCores.length;
-    const policyCount = belowDeckPolicies.length;
     return `
         <div class="crew-builder-tabs">
             <button class="crew-builder-tab ${activeTab === 'cores' ? 'active' : ''}" data-tab="cores">
-                Bridge Cores <span class="crew-builder-tab-count">${coreCount}</span>
+                Bridge Cores <span class="crew-builder-tab-count">${bridgeCores.length}</span>
             </button>
             <button class="crew-builder-tab ${activeTab === 'policies' ? 'active' : ''}" data-tab="policies">
-                Below Deck <span class="crew-builder-tab-count">${policyCount}</span>
+                Below Deck <span class="crew-builder-tab-count">${belowDeckPolicies.length}</span>
             </button>
             <button class="crew-builder-tab ${activeTab === 'variants' ? 'active' : ''}" data-tab="variants">
-                Variants
+                Variants <span class="crew-builder-tab-count">${loadouts.length}</span>
             </button>
         </div>
     `;
@@ -135,10 +122,15 @@ function renderTabBar() {
 function renderCoresTab() {
     return `
         <div class="crew-builder-section">
-            ${renderToolbar('Bridge Cores')}
+            <div class="crew-builder-toolbar">
+                <h3 class="crew-builder-toolbar-title">Bridge Cores</h3>
+                <button class="crew-builder-create-btn" data-action="create" title="Create new">+ New Core</button>
+            </div>
             ${editingCoreId === 'new' ? renderCoreForm(null) : ''}
             <div class="crew-builder-list">
-                ${bridgeCores.length === 0 ? renderEmpty('No bridge cores yet. Click + New to create one.') : bridgeCores.map(c => renderCoreCard(c)).join('')}
+                ${bridgeCores.length === 0
+                    ? renderEmpty('No bridge cores yet. Create one to assign officers to bridge slots.')
+                    : bridgeCores.map(c => renderCoreCard(c)).join('')}
             </div>
         </div>
     `;
@@ -147,41 +139,39 @@ function renderCoresTab() {
 function renderPoliciesTab() {
     return `
         <div class="crew-builder-section">
-            ${renderToolbar('Below Deck Policies')}
+            <div class="crew-builder-toolbar">
+                <h3 class="crew-builder-toolbar-title">Below Deck Policies</h3>
+                <button class="crew-builder-create-btn" data-action="create" title="Create new">+ New Policy</button>
+            </div>
             ${editingPolicyId === 'new' ? renderPolicyForm(null) : ''}
             <div class="crew-builder-list">
-                ${belowDeckPolicies.length === 0 ? renderEmpty('No below deck policies yet. Click + New to create one.') : belowDeckPolicies.map(p => renderPolicyCard(p)).join('')}
+                ${belowDeckPolicies.length === 0
+                    ? renderEmpty('No below deck policies yet. Create one to control auto-fill rules.')
+                    : belowDeckPolicies.map(p => renderPolicyCard(p)).join('')}
             </div>
         </div>
     `;
 }
 
 function renderVariantsTab() {
+    let filtered = loadouts;
+    if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(l => (l.name || '').toLowerCase().includes(q));
+    }
+
     return `
         <div class="crew-builder-section">
-            <div class="crew-builder-toolbar" style="margin-bottom: 16px;">
+            <div class="crew-builder-toolbar">
                 <div class="crew-builder-search-wrap">
                     <input type="text" class="crew-builder-search" placeholder="Search loadouts…" value="${esc(searchQuery)}" />
                 </div>
-                <select class="crew-builder-sort" data-action="sort-field">
-                    <option value="name" ${sortField === 'name' ? 'selected' : ''}>Name</option>
-                </select>
-                <button class="crew-builder-sort-dir-btn" data-action="sort-dir" title="Toggle sort">
-                    ${sortDir === 'asc' ? '↑' : '↓'}
-                </button>
             </div>
             <div class="crew-builder-list">
-                ${loadouts.length === 0 ? renderEmpty('No crew loadouts. Create some in Drydock first!') : loadouts.map(l => renderLoadoutVariantsCard(l)).join('')}
+                ${filtered.length === 0
+                    ? renderEmpty(loadouts.length === 0 ? 'No crew loadouts. Create some in Drydock first!' : 'No loadouts match your search.')
+                    : filtered.map(l => renderLoadoutVariantsCard(l)).join('')}
             </div>
-        </div>
-    `;
-}
-
-function renderToolbar(title) {
-    return `
-        <div class="crew-builder-toolbar" style="margin-bottom: 16px;">
-            <h3 style="margin: 0; flex: 1; font-size: 0.95rem; color: var(--text-primary);">${title}</h3>
-            <button class="crew-builder-create-btn" data-action="create" title="Create new">+ New</button>
         </div>
     `;
 }
@@ -195,12 +185,16 @@ function renderCoreCard(core) {
         membersBySlot[m.slot] = m.officerId;
     }
 
-    const slotNames = { captain: 'Captain', bridge_1: 'Bridge 1', bridge_2: 'Bridge 2' };
-    const slots = Object.entries(membersBySlot)
-        .map(([slot, officerId]) => {
-            const off = officers.find(o => o.id === officerId);
-            const level = off ? ` (L${off.userLevel || '?'})` : '';
-            return `<div class="crew-builder-slot"><strong>${slotNames[slot]}:</strong> ${esc(officerId)}${level}</div>`;
+    const slotsHtml = ['captain', 'bridge_1', 'bridge_2']
+        .filter(slot => membersBySlot[slot])
+        .map(slot => {
+            const offId = membersBySlot[slot];
+            const off = officerById(offId);
+            const display = off ? `${esc(off.name)} (L${off.userLevel || '?'})` : esc(offId);
+            return `<div class="crew-builder-slot">
+                <span class="crew-builder-slot-label">${SLOT_NAMES[slot]}</span>
+                <span class="crew-builder-slot-value">${display}</span>
+            </div>`;
         })
         .join('');
 
@@ -209,6 +203,7 @@ function renderCoreCard(core) {
             <div class="crew-builder-card-header">
                 <div class="crew-builder-card-title">
                     <span class="crew-builder-card-name">${esc(core.name)}</span>
+                    <span class="crew-builder-card-count">${(core.members || []).length}/3 slots</span>
                 </div>
                 <div class="crew-builder-card-actions">
                     <button class="crew-builder-action-btn" data-action="edit-core" data-id="${core.id}" title="Edit">✎</button>
@@ -216,7 +211,7 @@ function renderCoreCard(core) {
                 </div>
             </div>
             <div class="crew-builder-card-body">
-                ${slots || '<p style="color: var(--text-muted);">No officers assigned</p>'}
+                ${slotsHtml || '<div class="crew-builder-muted">No officers assigned</div>'}
             </div>
             ${core.notes ? `<div class="crew-builder-card-notes">${esc(core.notes)}</div>` : ''}
         </div>
@@ -231,12 +226,11 @@ function renderCoreForm(core) {
         membersBySlot[m.slot] = m.officerId;
     }
 
-    const slotNames = { captain: 'Captain', bridge_1: 'Bridge 1', bridge_2: 'Bridge 2' };
     const slotInputs = ['captain', 'bridge_1', 'bridge_2']
         .map(slot => `
         <label class="crew-builder-form-field">
-            <span class="crew-builder-form-label">${slotNames[slot]} *</span>
-            <select class="crew-builder-form-select" data-form-field="slot_${slot}" required>
+            <span class="crew-builder-form-label">${SLOT_NAMES[slot]}</span>
+            <select class="crew-builder-form-select" data-form-field="slot_${slot}">
                 <option value="">— Select officer —</option>
                 ${officers.map(off => `<option value="${esc(off.id)}" ${membersBySlot[slot] === off.id ? 'selected' : ''}>${esc(off.name)} (L${off.userLevel || '?'})</option>`).join('')}
             </select>
@@ -260,7 +254,7 @@ function renderCoreForm(core) {
                 ${slotInputs}
                 <label class="crew-builder-form-field crew-builder-form-wide">
                     <span class="crew-builder-form-label">Notes</span>
-                    <textarea class="crew-builder-form-input" style="resize: vertical; min-height: 48px;" data-form-field="notes"
+                    <textarea class="crew-builder-form-input crew-builder-form-textarea" data-form-field="notes"
                               maxlength="500" placeholder="Optional notes…">${esc(c.notes || '')}</textarea>
                 </label>
             </div>
@@ -272,12 +266,18 @@ function renderCoreForm(core) {
     `;
 }
 
+// ─── Policies Tab ───────────────────────────────────────────
+
 function renderPolicyCard(policy) {
     const isEditing = editingPolicyId === policy.id;
     if (isEditing) return renderPolicyForm(policy);
 
     const spec = policy.spec || {};
     const pinned = Array.isArray(spec.pinned) ? spec.pinned : [];
+    const pinnedNames = pinned.map(id => {
+        const off = officerById(id);
+        return off ? off.name : id;
+    });
 
     return `
         <div class="crew-builder-card" data-id="${policy.id}">
@@ -292,13 +292,13 @@ function renderPolicyCard(policy) {
             </div>
             <div class="crew-builder-card-body">
                 <div class="crew-builder-policy-row">
-                    <span class="crew-builder-label">Mode:</span>
-                    <span class="crew-builder-value">${esc(policy.mode)}</span>
+                    <span class="crew-builder-label">Mode</span>
+                    <span class="crew-builder-value">${esc(MODE_LABELS[policy.mode] || policy.mode)}</span>
                 </div>
                 ${pinned.length > 0 ? `
                 <div class="crew-builder-policy-row">
-                    <span class="crew-builder-label">Pinned:</span>
-                    <span class="crew-builder-value">${pinned.map(id => esc(id)).join(', ')}</span>
+                    <span class="crew-builder-label">Pinned</span>
+                    <span class="crew-builder-value">${pinnedNames.map(n => esc(n)).join(', ')}</span>
                 </div>` : ''}
             </div>
             ${policy.notes ? `<div class="crew-builder-card-notes">${esc(policy.notes)}</div>` : ''}
@@ -334,13 +334,16 @@ function renderPolicyForm(policy) {
                     </select>
                 </label>
                 <label class="crew-builder-form-field crew-builder-form-wide">
-                    <span class="crew-builder-form-label">Pinned Officers <span style="opacity: 0.6;">(comma-separated IDs)</span></span>
-                    <input type="text" class="crew-builder-form-input" data-form-field="pinned"
-                           value="${esc(pinned.join(', '))}" placeholder="e.g. off-1, off-2" />
+                    <span class="crew-builder-form-label">Pinned Officers <span class="crew-builder-hint">(hold Ctrl/Cmd to multi-select)</span></span>
+                    <select class="crew-builder-form-select crew-builder-form-multi" data-form-field="pinned" multiple size="5">
+                        ${officers.map(off =>
+                            `<option value="${esc(off.id)}" ${pinned.includes(off.id) ? 'selected' : ''}>${esc(off.name)} (L${off.userLevel || '?'})</option>`
+                        ).join('')}
+                    </select>
                 </label>
                 <label class="crew-builder-form-field crew-builder-form-wide">
                     <span class="crew-builder-form-label">Notes</span>
-                    <textarea class="crew-builder-form-input" style="resize: vertical; min-height: 48px;" data-form-field="notes"
+                    <textarea class="crew-builder-form-input crew-builder-form-textarea" data-form-field="notes"
                               maxlength="500" placeholder="Optional notes…">${esc(p.notes || '')}</textarea>
                 </label>
             </div>
@@ -353,28 +356,27 @@ function renderPolicyForm(policy) {
 }
 
 function renderLoadoutVariantsCard(loadout) {
+    const intents = (loadout.intentKeys || []).join(', ') || '—';
     return `
         <div class="crew-builder-card" data-id="${loadout.id}">
             <div class="crew-builder-card-header">
                 <div class="crew-builder-card-title">
                     <span class="crew-builder-card-name">${esc(loadout.name)}</span>
-                </div>
-                <div class="crew-builder-card-actions">
-                    <button class="crew-builder-action-btn" data-action="view-variants" data-loadout-id="${loadout.id}" title="View/create variants">▶</button>
+                    ${loadout.isActive ? '<span class="crew-builder-badge crew-builder-badge-active">Active</span>' : ''}
                 </div>
             </div>
             <div class="crew-builder-card-body">
                 <div class="crew-builder-policy-row">
-                    <span class="crew-builder-label">Bridge Core:</span>
-                    <span class="crew-builder-value">${getBridgeCoreName(loadout.bridgeCoreId) || '—'}</span>
+                    <span class="crew-builder-label">Bridge Core</span>
+                    <span class="crew-builder-value">${esc(getBridgeCoreName(loadout.bridgeCoreId) || '—')}</span>
                 </div>
                 <div class="crew-builder-policy-row">
-                    <span class="crew-builder-label">Below Deck:</span>
-                    <span class="crew-builder-value">${getBelowDeckPolicyName(loadout.belowDeckPolicyId) || '—'}</span>
+                    <span class="crew-builder-label">Below Deck</span>
+                    <span class="crew-builder-value">${esc(getBelowDeckPolicyName(loadout.belowDeckPolicyId) || '—')}</span>
                 </div>
                 <div class="crew-builder-policy-row">
-                    <span class="crew-builder-label">Intents:</span>
-                    <span class="crew-builder-value">${(loadout.intentKeys || []).join(', ') || '—'}</span>
+                    <span class="crew-builder-label">Intents</span>
+                    <span class="crew-builder-value">${esc(intents)}</span>
                 </div>
             </div>
         </div>
@@ -497,38 +499,27 @@ function bindEvents() {
         savePolicyBtn.addEventListener('click', () => handleSavePolicy());
     }
 
-    // View variants
-    area.querySelectorAll('[data-action="view-variants"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            activeTab = 'variants';
-            render();
-        });
-    });
-
     // Search (variants tab)
     const searchInput = area.querySelector('.crew-builder-search');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
             searchQuery = e.target.value.trim();
             render();
+            // Re-focus search after re-render
+            const s = area.querySelector('.crew-builder-search');
+            if (s) { s.focus(); s.selectionStart = s.selectionEnd = s.value.length; }
         });
     }
 
-    // Sort field
-    const sortSelect = area.querySelector('[data-action="sort-field"]');
-    if (sortSelect) {
-        sortSelect.addEventListener('change', (e) => {
-            sortField = e.target.value;
-            render();
-        });
-    }
-
-    // Sort direction
-    const sortDir = area.querySelector('[data-action="sort-dir"]');
-    if (sortDir) {
-        sortDir.addEventListener('click', () => {
-            sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-            render();
+    // Enter-to-save on forms
+    const formEl = area.querySelector('.crew-builder-form');
+    if (formEl) {
+        formEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT') {
+                e.preventDefault();
+                if (editingCoreId) handleSaveCore();
+                else if (editingPolicyId) handleSavePolicy();
+            }
         });
     }
 }
@@ -574,7 +565,7 @@ async function handleSaveCore() {
             const created = resp?.bridgeCore ?? resp;
             bridgeCores.push(created);
         } else {
-            const resp = await updateBridgeCore(editingCoreId, { name, notes });
+            await updateBridgeCore(editingCoreId, { name, notes });
             await setBridgeCoreMembers(editingCoreId, members);
             const idx = bridgeCores.findIndex(c => c.id === editingCoreId);
             if (idx !== -1) bridgeCores[idx] = { ...bridgeCores[idx], name, notes, members };
@@ -608,8 +599,11 @@ async function handleSavePolicy() {
     }
 
     const mode = getValue('mode') || 'stats_then_bda';
-    const pinnedRaw = (getValue('pinned') || '').trim();
-    const pinned = pinnedRaw ? pinnedRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    // Multi-select for pinned officers
+    const pinnedSelect = form.querySelector('[data-form-field="pinned"]');
+    const pinned = pinnedSelect
+        ? Array.from(pinnedSelect.selectedOptions).map(o => o.value)
+        : [];
     const notes = getValue('notes') || null;
 
     const spec = { pinned: pinned.length > 0 ? pinned : undefined };
@@ -620,8 +614,7 @@ async function handleSavePolicy() {
             const created = resp?.belowDeckPolicy ?? resp;
             belowDeckPolicies.push(created);
         } else {
-            const resp = await updateBelowDeckPolicy(editingPolicyId, { name, mode, spec, notes });
-            const updated = resp?.belowDeckPolicy ?? resp;
+            await updateBelowDeckPolicy(editingPolicyId, { name, mode, spec, notes });
             const idx = belowDeckPolicies.findIndex(p => p.id === editingPolicyId);
             if (idx !== -1) belowDeckPolicies[idx] = { ...belowDeckPolicies[idx], name, mode, spec, notes };
         }
@@ -640,6 +633,10 @@ async function handleSavePolicy() {
 function esc(str) {
     if (str == null) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function officerById(id) {
+    return officers.find(o => o.id === id) ?? null;
 }
 
 function getBridgeCoreName(id) {

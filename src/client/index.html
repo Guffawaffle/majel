@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="views/fleet/fleet.css" />
   <link rel="stylesheet" href="views/drydock/drydock.css" />
   <link rel="stylesheet" href="views/crew-builder/crew-builder.css" />
+  <link rel="stylesheet" href="views/fleet-ops/fleet-ops.css" />
   <link rel="stylesheet" href="views/admiral/admiral.css" />
 
   <!-- Component CSS -->
@@ -68,6 +69,9 @@
       </button>
       <button class="sidebar-nav-btn" data-view="crew-builder">
         <span class="icon">👥</span> Crew Builder
+      </button>
+      <button class="sidebar-nav-btn" data-view="fleet-ops">
+        <span class="icon">🎯</span> Fleet Ops
       </button>
       <button class="sidebar-nav-btn" data-view="diagnostics">
         <span class="icon">⚡</span> Diagnostics
@@ -215,6 +219,9 @@
 
       <!-- Crew Builder Area (hidden by default) -->
       <section id="crew-builder-area" class="crew-builder-area hidden"></section>
+
+      <!-- Fleet Ops Area (hidden by default) -->
+      <section id="fleet-ops-area" class="fleet-ops-area hidden"></section>
 
       <!-- Diagnostics Area (hidden by default) -->
       <section id="diagnostics-area" class="diagnostics-area hidden"></section>
