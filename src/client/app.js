@@ -18,6 +18,7 @@ import * as sessions from 'views/chat/sessions.js';
 import * as catalog from 'views/catalog/catalog.js';
 import * as admin from 'views/admiral/admiral.js';
 import 'views/fleet/fleet.js';
+import 'views/drydock/drydock.js';
 import 'views/diagnostics/diagnostics.js';
 import * as router from 'router';
 
