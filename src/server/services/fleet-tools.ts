@@ -1,11 +1,12 @@
 /**
- * fleet-tools.ts — Gemini Function Calling Tools (ADR-007 Phase C)
+ * fleet-tools.ts — Gemini Function Calling Tools (ADR-007 Phase C, ADR-010 Phase 6)
  *
  * Majel — STFC Fleet Intelligence System
  *
  * Defines fleet intelligence tools that Gemini can call during conversation.
- * Phase 1: read-only tools (safe, no confirmation needed).
- * Phase 2 (future): mutation tools with confirmation flow.
+ * Phase 1: read-only reference & fleet tools (safe, no confirmation needed).
+ * Phase 2: drydock management tools — data gathering + analysis (#11).
+ * Phase 3 (future): mutation tools with confirmation flow.
  *
  * Architecture:
  * - Tool declarations follow the OpenAPI 3.0 schema format required by Gemini
@@ -141,6 +142,146 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "or wants an overall health check of their fleet setup.",
     // No parameters
   },
+
+  // ─── Phase 2: Drydock Management Tools (ADR-010 §6) ────────
+
+  // Data gathering tools — provide model with structured fleet intelligence
+
+  {
+    name: "list_owned_officers",
+    description:
+      "List all officers the Admiral owns, with abilities and overlay data (level, rank, power). " +
+      "Call this when suggesting crews, analyzing fleet composition, or checking available officers. " +
+      "Returns merged reference + overlay data for each owned officer.",
+    // No parameters
+  },
+  {
+    name: "get_loadout_detail",
+    description:
+      "Get full details for a specific loadout: ship, crew members (bridge + below deck), " +
+      "intent keys, tags, notes. Call when examining a specific crew configuration.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        loadout_id: {
+          type: SchemaType.INTEGER,
+          description: "Loadout ID to get details for",
+        },
+      },
+      required: ["loadout_id"],
+    },
+  },
+  {
+    name: "list_plan_items",
+    description:
+      "List all plan items (active objectives) with full context: assigned loadout, dock, " +
+      "intent, crew members, away team members. " +
+      "Call when analyzing the fleet plan or checking dock assignments.",
+    // No parameters — returns all plan items with context
+  },
+  {
+    name: "list_intents",
+    description:
+      "List available activity intents from the intent catalog. " +
+      "Intents categorize what a loadout is built for: mining, combat, utility, or custom. " +
+      "Call when the Admiral asks about available activities or when suggesting loadout purposes.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        category: {
+          type: SchemaType.STRING,
+          description: "Filter by category: mining, combat, utility, or custom. Omit for all categories.",
+        },
+      },
+    },
+  },
+  {
+    name: "find_loadouts_for_intent",
+    description:
+      "Find all loadouts tagged for a specific activity intent (e.g. 'pvp', 'mining-lat', 'grinding'). " +
+      "Returns loadouts with full crew details. " +
+      "Call when the Admiral asks what crews they have for a specific activity.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        intent_key: {
+          type: SchemaType.STRING,
+          description: "Intent key to search for (e.g. 'pvp', 'grinding', 'mining-lat')",
+        },
+      },
+      required: ["intent_key"],
+    },
+  },
+
+  // Analysis tools — gather comprehensive context for model-assisted reasoning
+
+  {
+    name: "suggest_crew",
+    description:
+      "Gather all context needed to suggest an optimal crew for a ship and activity. " +
+      "Returns: ship details, intent info, all owned officers with abilities, " +
+      "and existing loadouts for this ship. " +
+      "Use your STFC knowledge to recommend the best captain + bridge + below-deck officers " +
+      "from the Admiral's available roster.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        ship_id: {
+          type: SchemaType.STRING,
+          description: "Ship reference ID to build a crew for",
+        },
+        intent_key: {
+          type: SchemaType.STRING,
+          description: "Activity intent key (e.g. 'pvp', 'grinding', 'mining-lat'). Optional — helps narrow recommendations.",
+        },
+      },
+      required: ["ship_id"],
+    },
+  },
+  {
+    name: "analyze_fleet",
+    description:
+      "Gather comprehensive fleet state for optimization analysis: all docks with assignments, " +
+      "active loadouts with crew, plan items, officer conflicts, and validation report. " +
+      "Use your STFC knowledge to suggest fleet-wide improvements, " +
+      "identify suboptimal crew choices, and recommend changes.",
+    // No parameters — gathers everything
+  },
+  {
+    name: "resolve_conflict",
+    description:
+      "Gather context to help resolve an officer conflict: the conflicting officer's full details, " +
+      "all loadouts they appear in, and alternative officers from the same group or similar rarity. " +
+      "Use your STFC knowledge to suggest which loadout should keep this officer " +
+      "and which substitutes work best for the others.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        officer_id: {
+          type: SchemaType.STRING,
+          description: "The conflicting officer's reference ID",
+        },
+      },
+      required: ["officer_id"],
+    },
+  },
+  {
+    name: "what_if_remove_officer",
+    description:
+      "Preview cascade effects of removing an officer from all loadouts and away teams. " +
+      "Shows which loadouts lose a crew member and which plan items are affected. " +
+      "Call when the Admiral considers reassigning an officer or wants to understand dependencies.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        officer_id: {
+          type: SchemaType.STRING,
+          description: "Officer reference ID to preview removal for",
+        },
+      },
+      required: ["officer_id"],
+    },
+  },
 ];
 
 // ─── Tool Executor ──────────────────────────────────────────
@@ -197,6 +338,25 @@ async function dispatchTool(
       return getOfficerConflicts(ctx);
     case "validate_plan":
       return validatePlan(ctx);
+    // Phase 2: Drydock management tools
+    case "list_owned_officers":
+      return listOwnedOfficers(ctx);
+    case "get_loadout_detail":
+      return getLoadoutDetail(Number(args.loadout_id), ctx);
+    case "list_plan_items":
+      return listPlanItems(ctx);
+    case "list_intents":
+      return listIntents(args.category as string | undefined, ctx);
+    case "find_loadouts_for_intent":
+      return findLoadoutsForIntent(String(args.intent_key ?? ""), ctx);
+    case "suggest_crew":
+      return suggestCrew(String(args.ship_id ?? ""), args.intent_key as string | undefined, ctx);
+    case "analyze_fleet":
+      return analyzeFleet(ctx);
+    case "resolve_conflict":
+      return resolveConflict(String(args.officer_id ?? ""), ctx);
+    case "what_if_remove_officer":
+      return whatIfRemoveOfficer(String(args.officer_id ?? ""), ctx);
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -443,5 +603,429 @@ async function validatePlan(ctx: ToolContext): Promise<object> {
     unassignedLoadouts: validation.unassignedLoadouts,
     unassignedDocks: validation.unassignedDocks,
     warnings: validation.warnings,
+  };
+}
+
+// ─── Phase 2: Drydock Management Implementations ────────────
+
+async function listOwnedOfficers(ctx: ToolContext): Promise<object> {
+  if (!ctx.overlayStore) {
+    return { error: "Overlay system not available. The Admiral may need to set up ownership data first." };
+  }
+  if (!ctx.referenceStore) {
+    return { error: "Reference catalog not available. The Admiral may need to import wiki data first." };
+  }
+
+  const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+  const officers = await Promise.all(
+    overlays.map(async (overlay) => {
+      const ref = await ctx.referenceStore!.getOfficer(overlay.refId);
+      if (!ref) return null;
+      return {
+        id: ref.id,
+        name: ref.name,
+        rarity: ref.rarity,
+        group: ref.groupName,
+        captainManeuver: ref.captainManeuver,
+        officerAbility: ref.officerAbility,
+        belowDeckAbility: ref.belowDeckAbility,
+        level: overlay.level,
+        rank: overlay.rank,
+        power: overlay.power,
+      };
+    }),
+  );
+
+  const results = officers.filter(Boolean);
+  return {
+    officers: results,
+    totalOwned: results.length,
+  };
+}
+
+async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Promise<object> {
+  if (!ctx.loadoutStore) {
+    return { error: "Loadout system not available." };
+  }
+  if (!loadoutId || isNaN(loadoutId)) {
+    return { error: "Valid loadout ID is required." };
+  }
+
+  const loadout = await ctx.loadoutStore.getLoadout(loadoutId);
+  if (!loadout) {
+    return { error: `Loadout not found: ${loadoutId}` };
+  }
+
+  return {
+    id: loadout.id,
+    name: loadout.name,
+    shipId: loadout.shipId,
+    shipName: loadout.shipName,
+    priority: loadout.priority,
+    isActive: loadout.isActive,
+    intentKeys: loadout.intentKeys,
+    tags: loadout.tags,
+    notes: loadout.notes,
+    members: loadout.members.map((m) => ({
+      officerId: m.officerId,
+      officerName: m.officerName,
+      roleType: m.roleType,
+      slot: m.slot,
+    })),
+  };
+}
+
+async function listPlanItems(ctx: ToolContext): Promise<object> {
+  if (!ctx.loadoutStore) {
+    return { error: "Loadout system not available." };
+  }
+
+  const items = await ctx.loadoutStore.listPlanItems();
+  return {
+    planItems: items.map((p) => ({
+      id: p.id,
+      label: p.label,
+      intentKey: p.intentKey,
+      intentLabel: p.intentLabel,
+      dockNumber: p.dockNumber,
+      dockLabel: p.dockLabel,
+      loadoutId: p.loadoutId,
+      loadoutName: p.loadoutName,
+      shipId: p.shipId,
+      shipName: p.shipName,
+      priority: p.priority,
+      isActive: p.isActive,
+      members: p.members.map((m) => ({
+        officerId: m.officerId,
+        officerName: m.officerName,
+        roleType: m.roleType,
+        slot: m.slot,
+      })),
+      awayMembers: p.awayMembers.map((a) => ({
+        officerId: a.officerId,
+        officerName: a.officerName,
+      })),
+    })),
+    totalItems: items.length,
+  };
+}
+
+async function listIntents(category: string | undefined, ctx: ToolContext): Promise<object> {
+  if (!ctx.loadoutStore) {
+    return { error: "Loadout system not available." };
+  }
+
+  const filters = category ? { category } : undefined;
+  const intents = await ctx.loadoutStore.listIntents(filters);
+  return {
+    intents: intents.map((i) => ({
+      key: i.key,
+      label: i.label,
+      category: i.category,
+      description: i.description,
+      icon: i.icon,
+      isBuiltin: i.isBuiltin,
+    })),
+    totalIntents: intents.length,
+  };
+}
+
+async function findLoadoutsForIntent(intentKey: string, ctx: ToolContext): Promise<object> {
+  if (!ctx.loadoutStore) {
+    return { error: "Loadout system not available." };
+  }
+  if (!intentKey.trim()) {
+    return { error: "Intent key is required." };
+  }
+
+  const loadouts = await ctx.loadoutStore.findLoadoutsForIntent(intentKey);
+  return {
+    intentKey,
+    loadouts: loadouts.map((l) => ({
+      id: l.id,
+      name: l.name,
+      shipId: l.shipId,
+      shipName: l.shipName,
+      isActive: l.isActive,
+      members: l.members.map((m) => ({
+        officerId: m.officerId,
+        officerName: m.officerName,
+        roleType: m.roleType,
+        slot: m.slot,
+      })),
+    })),
+    totalLoadouts: loadouts.length,
+  };
+}
+
+async function suggestCrew(
+  shipId: string,
+  intentKey: string | undefined,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.referenceStore) {
+    return { error: "Reference catalog not available." };
+  }
+  if (!shipId.trim()) {
+    return { error: "Ship ID is required." };
+  }
+
+  // 1. Get ship details
+  const ship = await ctx.referenceStore.getShip(shipId);
+  if (!ship) {
+    return { error: `Ship not found: ${shipId}` };
+  }
+
+  // 2. Get intent details if provided
+  let intent: { key: string; label: string; category: string; description: string | null } | null = null;
+  if (intentKey && ctx.loadoutStore) {
+    const intentData = await ctx.loadoutStore.getIntent(intentKey);
+    if (intentData) {
+      intent = {
+        key: intentData.key,
+        label: intentData.label,
+        category: intentData.category,
+        description: intentData.description,
+      };
+    }
+  }
+
+  // 3. Get all owned officers with abilities (the Admiral's available roster)
+  const ownedOfficers: Array<Record<string, unknown>> = [];
+  if (ctx.overlayStore) {
+    const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+    const resolved = await Promise.all(
+      overlays.map(async (overlay) => {
+        const ref = await ctx.referenceStore!.getOfficer(overlay.refId);
+        if (!ref) return null;
+        return {
+          id: ref.id,
+          name: ref.name,
+          rarity: ref.rarity,
+          group: ref.groupName,
+          captainManeuver: ref.captainManeuver,
+          officerAbility: ref.officerAbility,
+          belowDeckAbility: ref.belowDeckAbility,
+          level: overlay.level,
+          rank: overlay.rank,
+        };
+      }),
+    );
+    ownedOfficers.push(...resolved.filter(Boolean) as Array<Record<string, unknown>>);
+  }
+
+  // 4. Get existing loadouts for this ship (show what's already configured)
+  const existingLoadouts: Array<Record<string, unknown>> = [];
+  if (ctx.loadoutStore) {
+    const loadouts = await ctx.loadoutStore.listLoadouts({ shipId });
+    existingLoadouts.push(
+      ...loadouts.map((l) => ({
+        id: l.id,
+        name: l.name,
+        isActive: l.isActive,
+        intentKeys: l.intentKeys,
+        members: l.members.map((m) => ({
+          officerId: m.officerId,
+          officerName: m.officerName,
+          roleType: m.roleType,
+          slot: m.slot,
+        })),
+      })),
+    );
+  }
+
+  return {
+    ship: {
+      id: ship.id,
+      name: ship.name,
+      shipClass: ship.shipClass,
+      grade: ship.grade,
+      rarity: ship.rarity,
+      faction: ship.faction,
+    },
+    intent,
+    ownedOfficers,
+    existingLoadouts,
+    totalOwnedOfficers: ownedOfficers.length,
+  };
+}
+
+async function analyzeFleet(ctx: ToolContext): Promise<object> {
+  if (!ctx.loadoutStore) {
+    return { error: "Loadout system not available." };
+  }
+
+  // Gather comprehensive fleet state in parallel
+  const [docks, planItems, conflicts, validation, loadouts] = await Promise.all([
+    ctx.loadoutStore.listDocks(),
+    ctx.loadoutStore.listPlanItems(),
+    ctx.loadoutStore.getOfficerConflicts(),
+    ctx.loadoutStore.validatePlan(),
+    ctx.loadoutStore.listLoadouts(),
+  ]);
+
+  return {
+    docks: docks.map((d) => ({
+      dockNumber: d.dockNumber,
+      label: d.label,
+      assignment: d.assignment
+        ? {
+            planItemId: d.assignment.id,
+            loadoutName: d.assignment.loadoutName,
+            shipName: d.assignment.shipName,
+            intentKey: d.assignment.intentKey,
+          }
+        : null,
+    })),
+    loadouts: loadouts.map((l) => ({
+      id: l.id,
+      name: l.name,
+      shipName: l.shipName,
+      isActive: l.isActive,
+      intentKeys: l.intentKeys,
+      memberCount: l.members.length,
+      members: l.members.map((m) => ({
+        officerName: m.officerName,
+        roleType: m.roleType,
+        slot: m.slot,
+      })),
+    })),
+    planItems: planItems.map((p) => ({
+      id: p.id,
+      label: p.label,
+      intentKey: p.intentKey,
+      dockNumber: p.dockNumber,
+      loadoutName: p.loadoutName,
+      shipName: p.shipName,
+      isActive: p.isActive,
+    })),
+    conflicts: conflicts.map((c) => ({
+      officerName: c.officerName,
+      appearances: c.appearances.length,
+      locations: c.appearances.map((a) => a.loadoutName ?? a.planItemLabel),
+    })),
+    validation: {
+      valid: validation.valid,
+      dockConflicts: validation.dockConflicts.length,
+      officerConflicts: validation.officerConflicts.length,
+      warnings: validation.warnings,
+    },
+    totalDocks: docks.length,
+    totalLoadouts: loadouts.length,
+    totalPlanItems: planItems.length,
+    totalConflicts: conflicts.length,
+  };
+}
+
+async function resolveConflict(officerId: string, ctx: ToolContext): Promise<object> {
+  if (!ctx.referenceStore) {
+    return { error: "Reference catalog not available." };
+  }
+  if (!ctx.loadoutStore) {
+    return { error: "Loadout system not available." };
+  }
+  if (!officerId.trim()) {
+    return { error: "Officer ID is required." };
+  }
+
+  // 1. Get the conflicting officer's details
+  const officer = await ctx.referenceStore.getOfficer(officerId);
+  if (!officer) {
+    return { error: `Officer not found: ${officerId}` };
+  }
+
+  // 2. Get their conflicts
+  const allConflicts = await ctx.loadoutStore.getOfficerConflicts();
+  const conflict = allConflicts.find((c) => c.officerId === officerId) ?? null;
+
+  // 3. Find alternative officers from the same group or similar rarity
+  const alternatives: Array<Record<string, unknown>> = [];
+  if (officer.groupName) {
+    const groupOfficers = await ctx.referenceStore.listOfficers({ groupName: officer.groupName });
+    for (const alt of groupOfficers) {
+      if (alt.id === officerId) continue;
+      // Check if owned
+      let owned = false;
+      if (ctx.overlayStore) {
+        const overlay = await ctx.overlayStore.getOfficerOverlay(alt.id);
+        owned = overlay?.ownershipState === "owned";
+      }
+      alternatives.push({
+        id: alt.id,
+        name: alt.name,
+        rarity: alt.rarity,
+        group: alt.groupName,
+        captainManeuver: alt.captainManeuver,
+        officerAbility: alt.officerAbility,
+        belowDeckAbility: alt.belowDeckAbility,
+        owned,
+      });
+    }
+  }
+
+  // 4. Get cascade preview (what breaks if this officer is removed)
+  const preview = await ctx.loadoutStore.previewDeleteOfficer(officerId);
+
+  return {
+    officer: {
+      id: officer.id,
+      name: officer.name,
+      rarity: officer.rarity,
+      group: officer.groupName,
+      captainManeuver: officer.captainManeuver,
+      officerAbility: officer.officerAbility,
+      belowDeckAbility: officer.belowDeckAbility,
+    },
+    conflict: conflict
+      ? {
+          appearances: conflict.appearances.map((a) => ({
+            planItemLabel: a.planItemLabel,
+            intentKey: a.intentKey,
+            dockNumber: a.dockNumber,
+            source: a.source,
+            loadoutName: a.loadoutName,
+          })),
+        }
+      : null,
+    alternatives,
+    cascadePreview: {
+      loadoutMemberships: preview.loadoutMemberships,
+      awayMemberships: preview.awayMemberships,
+    },
+  };
+}
+
+async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): Promise<object> {
+  if (!ctx.loadoutStore) {
+    return { error: "Loadout system not available." };
+  }
+  if (!officerId.trim()) {
+    return { error: "Officer ID is required." };
+  }
+
+  // Get officer name for context
+  let officerName: string | null = null;
+  if (ctx.referenceStore) {
+    const officer = await ctx.referenceStore.getOfficer(officerId);
+    officerName = officer?.name ?? null;
+  }
+
+  const preview = await ctx.loadoutStore.previewDeleteOfficer(officerId);
+
+  return {
+    officerId,
+    officerName,
+    loadoutMemberships: preview.loadoutMemberships.map((l) => ({
+      loadoutId: l.loadoutId,
+      loadoutName: l.loadoutName,
+      shipName: l.shipName,
+    })),
+    awayMemberships: preview.awayMemberships.map((a) => ({
+      planItemId: a.planItemId,
+      planItemLabel: a.planItemLabel,
+    })),
+    totalAffectedLoadouts: preview.loadoutMemberships.length,
+    totalAffectedAwayTeams: preview.awayMemberships.length,
+    totalAffected: preview.loadoutMemberships.length + preview.awayMemberships.length,
   };
 }
