@@ -75,6 +75,8 @@ import { createLoadoutRoutes } from "./routes/loadouts.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createAdmiralRoutes } from "./routes/admiral.js";
 import { createTargetRoutes } from "./routes/targets.js";
+import { createCrewRoutes } from "./routes/crews.js";
+import { createReceiptRoutes } from "./routes/receipts.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -227,6 +229,8 @@ export function createApp(appState: AppState): express.Express {
   app.use(createDiagnosticQueryRoutes(appState));
   app.use(createLoadoutRoutes(appState));
   app.use(createTargetRoutes(appState));
+  app.use(createCrewRoutes(appState));
+  app.use(createReceiptRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
   app.get("/app/*", (_req, res) => {
