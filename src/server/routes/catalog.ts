@@ -15,7 +15,7 @@ import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
-import { syncDatamineOfficers } from "../services/datamine-ingest.js";
+import { syncDatamineOfficers, syncDatamineShips } from "../services/datamine-ingest.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
   const router = Router();
@@ -270,8 +270,11 @@ export function createCatalogRoutes(appState: AppState): Router {
     const store = appState.referenceStore!;
 
     try {
-      const result = await syncDatamineOfficers(store);
-      sendOk(res, result);
+      const [officerResult, shipResult] = await Promise.all([
+        syncDatamineOfficers(store),
+        syncDatamineShips(store),
+      ]);
+      sendOk(res, { ...officerResult, ...shipResult });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       sendFail(res, ErrorCode.INTERNAL_ERROR, `Datamine sync failed: ${msg}`, 502);

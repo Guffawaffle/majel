@@ -9,12 +9,13 @@
  * Replaces wiki-ingest.ts — no network dependency, no XML/wikitext parsing.
  * Data source: STFC Cheat Sheet (M86 1.4RC), 277 officers with structured
  * ability data, activity tags, and stable numeric game IDs.
+ * Also ingests ship data from data/raw-ships.json (1337wiki ship guide).
  */
 
 import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ReferenceStore, CreateReferenceOfficerInput } from "../stores/reference-store.js";
+import type { ReferenceStore, CreateReferenceOfficerInput, CreateReferenceShipInput } from "../stores/reference-store.js";
 import { log } from "../logger.js";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -133,5 +134,89 @@ export async function syncDatamineOfficers(
   return {
     officers: { ...result, total: inputs.length },
     source: "STFC Cheat Sheet (M86 1.4RC)",
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// Ship Ingest (1337wiki ship guide)
+// ═══════════════════════════════════════════════════════════
+
+interface RawShipAbility {
+  name: string;
+  description: string;
+}
+
+interface RawShip {
+  name: string;
+  link: string | null;
+  ability: RawShipAbility;
+  grade: number | null;
+  shipClass: string;
+  faction: string;
+  rarity: string;
+  warpRange: number[] | null;
+}
+
+/**
+ * Generate a stable ID from the ship name.
+ * Format: `raw:ship:<slug>` (e.g. `raw:ship:uss-enterprise`)
+ */
+function makeShipId(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/['']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `raw:ship:${slug}`;
+}
+
+/**
+ * Load the bundled raw-ships.json and bulk upsert into the reference store.
+ *
+ * @returns Summary with counts and metadata.
+ */
+export async function syncDatamineShips(
+  store: ReferenceStore,
+): Promise<{ ships: { created: number; updated: number; total: number }; source: string }> {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const projectRoot = join(moduleDir, "..", "..", "..");
+  const dataPath = join(projectRoot, "data", "raw-ships.json");
+
+  log.fleet.info({ path: dataPath }, "loading datamine ships");
+
+  const raw = await readFile(dataPath, "utf-8");
+  const rawShips: RawShip[] = JSON.parse(raw);
+
+  const inputs: CreateReferenceShipInput[] = rawShips
+    .filter((s) => s.name)
+    .map((s) => ({
+      id: makeShipId(s.name),
+      name: s.name,
+      shipClass: s.shipClass || null,
+      grade: s.grade ?? null,
+      rarity: s.rarity?.toLowerCase() ?? null,
+      faction: s.faction || null,
+      tier: null, // tier is per-player progression, not a static property
+      ability: (s.ability as unknown as Record<string, unknown>) ?? null,
+      warpRange: s.warpRange ?? null,
+      link: s.link ?? null,
+      source: "1337wiki",
+      sourceUrl: s.link ?? "https://star-trek-fleet-command.1337wiki.com/ship-guide/",
+      sourcePageId: null,
+      sourceRevisionId: null,
+      sourceRevisionTimestamp: null,
+    }));
+
+  log.fleet.info({ count: inputs.length }, "parsed datamine ships, starting bulk upsert");
+  const result = await store.bulkUpsertShips(inputs);
+
+  log.fleet.info(
+    { created: result.created, updated: result.updated, total: inputs.length },
+    "datamine ship sync complete",
+  );
+
+  return {
+    ships: { ...result, total: inputs.length },
+    source: "1337wiki ship guide",
   };
 }
