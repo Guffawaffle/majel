@@ -15,13 +15,11 @@
  */
 
 import { fetchCatalogOfficers, fetchCatalogShips, setOfficerOverlay, setShipOverlay } from 'api/catalog.js';
-import { fetchDocks } from 'api/docks.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
 let officers = [];
 let ships = [];
-let docks = [];          // dock data for ship→dock lookups (QA-001-9)
 let activeTab = 'officers'; // 'officers' | 'ships'
 let viewMode = 'list';   // 'list' | 'cards' (QA-001-8)
 let searchQuery = '';
@@ -52,14 +50,12 @@ export async function refresh() {
     if (loading) return;
     loading = true;
     try {
-        const [officerData, shipData, dockData] = await Promise.all([
+        const [officerData, shipData] = await Promise.all([
             fetchCatalogOfficers({ ownership: 'owned' }),
             fetchCatalogShips({ ownership: 'owned' }),
-            fetchDocks().catch(() => []),
         ]);
         officers = officerData;
         ships = shipData;
-        docks = dockData;
         render();
     } catch (err) {
         console.error("Fleet refresh failed:", err);
@@ -248,7 +244,6 @@ function renderOfficerRow(o) {
 
 function renderShipRow(s) {
     const targeted = s.target;
-    const dockNames = getShipDockNames(s.id);
     return `
         <div class="fleet-row ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(s.id)}">
             <div class="fleet-row-header">
@@ -257,7 +252,6 @@ function renderShipRow(s) {
                 ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
                 ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
-                ${dockNames.length > 0 ? `<span class="fleet-dock-badge" title="Assigned to: ${esc(dockNames.join(', '))}">⚓ ${esc(dockNames.join(', '))}</span>` : ''}
             </div>
             <div class="fleet-row-fields">
                 <label class="fleet-field">
@@ -320,7 +314,6 @@ function renderOfficerCard(o) {
 
 function renderShipCard(s) {
     const targeted = s.target;
-    const dockNames = getShipDockNames(s.id);
     return `
         <div class="fleet-card ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(s.id)}">
             <div class="fleet-card-header">
@@ -331,7 +324,6 @@ function renderShipCard(s) {
                 ${s.rarity ? `<span class="cat-badge rarity-${(s.rarity || '').toLowerCase()}">${esc(s.rarity)}</span>` : ''}
                 ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
                 ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
-                ${dockNames.length > 0 ? `<span class="fleet-dock-badge">⚓ ${esc(dockNames.join(', '))}</span>` : ''}
             </div>
             <div class="fleet-card-fields">
                 <label class="fleet-field">
@@ -378,17 +370,6 @@ function renderNoteField(item) {
                       rows="1">${esc(note)}</textarea>
         </div>
     `;
-}
-
-/** Look up which dock(s) a ship is assigned to (QA-001-9) */
-function getShipDockNames(shipId) {
-    const names = [];
-    for (const dock of docks) {
-        if (dock.ships && dock.ships.some(s => s.shipId === shipId)) {
-            names.push(dock.label || `Dock ${dock.dockNumber}`);
-        }
-    }
-    return names;
 }
 
 function renderEmpty() {

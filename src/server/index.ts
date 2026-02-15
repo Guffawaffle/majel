@@ -35,8 +35,6 @@ import { createMemoryService } from "./services/memory.js";
 import { createFrameStoreFactory } from "./stores/postgres-frame-store.js";
 import { createSettingsStore } from "./stores/settings.js";
 import { createSessionStore } from "./sessions.js";
-import { createDockStore } from "./stores/dock-store.js";
-import { createLoadoutStore } from "./stores/loadout-store.js";
 import { createCrewStore } from "./stores/crew-store.js";
 import { createReceiptStore } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
@@ -53,7 +51,6 @@ import { createPool, ensureAppRole } from "./db.js";
 import {
   type AppState,
   readFleetConfig,
-  readDockBriefing,
   buildMicroRunnerFromState,
 } from "./app-context.js";
 
@@ -68,10 +65,8 @@ import { createCoreRoutes } from "./routes/core.js";
 import { createChatRoutes } from "./routes/chat.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSessionRoutes } from "./routes/sessions.js";
-import { createDockRoutes } from "./routes/docks.js";
 import { createCatalogRoutes } from "./routes/catalog.js";
 import { createDiagnosticQueryRoutes } from "./routes/diagnostic-query.js";
-import { createLoadoutRoutes } from "./routes/loadouts.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createAdmiralRoutes } from "./routes/admiral.js";
 import { createTargetRoutes } from "./routes/targets.js";
@@ -100,8 +95,6 @@ const state: AppState = {
   frameStoreFactory: null,
   settingsStore: null,
   sessionStore: null,
-  dockStore: null,
-  loadoutStore: null,
   crewStore: null,
   receiptStore: null,
   behaviorStore: null,
@@ -224,10 +217,8 @@ export function createApp(appState: AppState): express.Express {
   app.use(createChatRoutes(appState));
   app.use(createSettingsRoutes(appState));
   app.use(createSessionRoutes(appState));
-  app.use(createDockRoutes(appState));
   app.use(createCatalogRoutes(appState));
   app.use(createDiagnosticQueryRoutes(appState));
-  app.use(createLoadoutRoutes(appState));
   app.use(createTargetRoutes(appState));
   app.use(createCrewRoutes(appState));
   app.use(createReceiptRoutes(appState));
@@ -308,29 +299,7 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
   }
 
-  // 2d. Initialize dock store (shares tables with reference)
-  try {
-    state.dockStore = await createDockStore(adminPool, pool);
-    const dockCounts = await state.dockStore.counts();
-    log.boot.info({ intents: dockCounts.intents, docks: dockCounts.docks }, "dock store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "dock store init failed");
-  }
-
-  // 2d2. Initialize loadout store (ADR-022 Phase 2)
-  try {
-    state.loadoutStore = await createLoadoutStore(adminPool, pool);
-    const loadoutCounts = await state.loadoutStore.counts();
-    log.boot.info({
-      intents: loadoutCounts.intents,
-      loadouts: loadoutCounts.loadouts,
-      planItems: loadoutCounts.planItems,
-    }, "loadout store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "loadout store init failed");
-  }
-
-  // 2d3. Initialize crew store (ADR-025 — unified composition model)
+  // 2d. Initialize crew store (ADR-025 — unified composition model)
   try {
     state.crewStore = await createCrewStore(adminPool, pool);
     log.boot.info("crew store online (ADR-025)");
@@ -440,13 +409,13 @@ async function boot(): Promise<void> {
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,
       await readFleetConfig(state.settingsStore),
-      await readDockBriefing(state.dockStore),
+      null, // dock briefing removed (ADR-025)
       runner,
       modelName,
       {
         referenceStore: state.referenceStore,
         overlayStore: state.overlayStore,
-        loadoutStore: state.loadoutStore,
+        crewStore: state.crewStore,
         targetStore: state.targetStore,
       },
     );
@@ -470,8 +439,6 @@ async function shutdown(): Promise<void> {
   // Close all store handles (no-ops since pool is shared)
   state.settingsStore?.close();
   state.sessionStore?.close();
-  state.dockStore?.close();
-  state.loadoutStore?.close();
   state.crewStore?.close();
   state.receiptStore?.close();
   state.behaviorStore?.close();

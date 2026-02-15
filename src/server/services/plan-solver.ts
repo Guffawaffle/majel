@@ -1,5 +1,5 @@
 /**
- * plan-solver.ts — Greedy Priority Queue Plan Solver (ADR-022 Phase 5)
+ * plan-solver.ts — Greedy Priority Queue Plan Solver (ADR-025)
  *
  * Majel — STFC Fleet Intelligence System
  *
@@ -14,29 +14,51 @@
  * 4. Produce explanations for every decision
  *
  * Key requirement: the solver EXPLAINS, it doesn't just assign.
+ *
+ * Migrated from LoadoutStore/loadout-types (ADR-022) to CrewStore/crew-types (ADR-025).
  */
 
 import type {
-  PlanItemWithContext,
-  DockWithAssignment,
-  LoadoutWithMembers,
+  PlanItem,
+  Dock,
+  Loadout,
+  LoadoutWithRefs,
   OfficerConflict,
-  SolverAssignment,
-  SolverResult,
-} from "../types/loadout-types.js";
+} from "../types/crew-types.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
-interface LoadoutStore {
-  listPlanItems(filters?: { active?: boolean }): Promise<PlanItemWithContext[]>;
-  listDocks(): Promise<DockWithAssignment[]>;
-  listLoadouts(filters?: { active?: boolean }): Promise<LoadoutWithMembers[]>;
-  getOfficerConflicts(): Promise<OfficerConflict[]>;
+/** Solver assignment result (ADR-025 shape) */
+export interface SolverAssignment {
+  planItemId: number;
+  planItemLabel: string | null;
+  loadoutId: number | null;
+  loadoutName: string | null;
+  dockNumber: number | null;
+  action: "assigned" | "queued" | "conflict" | "unchanged";
+  explanation: string;
+}
+
+/** Full solver result with explanations and validation. */
+export interface SolverResult {
+  assignments: SolverAssignment[];
+  applied: boolean;
+  conflicts: OfficerConflict[];
+  summary: string;
+  warnings: string[];
+}
+
+interface CrewStoreSlice {
+  listPlanItems(filters?: { active?: boolean }): Promise<PlanItem[]>;
+  listDocks(): Promise<Dock[]>;
+  listLoadouts(filters?: { active?: boolean }): Promise<Loadout[]>;
+  getLoadout(id: number): Promise<LoadoutWithRefs | null>;
+  getEffectiveDockState(): Promise<{ conflicts: OfficerConflict[] }>;
   updatePlanItem(id: number, fields: {
     dockNumber?: number | null;
     loadoutId?: number | null;
     isActive?: boolean;
-  }): Promise<PlanItemWithContext | null>;
+  }): Promise<PlanItem | null>;
 }
 
 interface SolverOptions {
@@ -49,12 +71,12 @@ interface SolverOptions {
 /**
  * Run the greedy priority queue solver.
  *
- * @param store — loadout store for data access + writes
+ * @param store — crew store for data access + writes
  * @param opts — { apply: true } to write assignments to DB
  * @returns SolverResult with assignments, explanations, and summary
  */
 export async function solvePlan(
-  store: LoadoutStore,
+  store: CrewStoreSlice,
   opts: SolverOptions = {},
 ): Promise<SolverResult> {
   const apply = opts.apply === true;
@@ -76,23 +98,28 @@ export async function solvePlan(
   const assignments: SolverAssignment[] = [];
   const warnings: string[] = [];
 
+  // Build loadout→bridge officer mapping (need full refs for conflict detection)
+  const loadoutBridgeMap = new Map<number, string[]>();
+  for (const l of allLoadouts) {
+    const full = await store.getLoadout(l.id);
+    if (full?.bridgeCore) {
+      loadoutBridgeMap.set(l.id, full.bridgeCore.members.map(m => m.officerId));
+    }
+  }
+
   // 4. Greedy assignment loop
   for (const pi of sorted) {
-    const label = pi.label || pi.loadoutName || `Plan item #${pi.id}`;
+    const label = pi.label || `Plan item #${pi.id}`;
     const loadout = allLoadouts.find(l => l.id === pi.loadoutId);
-    const loadoutName = loadout?.name || pi.loadoutName || null;
+    const loadoutName = loadout?.name || null;
 
     // Check for officer conflicts in this plan item's loadout
-    const memberOfficerIds = (loadout?.members || pi.members || []).map(m => m.officerId);
+    const memberOfficerIds = pi.loadoutId
+      ? (loadoutBridgeMap.get(pi.loadoutId) || [])
+      : [];
     const conflictingOfficers = memberOfficerIds.filter(oid => usedOfficers.has(oid));
 
     if (conflictingOfficers.length > 0) {
-      // Officer conflict — cannot assign without double-booking
-      const conflictNames = conflictingOfficers.map(oid => {
-        const member = (loadout?.members || pi.members || []).find(m => m.officerId === oid);
-        return member?.officerName || oid;
-      });
-
       assignments.push({
         planItemId: pi.id,
         planItemLabel: label,
@@ -100,15 +127,15 @@ export async function solvePlan(
         loadoutName,
         dockNumber: null,
         action: "conflict",
-        explanation: `Cannot assign ${label} — officer conflict: ${conflictNames.join(", ")} already assigned to higher-priority loadout(s). Suggestion: swap officers or run sequentially.`,
+        explanation: `Cannot assign ${label} — officer conflict: ${conflictingOfficers.join(", ")} already assigned to higher-priority loadout(s). Suggestion: swap officers or run sequentially.`,
       });
 
-      warnings.push(`Officer conflict on ${label}: ${conflictNames.join(", ")}`);
+      warnings.push(`Officer conflict on ${label}: ${conflictingOfficers.join(", ")}`);
       continue;
     }
 
     // No dock needed for away teams (dockNumber already null by design)
-    if (pi.dockNumber == null && pi.awayMembers?.length) {
+    if (pi.dockNumber == null && (pi.awayOfficers?.length ?? 0) > 0) {
       // Away team — no dock assignment needed
       memberOfficerIds.forEach(oid => usedOfficers.add(oid));
       assignments.push({
@@ -181,9 +208,10 @@ export async function solvePlan(
   }
 
   // 5. Post-solve conflict check
-  const conflicts = apply
-    ? await store.getOfficerConflicts()
-    : extractPredictedConflicts(assignments, sorted);
+  const effectiveState = apply
+    ? await store.getEffectiveDockState()
+    : null;
+  const conflicts = effectiveState?.conflicts ?? [];
 
   // 6. Build summary
   const assigned = assignments.filter(a => a.action === "assigned").length;
@@ -223,52 +251,4 @@ function findFirstAvailableDock(
     if (available.has(n)) return n;
   }
   return null;
-}
-
-/**
- * Build predicted officer conflicts from solver assignments (dry-run mode).
- * Groups officers who appear in multiple assigned/unchanged plan items.
- */
-function extractPredictedConflicts(
-  assignments: SolverAssignment[],
-  planItems: PlanItemWithContext[],
-): OfficerConflict[] {
-  const officerMap = new Map<string, { officerName: string; appearances: OfficerConflict["appearances"] }>();
-
-  for (const a of assignments) {
-    if (a.action === "conflict" || a.action === "queued") continue;
-    const pi = planItems.find(p => p.id === a.planItemId);
-    if (!pi) continue;
-
-    const members = pi.members || [];
-    for (const m of members) {
-      const existing = officerMap.get(m.officerId);
-      const appearance = {
-        planItemId: pi.id,
-        planItemLabel: pi.label,
-        intentKey: pi.intentKey,
-        dockNumber: a.dockNumber,
-        source: "loadout" as const,
-        loadoutName: a.loadoutName,
-      };
-
-      if (existing) {
-        existing.appearances.push(appearance);
-      } else {
-        officerMap.set(m.officerId, {
-          officerName: m.officerName || m.officerId,
-          appearances: [appearance],
-        });
-      }
-    }
-  }
-
-  // Only return officers appearing in 2+ plan items
-  return Array.from(officerMap.entries())
-    .filter(([, v]) => v.appearances.length > 1)
-    .map(([officerId, v]) => ({
-      officerId,
-      officerName: v.officerName,
-      appearances: v.appearances,
-    }));
 }

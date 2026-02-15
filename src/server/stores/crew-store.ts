@@ -136,6 +136,9 @@ interface CrewStore {
   resolveVariant(baseLoadoutId: number, variantId: number): Promise<ResolvedLoadout>;
   getEffectiveDockState(): Promise<EffectiveDockState>;
 
+  // ── Counts ────────────────────────────────────────────
+  counts(): Promise<{ bridgeCores: number; loadouts: number; planItems: number; docks: number }>;
+
   // ── Lifecycle ─────────────────────────────────────────
   close(): void;
 }
@@ -1066,6 +1069,18 @@ export async function createCrewStore(adminPool: Pool, runtimePool?: Pool): Prom
       }
 
       return { docks: dockEntries, awayTeams, conflicts };
+    },
+
+    // ── Counts ──────────────────────────────────────────────
+    async counts() {
+      const result = await pool.query(
+        `SELECT
+           (SELECT COUNT(*) FROM bridge_cores)::int AS "bridgeCores",
+           (SELECT COUNT(*) FROM loadouts)::int AS "loadouts",
+           (SELECT COUNT(*) FROM plan_items)::int AS "planItems",
+           (SELECT COUNT(*) FROM docks)::int AS "docks"`,
+      );
+      return result.rows[0] as { bridgeCores: number; loadouts: number; planItems: number; docks: number };
     },
 
     // ── Lifecycle ───────────────────────────────────────────

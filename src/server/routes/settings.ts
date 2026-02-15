@@ -4,7 +4,7 @@
 
 import { Router } from "express";
 import type { AppState } from "../app-context.js";
-import { readFleetConfig, readDockBriefing } from "../app-context.js";
+import { readFleetConfig } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { getCategories } from "../stores/settings.js";
@@ -77,7 +77,7 @@ export function createSettingsRoutes(appState: AppState): Router {
       appState.geminiEngine = createGeminiEngine(
         appState.config.geminiApiKey,
         await readFleetConfig(appState.settingsStore),
-        await readDockBriefing(appState.dockStore),
+        null, // dock briefing removed (ADR-025)
       );
       log.boot.info("gemini engine refreshed with updated fleet config");
     }

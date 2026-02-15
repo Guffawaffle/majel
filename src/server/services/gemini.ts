@@ -338,7 +338,7 @@ export function createGeminiEngine(
 
   // Build tools array if tool context is available and has any stores
   const hasToolContext = toolContext &&
-    (toolContext.referenceStore || toolContext.overlayStore || toolContext.loadoutStore);
+    (toolContext.referenceStore || toolContext.overlayStore || toolContext.crewStore);
   const tools = hasToolContext
     ? [{ functionDeclarations: FLEET_TOOL_DECLARATIONS }]
     : undefined;

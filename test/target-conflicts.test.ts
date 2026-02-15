@@ -12,8 +12,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { detectTargetConflicts, type ResourceConflict } from "../src/server/services/target-conflicts.js";
 import type { Target, TargetStore } from "../src/server/stores/target-store.js";
-import type { LoadoutStore } from "../src/server/stores/loadout-store.js";
-import type { LoadoutWithMembers } from "../src/server/types/loadout-types.js";
+import type { CrewStore } from "../src/server/stores/crew-store.js";
+import type { LoadoutWithRefs, BridgeSlot, OfficerConflict, EffectiveDockState } from "../src/server/types/crew-types.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -37,10 +37,14 @@ function makeTarget(overrides: Partial<Target> = {}): Target {
   };
 }
 
-function makeLoadout(id: number, name: string, members: Array<{ officerId: string; officerName: string; roleType: "bridge" | "below_deck" }>): LoadoutWithMembers {
+const SLOTS: BridgeSlot[] = ["captain", "bridge_1", "bridge_2"];
+
+function makeLoadout(id: number, name: string, members: Array<{ officerId: string; slot?: BridgeSlot }>): LoadoutWithRefs {
   return {
     id,
     shipId: `ship-${id}`,
+    bridgeCoreId: id,
+    belowDeckPolicyId: null,
     name,
     priority: 1,
     isActive: true,
@@ -49,15 +53,21 @@ function makeLoadout(id: number, name: string, members: Array<{ officerId: strin
     notes: null,
     createdAt: "2024-01-01",
     updatedAt: "2024-01-01",
-    shipName: `Ship ${id}`,
-    members: members.map((m, i) => ({
-      id: i + 1,
-      loadoutId: id,
-      officerId: m.officerId,
-      officerName: m.officerName,
-      roleType: m.roleType,
-      slot: null,
-    })),
+    bridgeCore: members.length > 0 ? {
+      id,
+      name: `${name} Bridge`,
+      notes: null,
+      createdAt: "2024-01-01",
+      updatedAt: "2024-01-01",
+      members: members.map((m, i) => ({
+        id: i + 1,
+        bridgeCoreId: id,
+        officerId: m.officerId,
+        slot: m.slot ?? SLOTS[i] ?? "captain",
+      })),
+    } : null,
+    belowDeckPolicy: null,
+    variant: null,
   };
 }
 
@@ -75,24 +85,30 @@ function createMockTargetStore(targets: Target[]): TargetStore {
   } as unknown as TargetStore;
 }
 
-function createMockLoadoutStore(overrides: {
-  getLoadout?: (id: number) => Promise<LoadoutWithMembers | null>;
+function createMockCrewStore(overrides: {
+  getLoadout?: (id: number) => Promise<LoadoutWithRefs | null>;
   listPlanItems?: ReturnType<typeof vi.fn>;
-  getOfficerConflicts?: ReturnType<typeof vi.fn>;
-} = {}): LoadoutStore {
+  getEffectiveDockState?: ReturnType<typeof vi.fn>;
+} = {}): CrewStore {
+  const defaultEffectiveState: EffectiveDockState = { docks: [], awayTeams: [], conflicts: [] };
   return {
     getLoadout: overrides.getLoadout ?? vi.fn().mockResolvedValue(null),
     listPlanItems: overrides.listPlanItems ?? vi.fn().mockResolvedValue([]),
-    getOfficerConflicts: overrides.getOfficerConflicts ?? vi.fn().mockResolvedValue([]),
-    // Unused methods
-    listIntents: vi.fn(), getIntent: vi.fn(), createIntent: vi.fn(), deleteIntent: vi.fn(),
+    getEffectiveDockState: overrides.getEffectiveDockState ?? vi.fn().mockResolvedValue(defaultEffectiveState),
+    // Unused methods (stubbed for type compatibility)
     listLoadouts: vi.fn(), createLoadout: vi.fn(), updateLoadout: vi.fn(), deleteLoadout: vi.fn(),
-    setLoadoutMembers: vi.fn(), listDocks: vi.fn(), getDock: vi.fn(), upsertDock: vi.fn(),
-    deleteDock: vi.fn(), getPlanItem: vi.fn(), createPlanItem: vi.fn(), updatePlanItem: vi.fn(),
-    deletePlanItem: vi.fn(), setPlanAwayMembers: vi.fn(), validatePlan: vi.fn(),
-    findLoadoutsForIntent: vi.fn(), previewDeleteLoadout: vi.fn(), previewDeleteDock: vi.fn(),
-    previewDeleteOfficer: vi.fn(), counts: vi.fn(), close: vi.fn(),
-  } as unknown as LoadoutStore;
+    listBridgeCores: vi.fn(), getBridgeCore: vi.fn(), createBridgeCore: vi.fn(),
+    updateBridgeCore: vi.fn(), deleteBridgeCore: vi.fn(), setBridgeCoreMembers: vi.fn(),
+    listBelowDeckPolicies: vi.fn(), getBelowDeckPolicy: vi.fn(), createBelowDeckPolicy: vi.fn(),
+    updateBelowDeckPolicy: vi.fn(), deleteBelowDeckPolicy: vi.fn(),
+    listVariants: vi.fn(), getVariant: vi.fn(), createVariant: vi.fn(), updateVariant: vi.fn(), deleteVariant: vi.fn(),
+    listDocks: vi.fn(), getDock: vi.fn(), upsertDock: vi.fn(), deleteDock: vi.fn(),
+    getPlanItem: vi.fn(), createPlanItem: vi.fn(), updatePlanItem: vi.fn(), deletePlanItem: vi.fn(),
+    listFleetPresets: vi.fn(), getFleetPreset: vi.fn(), createFleetPreset: vi.fn(),
+    updateFleetPreset: vi.fn(), deleteFleetPreset: vi.fn(), setFleetPresetSlots: vi.fn(),
+    listReservations: vi.fn(), getReservation: vi.fn(), setReservation: vi.fn(), deleteReservation: vi.fn(),
+    resolveVariant: vi.fn(), counts: vi.fn(), close: vi.fn(),
+  } as unknown as CrewStore;
 }
 
 // ─── Tests ──────────────────────────────────────────────────
@@ -101,23 +117,23 @@ describe("detectTargetConflicts", () => {
   describe("no conflicts", () => {
     it("returns empty array when no active targets exist", async () => {
       const ts = createMockTargetStore([]);
-      const ls = createMockLoadoutStore();
+      const ls = createMockCrewStore();
       const result = await detectTargetConflicts(ts, ls);
       expect(result).toEqual([]);
     });
 
     it("returns empty array when crew targets have different officers", async () => {
       const loadoutA = makeLoadout(10, "Crew Alpha", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const loadoutB = makeLoadout(20, "Crew Beta", [
-        { officerId: "officer-spock", officerName: "Spock", roleType: "bridge" },
+        { officerId: "officer-spock" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10, reason: "Crew A" }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20, reason: "Crew B" }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;
@@ -133,7 +149,7 @@ describe("detectTargetConflicts", () => {
         makeTarget({ id: 1, targetType: "officer", refId: "officer-kirk" }),
         makeTarget({ id: 2, targetType: "officer", refId: "officer-spock" }),
       ]);
-      const ls = createMockLoadoutStore();
+      const ls = createMockCrewStore();
       const result = await detectTargetConflicts(ts, ls);
       expect(result).toEqual([]);
     });
@@ -142,18 +158,18 @@ describe("detectTargetConflicts", () => {
   describe("officer contention", () => {
     it("detects when two crew targets share the same officer", async () => {
       const loadoutA = makeLoadout(10, "PvP Crew", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
-        { officerId: "officer-spock", officerName: "Spock", roleType: "below_deck" },
+        { officerId: "officer-kirk" },
+        { officerId: "officer-spock", slot: "bridge_1" },
       ]);
       const loadoutB = makeLoadout(20, "Armada Crew", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
-        { officerId: "officer-uhura", officerName: "Uhura", roleType: "below_deck" },
+        { officerId: "officer-kirk" },
+        { officerId: "officer-uhura", slot: "bridge_1" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10, reason: "PvP" }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20, reason: "Armada" }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;
@@ -168,25 +184,25 @@ describe("detectTargetConflicts", () => {
       expect(conflict.conflictType).toBe("officer");
       expect(conflict.resource).toBe("officer-kirk");
       expect(conflict.severity).toBe("blocking"); // both bridge
-      expect(conflict.description).toContain("Kirk");
+      expect(conflict.description).toContain("officer-kirk");
       expect(conflict.description).toContain("PvP Crew");
       expect(conflict.description).toContain("Armada Crew");
       expect(conflict.targetA.id).toBe(1);
       expect(conflict.targetB?.id).toBe(2);
     });
 
-    it("marks bridge+below_deck overlap as competing (not blocking)", async () => {
+    it("marks captain+non-captain overlap as competing (not blocking)", async () => {
       const loadoutA = makeLoadout(10, "Crew A", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const loadoutB = makeLoadout(20, "Crew B", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "below_deck" },
+        { officerId: "officer-kirk", slot: "bridge_1" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10 }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20 }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;
@@ -201,18 +217,18 @@ describe("detectTargetConflicts", () => {
 
     it("detects multiple officers shared between same targets", async () => {
       const loadoutA = makeLoadout(10, "Crew A", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
-        { officerId: "officer-spock", officerName: "Spock", roleType: "below_deck" },
+        { officerId: "officer-kirk" },
+        { officerId: "officer-spock", slot: "bridge_1" },
       ]);
       const loadoutB = makeLoadout(20, "Crew B", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
-        { officerId: "officer-spock", officerName: "Spock", roleType: "below_deck" },
+        { officerId: "officer-kirk" },
+        { officerId: "officer-spock", slot: "bridge_1" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10 }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20 }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;
@@ -228,20 +244,20 @@ describe("detectTargetConflicts", () => {
 
     it("handles three-way officer contention across three targets", async () => {
       const loadoutA = makeLoadout(10, "Crew A", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const loadoutB = makeLoadout(20, "Crew B", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const loadoutC = makeLoadout(30, "Crew C", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "below_deck" },
+        { officerId: "officer-kirk", slot: "bridge_1" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10 }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20 }),
         makeTarget({ id: 3, targetType: "crew", refId: null, loadoutId: 30 }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;
@@ -268,7 +284,7 @@ describe("detectTargetConflicts", () => {
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10, reason: "Mining" }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20, reason: "PvP" }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;
@@ -278,14 +294,14 @@ describe("detectTargetConflicts", () => {
           {
             id: 100, intentKey: "mining", label: "Mine Lat", loadoutId: 10,
             dockNumber: 3, priority: 1, isActive: true, notes: null,
-            intentLabel: null, loadoutName: "Crew A", shipId: null, shipName: null,
-            dockLabel: null, members: [], awayMembers: [],
+            variantId: null, awayOfficers: null, source: "manual",
+            createdAt: "2024-01-01", updatedAt: "2024-01-01",
           },
           {
             id: 200, intentKey: "pvp", label: "Arena", loadoutId: 20,
             dockNumber: 3, priority: 1, isActive: true, notes: null,
-            intentLabel: null, loadoutName: "Crew B", shipId: null, shipName: null,
-            dockLabel: null, members: [], awayMembers: [],
+            variantId: null, awayOfficers: null, source: "manual",
+            createdAt: "2024-01-01", updatedAt: "2024-01-01",
           },
         ]),
       });
@@ -305,7 +321,7 @@ describe("detectTargetConflicts", () => {
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10 }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20 }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;
@@ -314,15 +330,15 @@ describe("detectTargetConflicts", () => {
         listPlanItems: vi.fn().mockResolvedValue([
           {
             id: 100, loadoutId: 10, dockNumber: 1, priority: 1, isActive: true,
-            intentKey: null, label: null, notes: null, intentLabel: null,
-            loadoutName: null, shipId: null, shipName: null, dockLabel: null,
-            members: [], awayMembers: [],
+            intentKey: null, label: null, notes: null, variantId: null,
+            awayOfficers: null, source: "manual",
+            createdAt: "2024-01-01", updatedAt: "2024-01-01",
           },
           {
             id: 200, loadoutId: 20, dockNumber: 2, priority: 1, isActive: true,
-            intentKey: null, label: null, notes: null, intentLabel: null,
-            loadoutName: null, shipId: null, shipName: null, dockLabel: null,
-            members: [], awayMembers: [],
+            intentKey: null, label: null, notes: null, variantId: null,
+            awayOfficers: null, source: "manual",
+            createdAt: "2024-01-01", updatedAt: "2024-01-01",
           },
         ]),
       });
@@ -338,17 +354,21 @@ describe("detectTargetConflicts", () => {
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "officer", refId: "officer-kirk", reason: "Promote Kirk" }),
       ]);
-      const ls = createMockLoadoutStore({
-        getOfficerConflicts: vi.fn().mockResolvedValue([
-          {
-            officerId: "officer-kirk",
-            officerName: "Kirk",
-            appearances: [
-              { planItemId: 1, planItemLabel: "PvP", intentKey: "pvp", dockNumber: 1, source: "loadout", loadoutName: "PvP Crew" },
-              { planItemId: 2, planItemLabel: "Mining", intentKey: "mining", dockNumber: 2, source: "loadout", loadoutName: "Mining Crew" },
-            ],
-          },
-        ]),
+      const ls = createMockCrewStore({
+        getEffectiveDockState: vi.fn().mockResolvedValue({
+          docks: [],
+          awayTeams: [],
+          conflicts: [
+            {
+              officerId: "officer-kirk",
+              officerName: "Kirk",
+              locations: [
+                { type: "bridge", entityId: 1, entityName: "PvP Crew" },
+                { type: "bridge", entityId: 2, entityName: "Mining Crew" },
+              ],
+            },
+          ],
+        }),
       });
 
       const result = await detectTargetConflicts(ts, ls);
@@ -364,13 +384,13 @@ describe("detectTargetConflicts", () => {
 
     it("detects when officer target is used in a crew target", async () => {
       const loadout = makeLoadout(10, "PvP Crew", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "officer", refId: "officer-kirk", reason: "Promote Kirk" }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 10, reason: "PvP Goal" }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockResolvedValue(loadout),
       });
 
@@ -385,24 +405,28 @@ describe("detectTargetConflicts", () => {
 
     it("detects both cascade types for the same officer", async () => {
       const loadout = makeLoadout(10, "PvP Crew", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "officer", refId: "officer-kirk", reason: "Promote Kirk" }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 10, reason: "PvP Goal" }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockResolvedValue(loadout),
-        getOfficerConflicts: vi.fn().mockResolvedValue([
-          {
-            officerId: "officer-kirk",
-            officerName: "Kirk",
-            appearances: [
-              { planItemId: 1, planItemLabel: "PvP", intentKey: null, dockNumber: 1, source: "loadout", loadoutName: "PvP Crew" },
-              { planItemId: 2, planItemLabel: "Mining", intentKey: null, dockNumber: 2, source: "loadout", loadoutName: "Mining Crew" },
-            ],
-          },
-        ]),
+        getEffectiveDockState: vi.fn().mockResolvedValue({
+          docks: [],
+          awayTeams: [],
+          conflicts: [
+            {
+              officerId: "officer-kirk",
+              officerName: "Kirk",
+              locations: [
+                { type: "bridge", entityId: 1, entityName: "PvP Crew" },
+                { type: "bridge", entityId: 2, entityName: "Mining Crew" },
+              ],
+            },
+          ],
+        }),
       });
 
       const result = await detectTargetConflicts(ts, ls);
@@ -415,16 +439,16 @@ describe("detectTargetConflicts", () => {
   describe("mixed conflict types", () => {
     it("detects officer + dock conflicts in the same analysis", async () => {
       const loadoutA = makeLoadout(10, "PvP Crew", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const loadoutB = makeLoadout(20, "Armada Crew", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10 }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20 }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;
@@ -433,15 +457,15 @@ describe("detectTargetConflicts", () => {
         listPlanItems: vi.fn().mockResolvedValue([
           {
             id: 100, loadoutId: 10, dockNumber: 1, priority: 1, isActive: true,
-            intentKey: null, label: "PvP Plan", notes: null, intentLabel: null,
-            loadoutName: "PvP Crew", shipId: null, shipName: null, dockLabel: null,
-            members: [], awayMembers: [],
+            intentKey: null, label: "PvP Plan", notes: null, variantId: null,
+            awayOfficers: null, source: "manual",
+            createdAt: "2024-01-01", updatedAt: "2024-01-01",
           },
           {
             id: 200, loadoutId: 20, dockNumber: 1, priority: 1, isActive: true,
-            intentKey: null, label: "Armada Plan", notes: null, intentLabel: null,
-            loadoutName: "Armada Crew", shipId: null, shipName: null, dockLabel: null,
-            members: [], awayMembers: [],
+            intentKey: null, label: "Armada Plan", notes: null, variantId: null,
+            awayOfficers: null, source: "manual",
+            createdAt: "2024-01-01", updatedAt: "2024-01-01",
           },
         ]),
       });
@@ -460,7 +484,7 @@ describe("detectTargetConflicts", () => {
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 999, reason: "Missing" }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 888, reason: "Also missing" }),
       ]);
-      const ls = createMockLoadoutStore();
+      const ls = createMockCrewStore();
       const result = await detectTargetConflicts(ts, ls);
       expect(result).toEqual([]);
     });
@@ -470,23 +494,23 @@ describe("detectTargetConflicts", () => {
         makeTarget({ id: 1, targetType: "ship", refId: "ship-enterprise" }),
         makeTarget({ id: 2, targetType: "ship", refId: "ship-voyager" }),
       ]);
-      const ls = createMockLoadoutStore();
+      const ls = createMockCrewStore();
       const result = await detectTargetConflicts(ts, ls);
       expect(result).toEqual([]);
     });
 
     it("returns correct structure for each conflict", async () => {
       const loadoutA = makeLoadout(10, "A", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const loadoutB = makeLoadout(20, "B", [
-        { officerId: "officer-kirk", officerName: "Kirk", roleType: "bridge" },
+        { officerId: "officer-kirk" },
       ]);
       const ts = createMockTargetStore([
         makeTarget({ id: 1, targetType: "crew", refId: null, loadoutId: 10 }),
         makeTarget({ id: 2, targetType: "crew", refId: null, loadoutId: 20 }),
       ]);
-      const ls = createMockLoadoutStore({
+      const ls = createMockCrewStore({
         getLoadout: vi.fn().mockImplementation(async (id: number) => {
           if (id === 10) return loadoutA;
           if (id === 20) return loadoutB;

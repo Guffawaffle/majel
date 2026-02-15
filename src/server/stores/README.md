@@ -13,9 +13,8 @@ Every store exports a `create*Store(pool)` factory function that:
 | Store | Domain | Tables |
 |-------|--------|--------|
 | `behavior-store.ts` | Behavioral rules | `behavioral_rules` |
-| `dock-store.ts` | Docks + assignments | `docks`, `dock_ships`, `dock_intents` |
+| `crew-store.ts` | Crew composition (ADR-025) | `bridge_cores`, `loadouts`, `plan_items`, `docks` |
 | `invite-store.ts` | Invite codes | `invites` |
-| `loadout-store.ts` | Loadouts + members | `loadouts`, `loadout_members` |
 | `overlay-store.ts` | User data overlays | `officer_overlays`, `ship_overlays` |
 | `postgres-frame-store.ts` | Lex memory frames | `frames` |
 | `reference-store.ts` | Reference data (wiki) | `ref_officers`, `ref_ships` |

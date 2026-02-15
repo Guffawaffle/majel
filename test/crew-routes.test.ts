@@ -37,8 +37,6 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     frameStoreFactory: null,
     settingsStore: null,
     sessionStore: null,
-    dockStore: null,
-    loadoutStore: null,
     crewStore: null,
     receiptStore: null,
     behaviorStore: null,

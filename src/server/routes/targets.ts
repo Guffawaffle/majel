@@ -74,8 +74,8 @@ export function createTargetRoutes(appState: AppState): Router {
   router.get("/api/targets/conflicts", async (_req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
-    if (!appState.loadoutStore) return sendFail(res, ErrorCode.LOADOUT_STORE_NOT_AVAILABLE, "Loadout store not available", 503);
-    const conflicts = await detectTargetConflicts(store, appState.loadoutStore);
+    if (!appState.crewStore) return sendFail(res, ErrorCode.LOADOUT_STORE_NOT_AVAILABLE, "Crew store not available", 503);
+    const conflicts = await detectTargetConflicts(store, appState.crewStore);
     sendOk(res, { conflicts, total: conflicts.length });
   });
 

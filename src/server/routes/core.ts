@@ -45,7 +45,7 @@ export function createCoreRoutes(appState: AppState): Router {
       gemini: appState.geminiEngine ? "connected" : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
-      dockStore: await safeCounts(appState.dockStore, "dockStore"),
+      crewStore: await safeCounts(appState.crewStore, "crewStore"),
       referenceStore: await safeCounts(appState.referenceStore, "referenceStore"),
       overlayStore: await safeCounts(appState.overlayStore, "overlayStore"),
     });
@@ -160,9 +160,9 @@ export function createCoreRoutes(appState: AppState): Router {
         if (!appState.sessionStore) return { status: "not configured" };
         return { status: "active", count: await appState.sessionStore.count() };
       })(),
-      dockStore: await (async () => {
-        if (!appState.dockStore) return { status: "not configured" };
-        return { status: "active", ...await appState.dockStore.counts() };
+      crewStore: await (async () => {
+        if (!appState.crewStore) return { status: "not configured" };
+        return { status: "active", ...await appState.crewStore.counts() };
       })(),
       referenceStore: await (async () => {
         if (!appState.referenceStore) return { status: "not configured" };

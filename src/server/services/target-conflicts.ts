@@ -10,15 +10,17 @@
  * 3. Crew cascade — officer targets whose officer is already in multiple active loadouts
  *
  * Material contention is deferred until cost/material data is imported (stfc.space).
+ *
+ * Migrated from LoadoutStore (ADR-022) to CrewStore (ADR-025).
  */
 
 import type { Target, TargetStore } from "../stores/target-store.js";
-import type { LoadoutStore } from "../stores/loadout-store.js";
+import type { CrewStore } from "../stores/crew-store.js";
 import type {
-  LoadoutWithMembers,
-  PlanItemWithContext,
+  LoadoutWithRefs,
+  PlanItem,
   OfficerConflict,
-} from "../types/loadout-types.js";
+} from "../types/crew-types.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -54,7 +56,7 @@ export interface ResourceConflict {
  */
 export async function detectTargetConflicts(
   targetStore: TargetStore,
-  loadoutStore: LoadoutStore,
+  crewStore: CrewStore,
 ): Promise<ResourceConflict[]> {
   const conflicts: ResourceConflict[] = [];
 
@@ -65,11 +67,11 @@ export async function detectTargetConflicts(
   const crewTargets = targets.filter((t) => t.targetType === "crew" && t.loadoutId != null);
   const officerTargets = targets.filter((t) => t.targetType === "officer" && t.refId);
 
-  // Load loadouts for crew targets
-  const loadoutMap = new Map<number, LoadoutWithMembers>();
+  // Load loadouts for crew targets (ADR-025: LoadoutWithRefs with bridgeCore)
+  const loadoutMap = new Map<number, LoadoutWithRefs>();
   for (const t of crewTargets) {
     if (t.loadoutId != null && !loadoutMap.has(t.loadoutId)) {
-      const loadout = await loadoutStore.getLoadout(t.loadoutId);
+      const loadout = await crewStore.getLoadout(t.loadoutId);
       if (loadout) loadoutMap.set(t.loadoutId, loadout);
     }
   }
@@ -78,12 +80,12 @@ export async function detectTargetConflicts(
   detectOfficerContention(crewTargets, loadoutMap, conflicts);
 
   // 2. Dock/slot contention between crew targets
-  const planItems = await loadoutStore.listPlanItems({ active: true });
+  const planItems = await crewStore.listPlanItems({ active: true });
   detectDockContention(crewTargets, loadoutMap, planItems, conflicts);
 
   // 3. Officer cascade — officer targets whose officer is already conflicted
-  const officerConflicts = await loadoutStore.getOfficerConflicts();
-  detectOfficerCascade(officerTargets, officerConflicts, crewTargets, loadoutMap, conflicts);
+  const effectiveState = await crewStore.getEffectiveDockState();
+  detectOfficerCascade(officerTargets, effectiveState.conflicts, crewTargets, loadoutMap, conflicts);
 
   return conflicts;
 }
@@ -95,22 +97,22 @@ export async function detectTargetConflicts(
  */
 function detectOfficerContention(
   crewTargets: Target[],
-  loadoutMap: Map<number, LoadoutWithMembers>,
+  loadoutMap: Map<number, LoadoutWithRefs>,
   conflicts: ResourceConflict[],
 ): void {
-  // Build officer → targets mapping
-  const officerToTargets = new Map<string, Array<{ target: Target; roleType: string }>>();
+  // Build officer → targets mapping (using bridge core members)
+  const officerToTargets = new Map<string, Array<{ target: Target; slot: string }>>();
 
   for (const target of crewTargets) {
     const loadout = target.loadoutId != null ? loadoutMap.get(target.loadoutId) : null;
-    if (!loadout) continue;
+    if (!loadout?.bridgeCore) continue;
 
-    for (const member of loadout.members) {
+    for (const member of loadout.bridgeCore.members) {
       const key = member.officerId;
       if (!officerToTargets.has(key)) officerToTargets.set(key, []);
       officerToTargets.get(key)!.push({
         target,
-        roleType: member.roleType,
+        slot: member.slot,
       });
     }
   }
@@ -126,14 +128,9 @@ function detectOfficerContention(
         const b = entries[j];
         const loadoutA = a.target.loadoutId != null ? loadoutMap.get(a.target.loadoutId) : null;
         const loadoutB = b.target.loadoutId != null ? loadoutMap.get(b.target.loadoutId) : null;
-        const officerName = loadoutA?.members.find((m) => m.officerId === officerId)?.officerName
-          ?? loadoutB?.members.find((m) => m.officerId === officerId)?.officerName
-          ?? officerId;
 
         // Both need the same officer as captain → blocking
-        // One as captain, one as bridge/below_deck → competing
-        // Both below_deck → informational (works if not simultaneous)
-        const bothCaptain = a.roleType === "bridge" && b.roleType === "bridge";
+        const bothCaptain = a.slot === "captain" && b.slot === "captain";
         const severity: Severity = bothCaptain ? "blocking" : "competing";
 
         conflicts.push({
@@ -143,9 +140,9 @@ function detectOfficerContention(
           resource: officerId,
           severity,
           description:
-            `Officer ${officerName} is needed by both ` +
-            `"${loadoutA?.name ?? `loadout ${a.target.loadoutId}`}" (${a.roleType}) and ` +
-            `"${loadoutB?.name ?? `loadout ${b.target.loadoutId}`}" (${b.roleType}).`,
+            `Officer ${officerId} is needed by both ` +
+            `"${loadoutA?.name ?? `loadout ${a.target.loadoutId}`}" (${a.slot}) and ` +
+            `"${loadoutB?.name ?? `loadout ${b.target.loadoutId}`}" (${b.slot}).`,
           suggestion: severity === "blocking"
             ? `Find an alternative officer for one of these loadouts. Use resolve_conflict for suggestions.`
             : `These loadouts can coexist if not active simultaneously.`,
@@ -162,8 +159,8 @@ function detectOfficerContention(
  */
 function detectDockContention(
   crewTargets: Target[],
-  loadoutMap: Map<number, LoadoutWithMembers>,
-  planItems: PlanItemWithContext[],
+  loadoutMap: Map<number, LoadoutWithRefs>,
+  planItems: PlanItem[],
   conflicts: ResourceConflict[],
 ): void {
   // Map loadoutId → plan items with dock numbers
@@ -223,17 +220,17 @@ function detectOfficerCascade(
   officerTargets: Target[],
   existingConflicts: OfficerConflict[],
   crewTargets: Target[],
-  loadoutMap: Map<number, LoadoutWithMembers>,
+  loadoutMap: Map<number, LoadoutWithRefs>,
   conflicts: ResourceConflict[],
 ): void {
   const conflictedOfficerIds = new Set(existingConflicts.map((c) => c.officerId));
 
-  // Build officer → crew targets (which loadouts use this officer)
+  // Build officer → crew targets (which loadouts use this officer via bridge core)
   const officerToCrew = new Map<string, Target[]>();
   for (const t of crewTargets) {
     const loadout = t.loadoutId != null ? loadoutMap.get(t.loadoutId) : null;
-    if (!loadout) continue;
-    for (const m of loadout.members) {
+    if (!loadout?.bridgeCore) continue;
+    for (const m of loadout.bridgeCore.members) {
       if (!officerToCrew.has(m.officerId)) officerToCrew.set(m.officerId, []);
       officerToCrew.get(m.officerId)!.push(t);
     }
@@ -253,8 +250,8 @@ function detectOfficerCascade(
         severity: "informational",
         description:
           `Officer target "${target.reason ?? officerId}" — ` +
-          `this officer already appears in ${existingConflict.appearances.length} active assignments. ` +
-          `Upgrading may affect: ${existingConflict.appearances.map((a) => a.loadoutName ?? a.planItemLabel ?? `plan item ${a.planItemId}`).join(", ")}.`,
+          `this officer already appears in ${existingConflict.locations.length} active assignments. ` +
+          `Upgrading may affect: ${existingConflict.locations.map((loc) => loc.entityName).join(", ")}.`,
         suggestion: `Review officer's role across loadouts before investing in upgrades.`,
       });
     }

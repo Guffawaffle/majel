@@ -10,8 +10,6 @@ import type { MemoryService } from "./services/memory.js";
 import type { FrameStoreFactory } from "./stores/postgres-frame-store.js";
 import type { SettingsStore } from "./stores/settings.js";
 import type { SessionStore } from "./sessions.js";
-import type { DockStore } from "./stores/dock-store.js";
-import type { LoadoutStore } from "./stores/loadout-store.js";
 import type { CrewStore } from "./stores/crew-store.js";
 import type { ReceiptStore } from "./stores/receipt-store.js";
 import type { BehaviorStore } from "./stores/behavior-store.js";
@@ -37,8 +35,6 @@ export interface AppState {
   frameStoreFactory: FrameStoreFactory | null;
   settingsStore: SettingsStore | null;
   sessionStore: SessionStore | null;
-  dockStore: DockStore | null;
-  loadoutStore: LoadoutStore | null;
   /** ADR-025: Unified crew composition store (replaces dock + loadout stores). */
   crewStore: CrewStore | null;
   /** ADR-026: Import receipt audit trail + undo. */
@@ -63,13 +59,6 @@ export async function readFleetConfig(store: SettingsStore | null): Promise<Flee
     drydockCount: await store.getTyped("fleet.drydockCount") as number,
     shipHangarSlots: await store.getTyped("fleet.shipHangarSlots") as number,
   };
-}
-
-/** Build the dock briefing text for model context injection. Returns null if no docks configured. */
-export async function readDockBriefing(dockStore: DockStore | null): Promise<string | null> {
-  if (!dockStore) return null;
-  const briefing = await dockStore.buildBriefing();
-  return briefing.totalChars > 0 ? briefing.text : null;
 }
 
 /**
@@ -107,7 +96,7 @@ export async function buildMicroRunnerFromState(appState: AppState): Promise<Mic
   const contextSources: ContextSources = {
     hasFleetConfig: !!appState.settingsStore,
     hasRoster: officerMap.size > 0,
-    hasDockBriefing: !!appState.dockStore,
+    hasDockBriefing: !!appState.crewStore,
     lookupOfficer: officerMap.size > 0
       ? (name: string): ReferenceEntry | null => {
           return officerMap.get(name.toLowerCase()) ?? null;

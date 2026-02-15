@@ -19,9 +19,10 @@ import { log } from "../logger.js";
 
 import type { ReferenceStore } from "../stores/reference-store.js";
 import type { OverlayStore } from "../stores/overlay-store.js";
-import type { LoadoutStore } from "../stores/loadout-store.js";
+import type { CrewStore } from "../stores/crew-store.js";
 import type { TargetStore } from "../stores/target-store.js";
 import { detectTargetConflicts } from "./target-conflicts.js";
+import { SEED_INTENTS, type SeedIntent } from "../types/crew-types.js";
 
 // ─── Tool Context ───────────────────────────────────────────
 
@@ -32,7 +33,7 @@ import { detectTargetConflicts } from "./target-conflicts.js";
 export interface ToolContext {
   referenceStore?: ReferenceStore | null;
   overlayStore?: OverlayStore | null;
-  loadoutStore?: LoadoutStore | null;
+  crewStore?: CrewStore | null;
   targetStore?: TargetStore | null;
 }
 
@@ -440,13 +441,16 @@ async function getFleetOverview(ctx: ToolContext): Promise<object> {
     };
   }
 
-  if (ctx.loadoutStore) {
-    const loadoutCounts = await ctx.loadoutStore.counts();
-    overview.loadouts = {
-      total: loadoutCounts.loadouts,
-      docks: loadoutCounts.docks,
-      planItems: loadoutCounts.planItems,
-      intents: loadoutCounts.intents,
+  if (ctx.crewStore) {
+    const [loadouts, docks, planItems] = await Promise.all([
+      ctx.crewStore.listLoadouts(),
+      ctx.crewStore.listDocks(),
+      ctx.crewStore.listPlanItems(),
+    ]);
+    overview.crew = {
+      loadouts: loadouts.length,
+      docks: docks.length,
+      planItems: planItems.length,
     };
   }
 
@@ -595,24 +599,21 @@ async function getShipDetail(shipId: string, ctx: ToolContext): Promise<object> 
 }
 
 async function listDocks(ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
 
-  const docks = await ctx.loadoutStore.listDocks();
-  const results = docks.map((d) => ({
+  const state = await ctx.crewStore.getEffectiveDockState();
+  const results = state.docks.map((d) => ({
     dockNumber: d.dockNumber,
-    label: d.label,
-    notes: d.notes,
-    assignment: d.assignment
+    intentKeys: d.intentKeys,
+    source: d.source,
+    assignment: d.loadout
       ? {
-          planItemId: d.assignment.id,
-          intentKey: d.assignment.intentKey,
-          label: d.assignment.label,
-          loadoutId: d.assignment.loadoutId,
-          loadoutName: d.assignment.loadoutName,
-          shipName: d.assignment.shipName,
-          isActive: d.assignment.isActive,
+          loadoutId: d.loadout.loadoutId,
+          loadoutName: d.loadout.name,
+          shipId: d.loadout.shipId,
+          bridge: d.loadout.bridge,
         }
       : null,
   }));
@@ -621,45 +622,52 @@ async function listDocks(ctx: ToolContext): Promise<object> {
 }
 
 async function getOfficerConflicts(ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
 
-  const conflicts = await ctx.loadoutStore.getOfficerConflicts();
+  const state = await ctx.crewStore.getEffectiveDockState();
   return {
-    conflicts: conflicts.map((c) => ({
+    conflicts: state.conflicts.map((c) => ({
       officerId: c.officerId,
-      officerName: c.officerName,
-      appearances: c.appearances.map((a) => ({
-        planItemId: a.planItemId,
-        planItemLabel: a.planItemLabel,
-        intentKey: a.intentKey,
-        dockNumber: a.dockNumber,
-        source: a.source,
-        loadoutName: a.loadoutName,
+      locations: c.locations.map((loc) => ({
+        type: loc.type,
+        entityId: loc.entityId,
+        entityName: loc.entityName,
+        slot: loc.slot,
       })),
     })),
-    totalConflicts: conflicts.length,
+    totalConflicts: state.conflicts.length,
   };
 }
 
 async function validatePlan(ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
 
-  const validation = await ctx.loadoutStore.validatePlan();
+  // Use effective dock state as the validation source (ADR-025)
+  const state = await ctx.crewStore.getEffectiveDockState();
+  const planItems = await ctx.crewStore.listPlanItems({ active: true });
+
+  // Derive validation from effective state
+  const emptyDocks = state.docks.filter((d) => !d.loadout);
+  const unassignedPlanItems = planItems.filter((p) => p.dockNumber == null && !p.awayOfficers?.length);
+
   return {
-    valid: validation.valid,
-    dockConflicts: validation.dockConflicts,
-    officerConflicts: validation.officerConflicts.map((c) => ({
+    valid: state.conflicts.length === 0 && unassignedPlanItems.length === 0,
+    officerConflicts: state.conflicts.map((c) => ({
       officerId: c.officerId,
-      officerName: c.officerName,
-      appearances: c.appearances.length,
+      locations: c.locations.length,
     })),
-    unassignedLoadouts: validation.unassignedLoadouts,
-    unassignedDocks: validation.unassignedDocks,
-    warnings: validation.warnings,
+    emptyDocks: emptyDocks.map((d) => d.dockNumber),
+    unassignedPlanItems: unassignedPlanItems.map((p) => ({
+      planItemId: p.id,
+      label: p.label,
+    })),
+    totalDocks: state.docks.length,
+    totalPlanItems: planItems.length,
+    totalConflicts: state.conflicts.length,
   };
 }
 
@@ -701,14 +709,14 @@ async function listOwnedOfficers(ctx: ToolContext): Promise<object> {
 }
 
 async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
   if (!loadoutId || isNaN(loadoutId)) {
     return { error: "Valid loadout ID is required." };
   }
 
-  const loadout = await ctx.loadoutStore.getLoadout(loadoutId);
+  const loadout = await ctx.crewStore.getLoadout(loadoutId);
   if (!loadout) {
     return { error: `Loadout not found: ${loadoutId}` };
   }
@@ -717,101 +725,108 @@ async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Promise<ob
     id: loadout.id,
     name: loadout.name,
     shipId: loadout.shipId,
-    shipName: loadout.shipName,
     priority: loadout.priority,
     isActive: loadout.isActive,
     intentKeys: loadout.intentKeys,
     tags: loadout.tags,
     notes: loadout.notes,
-    members: loadout.members.map((m) => ({
-      officerId: m.officerId,
-      officerName: m.officerName,
-      roleType: m.roleType,
-      slot: m.slot,
-    })),
+    bridgeCore: loadout.bridgeCore
+      ? {
+          id: loadout.bridgeCore.id,
+          name: loadout.bridgeCore.name,
+          members: loadout.bridgeCore.members.map((m) => ({
+            officerId: m.officerId,
+            slot: m.slot,
+          })),
+        }
+      : null,
+    belowDeckPolicy: loadout.belowDeckPolicy
+      ? {
+          id: loadout.belowDeckPolicy.id,
+          name: loadout.belowDeckPolicy.name,
+          mode: loadout.belowDeckPolicy.mode,
+          spec: loadout.belowDeckPolicy.spec,
+        }
+      : null,
   };
 }
 
 async function listPlanItems(ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
 
-  const items = await ctx.loadoutStore.listPlanItems();
+  const items = await ctx.crewStore.listPlanItems();
   return {
     planItems: items.map((p) => ({
       id: p.id,
       label: p.label,
       intentKey: p.intentKey,
-      intentLabel: p.intentLabel,
       dockNumber: p.dockNumber,
-      dockLabel: p.dockLabel,
       loadoutId: p.loadoutId,
-      loadoutName: p.loadoutName,
-      shipId: p.shipId,
-      shipName: p.shipName,
+      variantId: p.variantId,
       priority: p.priority,
       isActive: p.isActive,
-      members: p.members.map((m) => ({
-        officerId: m.officerId,
-        officerName: m.officerName,
-        roleType: m.roleType,
-        slot: m.slot,
-      })),
-      awayMembers: p.awayMembers.map((a) => ({
-        officerId: a.officerId,
-        officerName: a.officerName,
-      })),
+      source: p.source,
+      awayOfficers: p.awayOfficers,
     })),
     totalItems: items.length,
   };
 }
 
-async function listIntents(category: string | undefined, ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+async function listIntents(category: string | undefined, _ctx: ToolContext): Promise<object> {
+  // Intent catalog is a static seed set in ADR-025
+  let intents = SEED_INTENTS;
+  if (category) {
+    intents = intents.filter((i: SeedIntent) => i.category === category);
   }
-
-  const filters = category ? { category } : undefined;
-  const intents = await ctx.loadoutStore.listIntents(filters);
   return {
-    intents: intents.map((i) => ({
+    intents: intents.map((i: SeedIntent) => ({
       key: i.key,
       label: i.label,
       category: i.category,
       description: i.description,
       icon: i.icon,
-      isBuiltin: i.isBuiltin,
     })),
     totalIntents: intents.length,
   };
 }
 
 async function findLoadoutsForIntent(intentKey: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
   if (!intentKey.trim()) {
     return { error: "Intent key is required." };
   }
 
-  const loadouts = await ctx.loadoutStore.findLoadoutsForIntent(intentKey);
+  const loadouts = await ctx.crewStore.listLoadouts({ intentKey });
+  // Resolve full details for each loadout
+  const detailed = await Promise.all(
+    loadouts.map(async (l) => {
+      const full = await ctx.crewStore!.getLoadout(l.id);
+      return {
+        id: l.id,
+        name: l.name,
+        shipId: l.shipId,
+        isActive: l.isActive,
+        bridgeCore: full?.bridgeCore
+          ? {
+              name: full.bridgeCore.name,
+              members: full.bridgeCore.members.map((m) => ({
+                officerId: m.officerId,
+                slot: m.slot,
+              })),
+            }
+          : null,
+      };
+    }),
+  );
+
   return {
     intentKey,
-    loadouts: loadouts.map((l) => ({
-      id: l.id,
-      name: l.name,
-      shipId: l.shipId,
-      shipName: l.shipName,
-      isActive: l.isActive,
-      members: l.members.map((m) => ({
-        officerId: m.officerId,
-        officerName: m.officerName,
-        roleType: m.roleType,
-        slot: m.slot,
-      })),
-    })),
-    totalLoadouts: loadouts.length,
+    loadouts: detailed,
+    totalLoadouts: detailed.length,
   };
 }
 
@@ -835,14 +850,14 @@ async function suggestCrew(
 
   // 2. Get intent details if provided
   let intent: { key: string; label: string; category: string; description: string | null } | null = null;
-  if (intentKey && ctx.loadoutStore) {
-    const intentData = await ctx.loadoutStore.getIntent(intentKey);
-    if (intentData) {
+  if (intentKey) {
+    const match = SEED_INTENTS.find((i: SeedIntent) => i.key === intentKey);
+    if (match) {
       intent = {
-        key: intentData.key,
-        label: intentData.label,
-        category: intentData.category,
-        description: intentData.description,
+        key: match.key,
+        label: match.label,
+        category: match.category,
+        description: match.description,
       };
     }
   }
@@ -873,22 +888,23 @@ async function suggestCrew(
 
   // 4. Get existing loadouts for this ship (show what's already configured)
   const existingLoadouts: Array<Record<string, unknown>> = [];
-  if (ctx.loadoutStore) {
-    const loadouts = await ctx.loadoutStore.listLoadouts({ shipId });
-    existingLoadouts.push(
-      ...loadouts.map((l) => ({
+  if (ctx.crewStore) {
+    const loadouts = await ctx.crewStore.listLoadouts({ shipId });
+    for (const l of loadouts) {
+      const full = await ctx.crewStore.getLoadout(l.id);
+      existingLoadouts.push({
         id: l.id,
         name: l.name,
         isActive: l.isActive,
         intentKeys: l.intentKeys,
-        members: l.members.map((m) => ({
-          officerId: m.officerId,
-          officerName: m.officerName,
-          roleType: m.roleType,
-          slot: m.slot,
-        })),
-      })),
-    );
+        bridgeCore: full?.bridgeCore
+          ? full.bridgeCore.members.map((m) => ({
+              officerId: m.officerId,
+              slot: m.slot,
+            }))
+          : [],
+      });
+    }
   }
 
   return {
@@ -908,69 +924,61 @@ async function suggestCrew(
 }
 
 async function analyzeFleet(ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
 
   // Gather comprehensive fleet state in parallel
-  const [docks, planItems, conflicts, validation, loadouts] = await Promise.all([
-    ctx.loadoutStore.listDocks(),
-    ctx.loadoutStore.listPlanItems(),
-    ctx.loadoutStore.getOfficerConflicts(),
-    ctx.loadoutStore.validatePlan(),
-    ctx.loadoutStore.listLoadouts(),
+  const [effectiveState, planItems, loadouts] = await Promise.all([
+    ctx.crewStore.getEffectiveDockState(),
+    ctx.crewStore.listPlanItems(),
+    ctx.crewStore.listLoadouts(),
   ]);
 
   return {
-    docks: docks.map((d) => ({
+    docks: effectiveState.docks.map((d) => ({
       dockNumber: d.dockNumber,
-      label: d.label,
-      assignment: d.assignment
+      source: d.source,
+      intentKeys: d.intentKeys,
+      assignment: d.loadout
         ? {
-            planItemId: d.assignment.id,
-            loadoutName: d.assignment.loadoutName,
-            shipName: d.assignment.shipName,
-            intentKey: d.assignment.intentKey,
+            loadoutId: d.loadout.loadoutId,
+            loadoutName: d.loadout.name,
+            shipId: d.loadout.shipId,
+            bridge: d.loadout.bridge,
           }
         : null,
     })),
     loadouts: loadouts.map((l) => ({
       id: l.id,
       name: l.name,
-      shipName: l.shipName,
+      shipId: l.shipId,
       isActive: l.isActive,
       intentKeys: l.intentKeys,
-      memberCount: l.members.length,
-      members: l.members.map((m) => ({
-        officerName: m.officerName,
-        roleType: m.roleType,
-        slot: m.slot,
-      })),
     })),
     planItems: planItems.map((p) => ({
       id: p.id,
       label: p.label,
       intentKey: p.intentKey,
       dockNumber: p.dockNumber,
-      loadoutName: p.loadoutName,
-      shipName: p.shipName,
+      loadoutId: p.loadoutId,
       isActive: p.isActive,
+      source: p.source,
     })),
-    conflicts: conflicts.map((c) => ({
-      officerName: c.officerName,
-      appearances: c.appearances.length,
-      locations: c.appearances.map((a) => a.loadoutName ?? a.planItemLabel),
+    awayTeams: effectiveState.awayTeams.map((a) => ({
+      label: a.label,
+      officers: a.officers,
+      source: a.source,
     })),
-    validation: {
-      valid: validation.valid,
-      dockConflicts: validation.dockConflicts.length,
-      officerConflicts: validation.officerConflicts.length,
-      warnings: validation.warnings,
-    },
-    totalDocks: docks.length,
+    conflicts: effectiveState.conflicts.map((c) => ({
+      officerId: c.officerId,
+      locations: c.locations.map((loc) => loc.entityName),
+      locationCount: c.locations.length,
+    })),
+    totalDocks: effectiveState.docks.length,
     totalLoadouts: loadouts.length,
     totalPlanItems: planItems.length,
-    totalConflicts: conflicts.length,
+    totalConflicts: effectiveState.conflicts.length,
   };
 }
 
@@ -978,8 +986,8 @@ async function resolveConflict(officerId: string, ctx: ToolContext): Promise<obj
   if (!ctx.referenceStore) {
     return { error: "Reference catalog not available." };
   }
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
   if (!officerId.trim()) {
     return { error: "Officer ID is required." };
@@ -991,9 +999,9 @@ async function resolveConflict(officerId: string, ctx: ToolContext): Promise<obj
     return { error: `Officer not found: ${officerId}` };
   }
 
-  // 2. Get their conflicts
-  const allConflicts = await ctx.loadoutStore.getOfficerConflicts();
-  const conflict = allConflicts.find((c) => c.officerId === officerId) ?? null;
+  // 2. Get their conflicts from effective state
+  const state = await ctx.crewStore.getEffectiveDockState();
+  const conflict = state.conflicts.find((c) => c.officerId === officerId) ?? null;
 
   // 3. Find alternative officers from the same group or similar rarity
   const alternatives: Array<Record<string, unknown>> = [];
@@ -1020,8 +1028,19 @@ async function resolveConflict(officerId: string, ctx: ToolContext): Promise<obj
     }
   }
 
-  // 4. Get cascade preview (what breaks if this officer is removed)
-  const preview = await ctx.loadoutStore.previewDeleteOfficer(officerId);
+  // 4. Get loadouts that use this officer (via bridge core membership)
+  const loadouts = await ctx.crewStore.listLoadouts();
+  const affectedLoadouts: Array<Record<string, unknown>> = [];
+  for (const l of loadouts) {
+    const full = await ctx.crewStore.getLoadout(l.id);
+    if (full?.bridgeCore?.members.some((m) => m.officerId === officerId)) {
+      affectedLoadouts.push({
+        loadoutId: l.id,
+        loadoutName: l.name,
+        shipId: l.shipId,
+      });
+    }
+  }
 
   return {
     officer: {
@@ -1035,26 +1054,21 @@ async function resolveConflict(officerId: string, ctx: ToolContext): Promise<obj
     },
     conflict: conflict
       ? {
-          appearances: conflict.appearances.map((a) => ({
-            planItemLabel: a.planItemLabel,
-            intentKey: a.intentKey,
-            dockNumber: a.dockNumber,
-            source: a.source,
-            loadoutName: a.loadoutName,
+          locations: conflict.locations.map((loc) => ({
+            type: loc.type,
+            entityName: loc.entityName,
+            slot: loc.slot,
           })),
         }
       : null,
     alternatives,
-    cascadePreview: {
-      loadoutMemberships: preview.loadoutMemberships,
-      awayMemberships: preview.awayMemberships,
-    },
+    affectedLoadouts,
   };
 }
 
 async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
   if (!officerId.trim()) {
     return { error: "Officer ID is required." };
@@ -1067,23 +1081,37 @@ async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): Promise
     officerName = officer?.name ?? null;
   }
 
-  const preview = await ctx.loadoutStore.previewDeleteOfficer(officerId);
+  // Find all loadouts containing this officer via bridge core
+  const loadouts = await ctx.crewStore.listLoadouts();
+  const affectedLoadouts: Array<Record<string, unknown>> = [];
+  for (const l of loadouts) {
+    const full = await ctx.crewStore.getLoadout(l.id);
+    if (full?.bridgeCore?.members.some((m) => m.officerId === officerId)) {
+      affectedLoadouts.push({
+        loadoutId: l.id,
+        loadoutName: l.name,
+        shipId: l.shipId,
+      });
+    }
+  }
+
+  // Find plan items with this officer in away teams
+  const planItems = await ctx.crewStore.listPlanItems();
+  const affectedAwayTeams = planItems
+    .filter((p) => p.awayOfficers?.includes(officerId))
+    .map((p) => ({
+      planItemId: p.id,
+      planItemLabel: p.label,
+    }));
 
   return {
     officerId,
     officerName,
-    loadoutMemberships: preview.loadoutMemberships.map((l) => ({
-      loadoutId: l.loadoutId,
-      loadoutName: l.loadoutName,
-      shipName: l.shipName,
-    })),
-    awayMemberships: preview.awayMemberships.map((a) => ({
-      planItemId: a.planItemId,
-      planItemLabel: a.planItemLabel,
-    })),
-    totalAffectedLoadouts: preview.loadoutMemberships.length,
-    totalAffectedAwayTeams: preview.awayMemberships.length,
-    totalAffected: preview.loadoutMemberships.length + preview.awayMemberships.length,
+    affectedLoadouts,
+    affectedAwayTeams,
+    totalAffectedLoadouts: affectedLoadouts.length,
+    totalAffectedAwayTeams: affectedAwayTeams.length,
+    totalAffected: affectedLoadouts.length + affectedAwayTeams.length,
   };
 }
 
@@ -1181,18 +1209,13 @@ async function suggestTargets(ctx: ToolContext): Promise<object> {
   }
 
   // 4. Current loadouts summary
-  if (ctx.loadoutStore) {
-    const loadouts = await ctx.loadoutStore.listLoadouts();
+  if (ctx.crewStore) {
+    const loadouts = await ctx.crewStore.listLoadouts();
     result.loadouts = loadouts.map((l) => ({
       id: l.id,
       name: l.name,
-      shipName: l.shipName,
+      shipId: l.shipId,
       intentKeys: l.intentKeys,
-      memberCount: l.members.length,
-      members: l.members.map((m) => ({
-        officerName: m.officerName,
-        roleType: m.roleType,
-      })),
     }));
   }
 
@@ -1210,11 +1233,11 @@ async function suggestTargets(ctx: ToolContext): Promise<object> {
   }
 
   // 6. Officer conflicts
-  if (ctx.loadoutStore) {
-    const conflicts = await ctx.loadoutStore.getOfficerConflicts();
-    result.officerConflicts = conflicts.map((c) => ({
-      officerName: c.officerName,
-      appearances: c.appearances.length,
+  if (ctx.crewStore) {
+    const state = await ctx.crewStore.getEffectiveDockState();
+    result.officerConflicts = state.conflicts.map((c) => ({
+      officerId: c.officerId,
+      locationCount: c.locations.length,
     }));
   }
 
@@ -1235,11 +1258,11 @@ async function detectConflicts(ctx: ToolContext): Promise<object> {
   if (!ctx.targetStore) {
     return { error: "Target system not available." };
   }
-  if (!ctx.loadoutStore) {
-    return { error: "Loadout system not available." };
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
   }
 
-  const conflicts = await detectTargetConflicts(ctx.targetStore, ctx.loadoutStore);
+  const conflicts = await detectTargetConflicts(ctx.targetStore, ctx.crewStore);
 
   // Group by type for readability
   const byType: Record<string, number> = {};

@@ -50,7 +50,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     frameStoreFactory: null,
     settingsStore: null,
     sessionStore: null,
-    dockStore: null,
+    crewStore: null,
     behaviorStore: null,
     referenceStore: null,
     overlayStore: null,
@@ -499,10 +499,10 @@ describe("Route Protection (auth enforced)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("dock routes require visitor auth", async () => {
+  it("crew routes require visitor auth", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    const res = await testRequest(app).get("/api/dock/docks");
+    const res = await testRequest(app).get("/api/crew/docks");
     expect(res.status).toBe(401);
   });
 

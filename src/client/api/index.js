@@ -28,15 +28,6 @@ export { sendChat, loadHistory, searchRecall } from './chat.js';
 export { fetchSessions, getCachedSessions, restoreSession, deleteSession } from './sessions.js';
 export { saveFleetSetting, loadFleetSettings } from './settings.js';
 export {
-    fetchDocks, fetchDock, updateDock, deleteDock,
-    previewDeleteDock, previewDeleteShip, previewDeleteOfficer,
-    fetchNextDockNumber, saveDockIntents, addDockShip,
-    removeDockShip, setActiveShip, fetchIntents,
-    fetchConflicts, fetchDockSummary,
-    fetchPresetsForDock, listPresets, createPreset,
-    deletePreset, setPresetMembers,
-} from './docks.js';
-export {
     fetchCatalogOfficers, fetchCatalogShips,
     fetchCatalogCounts, setOfficerOverlay, setShipOverlay,
     bulkSetOfficerOverlay, bulkSetShipOverlay,
