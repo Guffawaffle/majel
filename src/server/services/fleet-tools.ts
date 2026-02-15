@@ -20,6 +20,7 @@ import { log } from "../logger.js";
 import type { ReferenceStore } from "../stores/reference-store.js";
 import type { OverlayStore } from "../stores/overlay-store.js";
 import type { LoadoutStore } from "../stores/loadout-store.js";
+import type { TargetStore } from "../stores/target-store.js";
 
 // ─── Tool Context ───────────────────────────────────────────
 
@@ -31,6 +32,7 @@ export interface ToolContext {
   referenceStore?: ReferenceStore | null;
   overlayStore?: OverlayStore | null;
   loadoutStore?: LoadoutStore | null;
+  targetStore?: TargetStore | null;
 }
 
 // ─── Tool Declarations ──────────────────────────────────────
@@ -282,6 +284,39 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["officer_id"],
     },
   },
+
+  // ─── Target/Goal Tracking Tools (#17) ─────────────────────
+
+  {
+    name: "list_targets",
+    description:
+      "List the Admiral's active targets/goals: officers to acquire, ships to build, " +
+      "crews to assemble. Includes priority, status, and reason for each target. " +
+      "Call when the Admiral asks about their goals, priorities, or what to work toward.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        target_type: {
+          type: SchemaType.STRING,
+          description: "Filter by type: officer, ship, or crew. Omit for all types.",
+        },
+        status: {
+          type: SchemaType.STRING,
+          description: "Filter by status: active, achieved, or abandoned. Default: active.",
+        },
+      },
+    },
+  },
+  {
+    name: "suggest_targets",
+    description:
+      "Gather comprehensive fleet state to suggest new acquisition and progression targets. " +
+      "Returns: fleet overview, owned officers/ships with levels, current loadouts, " +
+      "existing targets, and active conflicts. " +
+      "Use your STFC knowledge to identify gaps, recommend acquisitions, " +
+      "suggest upgrades with high ROI, and propose meta crew compositions the Admiral is missing.",
+    // No parameters — gathers everything needed for analysis
+  },
 ];
 
 // ─── Tool Executor ──────────────────────────────────────────
@@ -357,6 +392,11 @@ async function dispatchTool(
       return resolveConflict(String(args.officer_id ?? ""), ctx);
     case "what_if_remove_officer":
       return whatIfRemoveOfficer(String(args.officer_id ?? ""), ctx);
+    // Target/goal tracking tools
+    case "list_targets":
+      return listTargets(args.target_type as string | undefined, args.status as string | undefined, ctx);
+    case "suggest_targets":
+      return suggestTargets(ctx);
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -1028,4 +1068,148 @@ async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): Promise
     totalAffectedAwayTeams: preview.awayMemberships.length,
     totalAffected: preview.loadoutMemberships.length + preview.awayMemberships.length,
   };
+}
+
+// ─── Target/Goal Tracking Implementations ───────────────────
+
+async function listTargets(
+  targetType: string | undefined,
+  status: string | undefined,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.targetStore) {
+    return { error: "Target system not available." };
+  }
+
+  const filters: Record<string, unknown> = {};
+  if (targetType) filters.targetType = targetType;
+  if (status) filters.status = status;
+  else filters.status = "active"; // Default to active targets
+
+  const targets = await ctx.targetStore.list(
+    Object.keys(filters).length > 0 ? filters as never : undefined,
+  );
+
+  return {
+    targets: targets.map((t) => ({
+      id: t.id,
+      targetType: t.targetType,
+      refId: t.refId,
+      loadoutId: t.loadoutId,
+      targetTier: t.targetTier,
+      targetRank: t.targetRank,
+      targetLevel: t.targetLevel,
+      reason: t.reason,
+      priority: t.priority,
+      status: t.status,
+      autoSuggested: t.autoSuggested,
+      achievedAt: t.achievedAt,
+    })),
+    totalTargets: targets.length,
+  };
+}
+
+async function suggestTargets(ctx: ToolContext): Promise<object> {
+  const result: Record<string, unknown> = {};
+
+  // 1. Fleet overview
+  if (ctx.referenceStore) {
+    const refCounts = await ctx.referenceStore.counts();
+    result.catalogSize = { officers: refCounts.officers, ships: refCounts.ships };
+  }
+
+  // 2. Owned officers with abilities
+  if (ctx.overlayStore && ctx.referenceStore) {
+    const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+    const officers = await Promise.all(
+      overlays.map(async (overlay) => {
+        const ref = await ctx.referenceStore!.getOfficer(overlay.refId);
+        if (!ref) return null;
+        return {
+          id: ref.id,
+          name: ref.name,
+          rarity: ref.rarity,
+          group: ref.groupName,
+          captainManeuver: ref.captainManeuver,
+          officerAbility: ref.officerAbility,
+          belowDeckAbility: ref.belowDeckAbility,
+          level: overlay.level,
+          rank: overlay.rank,
+        };
+      }),
+    );
+    result.ownedOfficers = officers.filter(Boolean);
+  }
+
+  // 3. Owned ships with tiers
+  if (ctx.overlayStore && ctx.referenceStore) {
+    const overlays = await ctx.overlayStore.listShipOverlays({ ownershipState: "owned" });
+    const ships = await Promise.all(
+      overlays.map(async (overlay) => {
+        const ref = await ctx.referenceStore!.getShip(overlay.refId);
+        if (!ref) return null;
+        return {
+          id: ref.id,
+          name: ref.name,
+          shipClass: ref.shipClass,
+          grade: ref.grade,
+          rarity: ref.rarity,
+          faction: ref.faction,
+          tier: overlay.tier ?? ref.tier,
+          level: overlay.level,
+        };
+      }),
+    );
+    result.ownedShips = ships.filter(Boolean);
+  }
+
+  // 4. Current loadouts summary
+  if (ctx.loadoutStore) {
+    const loadouts = await ctx.loadoutStore.listLoadouts();
+    result.loadouts = loadouts.map((l) => ({
+      id: l.id,
+      name: l.name,
+      shipName: l.shipName,
+      intentKeys: l.intentKeys,
+      memberCount: l.members.length,
+      members: l.members.map((m) => ({
+        officerName: m.officerName,
+        roleType: m.roleType,
+      })),
+    }));
+  }
+
+  // 5. Existing targets
+  if (ctx.targetStore) {
+    const targets = await ctx.targetStore.list({ status: "active" } as never);
+    result.existingTargets = targets.map((t) => ({
+      id: t.id,
+      targetType: t.targetType,
+      refId: t.refId,
+      loadoutId: t.loadoutId,
+      reason: t.reason,
+      priority: t.priority,
+    }));
+  }
+
+  // 6. Officer conflicts
+  if (ctx.loadoutStore) {
+    const conflicts = await ctx.loadoutStore.getOfficerConflicts();
+    result.officerConflicts = conflicts.map((c) => ({
+      officerName: c.officerName,
+      appearances: c.appearances.length,
+    }));
+  }
+
+  // 7. Targeted but not yet structured (overlay targets without structured goals)
+  if (ctx.overlayStore) {
+    const targetedOfficers = await ctx.overlayStore.listOfficerOverlays({ target: true });
+    const targetedShips = await ctx.overlayStore.listShipOverlays({ target: true });
+    result.overlayTargets = {
+      officers: targetedOfficers.length,
+      ships: targetedShips.length,
+    };
+  }
+
+  return result;
 }
