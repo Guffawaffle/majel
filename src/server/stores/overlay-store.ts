@@ -212,8 +212,9 @@ function normalizeShipOverlay(raw: RawShipOverlay): ShipOverlay {
   return { ...raw, target: Boolean(raw.target) };
 }
 
-export async function createOverlayStore(pool: Pool): Promise<OverlayStore> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createOverlayStore(adminPool: Pool, runtimePool?: Pool): Promise<OverlayStore> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   log.boot.debug("overlay store initialized");
 

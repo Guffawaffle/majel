@@ -1,17 +1,21 @@
 /**
- * db.ts — PostgreSQL connection layer (ADR-018 Phase 3)
+ * db.ts — PostgreSQL connection layer (ADR-018 Phase 3, #39 dual-pool)
  *
  * Majel — STFC Fleet Intelligence System
  * Named in honor of Majel Barrett-Roddenberry (1932–2008)
  *
- * Pool-based wrapper around `pg`. All stores share a single Pool
- * created at boot time and passed to each store factory.
+ * Dual-pool pattern:
+ *   - Admin pool (superuser) — used ONLY for schema migrations (initSchema).
+ *   - App pool (non-superuser) — used for all runtime queries.
+ *     RLS is enforced because the role is NOSUPERUSER.
  *
  * Pattern:
- *   const pool = createPool();
- *   const store = await createSettingsStore(pool);
- *   // ...
- *   await pool.end();
+ *   const adminPool = createPool(adminUrl);    // DDL only
+ *   const appPool   = createPool(appUrl);      // all store queries
+ *   const store = await createSettingsStore(adminPool, appPool);
+ *   // store.initSchema runs on adminPool, queries use appPool
+ *   await adminPool.end();
+ *   await appPool.end();
  */
 
 import pg from "pg";
@@ -37,6 +41,54 @@ export function createPool(connectionString?: string): Pool {
   // max: 5 — Cloud SQL db-f1-micro supports ~25 connections.
   // With Cloud Run max-instances=3, this caps at 15 (safe headroom). (ADR-023)
   return new Pool({ connectionString: url, max: 5 });
+}
+
+/**
+ * Ensure the `majel_app` non-superuser role exists (#39).
+ *
+ * Must be called with the admin (superuser) pool before creating the app pool.
+ * Idempotent — safe to call on every boot. Grants:
+ *   - CONNECT on the database
+ *   - USAGE on schema public
+ *   - SELECT/INSERT/UPDATE/DELETE on all current + future tables
+ *   - USAGE/SELECT on all current + future sequences
+ */
+export async function ensureAppRole(adminPool: Pool): Promise<void> {
+  await adminPool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'majel_app') THEN
+        CREATE ROLE majel_app LOGIN PASSWORD 'majel_app'
+          NOSUPERUSER NOCREATEDB NOCREATEROLE;
+      END IF;
+    END $$;
+  `);
+
+  // Extract current database name for GRANT CONNECT
+  const dbResult = await adminPool.query("SELECT current_database()");
+  const dbName = dbResult.rows[0].current_database;
+
+  await adminPool.query(`GRANT CONNECT ON DATABASE ${dbName} TO majel_app`);
+  await adminPool.query("GRANT USAGE ON SCHEMA public TO majel_app");
+
+  // Grant on existing tables + sequences
+  await adminPool.query(
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO majel_app",
+  );
+  await adminPool.query(
+    "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO majel_app",
+  );
+
+  // Auto-grant on future tables/sequences created by the current superuser
+  await adminPool.query(`
+    ALTER DEFAULT PRIVILEGES
+    IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO majel_app
+  `);
+  await adminPool.query(`
+    ALTER DEFAULT PRIVILEGES
+    IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO majel_app
+  `);
 }
 
 /**

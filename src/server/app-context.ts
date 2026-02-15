@@ -24,6 +24,9 @@ import { createMicroRunner, type MicroRunner, type ContextSources, type Referenc
 // ─── App State ──────────────────────────────────────────────────
 
 export interface AppState {
+  /** Admin pool (superuser) — DDL/schema only, closed after boot. */
+  adminPool: Pool | null;
+  /** App pool (non-superuser) — all runtime queries, RLS enforced (#39). */
   pool: Pool | null;
   geminiEngine: GeminiEngine | null;
   memoryService: MemoryService | null;

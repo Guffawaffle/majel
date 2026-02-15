@@ -112,8 +112,9 @@ export function generateTimestampTitle(date: Date = new Date()): string {
   return `${y}${mo}${d}-${h}${mi}${s}`;
 }
 
-export async function createSessionStore(pool: Pool): Promise<SessionStore> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): Promise<SessionStore> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   log.boot.debug("session store initialized (pg)");
 

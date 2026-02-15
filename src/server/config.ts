@@ -42,9 +42,11 @@ export interface AppConfig {
   /** Lex workspace root directory */
   lexWorkspaceRoot: string;
 
-  // ── Database (ADR-018 Phase 3) ───────────────────────────────
-  /** PostgreSQL connection URL */
+  // ── Database (ADR-018 Phase 3, #39) ──────────────────────────
+  /** PostgreSQL connection URL for application queries (non-superuser, RLS enforced) */
   databaseUrl: string;
+  /** PostgreSQL connection URL for schema migrations (superuser, DDL only) */
+  databaseAdminUrl: string;
 
   // ── Auth (ADR-018 Phase 2) ──────────────────────────────────
   /** Admin bearer token — if empty, auth is disabled (local/demo mode) */
@@ -131,8 +133,10 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
   const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
   const inviteSecret = process.env.MAJEL_INVITE_SECRET || "";
 
-  // Database URL (env-only)
-  const databaseUrl = process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel";
+  // Database URLs (env-only) — dual-pool pattern (#39)
+  // App pool: non-superuser (RLS enforced). Admin pool: superuser (DDL/schema only).
+  const databaseAdminUrl = process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel";
+  const databaseUrl = process.env.DATABASE_URL || "postgres://majel_app:majel_app@localhost:5432/majel";
 
   return {
     port,
@@ -142,6 +146,7 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
     geminiApiKey,
     lexWorkspaceRoot,
     databaseUrl,
+    databaseAdminUrl,
     adminToken,
     inviteSecret,
     authEnabled: adminToken.length > 0,
@@ -177,7 +182,8 @@ export function bootstrapConfigSync(): AppConfig {
     isDev,
     geminiApiKey: process.env.GEMINI_API_KEY || "",
     lexWorkspaceRoot: process.env.LEX_WORKSPACE_ROOT || process.cwd(),
-    databaseUrl: process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel",
+    databaseUrl: process.env.DATABASE_URL || "postgres://majel_app:majel_app@localhost:5432/majel",
+    databaseAdminUrl: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel",
     adminToken,
     inviteSecret,
     authEnabled: adminToken.length > 0,

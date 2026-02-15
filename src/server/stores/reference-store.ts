@@ -189,8 +189,9 @@ const SQL = {
 
 // ─── Implementation ─────────────────────────────────────────
 
-export async function createReferenceStore(pool: Pool): Promise<ReferenceStore> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool): Promise<ReferenceStore> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   log.boot.debug("reference store initialized");
 
