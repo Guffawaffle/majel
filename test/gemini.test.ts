@@ -222,7 +222,10 @@ describe("createGeminiEngine", () => {
   // We mock the Gemini SDK to avoid real API calls
   vi.mock("@google/generative-ai", () => {
     const mockSendMessage = vi.fn().mockResolvedValue({
-      response: { text: () => "Aye, Admiral." },
+      response: {
+        text: () => "Aye, Admiral.",
+        functionCalls: () => undefined,
+      },
     });
 
     const mockStartChat = vi.fn().mockReturnValue({
@@ -248,6 +251,14 @@ describe("createGeminiEngine", () => {
       },
       HarmBlockThreshold: {
         BLOCK_NONE: "BLOCK_NONE",
+      },
+      SchemaType: {
+        STRING: "string",
+        NUMBER: "number",
+        INTEGER: "integer",
+        BOOLEAN: "boolean",
+        ARRAY: "array",
+        OBJECT: "object",
       },
     };
   });

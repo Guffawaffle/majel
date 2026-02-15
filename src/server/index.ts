@@ -369,6 +369,11 @@ async function boot(): Promise<void> {
       await readDockBriefing(state.dockStore),
       runner,
       modelName,
+      {
+        referenceStore: state.referenceStore,
+        overlayStore: state.overlayStore,
+        loadoutStore: state.loadoutStore,
+      },
     );
     log.boot.info({ model: state.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
   } else {
