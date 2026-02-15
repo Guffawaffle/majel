@@ -12,6 +12,8 @@ import type { SettingsStore } from "./stores/settings.js";
 import type { SessionStore } from "./sessions.js";
 import type { DockStore } from "./stores/dock-store.js";
 import type { LoadoutStore } from "./stores/loadout-store.js";
+import type { CrewStore } from "./stores/crew-store.js";
+import type { ReceiptStore } from "./stores/receipt-store.js";
 import type { BehaviorStore } from "./stores/behavior-store.js";
 import type { ReferenceStore } from "./stores/reference-store.js";
 import type { OverlayStore } from "./stores/overlay-store.js";
@@ -37,6 +39,10 @@ export interface AppState {
   sessionStore: SessionStore | null;
   dockStore: DockStore | null;
   loadoutStore: LoadoutStore | null;
+  /** ADR-025: Unified crew composition store (replaces dock + loadout stores). */
+  crewStore: CrewStore | null;
+  /** ADR-026: Import receipt audit trail + undo. */
+  receiptStore: ReceiptStore | null;
   behaviorStore: BehaviorStore | null;
   referenceStore: ReferenceStore | null;
   overlayStore: OverlayStore | null;

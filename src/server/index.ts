@@ -37,8 +37,11 @@ import { createSettingsStore } from "./stores/settings.js";
 import { createSessionStore } from "./sessions.js";
 import { createDockStore } from "./stores/dock-store.js";
 import { createLoadoutStore } from "./stores/loadout-store.js";
+import { createCrewStore } from "./stores/crew-store.js";
+import { createReceiptStore } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
+import { syncGamedataOfficers, syncGamedataShips } from "./services/gamedata-ingest.js";
 import { createOverlayStore } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
@@ -97,6 +100,8 @@ const state: AppState = {
   sessionStore: null,
   dockStore: null,
   loadoutStore: null,
+  crewStore: null,
+  receiptStore: null,
   behaviorStore: null,
   referenceStore: null,
   overlayStore: null,
@@ -321,6 +326,23 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "loadout store init failed");
   }
 
+  // 2d3. Initialize crew store (ADR-025 — unified composition model)
+  try {
+    state.crewStore = await createCrewStore(adminPool, pool);
+    log.boot.info("crew store online (ADR-025)");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "crew store init failed");
+  }
+
+  // 2d4. Initialize receipt store (ADR-026)
+  try {
+    state.receiptStore = await createReceiptStore(adminPool, pool);
+    const receiptCounts = await state.receiptStore.counts();
+    log.boot.info({ receipts: receiptCounts.total }, "receipt store online (ADR-026)");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "receipt store init failed");
+  }
+
   // 2e. Initialize behavior store
   try {
     state.behaviorStore = await createBehaviorStore(adminPool, pool);
@@ -335,6 +357,30 @@ async function boot(): Promise<void> {
     state.referenceStore = await createReferenceStore(adminPool, pool);
     const refCounts = await state.referenceStore.counts();
     log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
+
+    // ADR-026 D8: Auto-seed reference data on first boot
+    if (refCounts.officers === 0 && state.receiptStore) {
+      log.boot.info("first boot detected — seeding reference data from game data");
+      const officerResult = await syncGamedataOfficers(state.referenceStore);
+      const shipResult = await syncGamedataShips(state.referenceStore);
+      log.boot.info({
+        officers: officerResult.officers.total,
+        ships: shipResult.ships.total,
+      }, "reference data auto-seeded");
+      await state.receiptStore.createReceipt({
+        sourceType: "auto_seed",
+        sourceMeta: {
+          officers: officerResult.officers.total,
+          ships: shipResult.ships.total,
+          source: "bundled game data (data/raw-*.json)",
+        },
+        layer: "reference",
+        changeset: { added: [
+          { type: "officers", count: officerResult.officers.total },
+          { type: "ships", count: shipResult.ships.total },
+        ]},
+      });
+    }
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
   }
@@ -422,6 +468,8 @@ async function shutdown(): Promise<void> {
   state.sessionStore?.close();
   state.dockStore?.close();
   state.loadoutStore?.close();
+  state.crewStore?.close();
+  state.receiptStore?.close();
   state.behaviorStore?.close();
   state.overlayStore?.close();
   state.inviteStore?.close();

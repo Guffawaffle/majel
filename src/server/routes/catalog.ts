@@ -438,6 +438,17 @@ export function createCatalogRoutes(appState: AppState): Router {
       updated += await overlay.bulkSetOfficerTarget(refIds, !!target);
     }
 
+    // ADR-026 D7: Create receipt for audit trail + undo
+    if (appState.receiptStore && updated > 0) {
+      await appState.receiptStore.createReceipt({
+        sourceType: "catalog_clicks",
+        layer: "ownership",
+        sourceMeta: { entity: "officers", count: refIds.length },
+        changeset: { updated: refIds.map((id: string) => ({ id, ownershipState, target })) },
+        inverse: { updated: refIds.map((id: string) => ({ id, revert: true })) },
+      });
+    }
+
     sendOk(res, { updated, refIds: refIds.length });
   });
 
@@ -459,6 +470,17 @@ export function createCatalogRoutes(appState: AppState): Router {
     }
     if (target !== undefined) {
       updated += await overlay.bulkSetShipTarget(refIds, !!target);
+    }
+
+    // ADR-026 D7: Create receipt for audit trail + undo
+    if (appState.receiptStore && updated > 0) {
+      await appState.receiptStore.createReceipt({
+        sourceType: "catalog_clicks",
+        layer: "ownership",
+        sourceMeta: { entity: "ships", count: refIds.length },
+        changeset: { updated: refIds.map((id: string) => ({ id, ownershipState, target })) },
+        inverse: { updated: refIds.map((id: string) => ({ id, revert: true })) },
+      });
     }
 
     sendOk(res, { updated, refIds: refIds.length });
