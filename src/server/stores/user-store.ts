@@ -352,8 +352,9 @@ export interface UserStore {
 
 // ─── Factory ────────────────────────────────────────────────────
 
-export async function createUserStore(pool: Pool): Promise<UserStore> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Promise<UserStore> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   log.fleet.debug("user store initialized (pg)");
 

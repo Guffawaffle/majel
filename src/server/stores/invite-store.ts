@@ -149,8 +149,9 @@ export interface InviteStore {
 
 // ─── Factory ────────────────────────────────────────────────────
 
-export async function createInviteStore(pool: Pool): Promise<InviteStore> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createInviteStore(adminPool: Pool, runtimePool?: Pool): Promise<InviteStore> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   log.fleet.debug("invite store initialized (pg)");
 

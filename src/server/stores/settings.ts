@@ -222,9 +222,10 @@ export interface SettingEntry {
 /**
  * Create a settings store backed by PostgreSQL.
  */
-export async function createSettingsStore(pool: Pool): Promise<SettingsStore> {
-  // Schema init
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createSettingsStore(adminPool: Pool, runtimePool?: Pool): Promise<SettingsStore> {
+  // Schema init (DDL on admin pool, queries on app pool — #39)
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   /**
    * Resolve a setting: user DB → env var → schema default.

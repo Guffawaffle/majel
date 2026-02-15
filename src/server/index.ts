@@ -42,7 +42,7 @@ import { createReferenceStore } from "./stores/reference-store.js";
 import { createOverlayStore } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
-import { createPool } from "./db.js";
+import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
 // Shared types & config (avoids circular deps between index ↔ routes)
@@ -86,6 +86,7 @@ const clientDir = path.resolve(
 
 // ─── Module-level state ─────────────────────────────────────────
 const state: AppState = {
+  adminPool: null,
   pool: null,
   geminiEngine: null,
   memoryService: null,
@@ -222,14 +223,23 @@ export function createApp(appState: AppState): express.Express {
 async function boot(): Promise<void> {
   log.boot.info("Majel initializing");
 
-  // 0. Create PostgreSQL connection pool
-  const pool = createPool(state.config.databaseUrl);
-  state.pool = pool;
-  log.boot.info({ url: state.config.databaseUrl.replace(/\/\/.*@/, "//<redacted>@") }, "database pool created");
+  // 0. Create PostgreSQL connection pools — dual-pool pattern (#39)
+  // Admin pool (superuser) — DDL/schema only
+  const adminPool = createPool(state.config.databaseAdminUrl);
+  state.adminPool = adminPool;
+  log.boot.info({ url: state.config.databaseAdminUrl.replace(/\/\/.*@/, "//<redacted>@") }, "admin pool created (DDL)");
 
-  // 1. Initialize settings store
+  // Ensure non-superuser app role exists (idempotent)
   try {
-    state.settingsStore = await createSettingsStore(pool);
+    await ensureAppRole(adminPool);
+    log.boot.info("majel_app role ready");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "ensureAppRole failed — RLS may not work");
+  }
+
+  // 1. Initialize settings store (admin pool for DDL, app pool after init)
+  try {
+    state.settingsStore = await createSettingsStore(adminPool);
     log.boot.info("settings store online");
     
     // Re-resolve config now that settings store is available
@@ -238,10 +248,22 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "settings store init failed");
   }
 
+  // 1b. Create app pool (non-superuser) — all runtime queries, RLS enforced
+  const pool = createPool(state.config.databaseUrl);
+  state.pool = pool;
+  log.boot.info({ url: state.config.databaseUrl.replace(/\/\/.*@/, "//<redacted>@") }, "app pool created (RLS enforced)");
+
+  // Re-grant privileges on any tables created by settings store init
+  try {
+    await adminPool.query(
+      "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO majel_app",
+    );
+  } catch { /* ignore — role may not exist in test environments */ }
+
   // 2. Initialize Lex memory — ADR-021: prefer PostgreSQL + RLS when pool is available
   try {
-    if (pool) {
-      const factory = await createFrameStoreFactory(pool);
+    if (adminPool) {
+      const factory = await createFrameStoreFactory(adminPool, pool);
       state.frameStoreFactory = factory;
       // Boot-time memory service uses a system-scoped store (for /api/health frame count)
       state.memoryService = createMemoryService(factory.forUser("system"));
@@ -256,7 +278,7 @@ async function boot(): Promise<void> {
 
   // 2b. Initialize session store
   try {
-    state.sessionStore = await createSessionStore(pool);
+    state.sessionStore = await createSessionStore(adminPool, pool);
     log.boot.info({ sessions: await state.sessionStore.count() }, "session store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
@@ -264,7 +286,7 @@ async function boot(): Promise<void> {
 
   // 2d. Initialize dock store (shares tables with reference)
   try {
-    state.dockStore = await createDockStore(pool);
+    state.dockStore = await createDockStore(adminPool, pool);
     const dockCounts = await state.dockStore.counts();
     log.boot.info({ intents: dockCounts.intents, docks: dockCounts.docks }, "dock store online");
   } catch (err) {
@@ -273,7 +295,7 @@ async function boot(): Promise<void> {
 
   // 2d2. Initialize loadout store (ADR-022 Phase 2)
   try {
-    state.loadoutStore = await createLoadoutStore(pool);
+    state.loadoutStore = await createLoadoutStore(adminPool, pool);
     const loadoutCounts = await state.loadoutStore.counts();
     log.boot.info({
       intents: loadoutCounts.intents,
@@ -286,7 +308,7 @@ async function boot(): Promise<void> {
 
   // 2e. Initialize behavior store
   try {
-    state.behaviorStore = await createBehaviorStore(pool);
+    state.behaviorStore = await createBehaviorStore(adminPool, pool);
     const behaviorCounts = await state.behaviorStore.counts();
     log.boot.info({ rules: behaviorCounts.total, active: behaviorCounts.active }, "behavior store online");
   } catch (err) {
@@ -295,7 +317,7 @@ async function boot(): Promise<void> {
 
   // 2f. Initialize reference store
   try {
-    state.referenceStore = await createReferenceStore(pool);
+    state.referenceStore = await createReferenceStore(adminPool, pool);
     const refCounts = await state.referenceStore.counts();
     log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
   } catch (err) {
@@ -304,7 +326,7 @@ async function boot(): Promise<void> {
 
   // 2g. Initialize overlay store
   try {
-    state.overlayStore = await createOverlayStore(pool);
+    state.overlayStore = await createOverlayStore(adminPool, pool);
     const overlayCounts = await state.overlayStore.counts();
     log.boot.info({
       officerOverlays: overlayCounts.officers.total,
@@ -316,7 +338,7 @@ async function boot(): Promise<void> {
 
   // 2h. Initialize invite store
   try {
-    state.inviteStore = await createInviteStore(pool);
+    state.inviteStore = await createInviteStore(adminPool, pool);
     const codes = await state.inviteStore.listCodes();
     log.boot.info({ codes: codes.length, authEnabled: state.config.authEnabled }, "invite store online");
   } catch (err) {
@@ -325,7 +347,7 @@ async function boot(): Promise<void> {
 
   // 2i. Initialize user store (ADR-019)
   try {
-    state.userStore = await createUserStore(pool);
+    state.userStore = await createUserStore(adminPool, pool);
     const userCount = await state.userStore.countUsers();
     log.boot.info({ users: userCount }, "user store online");
   } catch (err) {
@@ -378,9 +400,12 @@ async function shutdown(): Promise<void> {
   if (state.memoryService) {
     await state.memoryService.close();
   }
-  // Drain the connection pool
+  // Drain connection pools
   if (state.pool) {
     await state.pool.end();
+  }
+  if (state.adminPool) {
+    await state.adminPool.end();
   }
   process.exit(0);
 }

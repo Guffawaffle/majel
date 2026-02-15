@@ -276,9 +276,10 @@ type Row = Record<string, any>;
 
 // ─── Implementation ─────────────────────────────────────────
 
-export async function createDockStore(pool: Pool): Promise<DockStore> {
-  // Schema init
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createDockStore(adminPool: Pool, runtimePool?: Pool): Promise<DockStore> {
+  // Schema init (DDL on admin pool, queries on app pool — #39)
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   // Seed builtin intents
   await withTransaction(pool, async (client) => {

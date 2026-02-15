@@ -163,8 +163,9 @@ const SQL = {
 /**
  * Create a BehaviorStore backed by PostgreSQL.
  */
-export async function createBehaviorStore(pool: Pool): Promise<BehaviorStore> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createBehaviorStore(adminPool: Pool, runtimePool?: Pool): Promise<BehaviorStore> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   // ── Row Mapping ─────────────────────────────────────────
 

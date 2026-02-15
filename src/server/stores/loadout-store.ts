@@ -625,9 +625,10 @@ function mapAwayMember(row: Record<string, unknown>): PlanAwayMember {
 
 // ─── Factory ────────────────────────────────────────────────
 
-export async function createLoadoutStore(pool: Pool): Promise<LoadoutStore> {
-  // Create schema
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createLoadoutStore(adminPool: Pool, runtimePool?: Pool): Promise<LoadoutStore> {
+  // Create schema (DDL on admin pool, queries on app pool — #39)
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   // M1: Batch-seed builtin intents in a single query instead of 24 round-trips
   if (SEED_INTENTS.length > 0) {

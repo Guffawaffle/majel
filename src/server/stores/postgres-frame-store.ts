@@ -691,11 +691,12 @@ export class PostgresFrameStore implements FrameStore {
  * user-scoped PostgresFrameStore instances.
  */
 export async function createFrameStoreFactory(
-  pool: Pool,
+  adminPool: Pool,
+  runtimePool?: Pool,
 ): Promise<FrameStoreFactory> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
   log.boot.info("lex_frames schema initialized (Postgres + RLS)");
-  return new FrameStoreFactory(pool);
+  return new FrameStoreFactory(runtimePool ?? adminPool);
 }
 
 export class FrameStoreFactory {
