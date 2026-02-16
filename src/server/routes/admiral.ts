@@ -13,13 +13,14 @@
  *   DELETE /api/admiral/sessions/:id — Delete a tenant session
  */
 
-import { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireAdmiral } from "../services/auth.js";
+import { createSafeRouter } from "../safe-router.js";
+import type { Router } from "express";
 
 export function createAdmiralRoutes(appState: AppState): Router {
-  const router = Router();
+  const router = createSafeRouter();
 
   // All admin routes require Admiral access
   router.use("/api/admiral", requireAdmiral(appState));

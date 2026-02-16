@@ -50,7 +50,7 @@ const SQL = {
   touchSession: `UPDATE tenant_sessions SET last_seen_at = NOW() WHERE tenant_id = $1`,
   listSessions: `SELECT * FROM tenant_sessions ORDER BY last_seen_at DESC`,
   deleteSession: `DELETE FROM tenant_sessions WHERE tenant_id = $1`,
-  deleteExpiredSessions: `DELETE FROM tenant_sessions WHERE last_seen_at < NOW() + $1::INTERVAL`,
+  deleteExpiredSessions: `DELETE FROM tenant_sessions WHERE last_seen_at < NOW() - $1::INTERVAL`,
 };
 
 // ─── Types ──────────────────────────────────────────────────────

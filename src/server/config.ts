@@ -133,6 +133,11 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
   const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
   const inviteSecret = process.env.MAJEL_INVITE_SECRET || "";
 
+  // Warn if auth is enabled but invite secret is empty (codes would be forgeable)
+  if (adminToken && !inviteSecret) {
+    console.warn("WARNING: MAJEL_INVITE_SECRET not set while auth is enabled — invite codes are insecure");
+  }
+
   // Database URLs (env-only) — dual-pool pattern (#39)
   // App pool: non-superuser (RLS enforced). Admin pool: superuser (DDL/schema only).
   const databaseAdminUrl = process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel";

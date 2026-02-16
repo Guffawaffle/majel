@@ -25,7 +25,7 @@
 import express from "express";
 import compression from "compression";
 import cookieParser from "cookie-parser";
-import { IncomingMessage } from "node:http";
+import { IncomingMessage, Server as HttpServer } from "node:http";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pinoHttp } from "pino-http";
@@ -106,6 +106,8 @@ const state: AppState = {
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
+
+let httpServer: HttpServer | null = null;
 
 // ─── App Factory ────────────────────────────────────────────────
 export function createApp(appState: AppState): express.Express {
@@ -435,14 +437,24 @@ async function boot(): Promise<void> {
 
   // 4. Start HTTP server
   const app = createApp(state);
-  app.listen(state.config.port, () => {
+  httpServer = app.listen(state.config.port, () => {
     log.boot.info({ port: state.config.port, url: `http://localhost:${state.config.port}` }, "Majel online");
+  });
+
+  httpServer.on("error", (err) => {
+    log.boot.fatal({ err: err.message }, "HTTP server error");
+    process.exit(1);
   });
 }
 
 // ─── Graceful Shutdown ──────────────────────────────────────────
 async function shutdown(): Promise<void> {
   log.boot.info("Majel offline. Live long and prosper.");
+  // Stop accepting new connections first
+  if (httpServer) {
+    await new Promise<void>((resolve) => httpServer!.close(() => resolve()));
+    httpServer = null;
+  }
   // Close all store handles (no-ops since pool is shared)
   state.settingsStore?.close();
   state.sessionStore?.close();
@@ -469,6 +481,11 @@ async function shutdown(): Promise<void> {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+process.on("unhandledRejection", (reason) => {
+  log.boot.fatal({ err: reason instanceof Error ? reason.message : String(reason) }, "unhandled rejection");
+  shutdown();
+});
 
 // ─── Launch (guarded for test imports) ──────────────────────────
 if (!bootstrapConfigSync().isTest) {

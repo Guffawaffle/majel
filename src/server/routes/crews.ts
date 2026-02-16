@@ -10,15 +10,16 @@
  * Pattern: factory function createCrewRoutes(appState) → Router
  */
 
-import { Router } from "express";
+import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
+import { createSafeRouter } from "../safe-router.js";
 import { VALID_BRIDGE_SLOTS, VALID_BELOW_DECK_MODES } from "../types/crew-types.js";
 import type { BridgeSlot, BelowDeckMode, VariantPatch, PlanSource } from "../types/crew-types.js";
 
 export function createCrewRoutes(appState: AppState): Router {
-  const router = Router();
+  const router = createSafeRouter();
   const visitor = requireVisitor(appState);
   const admiral = requireAdmiral(appState);
 

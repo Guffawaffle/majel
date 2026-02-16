@@ -19,22 +19,23 @@
  *   GET  /api/auth/dev-verify      — Dev-only: verify email by address
  */
 
-import { Router } from "express";
+import type { Router } from "express";
 import type { AppState } from "../app-context.js";
-import { sendOk, sendFail, ErrorCode, asyncHandler } from "../envelope.js";
+import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { SESSION_COOKIE, TENANT_COOKIE, requireRole, requireAdmiral } from "../services/auth.js";
 import { timingSafeCompare } from "../services/password.js";
 import { authRateLimiter } from "../rate-limit.js";
 import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../services/email.js";
+import { createSafeRouter } from "../safe-router.js";
 
 export function createAuthRoutes(appState: AppState): Router {
-  const router = Router();
+  const router = createSafeRouter();
 
   // Apply rate limiting to all auth endpoints
   router.use("/api/auth", authRateLimiter);
 
   // ── POST /api/auth/signup ─────────────────────────────────
-  router.post("/api/auth/signup", asyncHandler(async (req, res) => {
+  router.post("/api/auth/signup", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -80,10 +81,10 @@ export function createAuthRoutes(appState: AppState): Router {
         : "Sign-up failed";
       sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
     }
-  }));
+  });
 
   // ── POST /api/auth/verify-email ───────────────────────────
-  router.post("/api/auth/verify-email", asyncHandler(async (req, res) => {
+  router.post("/api/auth/verify-email", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -102,10 +103,10 @@ export function createAuthRoutes(appState: AppState): Router {
     }
 
     sendOk(res, { verified: true, message: "Email verified. You can now sign in." });
-  }));
+  });
 
   // ── POST /api/auth/signin ─────────────────────────────────
-  router.post("/api/auth/signin", asyncHandler(async (req, res) => {
+  router.post("/api/auth/signin", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -146,10 +147,10 @@ export function createAuthRoutes(appState: AppState): Router {
       const message = err instanceof Error ? err.message : "Sign-in failed";
       sendFail(res, ErrorCode.UNAUTHORIZED, message, 401);
     }
-  }));
+  });
 
   // ── GET /api/auth/me ──────────────────────────────────────
-  router.get("/api/auth/me", requireRole(appState, "ensign"), asyncHandler(async (_req, res) => {
+  router.get("/api/auth/me", requireRole(appState, "ensign"), async (_req, res) => {
     sendOk(res, {
       user: {
         id: res.locals.userId,
@@ -158,10 +159,10 @@ export function createAuthRoutes(appState: AppState): Router {
         role: res.locals.userRole,
       },
     });
-  }));
+  });
 
   // ── POST /api/auth/logout ─────────────────────────────────
-  router.post("/api/auth/logout", asyncHandler(async (req, res) => {
+  router.post("/api/auth/logout", async (req, res) => {
     // Destroy user session if present
     const sessionToken = req.cookies?.[SESSION_COOKIE];
     if (sessionToken && appState.userStore) {
@@ -173,10 +174,10 @@ export function createAuthRoutes(appState: AppState): Router {
     res.clearCookie(TENANT_COOKIE, { path: "/" });
 
     sendOk(res, { message: "Signed out." });
-  }));
+  });
 
   // ── POST /api/auth/logout-all ─────────────────────────────
-  router.post("/api/auth/logout-all", requireRole(appState, "ensign"), asyncHandler(async (_req, res) => {
+  router.post("/api/auth/logout-all", requireRole(appState, "ensign"), async (_req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -187,10 +188,10 @@ export function createAuthRoutes(appState: AppState): Router {
     res.clearCookie(TENANT_COOKIE, { path: "/" });
 
     sendOk(res, { message: "All sessions destroyed." });
-  }));
+  });
 
   // ── POST /api/auth/change-password ────────────────────────
-  router.post("/api/auth/change-password", requireRole(appState, "ensign"), asyncHandler(async (req, res) => {
+  router.post("/api/auth/change-password", requireRole(appState, "ensign"), async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -223,10 +224,10 @@ export function createAuthRoutes(appState: AppState): Router {
       const message = err instanceof Error ? err.message : "Password change failed";
       sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
     }
-  }));
+  });
 
   // ── POST /api/auth/forgot-password ────────────────────────
-  router.post("/api/auth/forgot-password", asyncHandler(async (req, res) => {
+  router.post("/api/auth/forgot-password", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -246,10 +247,10 @@ export function createAuthRoutes(appState: AppState): Router {
     }
 
     sendOk(res, { message: "If that email is registered, a reset link has been sent." });
-  }));
+  });
 
   // ── POST /api/auth/reset-password ─────────────────────────
-  router.post("/api/auth/reset-password", asyncHandler(async (req, res) => {
+  router.post("/api/auth/reset-password", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -281,11 +282,11 @@ export function createAuthRoutes(appState: AppState): Router {
       const message = err instanceof Error ? err.message : "Password reset failed";
       sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
     }
-  }));
+  });
 
   // ── GET /api/auth/status ──────────────────────────────────
   // Legacy compatibility endpoint
-  router.get("/api/auth/status", asyncHandler(async (req, res) => {
+  router.get("/api/auth/status", async (req, res) => {
     if (!appState.config.authEnabled) {
       return sendOk(res, { tier: "admiral", authEnabled: false, tenantId: "local" });
     }
@@ -327,11 +328,11 @@ export function createAuthRoutes(appState: AppState): Router {
     }
 
     sendOk(res, { tier: "public", authEnabled: true, tenantId: null });
-  }));
+  });
 
   // ── POST /api/auth/redeem ─────────────────────────────────
   // Legacy invite code redemption (backward compat)
-  router.post("/api/auth/redeem", asyncHandler(async (req, res) => {
+  router.post("/api/auth/redeem", async (req, res) => {
     if (!appState.config.authEnabled) {
       return sendOk(res, {
         tenantId: "local",
@@ -370,7 +371,7 @@ export function createAuthRoutes(appState: AppState): Router {
       const message = err instanceof Error ? err.message : "Failed to redeem invite code";
       sendFail(res, ErrorCode.FORBIDDEN, message, 403);
     }
-  }));
+  });
 
   // ── Admiral Console Routes ────────────────────────────────
   // These routes accept both Bearer token AND session-cookie admirals.
@@ -390,7 +391,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
   // ── POST /api/auth/admiral/set-role ─────────────────────
   // Admin-only: set a user's role (the only way to create the first Admiral)
-  router.post("/api/auth/admiral/set-role", asyncHandler(async (req, res) => {
+  router.post("/api/auth/admiral/set-role", async (req, res) => {
 
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
@@ -422,21 +423,21 @@ export function createAuthRoutes(appState: AppState): Router {
       message: `${updated.displayName} promoted to ${role}.`,
       user: updated,
     });
-  }));
+  });
 
   // ── GET /api/auth/admiral/users ─────────────────────
   // Admin-only: list all users
-  router.get("/api/auth/admiral/users", asyncHandler(async (_req, res) => {
+  router.get("/api/auth/admiral/users", async (_req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
     const users = await appState.userStore.listUsers();
     sendOk(res, { users, count: users.length });
-  }));
+  });
 
   // ── PATCH /api/auth/admiral/lock ────────────────────
   // Admin-only: lock or unlock a user account
-  router.patch("/api/auth/admiral/lock", asyncHandler(async (req, res) => {
+  router.patch("/api/auth/admiral/lock", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -469,11 +470,11 @@ export function createAuthRoutes(appState: AppState): Router {
     }
 
     sendOk(res, { message: `${user.displayName} ${locked ? "locked" : "unlocked"}.` });
-  }));
+  });
 
   // ── DELETE /api/auth/admiral/user ───────────────────
   // Admin-only: delete a user by email
-  router.delete("/api/auth/admiral/user", asyncHandler(async (req, res) => {
+  router.delete("/api/auth/admiral/user", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -497,12 +498,12 @@ export function createAuthRoutes(appState: AppState): Router {
     }
 
     sendOk(res, { message: `User ${email} deleted.` });
-  }));
+  });
 
   // ── GET /api/auth/dev-verify ──────────────────────────────
   // Dev-only: verify email without actually sending/receiving email
   if (process.env.NODE_ENV !== "production") {
-    router.get("/api/auth/dev-verify", asyncHandler(async (req, res) => {
+    router.get("/api/auth/dev-verify", async (req, res) => {
       if (!appState.userStore) {
         return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
       }
@@ -523,7 +524,7 @@ export function createAuthRoutes(appState: AppState): Router {
       }
 
       sendOk(res, { verified: true, email, message: "Email verified (dev mode)." });
-    }));
+    });
   }
 
   return router;

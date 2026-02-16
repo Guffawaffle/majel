@@ -10,15 +10,16 @@
  * All handlers async for @libsql/client (ADR-018 Phase 1).
  */
 
-import { Router } from "express";
+import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
 import { syncGamedataOfficers, syncGamedataShips } from "../services/gamedata-ingest.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
-  const router = Router();
+  const router = createSafeRouter();
   const admiral = requireAdmiral(appState);
 
   // ── Helpers ─────────────────────────────────────────────

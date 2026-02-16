@@ -7,15 +7,16 @@
  * All routes require visitor authentication.
  */
 
-import { Router } from "express";
+import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { createSafeRouter } from "../safe-router.js";
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES, type TargetType, type TargetStatus } from "../stores/target-store.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { detectTargetConflicts } from "../services/target-conflicts.js";
 
 export function createTargetRoutes(appState: AppState): Router {
-  const router = Router();
+  const router = createSafeRouter();
   const visitor = requireVisitor(appState);
   const admiral = requireAdmiral(appState);
   router.use("/api/targets", visitor);

@@ -22,37 +22,37 @@ const SERVER_PATH = "src/server/index.ts";
 const html = readFileSync(HTML_PATH, "utf8");
 const mapMatch = html.match(/<script type="importmap">(.*?)<\/script>/s);
 if (!mapMatch) {
-  console.error("❌ No <script type=\"importmap\"> found in", HTML_PATH);
-  process.exit(1);
+    console.error("❌ No <script type=\"importmap\"> found in", HTML_PATH);
+    process.exit(1);
 }
 
 const actualHash =
-  "'sha256-" + createHash("sha256").update(mapMatch[1]).digest("base64") + "'";
+    "'sha256-" + createHash("sha256").update(mapMatch[1]).digest("base64") + "'";
 
 // 2. Extract CSP hash from server
 const server = readFileSync(SERVER_PATH, "utf8");
 const cspMatch = server.match(/script-src\s+'self'\s+('sha256-[A-Za-z0-9+/=]+')/);
 if (!cspMatch) {
-  console.error("❌ No script-src sha256 hash found in", SERVER_PATH);
-  process.exit(1);
+    console.error("❌ No script-src sha256 hash found in", SERVER_PATH);
+    process.exit(1);
 }
 
 const declaredHash = cspMatch[1];
 
 // 3. Compare
 if (actualHash === declaredHash) {
-  console.log("✅ CSP import-map hash is in sync:", actualHash);
-  process.exit(0);
+    console.log("✅ CSP import-map hash is in sync:", actualHash);
+    process.exit(0);
 }
 
 // Mismatch!
 if (process.argv.includes("--fix")) {
-  const updated = server.replace(declaredHash, actualHash);
-  writeFileSync(SERVER_PATH, updated);
-  console.log("🔧 CSP hash updated in", SERVER_PATH);
-  console.log("   old:", declaredHash);
-  console.log("   new:", actualHash);
-  process.exit(0);
+    const updated = server.replace(declaredHash, actualHash);
+    writeFileSync(SERVER_PATH, updated);
+    console.log("🔧 CSP hash updated in", SERVER_PATH);
+    console.log("   old:", declaredHash);
+    console.log("   new:", actualHash);
+    process.exit(0);
 }
 
 console.error("❌ CSP import-map hash mismatch!");

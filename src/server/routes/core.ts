@@ -4,13 +4,14 @@
  * Health, API discovery, and diagnostic.
  */
 
-import { Router } from "express";
+import type { Router } from "express";
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, createTimeoutMiddleware } from "../envelope.js";
+import { createSafeRouter } from "../safe-router.js";
 import { requireVisitor } from "../services/auth.js";
 
 // Read version from package.json once at module load
@@ -23,7 +24,7 @@ const APP_VERSION = (() => {
 })();
 
 export function createCoreRoutes(appState: AppState): Router {
-  const router = Router();
+  const router = createSafeRouter();
 
   // ─── Health ─────────────────────────────────────────────────
 

@@ -10,10 +10,11 @@
  * Migrated to PostgreSQL in ADR-018 Phase 3.
  */
 
-import { Router } from "express";
+import type { Router } from "express";
 import type { Pool } from "../db.js";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral } from "../services/auth.js";
 import { log } from "../logger.js";
 
@@ -56,7 +57,7 @@ function isSafeQuery(sql: string): { safe: boolean; reason?: string } {
 // ─── Route Factory ──────────────────────────────────────────
 
 export function createDiagnosticQueryRoutes(appState: AppState): Router {
-  const router = Router();
+  const router = createSafeRouter();
   router.use("/api/diagnostic", requireAdmiral(appState));
 
   /**

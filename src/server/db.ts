@@ -40,7 +40,19 @@ export function createPool(connectionString?: string): Pool {
 
   // max: 5 — Cloud SQL db-f1-micro supports ~25 connections.
   // With Cloud Run max-instances=3, this caps at 15 (safe headroom). (ADR-023)
-  return new Pool({ connectionString: url, max: 5 });
+  const pool = new Pool({
+    connectionString: url,
+    max: 5,
+    connectionTimeoutMillis: 5000,  // fail after 5s if no connection available
+    idleTimeoutMillis: 30000,       // release idle clients after 30s
+  });
+
+  // Must handle pool error events — unhandled idle-client errors crash the process
+  pool.on("error", (err) => {
+    console.error("[pg pool] idle client error:", err.message);
+  });
+
+  return pool;
 }
 
 /**

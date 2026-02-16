@@ -2,18 +2,19 @@
  * routes/settings.ts — Settings CRUD routes.
  */
 
-import { Router } from "express";
+import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { readFleetConfig } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { createSafeRouter } from "../safe-router.js";
 import { getCategories } from "../stores/settings.js";
 import { createGeminiEngine } from "../services/gemini.js";
 import { resolveConfig } from "../config.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 
 export function createSettingsRoutes(appState: AppState): Router {
-  const router = Router();
+  const router = createSafeRouter();
   const visitor = requireVisitor(appState);
   const admiral = requireAdmiral(appState);
   router.use("/api/settings", visitor);
