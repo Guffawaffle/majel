@@ -13,6 +13,7 @@ import { checkHealth } from 'api/health.js';
 import { searchRecall as apiSearchRecall } from 'api/chat.js';
 import { saveFleetSetting, loadFleetSettings } from 'api/settings.js';
 import { _fetch } from 'api/_fetch.js';
+import { esc } from 'utils/escape.js';
 import * as chat from 'views/chat/chat.js';
 import * as sessions from 'views/chat/sessions.js';
 import * as catalog from 'views/catalog/catalog.js';
@@ -79,18 +80,13 @@ async function checkHealthAndUpdateUI() {
     return data;
 }
 
-// ─── Helpers ────────────────────────────────────────────────
-function escapeHtml(text) {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 // ─── Recall Search ──────────────────────────────────────────
 async function searchRecall(query) {
     recallResults.innerHTML = '<p class="recall-searching">Searching...</p>';
     try {
         const result = await apiSearchRecall(query);
         if (!result.ok) {
-            recallResults.innerHTML = `<p class="recall-item recall-error">${escapeHtml(result.error?.message || "Error")}</p>`;
+            recallResults.innerHTML = `<p class="recall-item recall-error">${esc(result.error?.message || "Error")}</p>`;
             return;
         }
         if (result.data.results.length === 0) {
@@ -100,12 +96,12 @@ async function searchRecall(query) {
         recallResults.innerHTML = result.data.results
             .map((r) => `
         <div class="recall-item">
-          <div>${escapeHtml(r.summary)}</div>
+          <div>${esc(r.summary)}</div>
           <div class="timestamp">${new Date(r.timestamp).toLocaleString()}</div>
-          ${r.keywords?.length ? `<div class="timestamp">Keywords: ${escapeHtml(r.keywords.join(", "))}</div>` : ""}
+          ${r.keywords?.length ? `<div class="timestamp">Keywords: ${esc(r.keywords.join(", "))}</div>` : ""}
         </div>`).join("");
     } catch (err) {
-        recallResults.innerHTML = `<p class="recall-item recall-error">Error: ${escapeHtml(err.message)}</p>`;
+        recallResults.innerHTML = `<p class="recall-item recall-error">Error: ${esc(err.message)}</p>`;
     }
 }
 
@@ -150,12 +146,12 @@ if (recallBtn) {
         recallInput.focus();
     });
 }
-recallForm.addEventListener("submit", (e) => {
+recallForm?.addEventListener("submit", (e) => {
     e.preventDefault();
     const q = recallInput.value.trim();
     if (q) searchRecall(q);
 });
-recallClose.addEventListener("click", () => recallDialog.close());
+recallClose?.addEventListener("click", () => recallDialog.close());
 
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {

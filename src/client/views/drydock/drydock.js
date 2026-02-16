@@ -271,14 +271,14 @@ function renderForm(loadout) {
                     <span class="drydock-form-label">Bridge Core</span>
                     <select class="drydock-form-input drydock-form-select" data-form-field="bridgeCoreId">
                         <option value="">— None —</option>
-                        ${bridgeCores.map(c => `<option value="${c.id}" ${l.bridgeCoreId == c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+                        ${bridgeCores.map(c => `<option value="${c.id}" ${String(l.bridgeCoreId) === String(c.id) ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
                     </select>
                 </label>
                 <label class="drydock-form-field">
                     <span class="drydock-form-label">Below Deck Policy</span>
                     <select class="drydock-form-input drydock-form-select" data-form-field="belowDeckPolicyId">
                         <option value="">— None —</option>
-                        ${belowDeckPolicies.map(p => `<option value="${p.id}" ${l.belowDeckPolicyId == p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+                        ${belowDeckPolicies.map(p => `<option value="${p.id}" ${String(l.belowDeckPolicyId) === String(p.id) ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
                     </select>
                 </label>
                 <label class="drydock-form-field">
@@ -502,11 +502,6 @@ async function handleSave() {
 }
 
 // ─── Helpers ────────────────────────────────────────────────
-
-function esc(str) {
-    if (str == null) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 function shipName(shipId) {
     if (!shipId) return null;

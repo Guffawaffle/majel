@@ -20,6 +20,7 @@ import {
     fetchReservations, setReservation, deleteReservation,
     fetchEffectiveState, fetchCrewDocks,
 } from 'api/crews.js';
+import { esc } from 'utils/escape.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -42,6 +43,16 @@ let officerConflicts = {};  // { officerId: locations[] }
 let shipDockMap = {};       // { shipId: dockNumber }
 
 const $ = (sel) => document.querySelector(sel);
+
+/** Cancel all pending debounced saves to prevent stale writes after tab/view switch */
+function clearPendingTimers() {
+    for (const key of Object.keys(saveTimers)) { clearTimeout(saveTimers[key]); }
+    for (const key of Object.keys(noteTimers)) { clearTimeout(noteTimers[key]); }
+    for (const key of Object.keys(resvTimers)) { clearTimeout(resvTimers[key]); }
+    saveTimers = {};
+    noteTimers = {};
+    resvTimers = {};
+}
 
 // ─── View Registration ──────────────────────────────────────
 registerView('fleet', {
@@ -72,8 +83,8 @@ export async function refresh() {
             fetchEffectiveState().catch(() => ({ docks: [], conflicts: [] })),
             fetchCrewDocks().catch(() => []),
         ]);
-        officers = officerData;
-        ships = shipData;
+        officers = Array.isArray(officerData) ? officerData : (officerData?.officers ?? []);
+        ships = Array.isArray(shipData) ? shipData : (shipData?.ships ?? []);
         buildCrossRefs(cores, loadouts, policies, reservations, effectiveState, docks);
         render();
     } catch (err) {
@@ -108,23 +119,21 @@ function buildCrossRefs(cores, loadouts, policies, reservations, effectiveState,
 
     const coreArr = cores?.bridgeCores ?? cores ?? [];
     for (const c of coreArr) {
-        const members = c.members ?? {};
-        for (const [slot, officerId] of Object.entries(members)) {
-            addOfficerRef(officerId, { type: 'bridge_core', name: c.name, slot });
+        const members = c.members ?? [];
+        for (const m of members) {
+            addOfficerRef(m.officerId ?? m.officer_id, { type: 'bridge_core', name: c.name, slot: m.slot });
         }
     }
 
     const loadoutArr = loadouts?.loadouts ?? loadouts ?? [];
     for (const l of loadoutArr) {
-        const bridge = l.bridge ?? {};
-        for (const [slot, officerId] of Object.entries(bridge)) {
-            addOfficerRef(officerId, { type: 'loadout', name: l.name, slot });
-        }
+        // Raw loadouts have bridgeCoreId, not a bridge object.
+        // Cross-refs from loadouts handled via bridgeCore lookup above.
     }
 
     const policyArr = policies?.policies ?? policies ?? [];
     for (const p of policyArr) {
-        const pinned = p.spec?.pinned_officers ?? p.pinnedOfficers ?? [];
+        const pinned = p.spec?.pinned ?? p.pinnedOfficers ?? [];
         for (const officerId of pinned) {
             addOfficerRef(officerId, { type: 'policy', name: p.name });
         }
@@ -217,6 +226,9 @@ function formatPower(n) {
 function render() {
     const area = $("#fleet-area");
     if (!area) return;
+
+    // Clear pending debounced saves before re-rendering DOM (H5)
+    clearPendingTimers();
 
     const allItems = activeTab === 'officers' ? officers : ships;
     const filtered = searchQuery
@@ -857,11 +869,6 @@ function updateStatsBar() {
 }
 
 // ─── Helpers ────────────────────────────────────────────────
-
-function esc(str) {
-    if (str == null) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 /** Save inline note via overlay API (QA-001-8) */
 async function saveNote(id, rawValue, tab) {

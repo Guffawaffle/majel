@@ -20,6 +20,7 @@ import {
     setFleetPresetSlots, activateFleetPreset,
     fetchCrewLoadouts, fetchEffectiveState,
 } from 'api/crews.js';
+import { esc } from 'utils/escape.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -64,10 +65,8 @@ export async function refresh() {
         presets = presetData?.presets ?? presetData ?? [];
         loadouts = loadoutData?.loadouts ?? loadoutData ?? [];
 
-        // Load effective state for deployment tab
-        if (activeTab === 'deployment') {
-            await refreshEffectiveState();
-        }
+        // Always fetch effective state (needed for deployment tab + conflict awareness)
+        await refreshEffectiveState();
 
         render();
     } catch (err) {
@@ -385,7 +384,7 @@ function renderConflicts(conflicts) {
             ${conflicts.map(c => `
                 <div class="fo-conflict-row">
                     <span class="fo-conflict-officer">${esc(c.officerId)}</span>
-                    <span class="fo-conflict-detail">Used in ${c.locations.length} locations: ${c.locations.map(l => `${esc(l.entityName)}${l.slot ? ` (${l.slot})` : ''}`).join(', ')
+                    <span class="fo-conflict-detail">Used in ${c.locations.length} locations: ${c.locations.map(l => `${esc(l.entityName)}${l.slot ? ` (${esc(l.slot)})` : ''}`).join(', ')
         }</span>
                 </div>
             `).join('')}
@@ -436,7 +435,7 @@ function renderAwayTeam(team) {
 }
 
 function renderEmpty(msg) {
-    return `<div class="fo-empty"><p>${msg}</p></div>`;
+    return `<div class="fo-empty"><p>${esc(msg)}</p></div>`;
 }
 
 // ─── Event Binding ──────────────────────────────────────────
@@ -713,11 +712,6 @@ async function handleSaveSlots(presetId) {
 }
 
 // ─── Helpers ────────────────────────────────────────────────
-
-function esc(str) {
-    if (str == null) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 function nextDockNumber() {
     if (docks.length === 0) return 1;

@@ -386,7 +386,7 @@ function renderLoadoutVariantsCard(loadout) {
 function renderEmpty(msg) {
     return `
         <div class="crew-builder-empty">
-            <p>${msg}</p>
+            <p>${esc(msg)}</p>
         </div>
     `;
 }
@@ -629,11 +629,6 @@ async function handleSavePolicy() {
 }
 
 // ─── Helpers ────────────────────────────────────────────────
-
-function esc(str) {
-    if (str == null) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 function officerById(id) {
     return officers.find(o => o.id === id) ?? null;
