@@ -6,6 +6,9 @@
 
 set -euo pipefail
 
+echo "⟐ pre-commit: CSP hash"
+node scripts/check-csp-hash.mjs
+
 echo "⟐ pre-commit: lint"
 npm run lint --silent
 

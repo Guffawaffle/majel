@@ -155,7 +155,7 @@ export function createApp(appState: AppState): express.Express {
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
-      "script-src 'self' 'sha256-hUjiFqMqfWo4/kcWIuymFcU/6ecfjyIGpBnWbHZA/H4='",
+      "script-src 'self' 'sha256-kf0G28sHniBY41kxyUe4Fejn93y2TEZaB+UR5cPyof4='",
       "style-src 'self'",
       "img-src 'self' data:",
       "connect-src 'self'",
