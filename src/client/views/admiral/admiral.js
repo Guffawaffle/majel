@@ -14,6 +14,7 @@ import {
     adminListInvites, adminCreateInvite, adminRevokeInvite,
     adminListSessions, adminDeleteSession, adminDeleteAllSessions,
 } from 'api/admiral.js';
+import { esc } from 'utils/escape.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -333,7 +334,7 @@ function wireActions(area) {
                 alert(res.error?.message || "Failed to create invite");
             } else if (res.data?.code) {
                 // Copy new code to clipboard
-                try { await navigator.clipboard.writeText(res.data.code); } catch { }
+                try { await navigator.clipboard.writeText(res.data.code); } catch (_) { /* clipboard not available */ }
                 alert(`Invite code created: ${res.data.code}\n(Copied to clipboard)`);
             }
             await refresh();
@@ -386,11 +387,6 @@ function wireActions(area) {
 }
 
 // ─── Helpers ────────────────────────────────────────────────
-
-function esc(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 function fmtDate(dateStr) {
     if (!dateStr) return '—';

@@ -125,11 +125,8 @@ function buildCrossRefs(cores, loadouts, policies, reservations, effectiveState,
         }
     }
 
-    const loadoutArr = loadouts?.loadouts ?? loadouts ?? [];
-    for (const l of loadoutArr) {
-        // Raw loadouts have bridgeCoreId, not a bridge object.
-        // Cross-refs from loadouts handled via bridgeCore lookup above.
-    }
+    // Raw loadouts have bridgeCoreId, not a bridge object.
+    // Cross-refs from loadouts handled via bridgeCore lookup above.
 
     const policyArr = policies?.policies ?? policies ?? [];
     for (const p of policyArr) {

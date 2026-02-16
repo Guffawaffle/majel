@@ -22,6 +22,7 @@ import {
     fetchCrewLoadouts,
 } from 'api/crews.js';
 import { fetchCatalogOfficers } from 'api/catalog.js';
+import { esc } from 'utils/escape.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -31,8 +32,8 @@ let loadouts = [];
 let officers = [];  // owned officers only
 let activeTab = 'cores'; // 'cores' | 'policies' | 'variants'
 let searchQuery = '';
-let sortField = 'name'; // 'name' | 'level'
-let sortDir = 'asc';
+const sortField = 'name'; // 'name' | 'level'
+const sortDir = 'asc';
 let loading = false;
 let editingCoreId = null;  // id of core being edited, or 'new'
 let editingPolicyId = null; // id of policy being edited, or 'new'

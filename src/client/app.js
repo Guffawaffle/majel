@@ -155,7 +155,7 @@ recallClose?.addEventListener("click", () => recallDialog.close());
 
 if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
-        try { await _fetch("/api/auth/logout", { method: "POST" }); } catch { }
+        try { await _fetch("/api/auth/logout", { method: "POST" }); } catch (_) { /* ignore logout failure */ }
         window.location.href = "/";
     });
 }

@@ -502,7 +502,7 @@ export function createGeminiEngine(
         const validation = await microRunner.validate(
           responseText, contract, gatedContext, sessionId, startTime,
         );
-        let receipt = validation.receipt;
+        const receipt = validation.receipt;
 
         // Single repair pass if validation failed
         if (validation.needsRepair && validation.repairPrompt) {

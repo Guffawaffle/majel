@@ -28,7 +28,7 @@ const HASH_REDIRECTS = { 'admin': 'admiral' };
 
 // ─── State ──────────────────────────────────────────────────
 let currentView = null;
-let viewHistory = [];
+const viewHistory = [];
 let userRoleFn = () => null;
 
 const $ = (sel) => document.querySelector(sel);

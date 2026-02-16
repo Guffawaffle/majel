@@ -19,6 +19,7 @@ import {
     fetchBridgeCores, fetchBelowDeckPolicies,
 } from 'api/crews.js';
 import { fetchCatalogShips } from 'api/catalog.js';
+import { esc } from 'utils/escape.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────

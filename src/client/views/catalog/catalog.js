@@ -16,6 +16,7 @@ import {
     setOfficerOverlay, setShipOverlay,
     bulkSetOfficerOverlay, bulkSetShipOverlay,
 } from 'api/catalog.js';
+import { esc } from 'utils/escape.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -615,9 +616,4 @@ function abilityText(officer, key, label) {
         return `<div class="cat-ability"><span class="cat-ability-label">${label}:</span> ${esc(text)}</div>`;
     }
     return '';
-}
-
-function esc(str) {
-    if (str == null) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

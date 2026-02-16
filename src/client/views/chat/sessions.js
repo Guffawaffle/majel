@@ -6,6 +6,7 @@
  */
 
 import { fetchSessions, getCachedSessions, restoreSession as apiRestoreSession, deleteSession } from 'api/sessions.js';
+import { esc } from 'utils/escape.js';
 import * as chat from './chat.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
@@ -37,19 +38,6 @@ export function isRestored() {
 }
 
 /**
- * Escape HTML entities
- * @param {string} text - Text to escape
- * @returns {string} Escaped text
- */
-function escapeHtml(text) {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-}
-
-/**
  * Close the mobile sidebar
  */
 function closeSidebar() {
@@ -78,8 +66,8 @@ function renderSessionList() {
         return `
       <div class="session-item ${isActive ? "active" : ""}" data-session-id="${s.id}">
         <div class="session-item-content">
-          <span class="session-item-title">${escapeHtml(s.title)}</span>
-          <span class="session-item-preview">${escapeHtml(preview)}</span>
+          <span class="session-item-title">${esc(s.title)}</span>
+          <span class="session-item-preview">${esc(preview)}</span>
         </div>
         <button class="session-delete" data-delete-id="${s.id}" title="Delete session">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>

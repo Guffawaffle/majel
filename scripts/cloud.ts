@@ -990,7 +990,7 @@ async function cmdDiff(): Promise<void> {
     .filter((v) => !v.valueFrom)
     .reduce((acc, v) => { acc[v.name] = v.value ?? ""; return acc; }, {} as Record<string, string>);
 
-  let localEnv: Record<string, string> = {};
+  const localEnv: Record<string, string> = {};
   try {
     const envContent = readFileSync(resolve(ROOT, ".env"), "utf-8");
     for (const line of envContent.split("\n")) {

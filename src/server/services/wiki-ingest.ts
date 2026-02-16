@@ -116,7 +116,7 @@ export function normalizeRarity(raw: string): string | null {
   if (!raw) return null;
   const r = raw.trim().toLowerCase();
   // Strip star characters, pipes, wiki markup remnants
-  const cleaned = r.replace(/[☆★⭐\|\[\]\s]/g, "").trim();
+  const cleaned = r.replace(/[☆★⭐|[\]\s]/g, "").trim();
   if (!cleaned) return null;
 
   // Exact match

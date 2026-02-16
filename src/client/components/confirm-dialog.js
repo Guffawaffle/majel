@@ -5,6 +5,8 @@
  * Returns a Promise<boolean> — true if user approves, false if denied.
  */
 
+import { esc } from 'utils/escape.js';
+
 let activeDialog = null;
 
 /**
@@ -104,9 +106,4 @@ function dismissDialog() {
         activeDialog.overlay.remove();
         activeDialog = null;
     }
-}
-
-function esc(str) {
-    if (!str) return "";
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

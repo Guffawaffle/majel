@@ -11,6 +11,7 @@
  */
 
 import { _fetch } from 'api/_fetch.js';
+import { esc } from 'utils/escape.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -18,7 +19,7 @@ let healthData = null;
 let summaryData = null;
 let schemaData = null;
 let activeSection = 'health'; // 'health' | 'summary' | 'query' | 'schema'
-let queryHistory = [];
+const queryHistory = [];
 let loading = false;
 
 const $ = (sel) => document.querySelector(sel);
@@ -104,7 +105,7 @@ async function executeQuery(sql) {
         const json = await res.json();
 
         if (json.status === "error") {
-            resultsEl.innerHTML = `<p class="diag-error">${escapeHtml(json.message)}</p>`;
+            resultsEl.innerHTML = `<p class="diag-error">${esc(json.message)}</p>`;
             return;
         }
 
@@ -121,21 +122,21 @@ async function executeQuery(sql) {
         let html = `<div class="diag-query-meta">${data.rowCount} row${data.rowCount !== 1 ? 's' : ''}${data.truncated ? ` (truncated from ${data.totalBeforeLimit})` : ''} · ${data.durationMs}ms</div>`;
         html += '<div class="diag-table-wrap"><table class="diag-table"><thead><tr>';
         for (const col of cols) {
-            html += `<th>${escapeHtml(col)}</th>`;
+            html += `<th>${esc(col)}</th>`;
         }
         html += '</tr></thead><tbody>';
         for (const row of data.rows) {
             html += '<tr>';
             for (const col of cols) {
                 const val = row[col];
-                html += `<td>${val === null ? '<span class="diag-null">NULL</span>' : escapeHtml(String(val))}</td>`;
+                html += `<td>${val === null ? '<span class="diag-null">NULL</span>' : esc(String(val))}</td>`;
             }
             html += '</tr>';
         }
         html += '</tbody></table></div>';
         resultsEl.innerHTML = html;
     } catch (err) {
-        resultsEl.innerHTML = `<p class="diag-error">Query failed: ${escapeHtml(err.message)}</p>`;
+        resultsEl.innerHTML = `<p class="diag-error">Query failed: ${esc(err.message)}</p>`;
     }
 }
 
@@ -316,7 +317,7 @@ function renderSummarySection() {
             html += '<h5>Officers (first 5)</h5>';
             html += '<div class="diag-table-wrap"><table class="diag-table"><thead><tr><th>ID</th><th>Name</th><th>Rarity</th><th>Group</th></tr></thead><tbody>';
             for (const o of s.samples.officers) {
-                html += `<tr><td>${escapeHtml(o.id)}</td><td>${escapeHtml(o.name)}</td><td>${escapeHtml(o.rarity || '-')}</td><td>${escapeHtml(o.groupName || '-')}</td></tr>`;
+                html += `<tr><td>${esc(o.id)}</td><td>${esc(o.name)}</td><td>${esc(o.rarity || '-')}</td><td>${esc(o.groupName || '-')}</td></tr>`;
             }
             html += '</tbody></table></div>';
         }
@@ -324,7 +325,7 @@ function renderSummarySection() {
             html += '<h5>Ships (first 5)</h5>';
             html += '<div class="diag-table-wrap"><table class="diag-table"><thead><tr><th>ID</th><th>Name</th><th>Class</th><th>Rarity</th><th>Faction</th></tr></thead><tbody>';
             for (const sh of s.samples.ships) {
-                html += `<tr><td>${escapeHtml(sh.id)}</td><td>${escapeHtml(sh.name)}</td><td>${escapeHtml(sh.shipClass || '-')}</td><td>${escapeHtml(sh.rarity || '-')}</td><td>${escapeHtml(sh.faction || '-')}</td></tr>`;
+                html += `<tr><td>${esc(sh.id)}</td><td>${esc(sh.name)}</td><td>${esc(sh.shipClass || '-')}</td><td>${esc(sh.rarity || '-')}</td><td>${esc(sh.faction || '-')}</td></tr>`;
             }
             html += '</tbody></table></div>';
         }
@@ -341,7 +342,7 @@ function renderQuerySection() {
     // Preset query buttons
     html += '<div class="diag-presets">';
     for (const p of PRESET_QUERIES) {
-        html += `<button class="diag-preset-btn" data-sql="${escapeAttr(p.sql)}">${p.label}</button>`;
+        html += `<button class="diag-preset-btn" data-sql="${esc(p.sql)}">${p.label}</button>`;
     }
     html += '</div>';
 
@@ -364,31 +365,31 @@ function renderSchemaSection() {
     if (!schemaData) return '<div class="diag-body"><p class="diag-loading">Loading schema...</p></div>';
 
     let html = '<div class="diag-body">';
-    html += `<p class="diag-muted">Database: ${escapeHtml(schemaData.dbPath || '?')}</p>`;
+    html += `<p class="diag-muted">Database: ${esc(schemaData.dbPath || '?')}</p>`;
 
     for (const table of schemaData.tables) {
         html += '<div class="diag-schema-table">';
-        html += `<div class="diag-schema-header" data-table="${escapeAttr(table.table)}">`;
+        html += `<div class="diag-schema-header" data-table="${esc(table.table)}">`;
         html += `<span class="diag-schema-toggle">▶</span>`;
-        html += `<strong>${escapeHtml(table.table)}</strong>`;
+        html += `<strong>${esc(table.table)}</strong>`;
         html += `<span class="diag-badge">${table.rowCount} rows</span>`;
         html += '</div>';
-        html += `<div class="diag-schema-detail hidden" data-detail="${escapeAttr(table.table)}">`;
+        html += `<div class="diag-schema-detail hidden" data-detail="${esc(table.table)}">`;
         html += '<table class="diag-table"><thead><tr><th>Column</th><th>Type</th><th>Nullable</th><th>PK</th><th>Default</th></tr></thead><tbody>';
         for (const col of table.columns) {
             html += '<tr>';
-            html += `<td><strong>${escapeHtml(col.name)}</strong></td>`;
-            html += `<td>${escapeHtml(col.type || 'TEXT')}</td>`;
+            html += `<td><strong>${esc(col.name)}</strong></td>`;
+            html += `<td>${esc(col.type || 'TEXT')}</td>`;
             html += `<td>${col.nullable ? '✓' : ''}</td>`;
             html += `<td>${col.primaryKey ? '🔑' : ''}</td>`;
-            html += `<td>${col.defaultValue !== null ? escapeHtml(String(col.defaultValue)) : ''}</td>`;
+            html += `<td>${col.defaultValue !== null ? esc(String(col.defaultValue)) : ''}</td>`;
             html += '</tr>';
         }
         html += '</tbody></table>';
         if (table.indexes?.length) {
             html += '<div class="diag-indexes">';
             for (const idx of table.indexes) {
-                html += `<span class="diag-index">${idx.unique ? '🔒' : '📇'} ${escapeHtml(idx.name)}</span>`;
+                html += `<span class="diag-index">${idx.unique ? '🔒' : '📇'} ${esc(idx.name)}</span>`;
             }
             html += '</div>';
         }
@@ -452,14 +453,4 @@ function bindEvents() {
     });
 }
 
-// ─── Helpers ────────────────────────────────────────────────
 
-function escapeHtml(str) {
-    const el = document.createElement('span');
-    el.textContent = str;
-    return el.innerHTML;
-}
-
-function escapeAttr(str) {
-    return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}

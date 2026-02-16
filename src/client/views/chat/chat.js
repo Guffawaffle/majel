@@ -63,7 +63,7 @@ function renderMarkdown(text) {
     html = html.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
 
     // Unordered lists (- ... or * ...)
-    html = html.replace(/^[\-\*] (.+)$/gm, "<li>$1</li>");
+    html = html.replace(/^[-*] (.+)$/gm, "<li>$1</li>");
     // Wrap consecutive <li> in <ul> - safer approach without nested quantifiers
     const lines = html.split('\n');
     const ulProcessed = [];
