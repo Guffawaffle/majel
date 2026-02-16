@@ -343,7 +343,14 @@ export function buildAugmentedMessage(
   gatedContext: GatedContext,
 ): string {
   if (!gatedContext.contextBlock) return userMessage;
-  return `${gatedContext.contextBlock}\n\n${userMessage}`;
+
+  // Strip context frame markers from user input to prevent delimiter injection.
+  // An attacker could inject fake [CONTEXT] blocks to manipulate the model.
+  const sanitized = userMessage
+    .replace(/\[CONTEXT FOR THIS QUERY[^\]]*\]/gi, "[user text redacted]")
+    .replace(/\[END CONTEXT\]/gi, "[user text redacted]");
+
+  return `${gatedContext.contextBlock}\n\n${sanitized}`;
 }
 
 // ─── OutputValidator ────────────────────────────────────────

@@ -60,6 +60,9 @@ import { bootstrapConfigSync, resolveConfig } from "./config.js";
 // Envelope (ADR-004)
 import { envelopeMiddleware, errorHandler, createTimeoutMiddleware, sendFail, ErrorCode } from "./envelope.js";
 
+// Rate limiting
+import { globalRateLimiter } from "./rate-limit.js";
+
 // Route modules
 import { createCoreRoutes } from "./routes/core.js";
 import { createChatRoutes } from "./routes/chat.js";
@@ -181,6 +184,7 @@ export function createApp(appState: AppState): express.Express {
   // CSRF protection — require custom header on state-changing requests.
   // X-Requested-With cannot be set cross-origin without CORS preflight.
   // Combined with sameSite: strict cookies, this is defense-in-depth.
+  app.use('/api', globalRateLimiter);
   app.use('/api', (req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     if (req.headers['x-requested-with'] !== 'majel-client') {

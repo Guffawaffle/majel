@@ -8,6 +8,7 @@ import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
+import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
 import { MODEL_REGISTRY, getModelDef, resolveModelId } from "../services/gemini.js";
 
@@ -16,7 +17,7 @@ export function createChatRoutes(appState: AppState): Router {
 
   // ─── Chat ───────────────────────────────────────────────────
 
-  router.post("/api/chat", requireAdmiral(appState), attachScopedMemory(appState), createTimeoutMiddleware(30000), async (req, res) => {
+  router.post("/api/chat", requireAdmiral(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(30000), async (req, res) => {
     const { message } = req.body;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 

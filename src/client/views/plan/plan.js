@@ -547,7 +547,7 @@ function renderPlanItemForm(item) {
 // ═══════════════════════════════════════════════════════════
 
 function renderEmpty(msg) {
-    return `<div class="plan-empty"><p>${msg}</p></div>`;
+    return `<div class="plan-empty"><p>${esc(msg)}</p></div>`;
 }
 
 // ═══════════════════════════════════════════════════════════

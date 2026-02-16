@@ -418,11 +418,43 @@ export function createGeminiEngine(
   const MAX_TOOL_ROUNDS = 5;
 
   /**
+   * Patterns that could be used for prompt injection via data-poisoned
+   * tool responses (e.g., a malicious officer name containing instructions).
+   * We sanitize these from all string values before feeding back to the model.
+   */
+  const INJECTION_PATTERNS = /\[(SYSTEM|CONTEXT|END CONTEXT|INSTRUCTION)[^\]]*\]|<\/?system>|<\/?instruction>/gi;
+  const MAX_FIELD_LENGTH = 500;
+
+  /** Deep-sanitize tool response objects before feeding them to the model */
+  function sanitizeToolResponse(obj: unknown): unknown {
+    if (typeof obj === "string") {
+      let s = obj.replace(INJECTION_PATTERNS, "");
+      if (s.length > MAX_FIELD_LENGTH) s = s.slice(0, MAX_FIELD_LENGTH) + "…";
+      return s;
+    }
+    if (Array.isArray(obj)) return obj.map(sanitizeToolResponse);
+    if (obj && typeof obj === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+        out[k] = sanitizeToolResponse(v);
+      }
+      return out;
+    }
+    return obj; // numbers, booleans, null
+  }
+
+  /**
    * Handle the function call loop: execute tool calls, send responses back,
    * repeat until Gemini produces a text response.
    *
    * Returns the final text response from the model.
    */
+  const MUTATION_TOOLS = new Set([
+    "create_bridge_core", "create_loadout", "create_variant",
+    "set_reservation", "activate_preset",
+  ]);
+  const MAX_MUTATIONS_PER_CHAT = 5;
+
   async function handleFunctionCalls(
     chatSession: ChatSession,
     initialFunctionCalls: FunctionCall[],
@@ -430,6 +462,7 @@ export function createGeminiEngine(
   ): Promise<string> {
     let functionCalls = initialFunctionCalls;
     let round = 0;
+    let mutationCount = 0;
 
     while (functionCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
       round++;
@@ -442,6 +475,18 @@ export function createGeminiEngine(
       // Execute all function calls in parallel
       const responses = await Promise.all(
         functionCalls.map(async (fc) => {
+          // Enforce mutation budget per chat turn
+          if (MUTATION_TOOLS.has(fc.name)) {
+            mutationCount++;
+            if (mutationCount > MAX_MUTATIONS_PER_CHAT) {
+              return {
+                functionResponse: {
+                  name: fc.name,
+                  response: { error: "Mutation limit reached for this message. Ask the Admiral to confirm before proceeding." },
+                },
+              } as Part;
+            }
+          }
           const result = await executeFleetTool(
             fc.name,
             fc.args as Record<string, unknown>,
@@ -450,7 +495,7 @@ export function createGeminiEngine(
           return {
             functionResponse: {
               name: fc.name,
-              response: result,
+              response: sanitizeToolResponse(result),
             },
           } as Part;
         }),

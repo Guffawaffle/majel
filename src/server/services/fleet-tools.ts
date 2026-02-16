@@ -421,15 +421,15 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "activate_preset",
     description:
-      "Activate a fleet preset — expands its slots into plan items and sets it as the active preset. " +
-      "Only one preset can be active at a time. Activating a preset replaces all preset-sourced plan items. " +
-      "Call when the Admiral asks to switch fleet modes (e.g. 'switch to mining mode', 'activate PvP preset').",
+      "Look up a fleet preset and return a guided action for the Admiral to activate it in the UI. " +
+      "This is a fleet-wide change (deactivates all other presets), so Aria provides instructions " +
+      "rather than executing directly. Tell the Admiral to use Fleet Ops → Presets tab to activate.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         preset_id: {
           type: SchemaType.INTEGER,
-          description: "Fleet preset ID to activate",
+          description: "Fleet preset ID to look up",
         },
       },
       required: ["preset_id"],
@@ -1614,27 +1614,16 @@ async function activatePresetTool(presetId: number, ctx: ToolContext): Promise<o
     return { error: `Fleet preset not found: ${presetId}` };
   }
 
-  // Deactivate all other active presets first (only one active at a time)
-  const allPresets = await ctx.crewStore.listFleetPresets();
-  for (const p of allPresets) {
-    if (p.isActive && p.id !== presetId) {
-      await ctx.crewStore.updateFleetPreset(p.id, { isActive: false });
-    }
-  }
-
-  const updated = await ctx.crewStore.updateFleetPreset(presetId, { isActive: true });
-  if (!updated) {
-    return { error: `Failed to activate preset ${presetId}` };
-  }
-
+  // Return a guided action instead of executing directly.
+  // Fleet-wide mutations require explicit user confirmation in the UI.
   return {
-    activated: true,
-    preset: {
-      id: updated.id,
-      name: updated.name,
-      isActive: updated.isActive,
-      slots: preset.slots.length,
-    },
+    guidedAction: true,
+    actionType: "activate_preset",
+    presetId: preset.id,
+    presetName: preset.name,
+    slotCount: preset.slots.length,
+    message: `To activate the "${preset.name}" preset (${preset.slots.length} slots), use the Fleet Ops view → Presets tab → click "Activate" on this preset. This is a fleet-wide change that deactivates all other presets.`,
+    uiPath: "/app#fleet-ops/presets",
   };
 }
 

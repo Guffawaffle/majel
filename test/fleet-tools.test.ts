@@ -1378,23 +1378,22 @@ describe("create_loadout", () => {
 });
 
 describe("activate_preset", () => {
-  it("activates a fleet preset", async () => {
+  it("returns a guided action with preset details", async () => {
     const ctx: ToolContext = {
       crewStore: createMockCrewStore({
         getFleetPreset: vi.fn().mockResolvedValue({
           id: 5, name: "War Preset", isActive: false, slots: [{ dockNumber: 1, loadoutId: 10 }],
         }),
-        updateFleetPreset: vi.fn().mockResolvedValue({
-          id: 5, name: "War Preset", isActive: true,
-        }),
       }),
     };
     const result = await executeFleetTool("activate_preset", { preset_id: 5 }, ctx) as Record<string, unknown>;
-    expect(result.activated).toBe(true);
-    const preset = result.preset as Record<string, unknown>;
-    expect(preset.id).toBe(5);
-    expect(preset.name).toBe("War Preset");
-    expect(preset.isActive).toBe(true);
+    expect(result.guidedAction).toBe(true);
+    expect(result.actionType).toBe("activate_preset");
+    expect(result.presetId).toBe(5);
+    expect(result.presetName).toBe("War Preset");
+    expect(result.slotCount).toBe(1);
+    expect(result.uiPath).toBe("/app#fleet-ops/presets");
+    expect((result.message as string)).toContain("Fleet Ops");
   });
 
   it("returns error when preset not found", async () => {
@@ -1411,30 +1410,6 @@ describe("activate_preset", () => {
   it("returns error when crew store unavailable", async () => {
     const result = await executeFleetTool("activate_preset", { preset_id: 1 }, {});
     expect(result).toHaveProperty("error");
-  });
-
-  it("deactivates other active presets before activating", async () => {
-    const mockUpdate = vi.fn()
-      .mockResolvedValueOnce({ id: 2, name: "Old Active", isActive: false })  // deactivate old
-      .mockResolvedValueOnce({ id: 5, name: "War Preset", isActive: true });  // activate new
-    const ctx: ToolContext = {
-      crewStore: createMockCrewStore({
-        getFleetPreset: vi.fn().mockResolvedValue({
-          id: 5, name: "War Preset", isActive: false, slots: [{ dockNumber: 1, loadoutId: 10 }],
-        }),
-        listFleetPresets: vi.fn().mockResolvedValue([
-          { id: 2, name: "Old Active", isActive: true, slots: [] },
-          { id: 5, name: "War Preset", isActive: false, slots: [] },
-        ]),
-        updateFleetPreset: mockUpdate,
-      }),
-    };
-    const result = await executeFleetTool("activate_preset", { preset_id: 5 }, ctx) as Record<string, unknown>;
-    expect(result.activated).toBe(true);
-    // Should have deactivated #2, then activated #5
-    expect(mockUpdate).toHaveBeenCalledTimes(2);
-    expect(mockUpdate).toHaveBeenCalledWith(2, { isActive: false });
-    expect(mockUpdate).toHaveBeenCalledWith(5, { isActive: true });
   });
 });
 
