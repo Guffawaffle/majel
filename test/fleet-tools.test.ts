@@ -1444,7 +1444,7 @@ describe("set_reservation", () => {
     const result = await executeFleetTool("set_reservation", {
       officer_id: "kirk",
       reserved_for: "PvP Crew",
-      locked: "true",
+      locked: true,
     }, ctx) as Record<string, unknown>;
     expect(result.set).toBe(true);
     const res = result.reservation as Record<string, unknown>;

@@ -10,7 +10,7 @@
  * Variants, FleetPresets, OfficerReservations, PlanItems, Docks, and EffectiveState.
  */
 
-import { apiFetch } from 'api/_fetch.js';
+import { apiFetch } from './_fetch.js';
 
 // ─── Bridge Cores ───────────────────────────────────────────
 

@@ -157,7 +157,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "Get full details for a specific loadout: ship, resolved BridgeCore (captain + bridge officers), " +
       "BelowDeckPolicy (mode + spec), intent keys, tags, notes, and available variants. " +
-      "Call when examining a specific crew configuration.",
+      "Call this when examining a specific crew configuration.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -174,7 +174,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "List all plan items (active objectives) with full context: assigned loadout, dock, " +
       "intent, crew members, away team members. " +
-      "Call when analyzing the fleet plan or checking dock assignments.",
+      "Call this when analyzing the fleet plan or checking dock assignments.",
     // No parameters — returns all plan items with context
   },
   {
@@ -182,13 +182,14 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "List available activity intents from the intent catalog. " +
       "Intents categorize what a loadout is built for: mining, combat, utility, or custom. " +
-      "Call when the Admiral asks about available activities or when suggesting loadout purposes.",
+      "Call this when the Admiral asks about available activities or when suggesting loadout purposes.",
     parameters: {
       type: Type.OBJECT,
       properties: {
         category: {
           type: Type.STRING,
-          description: "Filter by category: mining, combat, utility, or custom. Omit for all categories.",
+          enum: ["mining", "combat", "utility", "custom"],
+          description: "Filter by category. Omit for all categories.",
         },
       },
     },
@@ -198,7 +199,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "Find all loadouts tagged for a specific activity intent (e.g. 'pvp', 'mining-lat', 'grinding'). " +
       "Returns loadouts with full crew details. " +
-      "Call when the Admiral asks what crews they have for a specific activity.",
+      "Call this when the Admiral asks what crews they have for a specific activity.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -271,7 +272,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Preview cascade effects of removing an officer from all loadouts and away teams. " +
       "Shows which BridgeCores lose a member, which loadouts are affected, " +
       "and which variant bridge patches reference this officer. " +
-      "Call when the Admiral considers reassigning an officer or wants to understand dependencies.",
+      "Call this when the Admiral considers reassigning an officer or wants to understand dependencies.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -291,17 +292,19 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "List the Admiral's active targets/goals: officers to acquire, ships to build, " +
       "crews to assemble. Includes priority, status, and reason for each target. " +
-      "Call when the Admiral asks about their goals, priorities, or what to work toward.",
+      "Call this when the Admiral asks about their goals, priorities, or what to work toward.",
     parameters: {
       type: Type.OBJECT,
       properties: {
         target_type: {
           type: Type.STRING,
-          description: "Filter by type: officer, ship, or crew. Omit for all types.",
+          enum: ["officer", "ship", "crew"],
+          description: "Filter by type. Omit for all types.",
         },
         status: {
           type: Type.STRING,
-          description: "Filter by status: active, achieved, or abandoned. Default: active.",
+          enum: ["active", "achieved", "abandoned"],
+          description: "Filter by status. Default: active.",
         },
       },
     },
@@ -327,7 +330,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "dock slot contention (same dock needed by multiple targets), " +
       "cascade effects (officer upgrades affecting multiple loadouts). " +
       "Each conflict includes severity (blocking/competing/informational) and suggestions. " +
-      "Call when the Admiral asks about conflicts, bottlenecks, or resource competition.",
+      "Call this when the Admiral asks about conflicts, bottlenecks, or resource competition.",
     // No parameters — analyzes all active targets automatically
   },
 
@@ -338,7 +341,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "Create a new BridgeCore — a named trio of captain + bridge_1 + bridge_2 officers. " +
       "BridgeCores are reusable across loadouts. " +
-      "Call when the Admiral asks to create a crew trio or save a bridge crew configuration.",
+      "Call this when the Admiral asks to create a crew trio or save a bridge crew configuration.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -371,7 +374,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "Create a new loadout — a named ship+crew configuration that can be assigned to a dock. " +
       "A loadout links a ship to a BridgeCore and optionally a BelowDeckPolicy. " +
-      "Call when the Admiral asks to save a crew configuration for a ship.",
+      "Call this when the Admiral asks to save a crew configuration for a ship.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -392,8 +395,9 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
           description: "BelowDeckPolicy ID to assign (optional)",
         },
         intent_keys: {
-          type: Type.STRING,
-          description: "Comma-separated intent keys (e.g. 'mining-lat,mining-gas')",
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Intent keys to tag this loadout with (e.g. ['mining-lat', 'mining-gas'])",
         },
         notes: {
           type: Type.STRING,
@@ -426,7 +430,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Set or clear an officer reservation. Reserved officers are flagged in crew suggestions. " +
       "Locked reservations (hard lock) prevent the officer from being auto-assigned by the solver. " +
       "Soft reservations generate warnings but don't block assignment. " +
-      "Call when the Admiral wants to reserve an officer for a specific purpose or release a reservation.",
+      "Call this when the Admiral wants to reserve an officer for a specific purpose or release a reservation.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -439,8 +443,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
           description: "What the officer is reserved for (e.g. 'PvP Enterprise crew', 'Borg armada'). Set to empty to clear.",
         },
         locked: {
-          type: Type.STRING,
-          description: "Whether this is a hard lock ('true') or soft reservation ('false'). Default: false.",
+          type: Type.BOOLEAN,
+          description: "Whether this is a hard lock (true) or soft reservation (false). Default: false.",
         },
         notes: {
           type: Type.STRING,
@@ -456,7 +460,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Create a variant on an existing loadout — a named patch that swaps bridge officers, " +
       "changes below-deck policy, or adjusts intent keys without modifying the base loadout. " +
       "Variants allow 'Swarm Swap' or 'PvP Bridge Swap' configurations that share the same base ship. " +
-      "Call when the Admiral wants a variant crew for an existing loadout.",
+      "Call this when the Admiral wants a variant crew for an existing loadout.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -494,7 +498,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Get the fully resolved dock state — the single source of truth for what's in each dock. " +
       "Shows resolved loadouts with BridgeCore names, BelowDeckPolicy modes, variant patches, " +
       "away teams, officer conflicts, and source attribution (preset vs manual). " +
-      "Call when the Admiral asks about the current fleet state, what's running, or dock assignments.",
+      "Call this when the Admiral asks about the current fleet state, what's running, or dock assignments.",
     // No parameters
   },
 ];

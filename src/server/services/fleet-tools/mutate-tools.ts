@@ -63,7 +63,7 @@ export async function createLoadoutTool(
 
   if (args.bridge_core_id != null) fields.bridgeCoreId = Number(args.bridge_core_id);
   if (args.below_deck_policy_id != null) fields.belowDeckPolicyId = Number(args.below_deck_policy_id);
-  if (args.intent_keys) fields.intentKeys = String(args.intent_keys).split(",").map((k) => k.trim()).filter(Boolean);
+  if (args.intent_keys) fields.intentKeys = (args.intent_keys as string[]).map((k) => String(k).trim()).filter(Boolean);
   if (args.notes) fields.notes = String(args.notes).trim();
 
   const loadout = await ctx.crewStore.createLoadout(fields);
@@ -124,7 +124,7 @@ export async function setReservationTool(
     };
   }
 
-  const locked = String(args.locked ?? "false").toLowerCase() === "true";
+  const locked = args.locked === true;
   const notes = args.notes ? String(args.notes).trim() : undefined;
 
   const reservation = await ctx.crewStore.setReservation(officerId, reservedFor, locked, notes);

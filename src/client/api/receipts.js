@@ -9,7 +9,7 @@
  * Fetch wrappers for import receipt endpoints: list, detail, undo, resolve.
  */
 
-import { apiFetch } from 'api/_fetch.js';
+import { apiFetch } from './_fetch.js';
 
 // ─── Receipts ───────────────────────────────────────────────
 

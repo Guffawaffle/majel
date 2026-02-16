@@ -86,7 +86,7 @@ interface SessionState {
  * Create a Gemini chat engine with fleet data context baked in.
  *
  * Session isolation:
- * - Each sessionId gets its own ChatSession with independent history
+ * - Each sessionId gets its own Chat with independent history
  * - Default (no sessionId) uses "default" session for backward compat
  * - Sessions expire after 30min of inactivity (configurable via SESSION_TTL_MS)
  * - Each session capped at 50 turns (configurable via SESSION_MAX_TURNS)
