@@ -62,7 +62,7 @@ export async function refresh() {
             fetchCrewLoadouts(),
         ]);
         docks = dockData?.docks ?? dockData ?? [];
-        presets = presetData?.presets ?? presetData ?? [];
+        presets = Array.isArray(presetData) ? presetData : (presetData?.fleetPresets ?? []);
         loadouts = loadoutData?.loadouts ?? loadoutData ?? [];
 
         // Always fetch effective state (needed for deployment tab + conflict awareness)
@@ -81,7 +81,7 @@ export async function refresh() {
 async function refreshEffectiveState() {
     try {
         const data = await fetchEffectiveState();
-        effectiveState = data ?? null;
+        effectiveState = data?.effectiveState ?? data ?? null;
     } catch (err) {
         console.error('Effective state fetch failed:', err);
         effectiveState = null;

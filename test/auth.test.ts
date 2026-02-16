@@ -468,12 +468,12 @@ describe("Route Protection (auth enforced)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("catalog GET is public", async () => {
+  it("catalog GET requires authentication", async () => {
     const state = makeState({ config: authConfig(), inviteStore });
     const app = createApp(state);
-    // Reference store is null so it'll be 503, but not 401
+    // Catalog reads now require auth — unauthenticated requests get 401
     const res = await testRequest(app).get("/api/catalog/officers");
-    expect(res.status).toBe(503); // store unavailable, NOT 401
+    expect(res.status).toBe(401);
   });
 
   it("chat requires admiral token", async () => {

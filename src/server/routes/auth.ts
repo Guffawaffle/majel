@@ -169,9 +169,10 @@ export function createAuthRoutes(appState: AppState): Router {
       await appState.userStore.destroySession(sessionToken);
     }
 
-    // Clear both cookies (new + legacy)
-    res.clearCookie(SESSION_COOKIE, { path: "/" });
-    res.clearCookie(TENANT_COOKIE, { path: "/" });
+    // Clear both cookies — options must match res.cookie() (minus maxAge) for cross-browser compat
+    const clearOpts = { httpOnly: true, sameSite: "strict" as const, secure: appState.config.nodeEnv === "production", path: "/" };
+    res.clearCookie(SESSION_COOKIE, clearOpts);
+    res.clearCookie(TENANT_COOKIE, clearOpts);
 
     sendOk(res, { message: "Signed out." });
   });
@@ -184,8 +185,9 @@ export function createAuthRoutes(appState: AppState): Router {
 
     await appState.userStore.destroyAllSessions(res.locals.userId!);
 
-    res.clearCookie(SESSION_COOKIE, { path: "/" });
-    res.clearCookie(TENANT_COOKIE, { path: "/" });
+    const clearOpts = { httpOnly: true, sameSite: "strict" as const, secure: appState.config.nodeEnv === "production", path: "/" };
+    res.clearCookie(SESSION_COOKIE, clearOpts);
+    res.clearCookie(TENANT_COOKIE, clearOpts);
 
     sendOk(res, { message: "All sessions destroyed." });
   });

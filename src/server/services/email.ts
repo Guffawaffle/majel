@@ -48,7 +48,7 @@ async function sendEmail(message: EmailMessage, tokenInfo?: { token: string; typ
       {
         to: message.to,
         subject: message.subject,
-        token: tokenInfo?.token,
+        tokenPrefix: tokenInfo?.token?.slice(0, 8),
         type: tokenInfo?.type,
       },
       `📧 [DEV EMAIL] ${message.subject}`,
@@ -64,11 +64,12 @@ async function sendEmail(message: EmailMessage, tokenInfo?: { token: string; typ
   // Production: Gmail API (Phase 4)
   // For now, log a warning that email delivery is not yet configured
   log.boot.warn(
-    { to: message.to, subject: message.subject, token: tokenInfo?.token, type: tokenInfo?.type },
-    "Email delivery not yet configured (Gmail API Phase 4) — token logged for manual verification",
+    { to: message.to, subject: message.subject, tokenType: tokenInfo?.type },
+    "Email delivery not yet configured (Gmail API Phase 4)",
   );
 
-  // Still store token in dev registry as fallback until Gmail is configured
+  // Store token in dev registry as fallback until Gmail is configured
+  // (dev-verify endpoint is gated behind NODE_ENV !== "production")
   if (tokenInfo) {
     devTokens.set(message.to.toLowerCase(), tokenInfo);
   }

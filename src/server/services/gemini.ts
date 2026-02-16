@@ -355,6 +355,16 @@ export function createGeminiEngine(
   let model = createModel(currentModelId);
   const sessions = new Map<string, SessionState>();
 
+  /** Per-session mutex: prevents concurrent chat() calls from corrupting history */
+  const sessionLocks = new Map<string, Promise<void>>();
+  function withSessionLock(sessionId: string, fn: () => Promise<string>): Promise<string> {
+    const prev = sessionLocks.get(sessionId) ?? Promise.resolve();
+    let release: () => void;
+    const next = new Promise<void>((r) => { release = r; });
+    sessionLocks.set(sessionId, next);
+    return prev.then(fn).finally(() => release());
+  }
+
   log.gemini.debug({
     model: currentModelId,
     hasFleetConfig: !!fleetConfig,
@@ -473,11 +483,9 @@ export function createGeminiEngine(
 
   return {
     async chat(message: string, sessionId = "default"): Promise<string> {
+      return withSessionLock(sessionId, async () => {
       const session = getSession(sessionId);
       log.gemini.debug({ sessionId, messageLen: message.length, historyLen: session.history.length }, "chat:send");
-
-      // Always store the original user message in history
-      session.history.push({ role: "user", text: message });
 
       // ── MicroRunner pipeline (optional) ──────────────────
       if (microRunner) {
@@ -500,7 +508,7 @@ export function createGeminiEngine(
 
         // Validate response against contract
         const validation = await microRunner.validate(
-          responseText, contract, gatedContext, sessionId, startTime,
+          responseText, contract, gatedContext, sessionId, startTime, message,
         );
         const receipt = validation.receipt;
 
@@ -513,7 +521,7 @@ export function createGeminiEngine(
 
           // Re-validate the repaired response
           const revalidation = await microRunner.validate(
-            responseText, contract, gatedContext, sessionId, startTime,
+            responseText, contract, gatedContext, sessionId, startTime, message,
           );
           receipt.validationResult = revalidation.receipt.validationResult === "pass" ? "repaired" : "fail";
           receipt.validationDetails = revalidation.receipt.validationDetails;
@@ -527,6 +535,7 @@ export function createGeminiEngine(
 
         microRunner.finalize(receipt);
 
+        session.history.push({ role: "user", text: message });
         session.history.push({ role: "model", text: responseText });
         while (session.history.length > SESSION_MAX_TURNS * 2) {
           session.history.splice(0, 2);
@@ -548,6 +557,7 @@ export function createGeminiEngine(
         responseText = result.response.text();
       }
 
+      session.history.push({ role: "user", text: message });
       session.history.push({ role: "model", text: responseText });
 
       // Enforce turn limit: drop oldest pair if over max
@@ -557,6 +567,7 @@ export function createGeminiEngine(
 
       log.gemini.debug({ sessionId, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
       return responseText;
+      }); // end withSessionLock
     },
 
     getHistory(sessionId = "default"): Array<{ role: string; text: string }> {

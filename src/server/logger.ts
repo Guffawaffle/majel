@@ -82,6 +82,17 @@ export const rootLogger: Logger = pino({
   base: { service: "majel" },
   // ISO timestamps for JSON output
   timestamp: pino.stdTimeFunctions.isoTime,
+  // Redact sensitive fields from all log output
+  redact: {
+    paths: [
+      "token", "*.token",
+      "password", "*.password",
+      "sessionToken", "*.sessionToken",
+      "secret", "*.secret",
+      "authorization", "*.authorization",
+    ],
+    censor: "[REDACTED]",
+  },
 });
 
 // ─── Subsystem Child Loggers ────────────────────────────────────

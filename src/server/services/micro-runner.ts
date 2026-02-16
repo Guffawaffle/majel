@@ -501,6 +501,7 @@ export interface MicroRunner {
     gatedContext: GatedContext,
     sessionId: string,
     startTime: number,
+    originalMessage?: string,
   ): Promise<{
     validatedResponse: string;
     needsRepair: boolean;
@@ -548,6 +549,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       gatedContext: GatedContext,
       sessionId: string,
       startTime: number,
+      originalMessage?: string,
     ) {
       const result = validateResponse(response, contract, gatedContext);
       const durationMs = Date.now() - startTime;
@@ -574,7 +576,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       if (!result.passed) {
         // Build repair prompt for the caller to re-send
         const repairPrompt = buildRepairPrompt(
-          response, // original message is in augmented form, but repair references the response
+          originalMessage ?? response, // prefer original user question over model response
           result.violations,
           contract,
         );
