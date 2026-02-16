@@ -101,7 +101,7 @@ export async function refresh() {
 function buildCrossRefs(cores, loadouts, policies, reservations, effectiveState, docks) {
     // 1. Reservations
     reservationMap = {};
-    const resvArr = reservations?.reservations ?? reservations ?? [];
+    const resvArr = Array.isArray(reservations) ? reservations : (reservations?.reservations ?? []);
     for (const r of resvArr) {
         reservationMap[r.officerId ?? r.officer_id] = {
             reservedFor: r.reservedFor ?? r.reserved_for ?? '',
@@ -128,7 +128,8 @@ function buildCrossRefs(cores, loadouts, policies, reservations, effectiveState,
     // Raw loadouts have bridgeCoreId, not a bridge object.
     // Cross-refs from loadouts handled via bridgeCore lookup above.
 
-    const policyArr = policies?.policies ?? policies ?? [];
+    const loadoutArr = Array.isArray(loadouts) ? loadouts : (loadouts?.loadouts ?? []);
+    const policyArr = Array.isArray(policies) ? policies : (policies?.belowDeckPolicies ?? []);
     for (const p of policyArr) {
         const pinned = p.spec?.pinned ?? p.pinnedOfficers ?? [];
         for (const officerId of pinned) {

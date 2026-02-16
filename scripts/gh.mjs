@@ -150,32 +150,32 @@ const flags = Object.fromEntries(
 
 try {
     switch (command) {
-    case 'issues':
-    case 'i':
-        await listIssues(flags);
-        break;
-    case 'prs':
-    case 'pr':
-        await listPRs(flags);
-        break;
-    case 'issue':
-    case 'show':
-        if (!positional[1]) { console.error('Usage: gh issue <number>'); process.exit(1); }
-        await showIssue(positional[1]);
-        break;
-    case 'close':
-        if (!positional[1]) { console.error('Usage: gh close <number> [comment]'); process.exit(1); }
-        await closeIssue(positional[1], positional[2] || null);
-        break;
-    case 'comment':
-        if (!positional[1] || !positional[2]) { console.error('Usage: gh comment <number> <body>'); process.exit(1); }
-        await addComment(positional[1], positional[2]);
-        break;
-    case 'labels':
-        await listLabels();
-        break;
-    default:
-        console.log(`Usage: npm run gh <command>
+        case 'issues':
+        case 'i':
+            await listIssues(flags);
+            break;
+        case 'prs':
+        case 'pr':
+            await listPRs(flags);
+            break;
+        case 'issue':
+        case 'show':
+            if (!positional[1]) { console.error('Usage: gh issue <number>'); process.exit(1); }
+            await showIssue(positional[1]);
+            break;
+        case 'close':
+            if (!positional[1]) { console.error('Usage: gh close <number> [comment]'); process.exit(1); }
+            await closeIssue(positional[1], positional[2] || null);
+            break;
+        case 'comment':
+            if (!positional[1] || !positional[2]) { console.error('Usage: gh comment <number> <body>'); process.exit(1); }
+            await addComment(positional[1], positional[2]);
+            break;
+        case 'labels':
+            await listLabels();
+            break;
+        default:
+            console.log(`Usage: npm run gh <command>
 
 Commands:
   issues [--all] [--label=X]   List issues (default: open)
