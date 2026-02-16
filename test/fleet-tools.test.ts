@@ -179,6 +179,8 @@ function createMockCrewStore(overrides: Partial<CrewStore> = {}): CrewStore {
     getReservation: vi.fn().mockResolvedValue(null),
     setReservation: vi.fn(),
     deleteReservation: vi.fn(),
+    listVariants: vi.fn().mockResolvedValue([]),
+    createVariant: vi.fn(),
     resolveVariant: vi.fn(),
     getEffectiveDockState: vi.fn().mockResolvedValue({
       docks: [
@@ -246,7 +248,7 @@ function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStor
 describe("FLEET_TOOL_DECLARATIONS", () => {
   it("exports an array of tool declarations", () => {
     expect(Array.isArray(FLEET_TOOL_DECLARATIONS)).toBe(true);
-    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(19);
+    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(26);
   });
 
   it("each declaration has name and description", () => {
@@ -288,6 +290,16 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("suggest_targets");
     // Conflict detection
     expect(names).toContain("detect_target_conflicts");
+  });
+
+  it("includes all ADR-025 mutation tools", () => {
+    const names = FLEET_TOOL_DECLARATIONS.map((t) => t.name);
+    expect(names).toContain("create_bridge_core");
+    expect(names).toContain("create_loadout");
+    expect(names).toContain("activate_preset");
+    expect(names).toContain("set_reservation");
+    expect(names).toContain("create_variant");
+    expect(names).toContain("get_effective_state");
   });
 
   it("search tools have required query parameter", () => {
@@ -1262,5 +1274,304 @@ describe("detect_target_conflicts", () => {
     const result = await executeFleetTool("detect_target_conflicts", {}, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Crew");
+  });
+});
+
+// ─── ADR-025 Mutation Tools ─────────────────────────────────
+
+describe("create_bridge_core", () => {
+  it("creates a bridge core with three officers", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        createBridgeCore: vi.fn().mockResolvedValue({
+          id: 1,
+          name: "Alpha Bridge",
+          members: [
+            { officerId: "kirk", slot: "captain" },
+            { officerId: "spock", slot: "bridge_1" },
+            { officerId: "mccoy", slot: "bridge_2" },
+          ],
+        }),
+      }),
+    };
+    const result = await executeFleetTool("create_bridge_core", {
+      name: "Alpha Bridge",
+      captain: "kirk",
+      bridge_1: "spock",
+      bridge_2: "mccoy",
+    }, ctx) as Record<string, unknown>;
+    expect(result.created).toBe(true);
+    const bc = result.bridgeCore as Record<string, unknown>;
+    expect(bc.id).toBe(1);
+    expect(bc.name).toBe("Alpha Bridge");
+    expect((bc.members as unknown[]).length).toBe(3);
+  });
+
+  it("returns error when crew store unavailable", async () => {
+    const result = await executeFleetTool("create_bridge_core", {
+      name: "X", captain: "a", bridge_1: "b", bridge_2: "c",
+    }, {});
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error for missing name", async () => {
+    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const result = await executeFleetTool("create_bridge_core", {
+      captain: "a", bridge_1: "b", bridge_2: "c",
+    }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("Name");
+  });
+
+  it("returns error for missing bridge slots", async () => {
+    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const result = await executeFleetTool("create_bridge_core", {
+      name: "X", captain: "a",
+    }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("bridge slots");
+  });
+});
+
+describe("create_loadout", () => {
+  it("creates a loadout with ship and name", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        createLoadout: vi.fn().mockResolvedValue({
+          id: 10,
+          name: "Mining Alpha",
+          shipId: "ship-enterprise",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("create_loadout", {
+      ship_id: "ship-enterprise",
+      name: "Mining Alpha",
+    }, ctx) as Record<string, unknown>;
+    expect(result.created).toBe(true);
+    const lo = result.loadout as Record<string, unknown>;
+    expect(lo.id).toBe(10);
+    expect(lo.name).toBe("Mining Alpha");
+    expect(lo.shipId).toBe("ship-enterprise");
+  });
+
+  it("returns error when crew store unavailable", async () => {
+    const result = await executeFleetTool("create_loadout", {
+      ship_id: "x", name: "Y",
+    }, {});
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error for missing ship_id", async () => {
+    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const result = await executeFleetTool("create_loadout", { name: "Y" }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("Ship ID");
+  });
+
+  it("returns error for missing name", async () => {
+    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const result = await executeFleetTool("create_loadout", { ship_id: "x" }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("Name");
+  });
+});
+
+describe("activate_preset", () => {
+  it("activates a fleet preset", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        getFleetPreset: vi.fn().mockResolvedValue({
+          id: 5, name: "War Preset", isActive: false, slots: [{ dockNumber: 1, loadoutId: 10 }],
+        }),
+        updateFleetPreset: vi.fn().mockResolvedValue({
+          id: 5, name: "War Preset", isActive: true,
+        }),
+      }),
+    };
+    const result = await executeFleetTool("activate_preset", { preset_id: 5 }, ctx) as Record<string, unknown>;
+    expect(result.activated).toBe(true);
+    const preset = result.preset as Record<string, unknown>;
+    expect(preset.id).toBe(5);
+    expect(preset.name).toBe("War Preset");
+    expect(preset.isActive).toBe(true);
+  });
+
+  it("returns error when preset not found", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        getFleetPreset: vi.fn().mockResolvedValue(null),
+      }),
+    };
+    const result = await executeFleetTool("activate_preset", { preset_id: 999 }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("not found");
+  });
+
+  it("returns error when crew store unavailable", async () => {
+    const result = await executeFleetTool("activate_preset", { preset_id: 1 }, {});
+    expect(result).toHaveProperty("error");
+  });
+
+  it("deactivates other active presets before activating", async () => {
+    const mockUpdate = vi.fn()
+      .mockResolvedValueOnce({ id: 2, name: "Old Active", isActive: false })  // deactivate old
+      .mockResolvedValueOnce({ id: 5, name: "War Preset", isActive: true });  // activate new
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        getFleetPreset: vi.fn().mockResolvedValue({
+          id: 5, name: "War Preset", isActive: false, slots: [{ dockNumber: 1, loadoutId: 10 }],
+        }),
+        listFleetPresets: vi.fn().mockResolvedValue([
+          { id: 2, name: "Old Active", isActive: true, slots: [] },
+          { id: 5, name: "War Preset", isActive: false, slots: [] },
+        ]),
+        updateFleetPreset: mockUpdate,
+      }),
+    };
+    const result = await executeFleetTool("activate_preset", { preset_id: 5 }, ctx) as Record<string, unknown>;
+    expect(result.activated).toBe(true);
+    // Should have deactivated #2, then activated #5
+    expect(mockUpdate).toHaveBeenCalledTimes(2);
+    expect(mockUpdate).toHaveBeenCalledWith(2, { isActive: false });
+    expect(mockUpdate).toHaveBeenCalledWith(5, { isActive: true });
+  });
+});
+
+describe("set_reservation", () => {
+  it("sets a reservation for an officer", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        setReservation: vi.fn().mockResolvedValue({
+          officerId: "kirk",
+          reservedFor: "PvP Crew",
+          locked: true,
+        }),
+      }),
+    };
+    const result = await executeFleetTool("set_reservation", {
+      officer_id: "kirk",
+      reserved_for: "PvP Crew",
+      locked: "true",
+    }, ctx) as Record<string, unknown>;
+    expect(result.set).toBe(true);
+    const res = result.reservation as Record<string, unknown>;
+    expect(res.officerId).toBe("kirk");
+    expect(res.reservedFor).toBe("PvP Crew");
+    expect(res.locked).toBe(true);
+  });
+
+  it("clears a reservation when reserved_for is empty", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        deleteReservation: vi.fn().mockResolvedValue(true),
+      }),
+    };
+    const result = await executeFleetTool("set_reservation", {
+      officer_id: "kirk",
+      reserved_for: "",
+    }, ctx) as Record<string, unknown>;
+    expect(result.cleared).toBe(true);
+    expect(result.officerId).toBe("kirk");
+    expect(result.existed).toBe(true);
+  });
+
+  it("returns error when crew store unavailable", async () => {
+    const result = await executeFleetTool("set_reservation", {
+      officer_id: "kirk", reserved_for: "PvP",
+    }, {});
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error for missing officer_id", async () => {
+    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const result = await executeFleetTool("set_reservation", {
+      reserved_for: "PvP",
+    }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("Officer ID");
+  });
+});
+
+describe("create_variant", () => {
+  it("creates a variant with bridge overrides", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        createVariant: vi.fn().mockResolvedValue({
+          id: 3,
+          baseLoadoutId: 10,
+          name: "PvP Swap",
+          patch: { bridge: { captain: "uhura" } },
+          notes: null,
+          createdAt: "2024-01-01",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("create_variant", {
+      loadout_id: 10,
+      name: "PvP Swap",
+      captain: "uhura",
+    }, ctx) as Record<string, unknown>;
+    expect(result.created).toBe(true);
+    const v = result.variant as Record<string, unknown>;
+    expect(v.id).toBe(3);
+    expect(v.baseLoadoutId).toBe(10);
+    expect(v.name).toBe("PvP Swap");
+  });
+
+  it("returns error when crew store unavailable", async () => {
+    const result = await executeFleetTool("create_variant", {
+      loadout_id: 10, name: "X",
+    }, {});
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error for missing loadout_id", async () => {
+    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const result = await executeFleetTool("create_variant", { name: "X" }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("loadout ID");
+  });
+
+  it("returns error for missing name", async () => {
+    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const result = await executeFleetTool("create_variant", { loadout_id: 10 }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("Name");
+  });
+});
+
+describe("get_effective_state", () => {
+  it("returns effective dock state with conflicts", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore(),
+    };
+    const result = await executeFleetTool("get_effective_state", {}, ctx) as Record<string, unknown>;
+    expect(result.totalDocks).toBe(2);
+    expect(result.totalConflicts).toBe(1);
+    expect(result.activePreset).toBeNull();
+    const docks = result.docks as unknown[];
+    expect(docks.length).toBe(2);
+    const conflicts = result.conflicts as unknown[];
+    expect(conflicts.length).toBe(1);
+  });
+
+  it("includes active preset when available", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listFleetPresets: vi.fn().mockResolvedValue([
+          { id: 1, name: "War Config", isActive: true },
+        ]),
+      }),
+    };
+    const result = await executeFleetTool("get_effective_state", {}, ctx) as Record<string, unknown>;
+    const preset = result.activePreset as Record<string, unknown>;
+    expect(preset.id).toBe(1);
+    expect(preset.name).toBe("War Config");
+  });
+
+  it("returns error when crew store unavailable", async () => {
+    const result = await executeFleetTool("get_effective_state", {}, {});
+    expect(result).toHaveProperty("error");
   });
 });

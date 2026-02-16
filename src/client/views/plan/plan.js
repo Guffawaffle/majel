@@ -136,10 +136,10 @@ function renderTabBar() {
 
 function renderContent() {
     switch (activeTab) {
-    case 'state': return renderStateTab();
-    case 'presets': return renderPresetsTab();
-    case 'items': return renderItemsTab();
-    default: return '';
+        case 'state': return renderStateTab();
+        case 'presets': return renderPresetsTab();
+        case 'items': return renderItemsTab();
+        default: return '';
     }
 }
 
@@ -169,8 +169,8 @@ function renderStateTab() {
 
             <div class="plan-dock-grid">
                 ${docks.length === 0
-        ? renderEmpty('No dock assignments yet. Create a fleet preset or add manual plan items.')
-        : docks.map(d => renderDockCard(d)).join('')}
+            ? renderEmpty('No dock assignments yet. Create a fleet preset or add manual plan items.')
+            : docks.map(d => renderDockCard(d)).join('')}
             </div>
 
             ${awayTeams.length > 0 ? `
@@ -335,8 +335,8 @@ function renderPresetsTab() {
             ${editingPresetId === 'new' ? renderPresetForm(null) : ''}
             <div class="plan-list">
                 ${fleetPresets.length === 0
-        ? renderEmpty('No fleet presets yet. Create one to save a fleet configuration you can activate with one click.')
-        : fleetPresets.map(p => renderPresetCard(p)).join('')}
+            ? renderEmpty('No fleet presets yet. Create one to save a fleet configuration you can activate with one click.')
+            : fleetPresets.map(p => renderPresetCard(p)).join('')}
             </div>
         </div>
     `;
@@ -358,8 +358,8 @@ function renderPresetCard(preset) {
                 </div>
                 <div class="plan-card-actions">
                     ${preset.isActive
-        ? `<button class="plan-action-btn plan-action-warning" data-action="reactivate-preset" data-id="${preset.id}" title="Re-activate (clears manual overrides)">🔄 Re-activate</button>`
-        : `<button class="plan-action-btn plan-action-primary" data-action="activate-preset" data-id="${preset.id}" title="Activate this preset">▶ Activate</button>`}
+            ? `<button class="plan-action-btn plan-action-warning" data-action="reactivate-preset" data-id="${preset.id}" title="Re-activate (clears manual overrides)">🔄 Re-activate</button>`
+            : `<button class="plan-action-btn plan-action-primary" data-action="activate-preset" data-id="${preset.id}" title="Activate this preset">▶ Activate</button>`}
                     <button class="plan-action-btn" data-action="edit-preset" data-id="${preset.id}" title="Edit">✎</button>
                     <button class="plan-action-btn plan-action-danger" data-action="delete-preset" data-id="${preset.id}" title="Delete">✕</button>
                 </div>
@@ -377,10 +377,10 @@ function renderPresetCard(preset) {
                 ${dockSlots.length > 0 ? `
                 <div class="plan-preset-slots">
                     ${dockSlots.map(s => {
-        const lo = s.loadoutId ? loadouts.find(l => l.id === s.loadoutId) : null;
-        const name = lo ? lo.name : (s.variantId ? `Variant #${s.variantId}` : '—');
-        return `<span class="plan-slot-chip">Dock ${s.dockNumber}: ${esc(name)}</span>`;
-    }).join('')}
+                const lo = s.loadoutId ? loadouts.find(l => l.id === s.loadoutId) : null;
+                const name = lo ? lo.name : (s.variantId ? `Variant #${s.variantId}` : '—');
+                return `<span class="plan-slot-chip">Dock ${s.dockNumber}: ${esc(name)}</span>`;
+            }).join('')}
                 </div>` : ''}
             </div>
             ${preset.notes ? `<div class="plan-card-notes">${esc(preset.notes)}</div>` : ''}
@@ -433,8 +433,8 @@ function renderItemsTab() {
             ${editingPlanItemId === 'new' ? renderPlanItemForm(null) : ''}
             <div class="plan-list">
                 ${planItems.length === 0
-        ? renderEmpty('No plan items yet. Plan items are individual dock or away-team assignments.')
-        : planItems.map(item => renderPlanItemCard(item)).join('')}
+            ? renderEmpty('No plan items yet. Plan items are individual dock or away-team assignments.')
+            : planItems.map(item => renderPlanItemCard(item)).join('')}
             </div>
         </div>
     `;

@@ -24,6 +24,7 @@ import type {
   Loadout,
   LoadoutWithRefs,
   OfficerConflict,
+  OfficerReservation,
 } from "../types/crew-types.js";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -54,6 +55,7 @@ interface CrewStoreSlice {
   listLoadouts(filters?: { active?: boolean }): Promise<Loadout[]>;
   getLoadout(id: number): Promise<LoadoutWithRefs | null>;
   getEffectiveDockState(): Promise<{ conflicts: OfficerConflict[] }>;
+  listReservations(): Promise<OfficerReservation[]>;
   updatePlanItem(id: number, fields: {
     dockNumber?: number | null;
     loadoutId?: number | null;
@@ -81,11 +83,12 @@ export async function solvePlan(
 ): Promise<SolverResult> {
   const apply = opts.apply === true;
 
-  // 1. Fetch all active plan items, docks, and loadout data
-  const [planItems, docks, allLoadouts] = await Promise.all([
+  // 1. Fetch all active plan items, docks, loadout data, and reservations
+  const [planItems, docks, allLoadouts, reservations] = await Promise.all([
     store.listPlanItems({ active: true }),
     store.listDocks(),
     store.listLoadouts(),
+    store.listReservations(),
   ]);
 
   // 2. Sort plan items by priority (ascending = highest priority first)
@@ -97,6 +100,12 @@ export async function solvePlan(
   const usedOfficers = new Set<string>();
   const assignments: SolverAssignment[] = [];
   const warnings: string[] = [];
+
+  // Build reservation map: officerId → reservation
+  const reservationMap = new Map<string, OfficerReservation>();
+  for (const r of reservations) {
+    reservationMap.set(r.officerId, r);
+  }
 
   // Build loadout→bridge officer mapping (need full refs for conflict detection)
   const loadoutBridgeMap = new Map<number, string[]>();
@@ -117,6 +126,45 @@ export async function solvePlan(
     const memberOfficerIds = pi.loadoutId
       ? (loadoutBridgeMap.get(pi.loadoutId) || [])
       : [];
+
+    // Check for hard-locked reservations (cannot assign)
+    const lockedOfficers = memberOfficerIds.filter(oid => {
+      const res = reservationMap.get(oid);
+      return res?.locked === true;
+    });
+
+    if (lockedOfficers.length > 0) {
+      const details = lockedOfficers.map(oid => {
+        const res = reservationMap.get(oid)!;
+        return `${oid} (locked for ${res.reservedFor})`;
+      });
+      assignments.push({
+        planItemId: pi.id,
+        planItemLabel: label,
+        loadoutId: pi.loadoutId,
+        loadoutName,
+        dockNumber: null,
+        action: "conflict",
+        explanation: `Cannot assign ${label} — hard-locked reservation(s): ${details.join(", ")}. Remove the reservation or use a different loadout.`,
+      });
+
+      warnings.push(`Locked reservation conflict on ${label}: ${lockedOfficers.join(", ")}`);
+      continue;
+    }
+
+    // Check for soft reservations (warn but allow)
+    const softReserved = memberOfficerIds.filter(oid => {
+      const res = reservationMap.get(oid);
+      return res && !res.locked;
+    });
+    if (softReserved.length > 0) {
+      const details = softReserved.map(oid => {
+        const res = reservationMap.get(oid)!;
+        return `${oid} (reserved for ${res.reservedFor})`;
+      });
+      warnings.push(`Soft reservation on ${label}: ${details.join(", ")} — proceeding anyway`);
+    }
+
     const conflictingOfficers = memberOfficerIds.filter(oid => usedOfficers.has(oid));
 
     if (conflictingOfficers.length > 0) {

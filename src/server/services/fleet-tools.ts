@@ -22,7 +22,7 @@ import type { OverlayStore } from "../stores/overlay-store.js";
 import type { CrewStore } from "../stores/crew-store.js";
 import type { TargetStore } from "../stores/target-store.js";
 import { detectTargetConflicts } from "./target-conflicts.js";
-import { SEED_INTENTS, type SeedIntent } from "../types/crew-types.js";
+import { SEED_INTENTS, type SeedIntent, type BridgeSlot, type VariantPatch } from "../types/crew-types.js";
 
 // ─── Tool Context ───────────────────────────────────────────
 
@@ -50,7 +50,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "get_fleet_overview",
     description:
       "Get a high-level summary of the Admiral's fleet state: " +
-      "counts of officers, ships, overlays (owned/targeted), loadouts, and docks. " +
+      "counts of officers, ships, overlays (owned/targeted), bridge cores, loadouts, docks, " +
+      "fleet presets (active preset name), and reservations. " +
       "Call this when the Admiral asks about their fleet size, status, or general overview.",
     // No parameters
   },
@@ -58,6 +59,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "search_officers",
     description:
       "Search for officers by name (partial match, case-insensitive). " +
+      "Returns matching officers with reservation status (if reserved/locked). " +
       "Call this when the Admiral asks about a specific officer or wants to find officers matching a name.",
     parameters: {
       type: SchemaType.OBJECT,
@@ -123,7 +125,9 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "list_docks",
     description:
-      "List all drydock assignments with their active loadouts. " +
+      "List all drydock assignments showing the effective state from getEffectiveDockState(). " +
+      "Shows resolved loadouts with BridgeCore members, BelowDeckPolicy, variant patches, " +
+      "and source (preset vs manual). " +
       "Call this when the Admiral asks about their dock configuration, what's in each dock, " +
       "or which ships are currently assigned to docks.",
     // No parameters
@@ -133,6 +137,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "Find officers assigned to multiple active loadouts simultaneously — " +
       "a scheduling conflict that means they can only serve one crew at a time. " +
+      "Uses the new plan_items schema for conflict detection. " +
       "Call this when the Admiral asks about crew conflicts, double-booked officers, " +
       "or wants to validate their fleet plan.",
     // No parameters
@@ -162,8 +167,9 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "get_loadout_detail",
     description:
-      "Get full details for a specific loadout: ship, crew members (bridge + below deck), " +
-      "intent keys, tags, notes. Call when examining a specific crew configuration.",
+      "Get full details for a specific loadout: ship, resolved BridgeCore (captain + bridge officers), " +
+      "BelowDeckPolicy (mode + spec), intent keys, tags, notes, and available variants. " +
+      "Call when examining a specific crew configuration.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -224,7 +230,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "Gather all context needed to suggest an optimal crew for a ship and activity. " +
       "Returns: ship details, intent info, all owned officers with abilities, " +
-      "and existing loadouts for this ship. " +
+      "existing loadouts for this ship, and officer reservations (locked officers are unavailable). " +
+      "Can suggest BridgeCore creation, BelowDeckPolicy selection, and variant creation. " +
       "Use your STFC knowledge to recommend the best captain + bridge + below-deck officers " +
       "from the Admiral's available roster.",
     parameters: {
@@ -246,7 +253,9 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "analyze_fleet",
     description:
       "Gather comprehensive fleet state for optimization analysis: all docks with assignments, " +
-      "active loadouts with crew, plan items, officer conflicts, and validation report. " +
+      "active loadouts with crew, plan items, officer conflicts, fleet presets, " +
+      "variants, reservations, and validation report. " +
+      "Aware of presets (active preset name), variants (dock-level patches), and reservations. " +
       "Use your STFC knowledge to suggest fleet-wide improvements, " +
       "identify suboptimal crew choices, and recommend changes.",
     // No parameters — gathers everything
@@ -255,7 +264,9 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "resolve_conflict",
     description:
       "Gather context to help resolve an officer conflict: the conflicting officer's full details, " +
-      "all loadouts they appear in, and alternative officers from the same group or similar rarity. " +
+      "all loadouts they appear in, alternative officers from the same group or similar rarity, " +
+      "and reservation status (locked officers cannot be reassigned). " +
+      "Handles reservation conflicts — hard-locked officers are flagged. " +
       "Use your STFC knowledge to suggest which loadout should keep this officer " +
       "and which substitutes work best for the others.",
     parameters: {
@@ -273,7 +284,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "what_if_remove_officer",
     description:
       "Preview cascade effects of removing an officer from all loadouts and away teams. " +
-      "Shows which loadouts lose a crew member and which plan items are affected. " +
+      "Shows which BridgeCores lose a member, which loadouts are affected, " +
+      "and which variant bridge patches reference this officer. " +
       "Call when the Admiral considers reassigning an officer or wants to understand dependencies.",
     parameters: {
       type: SchemaType.OBJECT,
@@ -332,6 +344,173 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Each conflict includes severity (blocking/competing/informational) and suggestions. " +
       "Call when the Admiral asks about conflicts, bottlenecks, or resource competition.",
     // No parameters — analyzes all active targets automatically
+  },
+
+  // ─── ADR-025 Mutation Tools (Phase 3) ─────────────────────
+
+  {
+    name: "create_bridge_core",
+    description:
+      "Create a new BridgeCore — a named trio of captain + bridge_1 + bridge_2 officers. " +
+      "BridgeCores are reusable across loadouts. " +
+      "Call when the Admiral asks to create a crew trio or save a bridge crew configuration.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        name: {
+          type: SchemaType.STRING,
+          description: "Name for the bridge core (e.g. 'SNW Exploration Trio', 'PvP Kirk Crew')",
+        },
+        captain: {
+          type: SchemaType.STRING,
+          description: "Officer reference ID for the captain slot",
+        },
+        bridge_1: {
+          type: SchemaType.STRING,
+          description: "Officer reference ID for bridge slot 1",
+        },
+        bridge_2: {
+          type: SchemaType.STRING,
+          description: "Officer reference ID for bridge slot 2",
+        },
+        notes: {
+          type: SchemaType.STRING,
+          description: "Optional notes about this bridge core",
+        },
+      },
+      required: ["name", "captain", "bridge_1", "bridge_2"],
+    },
+  },
+  {
+    name: "create_loadout",
+    description:
+      "Create a new loadout — a named ship+crew configuration that can be assigned to a dock. " +
+      "A loadout links a ship to a BridgeCore and optionally a BelowDeckPolicy. " +
+      "Call when the Admiral asks to save a crew configuration for a ship.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        ship_id: {
+          type: SchemaType.STRING,
+          description: "Ship reference ID for this loadout",
+        },
+        name: {
+          type: SchemaType.STRING,
+          description: "Name for the loadout (e.g. 'Kumari Mining', 'Enterprise PvP')",
+        },
+        bridge_core_id: {
+          type: SchemaType.INTEGER,
+          description: "BridgeCore ID to assign (from list_bridge_cores or create_bridge_core)",
+        },
+        below_deck_policy_id: {
+          type: SchemaType.INTEGER,
+          description: "BelowDeckPolicy ID to assign (optional)",
+        },
+        intent_keys: {
+          type: SchemaType.STRING,
+          description: "Comma-separated intent keys (e.g. 'mining-lat,mining-gas')",
+        },
+        notes: {
+          type: SchemaType.STRING,
+          description: "Optional notes about this loadout",
+        },
+      },
+      required: ["ship_id", "name"],
+    },
+  },
+  {
+    name: "activate_preset",
+    description:
+      "Activate a fleet preset — expands its slots into plan items and sets it as the active preset. " +
+      "Only one preset can be active at a time. Activating a preset replaces all preset-sourced plan items. " +
+      "Call when the Admiral asks to switch fleet modes (e.g. 'switch to mining mode', 'activate PvP preset').",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        preset_id: {
+          type: SchemaType.INTEGER,
+          description: "Fleet preset ID to activate",
+        },
+      },
+      required: ["preset_id"],
+    },
+  },
+  {
+    name: "set_reservation",
+    description:
+      "Set or clear an officer reservation. Reserved officers are flagged in crew suggestions. " +
+      "Locked reservations (hard lock) prevent the officer from being auto-assigned by the solver. " +
+      "Soft reservations generate warnings but don't block assignment. " +
+      "Call when the Admiral wants to reserve an officer for a specific purpose or release a reservation.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        officer_id: {
+          type: SchemaType.STRING,
+          description: "Officer reference ID to reserve/unreserve",
+        },
+        reserved_for: {
+          type: SchemaType.STRING,
+          description: "What the officer is reserved for (e.g. 'PvP Enterprise crew', 'Borg armada'). Set to empty to clear.",
+        },
+        locked: {
+          type: SchemaType.STRING,
+          description: "Whether this is a hard lock ('true') or soft reservation ('false'). Default: false.",
+        },
+        notes: {
+          type: SchemaType.STRING,
+          description: "Optional notes about this reservation",
+        },
+      },
+      required: ["officer_id", "reserved_for"],
+    },
+  },
+  {
+    name: "create_variant",
+    description:
+      "Create a variant on an existing loadout — a named patch that swaps bridge officers, " +
+      "changes below-deck policy, or adjusts intent keys without modifying the base loadout. " +
+      "Variants allow 'Swarm Swap' or 'PvP Bridge Swap' configurations that share the same base ship. " +
+      "Call when the Admiral wants a variant crew for an existing loadout.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        loadout_id: {
+          type: SchemaType.INTEGER,
+          description: "Base loadout ID to create a variant for",
+        },
+        name: {
+          type: SchemaType.STRING,
+          description: "Name for the variant (e.g. 'Swarm Swap', 'PvP Bridge')",
+        },
+        captain: {
+          type: SchemaType.STRING,
+          description: "Replacement captain officer ID (optional — omit to keep base captain)",
+        },
+        bridge_1: {
+          type: SchemaType.STRING,
+          description: "Replacement bridge_1 officer ID (optional — omit to keep base)",
+        },
+        bridge_2: {
+          type: SchemaType.STRING,
+          description: "Replacement bridge_2 officer ID (optional — omit to keep base)",
+        },
+        notes: {
+          type: SchemaType.STRING,
+          description: "Optional notes about this variant",
+        },
+      },
+      required: ["loadout_id", "name"],
+    },
+  },
+  {
+    name: "get_effective_state",
+    description:
+      "Get the fully resolved dock state — the single source of truth for what's in each dock. " +
+      "Shows resolved loadouts with BridgeCore names, BelowDeckPolicy modes, variant patches, " +
+      "away teams, officer conflicts, and source attribution (preset vs manual). " +
+      "Call when the Admiral asks about the current fleet state, what's running, or dock assignments.",
+    // No parameters
   },
 ];
 
@@ -415,6 +594,19 @@ async function dispatchTool(
       return suggestTargets(ctx);
     case "detect_target_conflicts":
       return detectConflicts(ctx);
+    // ADR-025 mutation tools
+    case "create_bridge_core":
+      return createBridgeCoreTool(args, ctx);
+    case "create_loadout":
+      return createLoadoutTool(args, ctx);
+    case "activate_preset":
+      return activatePresetTool(Number(args.preset_id), ctx);
+    case "set_reservation":
+      return setReservationTool(args, ctx);
+    case "create_variant":
+      return createVariantTool(args, ctx);
+    case "get_effective_state":
+      return getEffectiveStateTool(ctx);
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -442,15 +634,24 @@ async function getFleetOverview(ctx: ToolContext): Promise<object> {
   }
 
   if (ctx.crewStore) {
-    const [loadouts, docks, planItems] = await Promise.all([
+    const [loadouts, docks, planItems, bridgeCores, presets, reservations] = await Promise.all([
       ctx.crewStore.listLoadouts(),
       ctx.crewStore.listDocks(),
       ctx.crewStore.listPlanItems(),
+      ctx.crewStore.listBridgeCores(),
+      ctx.crewStore.listFleetPresets(),
+      ctx.crewStore.listReservations(),
     ]);
+    const activePreset = presets.find((p) => p.isActive);
     overview.crew = {
       loadouts: loadouts.length,
       docks: docks.length,
       planItems: planItems.length,
+      bridgeCores: bridgeCores.length,
+      fleetPresets: presets.length,
+      activePreset: activePreset ? { id: activePreset.id, name: activePreset.name } : null,
+      reservations: reservations.length,
+      lockedReservations: reservations.filter((r) => r.locked).length,
     };
   }
 
@@ -466,14 +667,22 @@ async function searchOfficers(query: string, ctx: ToolContext): Promise<object> 
   }
 
   const officers = await ctx.referenceStore.searchOfficers(query);
-  const results = officers.slice(0, SEARCH_LIMIT).map((o) => ({
-    id: o.id,
-    name: o.name,
-    rarity: o.rarity,
-    group: o.groupName,
-    captainManeuver: o.captainManeuver,
-    officerAbility: o.officerAbility,
-  }));
+  // Fetch reservations if crew store is available
+  const reservations = ctx.crewStore ? await ctx.crewStore.listReservations() : [];
+  const reservationMap = new Map(reservations.map((r) => [r.officerId, r]));
+
+  const results = officers.slice(0, SEARCH_LIMIT).map((o) => {
+    const res = reservationMap.get(o.id);
+    return {
+      id: o.id,
+      name: o.name,
+      rarity: o.rarity,
+      group: o.groupName,
+      captainManeuver: o.captainManeuver,
+      officerAbility: o.officerAbility,
+      ...(res ? { reservation: { reservedFor: res.reservedFor, locked: res.locked } } : {}),
+    };
+  });
 
   return {
     results,
@@ -608,12 +817,16 @@ async function listDocks(ctx: ToolContext): Promise<object> {
     dockNumber: d.dockNumber,
     intentKeys: d.intentKeys,
     source: d.source,
+    variantPatch: d.variantPatch,
     assignment: d.loadout
       ? {
           loadoutId: d.loadout.loadoutId,
           loadoutName: d.loadout.name,
           shipId: d.loadout.shipId,
           bridge: d.loadout.bridge,
+          belowDeckPolicy: d.loadout.belowDeckPolicy
+            ? { name: d.loadout.belowDeckPolicy.name, mode: d.loadout.belowDeckPolicy.mode }
+            : null,
         }
       : null,
   }));
@@ -721,6 +934,9 @@ async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Promise<ob
     return { error: `Loadout not found: ${loadoutId}` };
   }
 
+  // Fetch variants for this loadout
+  const variants = await ctx.crewStore.listVariants(loadoutId);
+
   return {
     id: loadout.id,
     name: loadout.name,
@@ -748,6 +964,12 @@ async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Promise<ob
           spec: loadout.belowDeckPolicy.spec,
         }
       : null,
+    variants: variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      patch: v.patch,
+      notes: v.notes,
+    })),
   };
 }
 
@@ -929,23 +1151,32 @@ async function analyzeFleet(ctx: ToolContext): Promise<object> {
   }
 
   // Gather comprehensive fleet state in parallel
-  const [effectiveState, planItems, loadouts] = await Promise.all([
+  const [effectiveState, planItems, loadouts, presets, reservations] = await Promise.all([
     ctx.crewStore.getEffectiveDockState(),
     ctx.crewStore.listPlanItems(),
     ctx.crewStore.listLoadouts(),
+    ctx.crewStore.listFleetPresets(),
+    ctx.crewStore.listReservations(),
   ]);
 
+  const activePreset = presets.find((p) => p.isActive);
+
   return {
+    activePreset: activePreset ? { id: activePreset.id, name: activePreset.name, slots: activePreset.slots.length } : null,
     docks: effectiveState.docks.map((d) => ({
       dockNumber: d.dockNumber,
       source: d.source,
       intentKeys: d.intentKeys,
+      variantPatch: d.variantPatch,
       assignment: d.loadout
         ? {
             loadoutId: d.loadout.loadoutId,
             loadoutName: d.loadout.name,
             shipId: d.loadout.shipId,
             bridge: d.loadout.bridge,
+            belowDeckPolicy: d.loadout.belowDeckPolicy
+              ? { name: d.loadout.belowDeckPolicy.name, mode: d.loadout.belowDeckPolicy.mode }
+              : null,
           }
         : null,
     })),
@@ -979,6 +1210,12 @@ async function analyzeFleet(ctx: ToolContext): Promise<object> {
     totalLoadouts: loadouts.length,
     totalPlanItems: planItems.length,
     totalConflicts: effectiveState.conflicts.length,
+    reservations: reservations.map((r) => ({
+      officerId: r.officerId,
+      reservedFor: r.reservedFor,
+      locked: r.locked,
+    })),
+    totalReservations: reservations.length,
   };
 }
 
@@ -998,6 +1235,9 @@ async function resolveConflict(officerId: string, ctx: ToolContext): Promise<obj
   if (!officer) {
     return { error: `Officer not found: ${officerId}` };
   }
+
+  // 1b. Check reservation status
+  const reservation = await ctx.crewStore.getReservation(officerId);
 
   // 2. Get their conflicts from effective state
   const state = await ctx.crewStore.getEffectiveDockState();
@@ -1063,6 +1303,9 @@ async function resolveConflict(officerId: string, ctx: ToolContext): Promise<obj
       : null,
     alternatives,
     affectedLoadouts,
+    reservation: reservation
+      ? { reservedFor: reservation.reservedFor, locked: reservation.locked }
+      : null,
   };
 }
 
@@ -1287,5 +1530,228 @@ async function detectConflicts(ctx: ToolContext): Promise<object> {
       byType,
       bySeverity,
     },
+  };
+}
+
+// ─── ADR-025 Mutation Tool Implementations ──────────────────
+
+async function createBridgeCoreTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
+  }
+  const name = String(args.name ?? "").trim();
+  const captain = String(args.captain ?? "").trim();
+  const bridge1 = String(args.bridge_1 ?? "").trim();
+  const bridge2 = String(args.bridge_2 ?? "").trim();
+  const notes = args.notes ? String(args.notes).trim() : undefined;
+
+  if (!name) return { error: "Name is required." };
+  if (!captain || !bridge1 || !bridge2) return { error: "All three bridge slots are required: captain, bridge_1, bridge_2." };
+
+  const members: Array<{ officerId: string; slot: BridgeSlot }> = [
+    { officerId: captain, slot: "captain" },
+    { officerId: bridge1, slot: "bridge_1" },
+    { officerId: bridge2, slot: "bridge_2" },
+  ];
+
+  const core = await ctx.crewStore.createBridgeCore(name, members, notes);
+  return {
+    created: true,
+    bridgeCore: {
+      id: core.id,
+      name: core.name,
+      members: core.members.map((m) => ({ officerId: m.officerId, slot: m.slot })),
+    },
+  };
+}
+
+async function createLoadoutTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
+  }
+  const shipId = String(args.ship_id ?? "").trim();
+  const name = String(args.name ?? "").trim();
+  if (!shipId) return { error: "Ship ID is required." };
+  if (!name) return { error: "Name is required." };
+
+  const fields: {
+    shipId: string; name: string; bridgeCoreId?: number; belowDeckPolicyId?: number;
+    intentKeys?: string[]; notes?: string;
+  } = { shipId, name };
+
+  if (args.bridge_core_id != null) fields.bridgeCoreId = Number(args.bridge_core_id);
+  if (args.below_deck_policy_id != null) fields.belowDeckPolicyId = Number(args.below_deck_policy_id);
+  if (args.intent_keys) fields.intentKeys = String(args.intent_keys).split(",").map((k) => k.trim()).filter(Boolean);
+  if (args.notes) fields.notes = String(args.notes).trim();
+
+  const loadout = await ctx.crewStore.createLoadout(fields);
+  return {
+    created: true,
+    loadout: {
+      id: loadout.id,
+      name: loadout.name,
+      shipId: loadout.shipId,
+    },
+  };
+}
+
+async function activatePresetTool(presetId: number, ctx: ToolContext): Promise<object> {
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
+  }
+  if (!presetId || isNaN(presetId)) {
+    return { error: "Valid preset ID is required." };
+  }
+
+  const preset = await ctx.crewStore.getFleetPreset(presetId);
+  if (!preset) {
+    return { error: `Fleet preset not found: ${presetId}` };
+  }
+
+  // Deactivate all other active presets first (only one active at a time)
+  const allPresets = await ctx.crewStore.listFleetPresets();
+  for (const p of allPresets) {
+    if (p.isActive && p.id !== presetId) {
+      await ctx.crewStore.updateFleetPreset(p.id, { isActive: false });
+    }
+  }
+
+  const updated = await ctx.crewStore.updateFleetPreset(presetId, { isActive: true });
+  if (!updated) {
+    return { error: `Failed to activate preset ${presetId}` };
+  }
+
+  return {
+    activated: true,
+    preset: {
+      id: updated.id,
+      name: updated.name,
+      isActive: updated.isActive,
+      slots: preset.slots.length,
+    },
+  };
+}
+
+async function setReservationTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
+  }
+  const officerId = String(args.officer_id ?? "").trim();
+  const reservedFor = String(args.reserved_for ?? "").trim();
+  if (!officerId) return { error: "Officer ID is required." };
+
+  // Clear reservation if reservedFor is empty
+  if (!reservedFor) {
+    const deleted = await ctx.crewStore.deleteReservation(officerId);
+    return {
+      cleared: true,
+      officerId,
+      existed: deleted,
+    };
+  }
+
+  const locked = String(args.locked ?? "false").toLowerCase() === "true";
+  const notes = args.notes ? String(args.notes).trim() : undefined;
+
+  const reservation = await ctx.crewStore.setReservation(officerId, reservedFor, locked, notes);
+  return {
+    set: true,
+    reservation: {
+      officerId: reservation.officerId,
+      reservedFor: reservation.reservedFor,
+      locked: reservation.locked,
+    },
+  };
+}
+
+async function createVariantTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
+  }
+  const loadoutId = Number(args.loadout_id);
+  const name = String(args.name ?? "").trim();
+  if (!loadoutId || isNaN(loadoutId)) return { error: "Valid loadout ID is required." };
+  if (!name) return { error: "Name is required." };
+
+  // Build variant patch from optional bridge overrides
+  const patch: VariantPatch = {};
+  const bridgeOverrides: Partial<Record<BridgeSlot, string>> = {};
+  if (args.captain) bridgeOverrides.captain = String(args.captain).trim();
+  if (args.bridge_1) bridgeOverrides.bridge_1 = String(args.bridge_1).trim();
+  if (args.bridge_2) bridgeOverrides.bridge_2 = String(args.bridge_2).trim();
+  if (Object.keys(bridgeOverrides).length > 0) patch.bridge = bridgeOverrides;
+
+  const notes = args.notes ? String(args.notes).trim() : undefined;
+
+  const variant = await ctx.crewStore.createVariant(loadoutId, name, patch, notes);
+  return {
+    created: true,
+    variant: {
+      id: variant.id,
+      baseLoadoutId: variant.baseLoadoutId,
+      name: variant.name,
+      patch: variant.patch,
+    },
+  };
+}
+
+async function getEffectiveStateTool(ctx: ToolContext): Promise<object> {
+  if (!ctx.crewStore) {
+    return { error: "Crew system not available." };
+  }
+
+  const [state, presets] = await Promise.all([
+    ctx.crewStore.getEffectiveDockState(),
+    ctx.crewStore.listFleetPresets(),
+  ]);
+
+  const activePreset = presets.find((p) => p.isActive);
+
+  return {
+    activePreset: activePreset ? { id: activePreset.id, name: activePreset.name } : null,
+    docks: state.docks.map((d) => ({
+      dockNumber: d.dockNumber,
+      source: d.source,
+      intentKeys: d.intentKeys,
+      variantPatch: d.variantPatch,
+      loadout: d.loadout
+        ? {
+            loadoutId: d.loadout.loadoutId,
+            name: d.loadout.name,
+            shipId: d.loadout.shipId,
+            bridge: d.loadout.bridge,
+            belowDeckPolicy: d.loadout.belowDeckPolicy
+              ? { name: d.loadout.belowDeckPolicy.name, mode: d.loadout.belowDeckPolicy.mode }
+              : null,
+          }
+        : null,
+    })),
+    awayTeams: state.awayTeams.map((a) => ({
+      label: a.label,
+      officers: a.officers,
+      source: a.source,
+    })),
+    conflicts: state.conflicts.map((c) => ({
+      officerId: c.officerId,
+      locations: c.locations.map((loc) => ({
+        type: loc.type,
+        entityName: loc.entityName,
+        slot: loc.slot,
+      })),
+    })),
+    totalDocks: state.docks.length,
+    totalConflicts: state.conflicts.length,
   };
 }

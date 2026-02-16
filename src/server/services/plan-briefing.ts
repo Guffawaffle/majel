@@ -11,7 +11,8 @@
 
 import type { CrewStore } from "../stores/crew-store.js";
 import type {
-  PlanItem, OfficerConflict, EffectiveDockEntry, EffectiveAwayTeam,
+  PlanItem, OfficerConflict, EffectiveDockEntry,
+  FleetPresetWithSlots,
 } from "../types/crew-types.js";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -52,11 +53,26 @@ function formatPlanLine(item: PlanItem): string {
 function formatDockEntry(entry: EffectiveDockEntry): string {
   const parts: string[] = [`Dock ${entry.dockNumber}`];
   if (entry.loadout) {
-    parts.push(`${entry.loadout.name} (ship: ${entry.loadout.shipId})`);
-    const bridge = entry.loadout.bridge;
+    const lo = entry.loadout;
+    parts.push(`${lo.name} (ship: ${lo.shipId})`);
+    // Show BridgeCore name if resolved, else individual officers
+    const bridge = lo.bridge;
     const crew = [bridge.captain, bridge.bridge_1, bridge.bridge_2].filter(Boolean);
     if (crew.length > 0) {
       parts.push(`bridge: ${crew.join(", ")}`);
+    }
+    // Show BelowDeckPolicy mode if available
+    if (lo.belowDeckPolicy) {
+      parts.push(`policy: ${lo.belowDeckPolicy.name} (${lo.belowDeckPolicy.mode})`);
+    }
+    // Show variant patch if present
+    if (entry.variantPatch) {
+      const patchParts: string[] = [];
+      if (entry.variantPatch.bridge) {
+        const swaps = Object.entries(entry.variantPatch.bridge).map(([slot, id]) => `${slot}→${id}`);
+        patchParts.push(`bridge swap: ${swaps.join(", ")}`);
+      }
+      if (patchParts.length > 0) parts.push(`[variant: ${patchParts.join("; ")}]`);
     }
   } else {
     parts.push("(empty)");
@@ -81,11 +97,13 @@ export async function buildPlanBriefing(
   store: CrewStore,
   tier: 1 | 2 | 3 = 1,
 ): Promise<PlanBriefing> {
-  const [planItems, effectiveState] = await Promise.all([
+  const [planItems, effectiveState, presets] = await Promise.all([
     store.listPlanItems({ active: true }),
     tier >= 2 ? store.getEffectiveDockState() : Promise.resolve(null),
+    store.listFleetPresets(),
   ]);
 
+  const activePreset = presets.find((p: FleetPresetWithSlots) => p.isActive);
   const conflicts = effectiveState?.conflicts ?? [];
   const dockEntries = effectiveState?.docks ?? [];
   const awayTeams = effectiveState?.awayTeams ?? [];
@@ -102,6 +120,9 @@ export async function buildPlanBriefing(
 
   // ── Tier 1: Summary ──
   sections.push("=== Active Plan ===");
+  if (activePreset) {
+    sections.push(`Active preset: ${activePreset.name} (${activePreset.slots.length} slots)`);
+  }
 
   if (planItems.length === 0) {
     sections.push("No active plan items. The Admiral hasn't set up a plan yet.");
@@ -182,6 +203,14 @@ export async function buildPlanBriefing(
     const emptyDocks = dockEntries.filter((d) => !d.loadout);
     if (emptyDocks.length > 0) {
       insights.push(`  ℹ Empty docks: ${emptyDocks.map((d) => d.dockNumber).join(", ")}`);
+    }
+
+    // Variant-aware insights
+    const variantDocks = dockEntries.filter((d) => d.variantPatch && d.loadout);
+    if (variantDocks.length > 0) {
+      for (const vd of variantDocks) {
+        insights.push(`  🔀 Dock ${vd.dockNumber} is using a variant of ${vd.loadout!.name}`);
+      }
     }
 
     if (insights.length > 0) {

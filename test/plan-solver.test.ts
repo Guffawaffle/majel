@@ -294,4 +294,66 @@ describe("Plan Solver", () => {
     expect(result.assignments[0].dockNumber).toBeNull();
     expect(result.assignments[0].loadoutId).toBeNull();
   });
+
+  // ─── Reservation Awareness (ADR-025) ─────────────────────
+
+  it("blocks assignment when officer has hard-locked reservation", async () => {
+    const lo = await seedLoadout(store, { shipId: "vidar", name: "A", officers: ["kirk", "spock", "mccoy"] });
+    await store.upsertDock(1, { label: "D1" });
+    await store.createPlanItem({ loadoutId: lo.id, label: "Blocked By Lock", priority: 1 });
+    // Kirk is hard-locked for another purpose
+    await store.setReservation("kirk", "PvP Flagship", true, "Do not move");
+
+    const result = await solvePlan(store);
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0].action).toBe("conflict");
+    expect(result.assignments[0].explanation).toContain("hard-locked");
+    expect(result.assignments[0].explanation).toContain("kirk");
+    expect(result.warnings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("allows assignment with soft reservation but adds warning", async () => {
+    const lo = await seedLoadout(store, { shipId: "vidar", name: "A", officers: ["kirk", "spock", "mccoy"] });
+    await store.upsertDock(1, { label: "D1" });
+    await store.createPlanItem({ loadoutId: lo.id, label: "Soft OK", priority: 1 });
+    // Kirk has a soft reservation (locked=false)
+    await store.setReservation("kirk", "Mining Crew", false);
+
+    const result = await solvePlan(store);
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0].action).toBe("assigned");
+    // Should still generate a warning
+    expect(result.warnings.some(w => w.includes("Soft reservation"))).toBe(true);
+    expect(result.warnings.some(w => w.includes("kirk"))).toBe(true);
+  });
+
+  it("mixed: locked blocks, soft warns, unresolved proceeds", async () => {
+    const loA = await seedLoadout(store, { shipId: "vidar", name: "A", officers: ["kirk"] });
+    const loB = await seedLoadout(store, { shipId: "kumari", name: "B", officers: ["spock"] });
+    const loC = await seedLoadout(store, { shipId: "enterprise", name: "C", officers: ["mccoy"] });
+    await store.upsertDock(1, { label: "D1" });
+    await store.upsertDock(2, { label: "D2" });
+    await store.upsertDock(3, { label: "D3" });
+    await store.createPlanItem({ loadoutId: loA.id, label: "Kirk Locked", priority: 1 });
+    await store.createPlanItem({ loadoutId: loB.id, label: "Spock Soft", priority: 2 });
+    await store.createPlanItem({ loadoutId: loC.id, label: "McCoy Free", priority: 3 });
+    // Kirk hard-locked, Spock soft-reserved, McCoy free
+    await store.setReservation("kirk", "PvP", true);
+    await store.setReservation("spock", "Science", false);
+
+    const result = await solvePlan(store);
+    expect(result.assignments).toHaveLength(3);
+    // Kirk's plan item should be conflict
+    const kirkResult = result.assignments.find(a => a.planItemLabel === "Kirk Locked");
+    expect(kirkResult!.action).toBe("conflict");
+    // Spock's plan item should be assigned (soft reservation = warning only)
+    const spockResult = result.assignments.find(a => a.planItemLabel === "Spock Soft");
+    expect(spockResult!.action).toBe("assigned");
+    // McCoy's plan item should also be assigned
+    const mccoyResult = result.assignments.find(a => a.planItemLabel === "McCoy Free");
+    expect(mccoyResult!.action).toBe("assigned");
+    // Should have warning for Kirk + warning for Spock
+    expect(result.warnings.some(w => w.includes("Locked reservation"))).toBe(true);
+    expect(result.warnings.some(w => w.includes("Soft reservation"))).toBe(true);
+  });
 });
