@@ -22,6 +22,7 @@ import 'views/fleet/fleet.js';
 import 'views/drydock/drydock.js';
 import 'views/crew-builder/crew-builder.js';
 import 'views/fleet-ops/fleet-ops.js';
+import 'views/crews/crews.js';
 import 'views/diagnostics/diagnostics.js';
 import * as router from 'router';
 
