@@ -72,6 +72,7 @@ let ships = [];
 let activeTab = 'cores';  // 'cores' | 'loadouts' | 'policies' | 'reservations'
 let loading = false;
 let formError = '';
+let variantFormError = '';
 
 // Editing state
 let editingCoreId = null;      // core id or 'new'
@@ -112,10 +113,10 @@ export async function refresh() {
             fetchCatalogOfficers({ ownership: 'owned' }),
             fetchCatalogShips(),
         ]);
-        bridgeCores = coresData?.bridgeCores ?? coresData ?? [];
-        belowDeckPolicies = policiesData?.belowDeckPolicies ?? policiesData ?? [];
-        loadouts = loadoutsData?.loadouts ?? loadoutsData ?? [];
-        reservations = reservationsData?.reservations ?? reservationsData ?? [];
+        bridgeCores = Array.isArray(coresData) ? coresData : (coresData?.bridgeCores ?? []);
+        belowDeckPolicies = Array.isArray(policiesData) ? policiesData : (policiesData?.belowDeckPolicies ?? []);
+        loadouts = Array.isArray(loadoutsData) ? loadoutsData : (loadoutsData?.loadouts ?? []);
+        reservations = Array.isArray(reservationsData) ? reservationsData : (reservationsData?.reservations ?? []);
         officers = Array.isArray(officerData) ? officerData : (officerData?.officers ?? []);
         ships = Array.isArray(shipData) ? shipData : (shipData?.ships ?? []);
         render();
@@ -429,7 +430,7 @@ function renderVariantForm(loadoutId, variant) {
                 <h3>${isNew ? 'Create Variant' : `Edit: ${esc(v.name)}`}</h3>
                 <button class="crews-action-btn" data-action="cancel-variant" title="Cancel">✕</button>
             </div>
-            ${formError ? `<div class="crews-form-error">${esc(formError)}</div>` : ''}
+            ${variantFormError ? `<div class="crews-form-error">${esc(variantFormError)}</div>` : ''}
             <div class="crews-form-grid">
                 <label class="crews-form-field crews-form-wide">
                     <span class="crews-form-label">Name *</span>
@@ -449,7 +450,7 @@ function renderVariantForm(loadoutId, variant) {
                     <span class="crews-form-label">Policy Override</span>
                     <select class="crews-form-select" data-form-field="patch_policy">
                         <option value="">— No change —</option>
-                        ${belowDeckPolicies.map(p => `<option value="${p.id}" ${patch.below_deck_policy_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+                        ${belowDeckPolicies.map(p => `<option value="${esc(String(p.id))}" ${patch.below_deck_policy_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
                     </select>
                 </label>
                 <label class="crews-form-field crews-form-wide">
@@ -496,14 +497,14 @@ function renderLoadoutForm(loadout) {
                     <span class="crews-form-label">Bridge Core</span>
                     <select class="crews-form-select" data-form-field="bridgeCoreId">
                         <option value="">— Select core —</option>
-                        ${bridgeCores.map(c => `<option value="${c.id}" ${l.bridgeCoreId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+                        ${bridgeCores.map(c => `<option value="${esc(String(c.id))}" ${l.bridgeCoreId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
                     </select>
                 </label>
                 <label class="crews-form-field">
                     <span class="crews-form-label">Below Deck Policy</span>
                     <select class="crews-form-select" data-form-field="belowDeckPolicyId">
                         <option value="">— Select policy —</option>
-                        ${belowDeckPolicies.map(p => `<option value="${p.id}" ${l.belowDeckPolicyId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+                        ${belowDeckPolicies.map(p => `<option value="${esc(String(p.id))}" ${l.belowDeckPolicyId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
                     </select>
                 </label>
                 <label class="crews-form-field">
@@ -618,7 +619,7 @@ function renderPolicyCard(policy) {
                 ${spec.max_slots != null ? `
                 <div class="crews-row">
                     <span class="crews-label">Max Slots</span>
-                    <span class="crews-value">${spec.max_slots}</span>
+                    <span class="crews-value">${esc(String(spec.max_slots))}</span>
                 </div>` : ''}
             </div>
             ${usedInHtml}
@@ -750,9 +751,9 @@ function renderReservationForm(res) {
                     <select class="crews-form-select" data-form-field="officerId" required>
                         <option value="">— Select officer —</option>
                         ${officers
-        .filter(off => !reservations.some(rv => rv.officerId === off.id))
-        .map(off => `<option value="${esc(off.id)}">${esc(off.name)} (L${off.userLevel || '?'})</option>`)
-        .join('')}
+                .filter(off => !reservations.some(rv => String(rv.officerId) === String(off.id)))
+                .map(off => `<option value="${esc(off.id)}">${esc(off.name)} (L${off.userLevel || '?'})</option>`)
+                .join('')}
                     </select>
                 </label>` : `
                 <div class="crews-form-field">
@@ -853,6 +854,8 @@ function bindEvents() {
 
     bindAction('create-loadout', () => {
         editingLoadoutId = 'new';
+        editingVariantId = null;
+        expandedLoadoutId = null;
         formError = '';
         render();
     });
@@ -861,6 +864,8 @@ function bindEvents() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             editingLoadoutId = parseInt(btn.dataset.id, 10);
+            editingVariantId = null;
+            expandedLoadoutId = null;
             formError = '';
             render();
         });
@@ -882,6 +887,7 @@ function bindEvents() {
                 await deleteCrewLoadout(id);
                 loadouts = loadouts.filter(l => l.id !== id);
                 delete loadoutVariants[id];
+                if (expandedLoadoutId === id) { expandedLoadoutId = null; editingVariantId = null; }
                 render();
             } catch (err) {
                 formError = err.message || 'Delete failed.';
@@ -910,7 +916,6 @@ function bindEvents() {
                         loadoutVariants[id] = data?.variants ?? data ?? [];
                     } catch (err) {
                         console.error('Failed to load variants:', err);
-                        loadoutVariants[id] = [];
                     }
                 }
             }
@@ -924,7 +929,7 @@ function bindEvents() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             editingVariantId = 'new';
-            formError = '';
+            variantFormError = '';
             render();
         });
     });
@@ -933,7 +938,7 @@ function bindEvents() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             editingVariantId = parseInt(btn.dataset.id, 10);
-            formError = '';
+            variantFormError = '';
             render();
         });
     });
@@ -972,7 +977,7 @@ function bindEvents() {
     area.querySelectorAll('[data-action="cancel-variant"]').forEach(btn => {
         btn.addEventListener('click', () => {
             editingVariantId = null;
-            formError = '';
+            variantFormError = '';
             render();
         });
     });
@@ -1118,7 +1123,7 @@ function bindAction(action, handler) {
 
 async function handleSaveCore() {
     const area = $('#crews-area');
-    const form = area?.querySelector('.crews-form');
+    const form = area?.querySelector('.crews-form:not(.crews-variant-form)');
     if (!form) return;
 
     const getValue = (f) => {
@@ -1160,7 +1165,7 @@ async function handleSaveCore() {
 
 async function handleSaveLoadout() {
     const area = $('#crews-area');
-    const form = area?.querySelector('.crews-form');
+    const form = area?.querySelector('.crews-form:not(.crews-variant-form)');
     if (!form) return;
 
     const getValue = (f) => {
@@ -1222,7 +1227,7 @@ async function handleSaveVariant(loadoutId) {
     };
 
     const name = (getValue('name') || '').trim();
-    if (!name) { formError = 'Name is required.'; render(); return; }
+    if (!name) { variantFormError = 'Name is required.'; render(); return; }
 
     // Build patch
     const patch = {};
@@ -1251,17 +1256,17 @@ async function handleSaveVariant(loadoutId) {
             if (idx !== -1) variants[idx] = { ...variants[idx], name, patch, notes };
         }
         editingVariantId = null;
-        formError = '';
+        variantFormError = '';
         render();
     } catch (err) {
-        formError = err.message || 'Save failed.';
+        variantFormError = err.message || 'Save failed.';
         render();
     }
 }
 
 async function handleSavePolicy() {
     const area = $('#crews-area');
-    const form = area?.querySelector('.crews-form');
+    const form = area?.querySelector('.crews-form:not(.crews-variant-form)');
     if (!form) return;
 
     const getValue = (f) => {
@@ -1285,8 +1290,8 @@ async function handleSavePolicy() {
 
     const spec = {};
     if (pinned.length > 0) spec.pinned = pinned;
-    if (maxSlots) spec.max_slots = maxSlots;
-    if (avoidReserved) spec.avoid_reserved = true;
+    spec.max_slots = maxSlots ?? null;
+    spec.avoid_reserved = !!avoidReserved;
 
     try {
         if (editingPolicyId === 'new') {
@@ -1309,7 +1314,7 @@ async function handleSavePolicy() {
 
 async function handleSaveReservation() {
     const area = $('#crews-area');
-    const form = area?.querySelector('.crews-form');
+    const form = area?.querySelector('.crews-form:not(.crews-variant-form)');
     if (!form) return;
 
     const getValue = (f) => {
@@ -1330,7 +1335,7 @@ async function handleSaveReservation() {
 
     try {
         await setReservation(officerId, reservedFor, locked, notes);
-        const idx = reservations.findIndex(r => r.officerId === officerId);
+        const idx = reservations.findIndex(r => String(r.officerId) === String(officerId));
         const updated = { officerId, reservedFor, locked, notes };
         if (idx !== -1) {
             reservations[idx] = updated;
