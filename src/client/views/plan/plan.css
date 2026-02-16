@@ -1,0 +1,642 @@
+/* ═══════════════════════════════════════════════════════════
+   plan.css — Fleet State Dashboard styles (ADR-025 Phase 5)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Tab Bar ──────────────────────────────────────────────── */
+
+.plan-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.plan-tab {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 10px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.plan-tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.plan-tab.active {
+    color: var(--accent-gold);
+    border-bottom-color: var(--accent-gold);
+    font-weight: 600;
+}
+
+.plan-tab-icon {
+    margin-right: 4px;
+}
+
+/* ─── Section / Layout ─────────────────────────────────────── */
+
+.plan-section {
+    padding: 16px;
+}
+
+.plan-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.plan-toolbar-title {
+    margin: 0;
+    font-size: 16px;
+    color: var(--text-primary);
+}
+
+.plan-create-btn {
+    background: var(--accent-gold-dim);
+    color: var(--accent-gold);
+    border: 1px solid var(--accent-gold);
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 13px;
+    transition: var(--transition);
+}
+
+.plan-create-btn:hover {
+    background: var(--accent-gold);
+    color: var(--bg-primary, #0d1117);
+}
+
+/* ─── Dock Grid ────────────────────────────────────────────── */
+
+.plan-dock-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.plan-dock-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+.plan-dock-card:hover {
+    border-color: var(--accent-gold-dim);
+}
+
+.plan-dock-manual {
+    border-left: 3px solid var(--accent-orange);
+}
+
+.plan-dock-empty {
+    opacity: 0.7;
+}
+
+.plan-dock-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+}
+
+.plan-dock-number {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.plan-dock-source {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.plan-dock-body {
+    padding: 10px 12px;
+}
+
+.plan-dock-unassigned {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.plan-dock-loadout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.plan-dock-loadout-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.plan-dock-bridge {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 6px;
+}
+
+.plan-dock-officer {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.plan-dock-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.plan-dock-detail {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.plan-dock-actions {
+    padding: 6px 12px 10px;
+    border-top: 1px solid var(--border);
+}
+
+/* ─── Away Teams ───────────────────────────────────────────── */
+
+.plan-away-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+}
+
+.plan-away-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+}
+
+.plan-away-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.plan-away-label {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.plan-away-source {
+    font-size: 12px;
+}
+
+.plan-away-officers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.plan-away-officer {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* ─── Planning Note ────────────────────────────────────────── */
+
+.plan-planning-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: var(--accent-gold-dim);
+    border: 1px solid var(--accent-gold);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.plan-note-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+/* ─── Conflicts ────────────────────────────────────────────── */
+
+.plan-conflicts {
+    background: rgba(255, 80, 80, 0.08);
+    border: 1px solid var(--accent-red);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+
+.plan-conflicts-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-size: 14px;
+    color: var(--accent-red);
+}
+
+.plan-conflicts-icon {
+    font-size: 16px;
+}
+
+.plan-conflicts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.plan-conflict-row {
+    display: flex;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.plan-conflict-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.plan-conflict-locs {
+    color: var(--text-secondary);
+}
+
+/* ─── Card List (Presets, Plan Items) ──────────────────────── */
+
+.plan-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.plan-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+.plan-card:hover {
+    border-color: var(--accent-gold-dim);
+}
+
+.plan-card-active {
+    border-color: var(--accent-green);
+}
+
+.plan-card-inactive {
+    opacity: 0.6;
+}
+
+.plan-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.plan-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.plan-card-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.plan-card-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.plan-card-body {
+    padding: 10px 14px;
+}
+
+.plan-card-notes {
+    padding: 6px 14px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ─── Row (label + value) ──────────────────────────────────── */
+
+.plan-row {
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.plan-label {
+    color: var(--text-muted);
+    min-width: 70px;
+}
+
+.plan-value {
+    color: var(--text-secondary);
+}
+
+/* ─── Badges ───────────────────────────────────────────────── */
+
+.plan-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted);
+}
+
+.plan-badge-active {
+    background: rgba(80, 200, 120, 0.12);
+    color: var(--accent-green);
+}
+
+.plan-badge-inactive {
+    background: rgba(180, 180, 180, 0.1);
+    color: var(--text-muted);
+}
+
+.plan-badge-source {
+    font-weight: 400;
+}
+
+.plan-badge-variant {
+    background: rgba(100, 180, 255, 0.12);
+    color: var(--accent-blue);
+}
+
+.plan-badge-priority {
+    background: rgba(255, 160, 50, 0.12);
+    color: var(--accent-orange);
+}
+
+/* ─── Preset Slots ─────────────────────────────────────────── */
+
+.plan-preset-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.plan-slot-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+}
+
+/* ─── Buttons ──────────────────────────────────────────────── */
+
+.plan-action-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.plan-action-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+}
+
+.plan-action-sm {
+    padding: 2px 6px;
+    font-size: 11px;
+}
+
+.plan-action-primary {
+    color: var(--accent-gold);
+    border-color: var(--accent-gold-dim);
+}
+
+.plan-action-primary:hover {
+    background: var(--accent-gold-dim);
+}
+
+.plan-action-warning {
+    color: var(--accent-orange);
+    border-color: var(--accent-orange);
+}
+
+.plan-action-warning:hover {
+    background: rgba(255, 160, 50, 0.1);
+}
+
+.plan-action-danger {
+    color: var(--accent-red);
+    border-color: transparent;
+}
+
+.plan-action-danger:hover {
+    border-color: var(--accent-red);
+    background: rgba(255, 80, 80, 0.1);
+}
+
+.plan-btn {
+    padding: 8px 18px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    cursor: pointer;
+    transition: var(--transition);
+    border: 1px solid transparent;
+}
+
+.plan-btn-primary {
+    background: var(--accent-gold);
+    color: var(--bg-primary, #0d1117);
+    border-color: var(--accent-gold);
+    font-weight: 600;
+}
+
+.plan-btn-primary:hover {
+    filter: brightness(1.1);
+}
+
+.plan-btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border);
+}
+
+.plan-btn-secondary:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* ─── Forms ────────────────────────────────────────────────── */
+
+.plan-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 80px;
+    z-index: 100;
+}
+
+.plan-form {
+    background: var(--bg-secondary, #161b22);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    margin-bottom: 12px;
+    max-width: 560px;
+    width: 100%;
+}
+
+.plan-form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.plan-form-header h3 {
+    margin: 0;
+    font-size: 15px;
+    color: var(--text-primary);
+}
+
+.plan-form-error {
+    background: rgba(255, 80, 80, 0.1);
+    border: 1px solid var(--accent-red);
+    color: var(--accent-red);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 10px;
+    font-size: 13px;
+}
+
+.plan-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.plan-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.plan-form-wide {
+    grid-column: 1 / -1;
+}
+
+.plan-form-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.plan-form-input,
+.plan-form-select {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.plan-form-input:focus,
+.plan-form-select:focus {
+    outline: none;
+    border-color: var(--accent-gold);
+}
+
+.plan-form-textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.plan-form-checkbox-field {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.plan-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* ─── Empty State ──────────────────────────────────────────── */
+
+.plan-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.plan-empty p {
+    margin: 0;
+    max-width: 400px;
+    margin-inline: auto;
+    line-height: 1.5;
+}
+
+/* ─── Error ────────────────────────────────────────────────── */
+
+.plan-error {
+    padding: 20px;
+    color: var(--accent-red);
+    text-align: center;
+    font-size: 14px;
+}
