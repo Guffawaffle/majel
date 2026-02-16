@@ -214,6 +214,60 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("USS Enterprise");
     });
   });
+
+  describe("tool-use instructions", () => {
+    it("includes tool-use section when hasTools is true", () => {
+      const prompt = buildSystemPrompt(null, null, true);
+      expect(prompt).toContain("FLEET INTELLIGENCE TOOLS:");
+      expect(prompt).toContain("TOOL-USE RULES:");
+      expect(prompt).toContain("TOOL SELECTION GUIDE:");
+    });
+
+    it("instructs proactive tool use — don't ask, look it up", () => {
+      const prompt = buildSystemPrompt(null, null, true);
+      expect(prompt).toContain("LOOK IT UP, DON'T ASK");
+      expect(prompt).toContain("Do not ask the Admiral for information you can look up");
+    });
+
+    it("includes tool chaining guidance", () => {
+      const prompt = buildSystemPrompt(null, null, true);
+      expect(prompt).toContain("CHAIN TOOLS");
+      expect(prompt).toContain("search_ships");
+      expect(prompt).toContain("suggest_crew");
+    });
+
+    it("includes name resolution guidance", () => {
+      const prompt = buildSystemPrompt(null, null, true);
+      expect(prompt).toContain("NAME RESOLUTION");
+      expect(prompt).toContain("search_officers");
+    });
+
+    it("warns about mutation tools requiring confirmation", () => {
+      const prompt = buildSystemPrompt(null, null, true);
+      expect(prompt).toContain("MUTATIONS");
+      expect(prompt).toContain("create_bridge_core");
+      expect(prompt).toContain("Confirm intent before calling mutation tools");
+    });
+
+    it("omits tool section when hasTools is false", () => {
+      const prompt = buildSystemPrompt(null, null, false);
+      expect(prompt).not.toContain("FLEET INTELLIGENCE TOOLS:");
+    });
+
+    it("omits tool section when hasTools is undefined", () => {
+      const prompt = buildSystemPrompt();
+      expect(prompt).not.toContain("FLEET INTELLIGENCE TOOLS:");
+    });
+
+    it("works alongside fleet config and dock briefing", () => {
+      const config = { opsLevel: 29, drydockCount: 4, shipHangarSlots: 43 };
+      const briefing = "DRYDOCK STATUS\n- Dock 1: active";
+      const prompt = buildSystemPrompt(config, briefing, true);
+      expect(prompt).toContain("Operations Level: 29");
+      expect(prompt).toContain("DRYDOCK LOADOUT INTELLIGENCE");
+      expect(prompt).toContain("FLEET INTELLIGENCE TOOLS:");
+    });
+  });
 });
 
 // ─── createGeminiEngine ─────────────────────────────────────────

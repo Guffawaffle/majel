@@ -4,7 +4,7 @@
 
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
-import { readFleetConfig } from "../app-context.js";
+import { readFleetConfig, buildMicroRunnerFromState } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
@@ -89,12 +89,24 @@ export function createSettingsRoutes(appState: AppState): Router {
 
     // Rebuild Gemini engine with updated fleet config so the model sees the new values
     if (fleetConfigChanged && appState.config.geminiApiKey && appState.geminiEngine) {
+      const runner = await buildMicroRunnerFromState(appState);
+      const modelName = appState.settingsStore
+        ? await appState.settingsStore.get("model.name")
+        : undefined;
       appState.geminiEngine = createGeminiEngine(
         appState.config.geminiApiKey,
         await readFleetConfig(appState.settingsStore),
         null, // dock briefing removed (ADR-025)
+        runner,
+        modelName,
+        {
+          referenceStore: appState.referenceStore,
+          overlayStore: appState.overlayStore,
+          crewStore: appState.crewStore,
+          targetStore: appState.targetStore,
+        },
       );
-      log.boot.info("gemini engine refreshed with updated fleet config");
+      log.boot.info({ model: appState.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine refreshed with updated fleet config");
     }
 
     sendOk(res, { results });

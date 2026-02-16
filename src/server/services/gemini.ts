@@ -166,6 +166,7 @@ const SAFETY_SETTINGS: SafetySetting[] = [
 export function buildSystemPrompt(
   fleetConfig?: FleetConfig | null,
   dockBriefing?: string | null,
+  hasTools?: boolean,
 ): string {
 
   // ── Layer 1: Identity ─────────────────────────────────────────
@@ -260,7 +261,39 @@ ${dockBriefing}
 `;
   }
 
-  // ── Layer 3: Reference catalog architecture note ────────────
+  // ── Layer 3: Tool Use ──────────────────────────────────────
+  if (hasTools) {
+    prompt += `FLEET INTELLIGENCE TOOLS:
+You have fleet intelligence tools available. USE THEM. Do not ask the Admiral for information you can look up.
+
+TOOL-USE RULES:
+1. LOOK IT UP, DON'T ASK — When the Admiral mentions a ship, officer, or activity, call the appropriate tool immediately. Do NOT ask "which ship?" or "what officers do you have?" — search for it.
+2. CHAIN TOOLS — Complex requests need multiple calls. To suggest a crew: call search_ships (find the ship ID) → suggest_crew (get roster + context) → then recommend using your STFC knowledge.
+3. PROACTIVE DATA GATHERING — When asked about crews, fleet state, or optimization:
+   - Call get_fleet_overview for the big picture
+   - Call list_owned_officers to see the Admiral's roster
+   - Call list_docks to see current dock state
+   - Call search_ships / search_officers to resolve names to IDs
+   - Call suggest_crew with the ship_id + intent_key for crew recommendations
+4. NAME RESOLUTION — The Admiral will use common names ("Saladin", "Kirk"). Call search_ships or search_officers to resolve these to reference IDs before passing them to other tools.
+5. DON'T PARROT TOOL DATA — Synthesize results. The Admiral wants your analysis and recommendation, not a JSON dump.
+6. INTENT KEYS — Common activity intents: grinding (hostile farming), pvp, mining-lat, mining-gas, mining-ore, mining-tri, mining-dil, mining-par, armada, base-defense, events. Use these with suggest_crew and find_loadouts_for_intent.
+7. MUTATIONS — Tools like create_bridge_core, create_loadout, create_variant, and set_reservation modify the Admiral's data. Confirm intent before calling mutation tools. Read-only tools (search, list, suggest, analyze) are always safe to call.
+
+TOOL SELECTION GUIDE:
+- "What officers do I have?" → list_owned_officers
+- "Tell me about Kirk" → search_officers("Kirk") → get_officer_detail(id)
+- "Plan my grinding crews" → search_ships (find ship IDs) → suggest_crew (for each ship) → recommend
+- "What's in my docks?" → list_docks or get_effective_state
+- "Any conflicts?" → get_officer_conflicts or detect_target_conflicts
+- "Optimize my fleet" → analyze_fleet
+- "What should I work toward?" → suggest_targets
+- "Create a crew for my Saladin" → search_ships("Saladin") → suggest_crew(ship_id, intent_key)
+
+`;
+  }
+
+  // ── Layer 4: Reference catalog architecture note ────────────
   // Actual reference data + overlay context is injected per-message
   // by the MicroRunner's ContextGate, not in the system prompt.
   prompt += `FLEET INTELLIGENCE — REFERENCE CATALOG:
@@ -332,13 +365,13 @@ export function createGeminiEngine(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const systemInstruction = buildSystemPrompt(fleetConfig, dockBriefing);
-
-  let currentModelId = resolveModelId(initialModelId);
-
   // Build tools array if tool context is available and has any stores
   const hasToolContext = toolContext &&
     (toolContext.referenceStore || toolContext.overlayStore || toolContext.crewStore);
+  const systemInstruction = buildSystemPrompt(fleetConfig, dockBriefing, !!hasToolContext);
+
+  let currentModelId = resolveModelId(initialModelId);
+
   const tools = hasToolContext
     ? [{ functionDeclarations: FLEET_TOOL_DECLARATIONS }]
     : undefined;
