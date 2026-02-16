@@ -27,6 +27,7 @@ export interface EmailMessage {
  * This is cleared on server restart. Only populated in non-production.
  */
 const devTokens = new Map<string, { token: string; type: string }>();
+const DEV_TOKEN_MAX = 200; // Cap to prevent unbounded growth in dev mode
 
 /** Get the last dev token for an email (for dev-verify endpoint). */
 export function getDevToken(email: string): { token: string; type: string } | undefined {
@@ -56,6 +57,11 @@ async function sendEmail(message: EmailMessage, tokenInfo?: { token: string; typ
 
     // Store token for dev-verify endpoint
     if (tokenInfo) {
+      // Evict oldest entry if at capacity
+      if (devTokens.size >= DEV_TOKEN_MAX && !devTokens.has(message.to.toLowerCase())) {
+        const oldest = devTokens.keys().next().value;
+        if (oldest) devTokens.delete(oldest);
+      }
       devTokens.set(message.to.toLowerCase(), tokenInfo);
     }
     return;

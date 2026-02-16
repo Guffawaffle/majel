@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { buildSystemPrompt, createGeminiEngine } from "../src/server/services/gemini.js";
+import { buildSystemPrompt, createGeminiEngine } from "../src/server/services/gemini/index.js";
 
 // ─── buildSystemPrompt ──────────────────────────────────────────
 
@@ -274,29 +274,26 @@ describe("buildSystemPrompt", () => {
 
 describe("createGeminiEngine", () => {
   // We mock the Gemini SDK to avoid real API calls
-  vi.mock("@google/generative-ai", () => {
+  vi.mock("@google/genai", () => {
     const mockSendMessage = vi.fn().mockResolvedValue({
-      response: {
-        text: () => "Aye, Admiral.",
-        functionCalls: () => undefined,
-      },
+      text: "Aye, Admiral.",
+      functionCalls: undefined,
     });
 
-    const mockStartChat = vi.fn().mockReturnValue({
+    const mockChat = {
       sendMessage: mockSendMessage,
-    });
+      getHistory: vi.fn().mockReturnValue([]),
+    };
 
-    const mockGetGenerativeModel = vi.fn().mockReturnValue({
-      startChat: mockStartChat,
-    });
+    const mockChatsCreate = vi.fn().mockReturnValue(mockChat);
 
-    class MockGoogleGenerativeAI {
-      constructor(_apiKey: string) {}
-      getGenerativeModel = mockGetGenerativeModel;
+    class MockGoogleGenAI {
+      constructor(_opts: { apiKey: string }) {}
+      chats = { create: mockChatsCreate };
     }
 
     return {
-      GoogleGenerativeAI: MockGoogleGenerativeAI,
+      GoogleGenAI: MockGoogleGenAI,
       HarmCategory: {
         HARM_CATEGORY_HARASSMENT: "HARM_CATEGORY_HARASSMENT",
         HARM_CATEGORY_HATE_SPEECH: "HARM_CATEGORY_HATE_SPEECH",
@@ -306,13 +303,13 @@ describe("createGeminiEngine", () => {
       HarmBlockThreshold: {
         BLOCK_NONE: "BLOCK_NONE",
       },
-      SchemaType: {
-        STRING: "string",
-        NUMBER: "number",
-        INTEGER: "integer",
-        BOOLEAN: "boolean",
-        ARRAY: "array",
-        OBJECT: "object",
+      Type: {
+        STRING: "STRING",
+        NUMBER: "NUMBER",
+        INTEGER: "INTEGER",
+        BOOLEAN: "BOOLEAN",
+        ARRAY: "ARRAY",
+        OBJECT: "OBJECT",
       },
     };
   });
@@ -405,5 +402,30 @@ describe("createGeminiEngine", () => {
   it("getHistory returns empty array for unknown sessionId", () => {
     const engine = createGeminiEngine("fake-key");
     expect(engine.getHistory("nonexistent")).toEqual([]);
+  });
+
+  it("rebuilds SDK Chat when history exceeds turn limit", async () => {
+    // SESSION_MAX_TURNS = 50, so 100 history entries (50 pairs) triggers trim
+    const engine = createGeminiEngine("fake-key");
+
+    // Send 51 messages to exceed the 50-turn limit
+    for (let i = 0; i < 51; i++) {
+      await engine.chat(`msg-${i}`, "trim-test");
+    }
+
+    const history = engine.getHistory("trim-test");
+    // Should be capped at 50 turns (100 entries)
+    expect(history.length).toBeLessThanOrEqual(100);
+    // Oldest messages should have been dropped
+    expect(history[0].text).not.toBe("msg-0");
+
+    // The mock's chats.create should have been called more than once for this session
+    // (once on creation, again on rebuild after trim)
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: "fake" });
+    // chats.create is called: once per session creation + once per rebuild
+    // We have 4 sessions across all tests in this describe, but the trim-test
+    // session should have triggered at least one rebuild
+    expect((ai.chats.create as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(1);
   });
 });

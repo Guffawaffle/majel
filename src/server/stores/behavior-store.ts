@@ -149,6 +149,15 @@ const SQL = {
     SET alpha = $1, beta = $2, observation_count = $3, updated_at = $4
     WHERE id = $5
   `,
+  // Atomic increment — avoids read-modify-write race in recordCorrection
+  atomicCorrection: `
+    UPDATE behavior_rules
+    SET alpha = alpha + $1, beta = beta + $2,
+        observation_count = observation_count + 1,
+        updated_at = $3
+    WHERE id = $4
+    RETURNING *
+  `,
   deleteById: `DELETE FROM behavior_rules WHERE id = $1`,
   countAll: `SELECT COUNT(*) as total FROM behavior_rules`,
   countActive: `
@@ -201,22 +210,16 @@ export async function createBehaviorStore(adminPool: Pool, runtimePool?: Pool): 
     },
 
     async recordCorrection(ruleId: string, polarity: 1 | -1): Promise<BehaviorRule | null> {
-      const result = await pool.query(SQL.getById, [ruleId]);
+      const now = new Date().toISOString();
+      const alphaInc = polarity === 1 ? 1 : 0;
+      const betaInc = polarity === 1 ? 0 : 1;
+
+      // Atomic UPDATE ... RETURNING — no read-modify-write race
+      const result = await pool.query(SQL.atomicCorrection, [alphaInc, betaInc, now, ruleId]);
       const row = result.rows[0] as Record<string, unknown> | undefined;
       if (!row) return null;
 
       const rule = rowToRule(row);
-      const now = new Date().toISOString();
-
-      if (polarity === 1) {
-        rule.alpha += 1;
-      } else {
-        rule.beta += 1;
-      }
-      rule.observationCount += 1;
-      rule.updatedAt = now;
-
-      await pool.query(SQL.update, [rule.alpha, rule.beta, rule.observationCount, now, rule.id]);
 
       log.gemini.debug({
         ruleId: rule.id,

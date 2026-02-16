@@ -6,6 +6,7 @@
  */
 
 import { sendChat as apiSendChat } from 'api/chat.js';
+import { fetchModels, selectModel } from 'api/models.js';
 import { ApiError } from 'api/_fetch.js';
 import { registerView } from 'router';
 
@@ -19,6 +20,10 @@ const chatArea = $("#chat-area");
 const scrollBottomBtn = $("#scroll-bottom");
 const welcomeScreen = $("#welcome");
 const inputArea = $("#input-area");
+const modelSelectorBtn = $("#model-selector-btn");
+const modelSelectorLabel = $("#model-selector-label");
+const modelPicker = $("#model-picker");
+const modelPickerList = $("#model-picker-list");
 
 // ─── View Registration ──────────────────────────────────────
 registerView('chat', {
@@ -32,6 +37,129 @@ registerView('chat', {
 // ─── State ──────────────────────────────────────────────────
 let hasMessages = false;
 let currentSessionId = null;
+let cachedModels = null;
+let isAdmiral = false;
+
+// ─── Model Selector ─────────────────────────────────────────
+
+/** Tier badge label + CSS class mapping */
+const TIER_BADGES = {
+    budget: { label: '$', cls: 'tier-budget' },
+    balanced: { label: '$$', cls: 'tier-balanced' },
+    thinking: { label: '$$', cls: 'tier-thinking' },
+    premium: { label: '$$$$', cls: 'tier-premium' },
+    frontier: { label: '$$$$$', cls: 'tier-frontier' },
+};
+
+/**
+ * Load models from API and render the picker dropdown.
+ * Silently hides the selector if the user lacks Admiral role.
+ */
+export async function loadModels() {
+    try {
+        const data = await fetchModels();
+        cachedModels = data;
+        isAdmiral = true;
+
+        // Update the label in input hint
+        if (data.currentDef && modelSelectorLabel) {
+            modelSelectorLabel.textContent = data.currentDef.name;
+        }
+
+        // Show the selector button
+        if (modelSelectorBtn) modelSelectorBtn.classList.remove('hidden');
+
+        // Render picker list
+        renderModelPicker(data.models);
+    } catch {
+        // Non-admiral or server error — hide selector silently
+        isAdmiral = false;
+        if (modelSelectorBtn) modelSelectorBtn.classList.add('hidden');
+    }
+}
+
+/**
+ * Render model cards inside the picker dropdown.
+ * @param {Array} models - Model definitions with active flag
+ */
+function renderModelPicker(models) {
+    if (!modelPickerList) return;
+
+    modelPickerList.innerHTML = models.map(m => {
+        const badge = TIER_BADGES[m.tier] || { label: m.tier, cls: '' };
+        const activeClass = m.active ? 'model-card-active' : '';
+        const thinkingIcon = m.thinking ? '<span class="model-thinking" title="Thinking model">🧠</span>' : '';
+
+        return `
+            <button class="model-card ${activeClass}" data-model-id="${m.id}" type="button">
+                <div class="model-card-header">
+                    <span class="model-card-name">${m.name}</span>
+                    ${thinkingIcon}
+                    <span class="model-tier-badge ${badge.cls}">${badge.label}</span>
+                </div>
+                <div class="model-card-desc">${m.description}</div>
+                <div class="model-card-meta">
+                    <span class="model-speed">${m.speed}</span>
+                    ${m.active ? '<span class="model-active-badge">Active</span>' : ''}
+                </div>
+            </button>
+        `;
+    }).join('');
+}
+
+/**
+ * Toggle the model picker dropdown.
+ */
+function toggleModelPicker() {
+    if (!modelPicker) return;
+    modelPicker.classList.toggle('hidden');
+}
+
+/**
+ * Close the model picker dropdown.
+ */
+function closeModelPicker() {
+    if (modelPicker) modelPicker.classList.add('hidden');
+}
+
+/**
+ * Handle model selection from the picker.
+ * @param {string} modelId - Selected model ID
+ */
+async function handleModelSelect(modelId) {
+    if (!modelId || !cachedModels) return;
+
+    const model = cachedModels.models.find(m => m.id === modelId);
+    if (!model || model.active) {
+        closeModelPicker();
+        return;
+    }
+
+    // Confirm — switching clears sessions
+    const confirmed = confirm(
+        `Switch to ${model.name}?\n\nAll active chat sessions will be cleared. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+        const result = await selectModel(modelId);
+        closeModelPicker();
+
+        // Update label
+        if (modelSelectorLabel) {
+            modelSelectorLabel.textContent = result.modelDef?.name ?? modelId;
+        }
+
+        // Show system message
+        addMessage('system', `Model switched to ${result.modelDef?.name ?? modelId}. Sessions cleared.`);
+
+        // Refresh the picker to update active states
+        await loadModels();
+    } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'Failed to switch model';
+        addMessage('error', `Model switch failed: ${msg}`);
+    }
+}
 
 // ─── Markdown Rendering ─────────────────────────────────────
 function renderMarkdown(text) {
@@ -412,4 +540,37 @@ export function init(onRefreshSessions) {
             chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
         });
     });
+
+    // ── Model Selector ──────────────────────────────────────
+    if (modelSelectorBtn) {
+        modelSelectorBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleModelPicker();
+        });
+    }
+
+    if (modelPickerList) {
+        modelPickerList.addEventListener('click', (e) => {
+            const card = e.target.closest('.model-card');
+            if (!card) return;
+            handleModelSelect(card.dataset.modelId);
+        });
+    }
+
+    // Close picker on outside click
+    document.addEventListener('click', (e) => {
+        if (modelPicker && !modelPicker.classList.contains('hidden')) {
+            if (!modelPicker.contains(e.target) && e.target !== modelSelectorBtn && !modelSelectorBtn?.contains(e.target)) {
+                closeModelPicker();
+            }
+        }
+    });
+
+    // Close picker on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModelPicker();
+    });
+
+    // Load models (non-blocking)
+    loadModels();
 }

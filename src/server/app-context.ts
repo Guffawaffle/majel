@@ -5,7 +5,7 @@
  * between the main app factory and route modules.
  */
 
-import type { GeminiEngine, FleetConfig } from "./services/gemini.js";
+import type { GeminiEngine, FleetConfig } from "./services/gemini/index.js";
 import type { MemoryService } from "./services/memory.js";
 import type { FrameStoreFactory } from "./stores/postgres-frame-store.js";
 import type { SettingsStore } from "./stores/settings.js";

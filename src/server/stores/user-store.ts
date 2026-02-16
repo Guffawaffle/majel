@@ -12,7 +12,7 @@
  */
 
 import { randomBytes, randomUUID, createHmac } from "node:crypto";
-import { initSchema, type Pool } from "../db.js";
+import { initSchema, withTransaction, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import { hashPassword, verifyPassword, validatePassword, timingSafeCompare } from "../services/password.js";
 
@@ -346,6 +346,10 @@ export interface UserStore {
   deleteUser(userId: string): Promise<boolean>;
   countUsers(): Promise<number>;
 
+  // ── Cleanup ──────────────────────────────────────────────
+  /** Delete expired sessions. Returns count of rows removed. */
+  cleanupExpiredSessions(): Promise<number>;
+
   // ── Lifecycle ────────────────────────────────────────────
   close(): void;
 }
@@ -379,31 +383,34 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
         throw new Error("Display name must be 1–100 characters");
       }
 
-      // Check for existing user
-      const existing = await pool.query(SQL.getUserByEmail, [emailTrimmed]);
-      if (existing.rows.length > 0) {
-        // Generic error — don't reveal if email exists
-        throw new Error("Unable to create account");
-      }
-
-      // Hash password
+      // Hash password before entering transaction (CPU-heavy, no DB needed)
       const hash = await hashPassword(input.password);
       const userId = randomUUID();
-
-      // Insert user
-      const res = await pool.query(SQL.insertUser, [
-        userId, emailTrimmed, displayName, hash, "ensign", false,
-      ]);
-      const user = rowToUser(res.rows[0] as Record<string, unknown>);
-
-      // Create email verification token
       const verifyToken = generateToken();
-      await pool.query(SQL.deleteUserTokens, [userId, "verify"]);
-      await pool.query(SQL.insertEmailToken, [
-        verifyToken, userId, "verify", `${VERIFY_TOKEN_EXPIRY_HOURS} hours`,
-      ]);
 
-      return { user: userToPublic(user), verifyToken };
+      // Wrap all DB mutations in a transaction to prevent TOCTOU race on email uniqueness
+      return withTransaction(pool, async (client) => {
+        // Check for existing user
+        const existing = await client.query(SQL.getUserByEmail, [emailTrimmed]);
+        if (existing.rows.length > 0) {
+          // Generic error — don't reveal if email exists
+          throw new Error("Unable to create account");
+        }
+
+        // Insert user
+        const res = await client.query(SQL.insertUser, [
+          userId, emailTrimmed, displayName, hash, "ensign", false,
+        ]);
+        const user = rowToUser(res.rows[0] as Record<string, unknown>);
+
+        // Create email verification token
+        await client.query(SQL.deleteUserTokens, [userId, "verify"]);
+        await client.query(SQL.insertEmailToken, [
+          verifyToken, userId, "verify", `${VERIFY_TOKEN_EXPIRY_HOURS} hours`,
+        ]);
+
+        return { user: userToPublic(user), verifyToken };
+      });
     },
 
     // ── Sign In ────────────────────────────────────────────
@@ -429,11 +436,9 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
         if (Date.now() < unlockTime) {
           throw new Error("Account temporarily locked. Try again later.");
         }
-        // Lock expired — unlock
-        await pool.query(SQL.unlockUser, [user.id]);
       }
 
-      // Verify password
+      // Verify password (CPU-bound — kept outside transaction)
       if (!user.passwordHash) {
         throw new Error("Invalid email or password");
       }
@@ -450,17 +455,25 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
         throw new Error("Please verify your email before signing in");
       }
 
-      // Success — update last login, reset failed count
-      await pool.query(SQL.updateLastLogin, [user.id]);
-
-      // Create session
+      // Wrap DB mutations in a transaction — prevents partial state on crash
       const sessionToken = generateToken();
-      await pool.query(SQL.insertSession, [
-        sessionToken, user.id, ip ?? null, ua ?? null,
-        `${SESSION_EXPIRY_DAYS} days`,
-      ]);
+      return withTransaction(pool, async (client) => {
+        // Unlock if lock expired (re-check inside transaction)
+        if (user.lockedAt) {
+          await client.query(SQL.unlockUser, [user.id]);
+        }
 
-      return { user: userToPublic(user), sessionToken };
+        // Success — update last login, reset failed count
+        await client.query(SQL.updateLastLogin, [user.id]);
+
+        // Create session
+        await client.query(SQL.insertSession, [
+          sessionToken, user.id, ip ?? null, ua ?? null,
+          `${SESSION_EXPIRY_DAYS} days`,
+        ]);
+
+        return { user: userToPublic(user), sessionToken };
+      });
     },
 
     // ── Session Management ─────────────────────────────────
@@ -502,28 +515,30 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
 
     // ── Email Verification ─────────────────────────────────
     async verifyEmail(token: string): Promise<boolean> {
-      const res = await pool.query(SQL.getEmailToken, [token, "verify"]);
-      const row = res.rows[0] as Record<string, unknown> | undefined;
-      if (!row) return false;
+      return withTransaction(pool, async (client) => {
+        const res = await client.query(SQL.getEmailToken, [token, "verify"]);
+        const row = res.rows[0] as Record<string, unknown> | undefined;
+        if (!row) return false;
 
-      const emailToken = rowToEmailToken(row);
+        const emailToken = rowToEmailToken(row);
 
-      // Mark token as used
-      await pool.query(SQL.markTokenUsed, [token]);
+        // Mark token as used + set email_verified atomically
+        await client.query(SQL.markTokenUsed, [token]);
+        await client.query(SQL.verifyEmail, [emailToken.userId]);
 
-      // Set email_verified = true
-      await pool.query(SQL.verifyEmail, [emailToken.userId]);
-
-      return true;
+        return true;
+      });
     },
 
     async createVerifyToken(userId: string): Promise<string> {
       const token = generateToken();
-      await pool.query(SQL.deleteUserTokens, [userId, "verify"]);
-      await pool.query(SQL.insertEmailToken, [
-        token, userId, "verify", `${VERIFY_TOKEN_EXPIRY_HOURS} hours`,
-      ]);
-      return token;
+      return withTransaction(pool, async (client) => {
+        await client.query(SQL.deleteUserTokens, [userId, "verify"]);
+        await client.query(SQL.insertEmailToken, [
+          token, userId, "verify", `${VERIFY_TOKEN_EXPIRY_HOURS} hours`,
+        ]);
+        return token;
+      });
     },
 
     // ── Password Reset ─────────────────────────────────────
@@ -537,11 +552,13 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
       if (!user.emailVerified) return null;
 
       const token = generateToken();
-      await pool.query(SQL.deleteUserTokens, [user.id, "reset"]);
-      await pool.query(SQL.insertEmailToken, [
-        token, user.id, "reset", `${RESET_TOKEN_EXPIRY_HOURS} hours`,
-      ]);
-      return token;
+      return withTransaction(pool, async (client) => {
+        await client.query(SQL.deleteUserTokens, [user.id, "reset"]);
+        await client.query(SQL.insertEmailToken, [
+          token, user.id, "reset", `${RESET_TOKEN_EXPIRY_HOURS} hours`,
+        ]);
+        return token;
+      });
     },
 
     async resetPassword(token: string, newPassword: string): Promise<boolean> {
@@ -549,22 +566,21 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
       const check = validatePassword(newPassword);
       if (!check.valid) throw new Error(check.reason!);
 
-      // Look up token
+      // Look up token + hash password before entering transaction
       const res = await pool.query(SQL.getEmailToken, [token, "reset"]);
       const row = res.rows[0] as Record<string, unknown> | undefined;
       if (!row) return false;
 
       const emailToken = rowToEmailToken(row);
-
-      // Hash new password and update
       const hash = await hashPassword(newPassword);
-      await pool.query(SQL.updatePasswordHash, [emailToken.userId, hash]);
-      await pool.query(SQL.markTokenUsed, [token]);
 
-      // Kill all sessions (force re-login)
-      await pool.query(SQL.deleteUserSessions, [emailToken.userId]);
-
-      return true;
+      // Atomic: update password + mark token used + kill sessions
+      return withTransaction(pool, async (client) => {
+        await client.query(SQL.updatePasswordHash, [emailToken.userId, hash]);
+        await client.query(SQL.markTokenUsed, [token]);
+        await client.query(SQL.deleteUserSessions, [emailToken.userId]);
+        return true;
+      });
     },
 
     // ── Password Change ────────────────────────────────────
@@ -651,6 +667,12 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
     async countUsers(): Promise<number> {
       const res = await pool.query(SQL.countUsers);
       return parseInt((res.rows[0] as Record<string, unknown>).count as string, 10);
+    },
+
+    // ── Cleanup ──────────────────────────────────────────
+    async cleanupExpiredSessions(): Promise<number> {
+      const res = await pool.query(SQL.deleteExpiredSessions);
+      return res.rowCount ?? 0;
     },
 
     // ── Lifecycle ──────────────────────────────────────────

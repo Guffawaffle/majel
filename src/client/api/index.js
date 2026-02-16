@@ -38,3 +38,4 @@ export {
     adminListInvites, adminCreateInvite, adminRevokeInvite,
     adminListSessions, adminDeleteSession, adminDeleteAllSessions,
 } from './admiral.js';
+export { fetchModels, selectModel } from './models.js';

@@ -14,7 +14,7 @@ import {
   FLEET_TOOL_DECLARATIONS,
   executeFleetTool,
   type ToolContext,
-} from "../src/server/services/fleet-tools.js";
+} from "../src/server/services/fleet-tools/index.js";
 import type { ReferenceStore, ReferenceOfficer, ReferenceShip } from "../src/server/stores/reference-store.js";
 import type { OverlayStore, OfficerOverlay, ShipOverlay } from "../src/server/stores/overlay-store.js";
 import type { CrewStore } from "../src/server/stores/crew-store.js";

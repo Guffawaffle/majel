@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vites
 import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
-import type { GeminiEngine } from "../src/server/services/gemini.js";
+import type { GeminiEngine } from "../src/server/services/gemini/index.js";
 import type { MemoryService, Frame } from "../src/server/services/memory.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
 import { bootstrapConfigSync } from "../src/server/config.js";
@@ -44,7 +44,7 @@ function makeMockMemory(frames: Frame[] = []): MemoryService {
 
 function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
   const sessions = new Map<string, Array<{ role: string; text: string }>>();
-  let currentModel = "gemini-2.5-flash-lite";
+  let currentModel = "gemini-3-flash-preview";
   const getSessionHistory = (sid: string) => {
     if (!sessions.has(sid)) sessions.set(sid, []);
     return sessions.get(sid)!;
@@ -689,7 +689,7 @@ describe("GET /api/diagnostic", () => {
     const app = createApp(makeState({ geminiEngine: engine }));
     const res = await testRequest(app).get("/api/diagnostic");
     expect(res.body.data.gemini.status).toBe("connected");
-    expect(res.body.data.gemini.model).toBe("gemini-2.5-flash-lite");
+    expect(res.body.data.gemini.model).toBe("gemini-3-flash-preview");
     expect(res.body.data.gemini.activeSessions).toBe(1);
   });
 

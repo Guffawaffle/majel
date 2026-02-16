@@ -30,7 +30,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pinoHttp } from "pino-http";
 import { log, rootLogger } from "./logger.js";
-import { createGeminiEngine } from "./services/gemini.js";
+import { createGeminiEngine } from "./services/gemini/index.js";
 import { createMemoryService } from "./services/memory.js";
 import { createFrameStoreFactory } from "./stores/postgres-frame-store.js";
 import { createSettingsStore } from "./stores/settings.js";
@@ -111,6 +111,7 @@ const state: AppState = {
 };
 
 let httpServer: HttpServer | null = null;
+let sessionGcTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─── App Factory ────────────────────────────────────────────────
 export function createApp(appState: AppState): express.Express {
@@ -450,6 +451,28 @@ async function boot(): Promise<void> {
     log.boot.fatal({ err: err.message }, "HTTP server error");
     process.exit(1);
   });
+
+  // 5. Periodic session cleanup (every hour)
+  // Removes expired auth sessions and stale tenant sessions from PostgreSQL.
+  // These SQL queries already existed but were never called — wiring them now.
+  const SESSION_GC_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  sessionGcTimer = setInterval(async () => {
+    try {
+      let cleaned = 0;
+      if (state.userStore) {
+        cleaned += await state.userStore.cleanupExpiredSessions();
+      }
+      if (state.inviteStore) {
+        cleaned += await state.inviteStore.cleanupExpiredSessions("30 days");
+      }
+      if (cleaned > 0) {
+        log.boot.info({ cleaned }, "session:gc");
+      }
+    } catch (err) {
+      log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "session:gc:error");
+    }
+  }, SESSION_GC_INTERVAL_MS);
+  sessionGcTimer.unref(); // Don't keep process alive for GC
 }
 
 // ─── Graceful Shutdown ──────────────────────────────────────────
@@ -460,6 +483,13 @@ async function shutdown(): Promise<void> {
     await new Promise<void>((resolve) => httpServer!.close(() => resolve()));
     httpServer = null;
   }
+  // Stop periodic GC
+  if (sessionGcTimer) {
+    clearInterval(sessionGcTimer);
+    sessionGcTimer = null;
+  }
+  // Close Gemini engine (stops cleanup timer, frees session Maps)
+  state.geminiEngine?.close();
   // Close all store handles (no-ops since pool is shared)
   state.settingsStore?.close();
   state.sessionStore?.close();

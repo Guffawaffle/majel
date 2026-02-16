@@ -9,7 +9,7 @@ import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { getCategories } from "../stores/settings.js";
-import { createGeminiEngine } from "../services/gemini.js";
+import { createGeminiEngine } from "../services/gemini/index.js";
 import { resolveConfig } from "../config.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 
@@ -89,6 +89,9 @@ export function createSettingsRoutes(appState: AppState): Router {
 
     // Rebuild Gemini engine with updated fleet config so the model sees the new values
     if (fleetConfigChanged && appState.config.geminiApiKey && appState.geminiEngine) {
+      // Close the old engine first — prevents leaked interval timers and orphaned session Maps
+      appState.geminiEngine.close();
+
       const runner = await buildMicroRunnerFromState(appState);
       const modelName = appState.settingsStore
         ? await appState.settingsStore.get("model.name")

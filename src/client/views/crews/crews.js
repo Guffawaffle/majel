@@ -104,6 +104,8 @@ export async function init() {
 export async function refresh() {
     if (loading) return;
     loading = true;
+    // Clear cached variants so stale entries from deleted loadouts don't persist
+    loadoutVariants = {};
     try {
         const [coresData, policiesData, loadoutsData, reservationsData, officerData, shipData] = await Promise.all([
             fetchBridgeCores(),

@@ -146,6 +146,10 @@ export interface InviteStore {
   listSessions(): Promise<TenantSession[]>;
   deleteSession(tenantId: string): Promise<boolean>;
 
+  // Cleanup
+  /** Delete tenant sessions older than the given interval (e.g. '30 days'). Returns count of rows removed. */
+  cleanupExpiredSessions(interval?: string): Promise<number>;
+
   // Lifecycle
   close(): void;
 }
@@ -241,6 +245,11 @@ export async function createInviteStore(adminPool: Pool, runtimePool?: Pool): Pr
     async deleteSession(tenantId: string) {
       const res = await pool.query(SQL.deleteSession, [tenantId]);
       return (res.rowCount ?? 0) > 0;
+    },
+
+    async cleanupExpiredSessions(interval = '30 days'): Promise<number> {
+      const res = await pool.query(SQL.deleteExpiredSessions, [interval]);
+      return res.rowCount ?? 0;
     },
 
     close() {

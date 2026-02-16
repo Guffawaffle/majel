@@ -10,7 +10,7 @@ import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
-import { MODEL_REGISTRY, getModelDef, resolveModelId } from "../services/gemini.js";
+import { MODEL_REGISTRY, getModelDef, resolveModelId } from "../services/gemini/index.js";
 
 export function createChatRoutes(appState: AppState): Router {
   const router = createSafeRouter();

@@ -219,7 +219,7 @@ majel/
 
 | Package | Purpose |
 |---------|---------|
-| `@google/generative-ai` | Gemini SDK — 5 model tiers (flash-lite → 3-pro-preview) |
+| `@google/genai` | Gemini Gen AI SDK — 5 model tiers (flash-lite → 3-pro-preview) |
 | `@smartergpt/lex` | Episodic memory — PostgreSQL frame store with per-user RLS |
 | `pg` | PostgreSQL 16 driver (Cloud SQL) |
 | `better-sqlite3` | Local SQLite for reference data caches |

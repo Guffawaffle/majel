@@ -78,7 +78,7 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     label: "Model Name",
     description: "Gemini model identifier.",
     type: "string",
-    default: "gemini-2.5-flash-lite",
+    default: "gemini-3-flash-preview",
   },
   {
     key: "model.temperature",

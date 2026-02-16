@@ -213,7 +213,18 @@
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 15l12-6L3 3v5l8 1-8 1z" fill="currentColor"/></svg>
             </button>
           </div>
-          <p class="input-hint">Gemini 2.5 Flash-Lite · <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline</p>
+          <p class="input-hint">
+            <button type="button" id="model-selector-btn" class="model-selector-btn" title="Switch model (Admiral)">
+              <span id="model-selector-label">Gemini 2.5 Flash-Lite</span>
+              <svg class="model-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            · <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline
+          </p>
+          <!-- Model picker dropdown -->
+          <div id="model-picker" class="model-picker hidden">
+            <div class="model-picker-header">Select Model</div>
+            <div id="model-picker-list" class="model-picker-list"></div>
+          </div>
         </form>
       </footer>
 
