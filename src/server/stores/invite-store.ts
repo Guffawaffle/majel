@@ -40,7 +40,10 @@ const SQL = {
   insertCode: `INSERT INTO invite_codes (code, label, max_uses, expires_at) VALUES ($1, $2, $3, $4)`,
   getCode: `SELECT * FROM invite_codes WHERE code = $1`,
   listCodes: `SELECT * FROM invite_codes ORDER BY created_at DESC`,
-  incrementUses: `UPDATE invite_codes SET used_count = used_count + 1 WHERE code = $1`,
+  incrementUses: `UPDATE invite_codes SET used_count = used_count + 1
+    WHERE code = $1 AND revoked = FALSE AND used_count < max_uses
+    AND (expires_at IS NULL OR expires_at > NOW())
+    RETURNING *`,
   revokeCode: `UPDATE invite_codes SET revoked = TRUE WHERE code = $1`,
   deleteCode: `DELETE FROM invite_codes WHERE code = $1`,
 
@@ -198,16 +201,20 @@ export async function createInviteStore(adminPool: Pool, runtimePool?: Pool): Pr
     },
 
     async redeemCode(code: string) {
-      const invite = await store.getCode(code);
-      if (!invite) throw new Error("Invalid invite code");
-      if (invite.revoked) throw new Error("Invite code has been revoked");
-      if (invite.usedCount >= invite.maxUses) throw new Error("Invite code has been fully used");
-      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
-        throw new Error("Invite code has expired");
+      // Atomic check-and-increment: prevents TOCTOU race on concurrent redemption.
+      // The WHERE clause enforces all validity checks in a single UPDATE.
+      const result = await pool.query(SQL.incrementUses, [code]);
+      if ((result.rowCount ?? 0) === 0) {
+        // Determine specific failure reason for user-facing error
+        const invite = await store.getCode(code);
+        if (!invite) throw new Error("Invalid invite code");
+        if (invite.revoked) throw new Error("Invite code has been revoked");
+        if (invite.usedCount >= invite.maxUses) throw new Error("Invite code has been fully used");
+        if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+          throw new Error("Invite code has expired");
+        }
+        throw new Error("Invalid invite code");
       }
-
-      // Increment use count
-      await pool.query(SQL.incrementUses, [code]);
 
       // Create tenant session
       const tenantId = randomUUID();

@@ -54,6 +54,7 @@ interface CrewStoreSlice {
   listDocks(): Promise<Dock[]>;
   listLoadouts(filters?: { active?: boolean }): Promise<Loadout[]>;
   getLoadout(id: number): Promise<LoadoutWithRefs | null>;
+  getLoadoutsByIds(ids: number[]): Promise<Map<number, LoadoutWithRefs>>;
   getEffectiveDockState(): Promise<{ conflicts: OfficerConflict[] }>;
   listReservations(): Promise<OfficerReservation[]>;
   updatePlanItem(id: number, fields: {
@@ -107,12 +108,13 @@ export async function solvePlan(
     reservationMap.set(r.officerId, r);
   }
 
-  // Build loadout→bridge officer mapping (need full refs for conflict detection)
+  // Build loadout→bridge officer mapping (batch-fetch all loadouts at once)
   const loadoutBridgeMap = new Map<number, string[]>();
-  for (const l of allLoadouts) {
-    const full = await store.getLoadout(l.id);
-    if (full?.bridgeCore) {
-      loadoutBridgeMap.set(l.id, full.bridgeCore.members.map(m => m.officerId));
+  const loadoutIds = allLoadouts.map(l => l.id);
+  const fullLoadouts = await store.getLoadoutsByIds(loadoutIds);
+  for (const [id, full] of fullLoadouts) {
+    if (full.bridgeCore) {
+      loadoutBridgeMap.set(id, full.bridgeCore.members.map(m => m.officerId));
     }
   }
 
@@ -248,7 +250,7 @@ export async function solvePlan(
         loadoutName,
         dockNumber: null,
         action: "queued",
-        explanation: `Queued ${label} — no dock available (lower priority than ${sorted.length - availableDocks.size} active loadouts). Consider adding more docks or reducing active plan items.`,
+        explanation: `Queued ${label} — no dock available (${dockNumbers.length} dock(s) occupied by higher-priority loadouts). Consider adding more docks or reducing active plan items.`,
       });
 
       warnings.push(`No dock for ${label} — queued`);

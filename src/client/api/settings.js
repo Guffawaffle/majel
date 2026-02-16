@@ -10,7 +10,7 @@
  * @state   none
  */
 
-import { _fetch } from './_fetch.js';
+import { apiFetch } from './_fetch.js';
 
 /**
  * Save a fleet config setting
@@ -20,9 +20,8 @@ import { _fetch } from './_fetch.js';
  */
 export async function saveFleetSetting(key, value) {
     try {
-        await _fetch("/api/settings", {
+        await apiFetch("/api/settings", {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ [key]: String(value) }),
         });
     } catch (err) {
@@ -36,10 +35,7 @@ export async function saveFleetSetting(key, value) {
  */
 export async function loadFleetSettings() {
     try {
-        const res = await _fetch("/api/settings?category=fleet");
-        if (!res.ok) return { settings: [] };
-        const data = (await res.json()).data || {};
-        return data;
+        return await apiFetch("/api/settings?category=fleet") || { settings: [] };
     } catch {
         return { settings: [] };
     }
@@ -53,9 +49,7 @@ export async function loadFleetSettings() {
  */
 export async function loadSetting(key, fallback = '') {
     try {
-        const res = await _fetch('/api/settings');
-        if (!res.ok) return fallback;
-        const data = (await res.json()).data || {};
+        const data = await apiFetch('/api/settings') || {};
         const entry = (data.settings || []).find(s => s.key === key);
         return entry?.value ?? fallback;
     } catch {

@@ -17,6 +17,7 @@ import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
 import { syncGamedataOfficers, syncGamedataShips } from "../services/gamedata-ingest.js";
+import { syncRateLimiter } from "../rate-limit.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -282,7 +283,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   // Game Data Sync
   // ═══════════════════════════════════════════════════════════
 
-  router.post("/api/catalog/sync", requireAdmiral(appState), async (req, res) => {
+  router.post("/api/catalog/sync", syncRateLimiter, requireAdmiral(appState), async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const store = appState.referenceStore!;
 

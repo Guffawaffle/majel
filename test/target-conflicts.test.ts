@@ -91,8 +91,17 @@ function createMockCrewStore(overrides: {
   getEffectiveDockState?: ReturnType<typeof vi.fn>;
 } = {}): CrewStore {
   const defaultEffectiveState: EffectiveDockState = { docks: [], awayTeams: [], conflicts: [] };
+  const getLoadoutFn = overrides.getLoadout ?? vi.fn().mockResolvedValue(null);
   return {
-    getLoadout: overrides.getLoadout ?? vi.fn().mockResolvedValue(null),
+    getLoadout: getLoadoutFn,
+    getLoadoutsByIds: vi.fn().mockImplementation(async (ids: number[]) => {
+      const map = new Map();
+      for (const id of ids) {
+        const l = await getLoadoutFn(id);
+        if (l) map.set(id, l);
+      }
+      return map;
+    }),
     listPlanItems: overrides.listPlanItems ?? vi.fn().mockResolvedValue([]),
     getEffectiveDockState: overrides.getEffectiveDockState ?? vi.fn().mockResolvedValue(defaultEffectiveState),
     // Unused methods (stubbed for type compatibility)

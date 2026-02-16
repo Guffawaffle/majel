@@ -13,7 +13,7 @@
  * @state   none
  */
 
-import { _fetch } from './_fetch.js';
+import { apiFetch } from './_fetch.js';
 
 // ─── Merged Lookups (used by docks, fleet) ──────────────────
 
@@ -22,9 +22,8 @@ import { _fetch } from './_fetch.js';
  * @returns {Promise<Array>} Array of ship objects
  */
 export async function fetchShips() {
-    const res = await _fetch("/api/catalog/ships/merged");
-    const env = await res.json();
-    return env.data?.ships || [];
+    const data = await apiFetch("/api/catalog/ships/merged");
+    return data?.ships || [];
 }
 
 /**
@@ -32,9 +31,8 @@ export async function fetchShips() {
  * @returns {Promise<Array>} Array of officer objects
  */
 export async function fetchOfficers() {
-    const res = await _fetch("/api/catalog/officers/merged");
-    const env = await res.json();
-    return env.data?.officers || [];
+    const data = await apiFetch("/api/catalog/officers/merged");
+    return data?.officers || [];
 }
 
 // ─── Filtered Catalog Queries ───────────────────────────────
@@ -52,9 +50,8 @@ export async function fetchCatalogOfficers(filters = {}) {
     if (filters.ownership) params.set("ownership", filters.ownership);
     if (filters.target !== undefined) params.set("target", String(filters.target));
     const qs = params.toString();
-    const res = await _fetch(`/api/catalog/officers/merged${qs ? "?" + qs : ""}`);
-    const env = await res.json();
-    return env.data?.officers || [];
+    const data = await apiFetch(`/api/catalog/officers/merged${qs ? "?" + qs : ""}`);
+    return data?.officers || [];
 }
 
 /**
@@ -71,9 +68,8 @@ export async function fetchCatalogShips(filters = {}) {
     if (filters.ownership) params.set("ownership", filters.ownership);
     if (filters.target !== undefined) params.set("target", String(filters.target));
     const qs = params.toString();
-    const res = await _fetch(`/api/catalog/ships/merged${qs ? "?" + qs : ""}`);
-    const env = await res.json();
-    return env.data?.ships || [];
+    const data = await apiFetch(`/api/catalog/ships/merged${qs ? "?" + qs : ""}`);
+    return data?.ships || [];
 }
 
 /**
@@ -81,9 +77,8 @@ export async function fetchCatalogShips(filters = {}) {
  * @returns {Promise<Object>} { reference: {officers, ships}, overlay: {...} }
  */
 export async function fetchCatalogCounts() {
-    const res = await _fetch("/api/catalog/counts");
-    const env = await res.json();
-    return env.data || { reference: { officers: 0, ships: 0 }, overlay: {} };
+    const data = await apiFetch("/api/catalog/counts");
+    return data || { reference: { officers: 0, ships: 0 }, overlay: {} };
 }
 
 // ─── Overlay Mutations ──────────────────────────────────────
@@ -95,13 +90,10 @@ export async function fetchCatalogCounts() {
  * @returns {Promise<Object>}
  */
 export async function setOfficerOverlay(id, overlay) {
-    const res = await _fetch(`/api/catalog/officers/${encodeURIComponent(id)}/overlay`, {
+    return apiFetch(`/api/catalog/officers/${encodeURIComponent(id)}/overlay`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(overlay),
     });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
 }
 
 /**
@@ -111,13 +103,10 @@ export async function setOfficerOverlay(id, overlay) {
  * @returns {Promise<Object>}
  */
 export async function setShipOverlay(id, overlay) {
-    const res = await _fetch(`/api/catalog/ships/${encodeURIComponent(id)}/overlay`, {
+    return apiFetch(`/api/catalog/ships/${encodeURIComponent(id)}/overlay`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(overlay),
     });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
 }
 
 /**
@@ -127,13 +116,10 @@ export async function setShipOverlay(id, overlay) {
  * @returns {Promise<Object>}
  */
 export async function bulkSetOfficerOverlay(refIds, overlay) {
-    const res = await _fetch("/api/catalog/officers/bulk-overlay", {
+    return apiFetch("/api/catalog/officers/bulk-overlay", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refIds, ...overlay }),
     });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
 }
 
 /**
@@ -143,13 +129,10 @@ export async function bulkSetOfficerOverlay(refIds, overlay) {
  * @returns {Promise<Object>}
  */
 export async function bulkSetShipOverlay(refIds, overlay) {
-    const res = await _fetch("/api/catalog/ships/bulk-overlay", {
+    return apiFetch("/api/catalog/ships/bulk-overlay", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refIds, ...overlay }),
     });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
 }
 
 // ─── Wiki Sync ──────────────────────────────────────────────
@@ -158,14 +141,11 @@ export async function bulkSetShipOverlay(refIds, overlay) {
  * Sync reference data from the STFC Fandom Wiki.
  * User-initiated: fetches Officers + Ships via Special:Export.
  * @param {Object} options - { officers?: boolean, ships?: boolean }
- * @returns {Promise<Object>} { ok, data: { officers, ships, provenance } }
+ * @returns {Promise<Object>} Sync results
  */
 export async function syncWikiData(options = {}) {
-    const res = await _fetch("/api/catalog/sync", {
+    return apiFetch("/api/catalog/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ consent: true, ...options }),
     });
-    const env = await res.json();
-    return { ok: res.ok, data: env.data, error: env.error };
 }

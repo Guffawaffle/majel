@@ -404,24 +404,27 @@ function renderSchemaSection() {
 
 function bindEvents() {
     // Tab switching
-    document.querySelectorAll('.diag-tab').forEach(btn => {
+    const area = $('#diagnostics-area');
+    if (!area) return;
+
+    area.querySelectorAll('.diag-tab').forEach(btn => {
         btn.addEventListener('click', () => switchSection(btn.dataset.section));
     });
 
     // Query presets
-    document.querySelectorAll('.diag-preset-btn').forEach(btn => {
+    area.querySelectorAll('.diag-preset-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const sqlInput = $('#diag-sql-input');
+            const sqlInput = area.querySelector('#diag-sql-input');
             if (sqlInput) sqlInput.value = btn.dataset.sql;
             executeQuery(btn.dataset.sql);
         });
     });
 
     // Run query button
-    const runBtn = $('#diag-run-query');
+    const runBtn = area.querySelector('#diag-run-query');
     if (runBtn) {
         runBtn.addEventListener('click', () => {
-            const sqlInput = $('#diag-sql-input');
+            const sqlInput = area.querySelector('#diag-sql-input');
             if (sqlInput && sqlInput.value.trim()) {
                 executeQuery(sqlInput.value.trim());
             }
@@ -429,7 +432,7 @@ function bindEvents() {
     }
 
     // SQL textarea keyboard shortcut (Ctrl+Enter to run)
-    const sqlInput = $('#diag-sql-input');
+    const sqlInput = area.querySelector('#diag-sql-input');
     if (sqlInput) {
         sqlInput.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -440,10 +443,10 @@ function bindEvents() {
     }
 
     // Schema table toggles
-    document.querySelectorAll('.diag-schema-header').forEach(header => {
+    area.querySelectorAll('.diag-schema-header').forEach(header => {
         header.addEventListener('click', () => {
             const tableName = header.dataset.table;
-            const detail = document.querySelector(`.diag-schema-detail[data-detail="${tableName}"]`);
+            const detail = area.querySelector(`.diag-schema-detail[data-detail="${tableName}"]`);
             const toggle = header.querySelector('.diag-schema-toggle');
             if (detail) {
                 detail.classList.toggle('hidden');

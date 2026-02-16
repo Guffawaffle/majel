@@ -67,14 +67,11 @@ export async function detectTargetConflicts(
   const crewTargets = targets.filter((t) => t.targetType === "crew" && t.loadoutId != null);
   const officerTargets = targets.filter((t) => t.targetType === "officer" && t.refId);
 
-  // Load loadouts for crew targets (ADR-025: LoadoutWithRefs with bridgeCore)
-  const loadoutMap = new Map<number, LoadoutWithRefs>();
-  for (const t of crewTargets) {
-    if (t.loadoutId != null && !loadoutMap.has(t.loadoutId)) {
-      const loadout = await crewStore.getLoadout(t.loadoutId);
-      if (loadout) loadoutMap.set(t.loadoutId, loadout);
-    }
-  }
+  // Load loadouts for crew targets in batch (ADR-025: LoadoutWithRefs with bridgeCore)
+  const uniqueLoadoutIds = [...new Set(
+    crewTargets.map(t => t.loadoutId).filter((id): id is number => id != null),
+  )];
+  const loadoutMap = await crewStore.getLoadoutsByIds(uniqueLoadoutIds);
 
   // 1. Officer contention between crew targets
   detectOfficerContention(crewTargets, loadoutMap, conflicts);

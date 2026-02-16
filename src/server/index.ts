@@ -169,6 +169,7 @@ export function createApp(appState: AppState): express.Express {
       "base-uri 'self'",
       "form-action 'self'",
       "frame-ancestors 'none'",
+      "upgrade-insecure-requests",
     ].join('; '));
     // Defense-in-depth headers (no Helmet — we set them explicitly)
     res.setHeader('X-Content-Type-Options', 'nosniff');

@@ -10,7 +10,7 @@
  * @state   none
  */
 
-import { _fetch } from './_fetch.js';
+import { apiFetch } from './_fetch.js';
 
 /**
  * Fetch current user identity + role from /api/auth/me.
@@ -18,10 +18,8 @@ import { _fetch } from './_fetch.js';
  */
 export async function getMe() {
     try {
-        const res = await _fetch("/api/auth/me");
-        if (!res.ok) return null;
-        const body = await res.json();
-        return body.data?.user ?? null;
+        const data = await apiFetch("/api/auth/me");
+        return data?.user ?? null;
     } catch {
         return null;
     }

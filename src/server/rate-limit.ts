@@ -74,3 +74,19 @@ export const globalRateLimiter = rateLimit({
   },
   skip: () => IS_TEST,
 });
+
+/**
+ * Rate limiter for catalog/sync endpoint (heavy DB operation).
+ * 2 requests per minute — prevents hammering the datamine ingest.
+ */
+export const syncRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 2,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  handler: (_req, res) => {
+    sendFail(res, "RATE_LIMITED", "Sync rate limit reached. Please wait before syncing again.", 429);
+  },
+  skip: () => IS_TEST,
+});

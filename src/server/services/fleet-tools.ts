@@ -895,24 +895,27 @@ async function listOwnedOfficers(ctx: ToolContext): Promise<object> {
   }
 
   const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
-  const officers = await Promise.all(
-    overlays.map(async (overlay) => {
-      const ref = await ctx.referenceStore!.getOfficer(overlay.refId);
-      if (!ref) return null;
-      return {
-        id: ref.id,
-        name: ref.name,
-        rarity: ref.rarity,
-        group: ref.groupName,
-        captainManeuver: ref.captainManeuver,
-        officerAbility: ref.officerAbility,
-        belowDeckAbility: ref.belowDeckAbility,
-        level: overlay.level,
-        rank: overlay.rank,
-        power: overlay.power,
-      };
-    }),
-  );
+
+  // Batch-fetch all reference officers (avoids N+1 per overlay)
+  const allOfficers = await ctx.referenceStore.listOfficers();
+  const refMap = new Map(allOfficers.map(o => [o.id, o]));
+
+  const officers = overlays.map((overlay) => {
+    const ref = refMap.get(overlay.refId);
+    if (!ref) return null;
+    return {
+      id: ref.id,
+      name: ref.name,
+      rarity: ref.rarity,
+      group: ref.groupName,
+      captainManeuver: ref.captainManeuver,
+      officerAbility: ref.officerAbility,
+      belowDeckAbility: ref.belowDeckAbility,
+      level: overlay.level,
+      rank: overlay.rank,
+      power: overlay.power,
+    };
+  });
 
   const results = officers.filter(Boolean);
   return {
@@ -1084,36 +1087,37 @@ async function suggestCrew(
     }
   }
 
-  // 3. Get all owned officers with abilities (the Admiral's available roster)
+  // 3. Get all owned officers with abilities (batch — avoids N+1)
   const ownedOfficers: Array<Record<string, unknown>> = [];
   if (ctx.overlayStore) {
     const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
-    const resolved = await Promise.all(
-      overlays.map(async (overlay) => {
-        const ref = await ctx.referenceStore!.getOfficer(overlay.refId);
-        if (!ref) return null;
-        return {
-          id: ref.id,
-          name: ref.name,
-          rarity: ref.rarity,
-          group: ref.groupName,
-          captainManeuver: ref.captainManeuver,
-          officerAbility: ref.officerAbility,
-          belowDeckAbility: ref.belowDeckAbility,
-          level: overlay.level,
-          rank: overlay.rank,
-        };
-      }),
-    );
-    ownedOfficers.push(...resolved.filter(Boolean) as Array<Record<string, unknown>>);
+    const allOfficers = await ctx.referenceStore.listOfficers();
+    const refMap = new Map(allOfficers.map(o => [o.id, o]));
+    for (const overlay of overlays) {
+      const ref = refMap.get(overlay.refId);
+      if (!ref) continue;
+      ownedOfficers.push({
+        id: ref.id,
+        name: ref.name,
+        rarity: ref.rarity,
+        group: ref.groupName,
+        captainManeuver: ref.captainManeuver,
+        officerAbility: ref.officerAbility,
+        belowDeckAbility: ref.belowDeckAbility,
+        level: overlay.level,
+        rank: overlay.rank,
+      });
+    }
   }
 
-  // 4. Get existing loadouts for this ship (show what's already configured)
+  // 4. Get existing loadouts for this ship (batch fetch)
   const existingLoadouts: Array<Record<string, unknown>> = [];
   if (ctx.crewStore) {
     const loadouts = await ctx.crewStore.listLoadouts({ shipId });
+    const loadoutIds = loadouts.map(l => l.id);
+    const fullMap = await ctx.crewStore.getLoadoutsByIds(loadoutIds);
     for (const l of loadouts) {
-      const full = await ctx.crewStore.getLoadout(l.id);
+      const full = fullMap.get(l.id);
       existingLoadouts.push({
         id: l.id,
         name: l.name,
@@ -1247,14 +1251,16 @@ async function resolveConflict(officerId: string, ctx: ToolContext): Promise<obj
   const alternatives: Array<Record<string, unknown>> = [];
   if (officer.groupName) {
     const groupOfficers = await ctx.referenceStore.listOfficers({ groupName: officer.groupName });
+    // Batch-fetch overlays for all group officers
+    const altIds = groupOfficers.filter(a => a.id !== officerId).map(a => a.id);
+    const overlayMap = new Map<string, boolean>();
+    if (ctx.overlayStore && altIds.length > 0) {
+      const ownedOverlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+      const ownedSet = new Set(ownedOverlays.map(o => o.refId));
+      for (const id of altIds) overlayMap.set(id, ownedSet.has(id));
+    }
     for (const alt of groupOfficers) {
       if (alt.id === officerId) continue;
-      // Check if owned
-      let owned = false;
-      if (ctx.overlayStore) {
-        const overlay = await ctx.overlayStore.getOfficerOverlay(alt.id);
-        owned = overlay?.ownershipState === "owned";
-      }
       alternatives.push({
         id: alt.id,
         name: alt.name,
@@ -1263,16 +1269,18 @@ async function resolveConflict(officerId: string, ctx: ToolContext): Promise<obj
         captainManeuver: alt.captainManeuver,
         officerAbility: alt.officerAbility,
         belowDeckAbility: alt.belowDeckAbility,
-        owned,
+        owned: overlayMap.get(alt.id) ?? false,
       });
     }
   }
 
-  // 4. Get loadouts that use this officer (via bridge core membership)
+  // 4. Get loadouts that use this officer (batch fetch via getLoadoutsByIds)
   const loadouts = await ctx.crewStore.listLoadouts();
+  const loadoutIds = loadouts.map(l => l.id);
+  const fullMap = await ctx.crewStore.getLoadoutsByIds(loadoutIds);
   const affectedLoadouts: Array<Record<string, unknown>> = [];
   for (const l of loadouts) {
-    const full = await ctx.crewStore.getLoadout(l.id);
+    const full = fullMap.get(l.id);
     if (full?.bridgeCore?.members.some((m) => m.officerId === officerId)) {
       affectedLoadouts.push({
         loadoutId: l.id,
@@ -1324,11 +1332,13 @@ async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): Promise
     officerName = officer?.name ?? null;
   }
 
-  // Find all loadouts containing this officer via bridge core
+  // Find all loadouts containing this officer via bridge core (batch fetch)
   const loadouts = await ctx.crewStore.listLoadouts();
+  const loadoutIds = loadouts.map(l => l.id);
+  const fullMap = await ctx.crewStore.getLoadoutsByIds(loadoutIds);
   const affectedLoadouts: Array<Record<string, unknown>> = [];
   for (const l of loadouts) {
-    const full = await ctx.crewStore.getLoadout(l.id);
+    const full = fullMap.get(l.id);
     if (full?.bridgeCore?.members.some((m) => m.officerId === officerId)) {
       affectedLoadouts.push({
         loadoutId: l.id,
@@ -1406,12 +1416,14 @@ async function suggestTargets(ctx: ToolContext): Promise<object> {
     result.catalogSize = { officers: refCounts.officers, ships: refCounts.ships };
   }
 
-  // 2. Owned officers with abilities
+  // 2. Owned officers with abilities (batch fetch)
   if (ctx.overlayStore && ctx.referenceStore) {
     const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
-    const officers = await Promise.all(
-      overlays.map(async (overlay) => {
-        const ref = await ctx.referenceStore!.getOfficer(overlay.refId);
+    const allOfficers = await ctx.referenceStore.listOfficers();
+    const refMap = new Map(allOfficers.map(o => [o.id, o]));
+    result.ownedOfficers = overlays
+      .map((overlay) => {
+        const ref = refMap.get(overlay.refId);
         if (!ref) return null;
         return {
           id: ref.id,
@@ -1424,17 +1436,18 @@ async function suggestTargets(ctx: ToolContext): Promise<object> {
           level: overlay.level,
           rank: overlay.rank,
         };
-      }),
-    );
-    result.ownedOfficers = officers.filter(Boolean);
+      })
+      .filter(Boolean);
   }
 
-  // 3. Owned ships with tiers
+  // 3. Owned ships with tiers (batch fetch)
   if (ctx.overlayStore && ctx.referenceStore) {
     const overlays = await ctx.overlayStore.listShipOverlays({ ownershipState: "owned" });
-    const ships = await Promise.all(
-      overlays.map(async (overlay) => {
-        const ref = await ctx.referenceStore!.getShip(overlay.refId);
+    const allShips = await ctx.referenceStore.listShips();
+    const shipMap = new Map(allShips.map(s => [s.id, s]));
+    result.ownedShips = overlays
+      .map((overlay) => {
+        const ref = shipMap.get(overlay.refId);
         if (!ref) return null;
         return {
           id: ref.id,
@@ -1446,9 +1459,8 @@ async function suggestTargets(ctx: ToolContext): Promise<object> {
           tier: overlay.tier ?? ref.tier,
           level: overlay.level,
         };
-      }),
-    );
-    result.ownedShips = ships.filter(Boolean);
+      })
+      .filter(Boolean);
   }
 
   // 4. Current loadouts summary

@@ -6,6 +6,7 @@
  */
 
 import { sendChat as apiSendChat } from 'api/chat.js';
+import { ApiError } from 'api/_fetch.js';
 import { registerView } from 'router';
 
 // ─── DOM Elements ───────────────────────────────────────────
@@ -34,6 +35,7 @@ let currentSessionId = null;
 
 // ─── Markdown Rendering ─────────────────────────────────────
 function renderMarkdown(text) {
+    if (text == null) return '<em>(no response)</em>';
     // Escape HTML first
     let html = text
         .replace(/&/g, "&amp;")
@@ -305,20 +307,19 @@ async function sendChat(message, onRefreshSessions) {
     addTypingIndicator();
 
     try {
-        const result = await apiSendChat(currentSessionId, message);
+        const data = await apiSendChat(currentSessionId, message);
         removeTypingIndicator();
-        const data = result.data.data || {};
 
-        if (result.ok) {
-            addMessage("model", data.answer);
-            // Refresh session list (server already saved the messages)
-            if (onRefreshSessions) onRefreshSessions();
-        } else {
-            addMessage("error", `Error: ${result.data.error?.message || "Unknown error"}`);
-        }
+        addMessage("model", data.answer);
+        // Refresh session list (server already saved the messages)
+        if (onRefreshSessions) onRefreshSessions();
     } catch (err) {
         removeTypingIndicator();
-        addMessage("error", `Connection error: ${err.message}`);
+        if (err instanceof ApiError) {
+            addMessage("error", `Error: ${err.message}`);
+        } else {
+            addMessage("error", `Connection error: ${err.message}`);
+        }
     } finally {
         chatInput.disabled = false;
         sendBtn.disabled = !chatInput.value.trim();

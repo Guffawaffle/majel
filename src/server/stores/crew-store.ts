@@ -77,6 +77,7 @@ interface CrewStore {
   // ── Loadouts ──────────────────────────────────────────
   listLoadouts(filters?: { shipId?: string; intentKey?: string; tag?: string; active?: boolean }): Promise<Loadout[]>;
   getLoadout(id: number): Promise<LoadoutWithRefs | null>;
+  getLoadoutsByIds(ids: number[]): Promise<Map<number, LoadoutWithRefs>>;
   createLoadout(fields: {
     shipId: string; name: string; bridgeCoreId?: number; belowDeckPolicyId?: number;
     priority?: number; isActive?: boolean; intentKeys?: string[]; tags?: string[]; notes?: string;
@@ -609,6 +610,42 @@ export async function createCrewStore(adminPool: Pool, runtimePool?: Pool): Prom
       }
 
       return { ...loadout, bridgeCore, belowDeckPolicy };
+    },
+
+    async getLoadoutsByIds(ids) {
+      if (ids.length === 0) return new Map();
+      const result = await pool.query(
+        `SELECT ${LOADOUT_COLS} FROM loadouts WHERE id = ANY($1)`, [ids],
+      );
+      const loadouts = result.rows as Loadout[];
+      if (loadouts.length === 0) return new Map();
+
+      // Batch-fetch bridge cores
+      const bcIds = [...new Set(loadouts.map(l => l.bridgeCoreId).filter((id): id is number => id != null))];
+      const bcMap = new Map<number, BridgeCoreWithMembers>();
+      if (bcIds.length > 0) {
+        const bcResult = await pool.query(`SELECT ${BC_COLS} FROM bridge_cores WHERE id = ANY($1)`, [bcIds]);
+        const withMembers = await attachMembers(bcResult.rows as BridgeCore[]);
+        for (const bc of withMembers) bcMap.set(bc.id, bc);
+      }
+
+      // Batch-fetch below deck policies
+      const bdpIds = [...new Set(loadouts.map(l => l.belowDeckPolicyId).filter((id): id is number => id != null))];
+      const bdpMap = new Map<number, BelowDeckPolicy>();
+      if (bdpIds.length > 0) {
+        const bdpResult = await pool.query(`SELECT ${BDP_COLS} FROM below_deck_policies WHERE id = ANY($1)`, [bdpIds]);
+        for (const bdp of bdpResult.rows as BelowDeckPolicy[]) bdpMap.set(bdp.id, bdp);
+      }
+
+      const out = new Map<number, LoadoutWithRefs>();
+      for (const l of loadouts) {
+        out.set(l.id, {
+          ...l,
+          bridgeCore: l.bridgeCoreId ? bcMap.get(l.bridgeCoreId) ?? null : null,
+          belowDeckPolicy: l.belowDeckPolicyId ? bdpMap.get(l.belowDeckPolicyId) ?? null : null,
+        });
+      }
+      return out;
     },
 
     async createLoadout(fields) {

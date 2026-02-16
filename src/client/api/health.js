@@ -10,7 +10,7 @@
  * @state   none
  */
 
-import { _fetch } from './_fetch.js';
+import { apiFetch } from './_fetch.js';
 
 /**
  * Check the health/status of the backend API
@@ -18,9 +18,7 @@ import { _fetch } from './_fetch.js';
  */
 export async function checkHealth() {
     try {
-        const res = await _fetch("/api/health");
-        const data = (await res.json()).data;
-        return data;
+        return await apiFetch("/api/health");
     } catch {
         return null;
     }

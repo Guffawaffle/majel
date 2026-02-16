@@ -14,7 +14,6 @@ function showSection(target) {
         const el = document.getElementById(`${s}-section`);
         if (!el) return;
         if (s === 'hero' || s === 'features') {
-            el.style.display = (target === 'hero' || target === 'features' || target === target) ? '' : '';
             // Hero and features are always visible unless an auth form is shown
             if (['signup', 'login', 'forgot', 'verify'].includes(target)) {
                 el.style.display = 'none';

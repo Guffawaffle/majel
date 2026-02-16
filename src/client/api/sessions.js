@@ -10,7 +10,7 @@
  * @state   cachedSessions (module-level array)
  */
 
-import { _fetch } from './_fetch.js';
+import { apiFetch } from './_fetch.js';
 
 let cachedSessions = [];
 
@@ -20,9 +20,8 @@ let cachedSessions = [];
  */
 export async function fetchSessions() {
     try {
-        const res = await _fetch("/api/sessions?limit=30");
-        const data = (await res.json()).data || {};
-        cachedSessions = data.sessions || [];
+        const data = await apiFetch("/api/sessions?limit=30");
+        cachedSessions = data?.sessions || [];
         return cachedSessions;
     } catch {
         cachedSessions = [];
@@ -45,10 +44,7 @@ export function getCachedSessions() {
  */
 export async function restoreSession(id) {
     try {
-        const res = await _fetch(`/api/sessions/${id}`);
-        if (!res.ok) return null;
-        const session = (await res.json()).data;
-        return session;
+        return await apiFetch(`/api/sessions/${id}`);
     } catch {
         return null;
     }
@@ -61,7 +57,7 @@ export async function restoreSession(id) {
  */
 export async function deleteSession(id) {
     try {
-        await _fetch(`/api/sessions/${id}`, { method: "DELETE" });
+        await apiFetch(`/api/sessions/${id}`, { method: "DELETE" });
         return true;
     } catch {
         return false;

@@ -292,8 +292,11 @@ function wireActions(area) {
                 await refresh();
                 return;
             }
-            const res = await adminSetRole(email, role);
-            if (!res.ok) alert(res.error?.message || "Failed to set role");
+            try {
+                await adminSetRole(email, role);
+            } catch (err) {
+                alert(err.message || "Failed to set role");
+            }
             await refresh();
         });
     });
@@ -305,8 +308,11 @@ function wireActions(area) {
             const isLocked = btn.dataset.locked === 'true';
             const action = isLocked ? 'unlock' : 'lock';
             if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${email}?`)) return;
-            const res = await adminSetLock(email, !isLocked);
-            if (!res.ok) alert(res.error?.message || `Failed to ${action}`);
+            try {
+                await adminSetLock(email, !isLocked);
+            } catch (err) {
+                alert(err.message || `Failed to ${action}`);
+            }
             await refresh();
         });
     });
@@ -316,8 +322,11 @@ function wireActions(area) {
         btn.addEventListener("click", async () => {
             const email = btn.dataset.email;
             if (!confirm(`⚠️ Permanently delete ${email}? This cannot be undone.`)) return;
-            const res = await adminDeleteUser(email);
-            if (!res.ok) alert(res.error?.message || "Failed to delete user");
+            try {
+                await adminDeleteUser(email);
+            } catch (err) {
+                alert(err.message || "Failed to delete user");
+            }
             await refresh();
         });
     });
@@ -329,13 +338,15 @@ function wireActions(area) {
             const label = area.querySelector("#invite-label")?.value?.trim() || undefined;
             const maxUses = parseInt(area.querySelector("#invite-max-uses")?.value, 10) || undefined;
             const expiresIn = area.querySelector("#invite-expiry")?.value || undefined;
-            const res = await adminCreateInvite({ label, maxUses, expiresIn });
-            if (!res.ok) {
-                alert(res.error?.message || "Failed to create invite");
-            } else if (res.data?.code) {
-                // Copy new code to clipboard
-                try { await navigator.clipboard.writeText(res.data.code); } catch (_) { /* clipboard not available */ }
-                alert(`Invite code created: ${res.data.code}\n(Copied to clipboard)`);
+            try {
+                const data = await adminCreateInvite({ label, maxUses, expiresIn });
+                if (data?.code) {
+                    // Copy new code to clipboard
+                    try { await navigator.clipboard.writeText(data.code); } catch (_) { /* clipboard not available */ }
+                    alert(`Invite code created: ${data.code}\n(Copied to clipboard)`);
+                }
+            } catch (err) {
+                alert(err.message || "Failed to create invite");
             }
             await refresh();
         });
@@ -358,8 +369,11 @@ function wireActions(area) {
     area.querySelectorAll(".admin-btn-revoke").forEach(btn => {
         btn.addEventListener("click", async () => {
             if (!confirm("Revoke this invite code?")) return;
-            const res = await adminRevokeInvite(btn.dataset.code);
-            if (!res.ok) alert(res.error?.message || "Failed to revoke");
+            try {
+                await adminRevokeInvite(btn.dataset.code);
+            } catch (err) {
+                alert(err.message || "Failed to revoke");
+            }
             await refresh();
         });
     });
@@ -368,8 +382,11 @@ function wireActions(area) {
     area.querySelectorAll(".admin-btn-kill-session").forEach(btn => {
         btn.addEventListener("click", async () => {
             if (!confirm("Kill this session?")) return;
-            const res = await adminDeleteSession(btn.dataset.id);
-            if (!res.ok) alert(res.error?.message || "Failed to kill session");
+            try {
+                await adminDeleteSession(btn.dataset.id);
+            } catch (err) {
+                alert(err.message || "Failed to kill session");
+            }
             await refresh();
         });
     });
@@ -379,8 +396,11 @@ function wireActions(area) {
     if (killAllBtn) {
         killAllBtn.addEventListener("click", async () => {
             if (!confirm(`⚠️ Kill all ${sessions.length} tenant session(s)?`)) return;
-            const res = await adminDeleteAllSessions();
-            if (!res.ok) alert(res.error?.message || "Failed to kill sessions");
+            try {
+                await adminDeleteAllSessions();
+            } catch (err) {
+                alert(err.message || "Failed to kill sessions");
+            }
             await refresh();
         });
     }

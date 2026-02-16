@@ -97,14 +97,14 @@ function createMockReferenceStore(overrides: Partial<ReferenceStore> = {}): Refe
     createOfficer: vi.fn(),
     getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
     findOfficerByName: vi.fn(),
-    listOfficers: vi.fn(),
+    listOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER]),
     searchOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER]),
     upsertOfficer: vi.fn(),
     deleteOfficer: vi.fn(),
     createShip: vi.fn(),
     getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
     findShipByName: vi.fn(),
-    listShips: vi.fn(),
+    listShips: vi.fn().mockResolvedValue([FIXTURE_SHIP]),
     searchShips: vi.fn().mockResolvedValue([FIXTURE_SHIP]),
     upsertShip: vi.fn(),
     deleteShip: vi.fn(),
@@ -120,11 +120,11 @@ function createMockOverlayStore(overrides: Partial<OverlayStore> = {}): OverlayS
   return {
     getOfficerOverlay: vi.fn().mockResolvedValue(FIXTURE_OFFICER_OVERLAY),
     setOfficerOverlay: vi.fn(),
-    listOfficerOverlays: vi.fn(),
+    listOfficerOverlays: vi.fn().mockResolvedValue([]),
     deleteOfficerOverlay: vi.fn(),
     getShipOverlay: vi.fn().mockResolvedValue(FIXTURE_SHIP_OVERLAY),
     setShipOverlay: vi.fn(),
-    listShipOverlays: vi.fn(),
+    listShipOverlays: vi.fn().mockResolvedValue([]),
     deleteShipOverlay: vi.fn(),
     bulkSetOfficerOwnership: vi.fn(),
     bulkSetShipOwnership: vi.fn(),
@@ -140,7 +140,7 @@ function createMockOverlayStore(overrides: Partial<OverlayStore> = {}): OverlayS
 }
 
 function createMockCrewStore(overrides: Partial<CrewStore> = {}): CrewStore {
-  return {
+  const store = {
     listBridgeCores: vi.fn().mockResolvedValue([]),
     getBridgeCore: vi.fn().mockResolvedValue(null),
     createBridgeCore: vi.fn(),
@@ -223,6 +223,18 @@ function createMockCrewStore(overrides: Partial<CrewStore> = {}): CrewStore {
     close: vi.fn(),
     ...overrides,
   } as unknown as CrewStore;
+  // Add getLoadoutsByIds that delegates to getLoadout (auto-derives from per-item mock)
+  if (!overrides.getLoadoutsByIds) {
+    (store as any).getLoadoutsByIds = vi.fn().mockImplementation(async (ids: number[]) => {
+      const map = new Map();
+      for (const id of ids) {
+        const l = await store.getLoadout(id);
+        if (l) map.set(id, l);
+      }
+      return map;
+    });
+  }
+  return store;
 }
 
 function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStore {
@@ -657,7 +669,7 @@ describe("list_owned_officers", () => {
   it("filters out officers with missing reference data", async () => {
     const ctx: ToolContext = {
       referenceStore: createMockReferenceStore({
-        getOfficer: vi.fn().mockResolvedValue(null),
+        listOfficers: vi.fn().mockResolvedValue([]),
       }),
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([FIXTURE_OFFICER_OVERLAY]),
@@ -893,7 +905,12 @@ describe("resolve_conflict", () => {
       referenceStore: createMockReferenceStore({
         listOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER, FIXTURE_SPOCK_OFFICER]),
       }),
-      overlayStore: createMockOverlayStore(),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([
+          FIXTURE_OFFICER_OVERLAY,
+          { ...FIXTURE_OFFICER_OVERLAY, refId: "officer-spock" },
+        ]),
+      }),
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([
           { id: 10, name: "Kirk Crew", shipId: "ship-enterprise", isActive: true },
