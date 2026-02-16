@@ -49,7 +49,8 @@
     "cloud:warm": "tsx scripts/cloud.ts warm",
     "pg:check": "docker exec majel-postgres-1 pg_isready -U majel -q 2>/dev/null && echo '✅ PostgreSQL is running' || (echo '❌ PostgreSQL is NOT running — run: npm run pg:start' && exit 1)",
     "pg:start": "docker start majel-postgres-1 2>/dev/null || docker compose up -d postgres; echo '⏳ Waiting for PostgreSQL...'; for i in $(seq 1 30); do docker exec majel-postgres-1 pg_isready -U majel -q 2>/dev/null && echo '✅ PostgreSQL ready' && exit 0; sleep 1; done; echo '❌ PostgreSQL failed to start within 30s' && exit 1",
-    "pg:stop": "docker stop majel-postgres-1 && echo '🛑 PostgreSQL stopped'"
+    "pg:stop": "docker stop majel-postgres-1 && echo '🛑 PostgreSQL stopped'",
+    "gh": "node scripts/gh.mjs"
   },
   "keywords": [
     "stfc",
