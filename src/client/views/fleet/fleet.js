@@ -15,6 +15,11 @@
  */
 
 import { fetchCatalogOfficers, fetchCatalogShips, setOfficerOverlay, setShipOverlay } from 'api/catalog.js';
+import {
+    fetchBridgeCores, fetchCrewLoadouts, fetchBelowDeckPolicies,
+    fetchReservations, setReservation, deleteReservation,
+    fetchEffectiveState, fetchCrewDocks,
+} from 'api/crews.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -28,6 +33,13 @@ let sortDir = 'asc';    // 'asc' | 'desc'
 let loading = false;
 let saveTimers = {};     // { refId: timeoutId } for debounced saves
 let noteTimers = {};     // { refId: timeoutId } for debounced note saves
+
+// ─── Cross-Reference State (ADR-025 / #63) ──────────────────
+let reservationMap = {};    // { officerId: { reservedFor, locked, notes } }
+let officerUsedIn = {};     // { officerId: [{ type, name, slot? }] }
+let shipUsedIn = {};        // { shipId: [{ name, priority? }] }
+let officerConflicts = {};  // { officerId: locations[] }
+let shipDockMap = {};       // { shipId: dockNumber }
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -50,12 +62,19 @@ export async function refresh() {
     if (loading) return;
     loading = true;
     try {
-        const [officerData, shipData] = await Promise.all([
+        const [officerData, shipData, cores, loadouts, policies, reservations, effectiveState, docks] = await Promise.all([
             fetchCatalogOfficers({ ownership: 'owned' }),
             fetchCatalogShips({ ownership: 'owned' }),
+            fetchBridgeCores().catch(() => []),
+            fetchCrewLoadouts().catch(() => []),
+            fetchBelowDeckPolicies().catch(() => []),
+            fetchReservations().catch(() => []),
+            fetchEffectiveState().catch(() => ({ docks: [], conflicts: [] })),
+            fetchCrewDocks().catch(() => []),
         ]);
         officers = officerData;
         ships = shipData;
+        buildCrossRefs(cores, loadouts, policies, reservations, effectiveState, docks);
         render();
     } catch (err) {
         console.error("Fleet refresh failed:", err);
@@ -63,6 +82,86 @@ export async function refresh() {
         if (area) area.innerHTML = `<div class="fleet-error">Failed to load fleet: ${esc(err.message)}</div>`;
     } finally {
         loading = false;
+    }
+}
+
+// ─── Cross-Reference Builder (ADR-025 / #63) ────────────────
+
+function buildCrossRefs(cores, loadouts, policies, reservations, effectiveState, docks) {
+    // 1. Reservations
+    reservationMap = {};
+    const resvArr = reservations?.reservations ?? reservations ?? [];
+    for (const r of resvArr) {
+        reservationMap[r.officerId ?? r.officer_id] = {
+            reservedFor: r.reservedFor ?? r.reserved_for ?? '',
+            locked: r.locked ?? false,
+            notes: r.notes ?? '',
+        };
+    }
+
+    // 2. Officer "used in" map
+    officerUsedIn = {};
+    const addOfficerRef = (id, ref) => {
+        if (!id) return;
+        (officerUsedIn[id] ??= []).push(ref);
+    };
+
+    const coreArr = cores?.bridgeCores ?? cores ?? [];
+    for (const c of coreArr) {
+        const members = c.members ?? {};
+        for (const [slot, officerId] of Object.entries(members)) {
+            addOfficerRef(officerId, { type: 'bridge_core', name: c.name, slot });
+        }
+    }
+
+    const loadoutArr = loadouts?.loadouts ?? loadouts ?? [];
+    for (const l of loadoutArr) {
+        const bridge = l.bridge ?? {};
+        for (const [slot, officerId] of Object.entries(bridge)) {
+            addOfficerRef(officerId, { type: 'loadout', name: l.name, slot });
+        }
+    }
+
+    const policyArr = policies?.policies ?? policies ?? [];
+    for (const p of policyArr) {
+        const pinned = p.spec?.pinned_officers ?? p.pinnedOfficers ?? [];
+        for (const officerId of pinned) {
+            addOfficerRef(officerId, { type: 'policy', name: p.name });
+        }
+    }
+
+    // 3. Officer conflicts from effective state
+    officerConflicts = {};
+    const conflicts = effectiveState?.conflicts ?? [];
+    for (const c of conflicts) {
+        officerConflicts[c.officerId] = c.locations;
+    }
+
+    // 4. Ship "used in" map
+    shipUsedIn = {};
+    for (const l of loadoutArr) {
+        const sid = l.shipId ?? l.ship_id;
+        if (!sid) continue;
+        (shipUsedIn[sid] ??= []).push({
+            name: l.name,
+            priority: l.priority,
+        });
+    }
+
+    // 5. Ship → dock map
+    shipDockMap = {};
+    const dockArr = docks?.docks ?? docks ?? [];
+    for (const d of dockArr) {
+        if (d.shipId ?? d.ship_id) {
+            shipDockMap[d.shipId ?? d.ship_id] = d.dockNumber ?? d.dock_number;
+        }
+    }
+    // Also use effective state dock entries for ship→dock
+    const dockEntries = effectiveState?.docks ?? [];
+    for (const entry of dockEntries) {
+        if (entry.loadout?.shipId) {
+            shipDockMap[entry.loadout.shipId] = entry.dockNumber;
+        }
     }
 }
 
@@ -211,13 +310,18 @@ function renderGrid(items) {
 
 function renderOfficerRow(o) {
     const targeted = o.target;
+    const resv = reservationMap[o.id];
+    const conflict = officerConflicts[o.id];
+    const refs = officerUsedIn[o.id];
     return `
-        <div class="fleet-row ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(o.id)}">
+        <div class="fleet-row ${targeted ? 'fleet-targeted' : ''} ${conflict ? 'fleet-conflict' : ''}" data-id="${esc(o.id)}">
             <div class="fleet-row-header">
                 <span class="fleet-row-name">${esc(o.name)}</span>
                 ${o.rarity ? `<span class="cat-badge rarity-${(o.rarity || '').toLowerCase()}">${esc(o.rarity)}</span>` : ''}
                 ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
+                ${conflict ? '<span class="fleet-conflict-badge" title="Officer assigned to multiple docks">⚠️</span>' : ''}
+                ${renderReservationBadge(o.id, resv)}
             </div>
             ${renderAbilities(o)}
             <div class="fleet-row-fields">
@@ -237,6 +341,8 @@ function renderOfficerRow(o) {
                            value="${o.userPower ?? ''}" min="0" placeholder="—" />
                 </label>
             </div>
+            ${renderOfficerUsedIn(refs)}
+            ${renderReservationForm(o.id, resv)}
             ${renderNoteField(o)}
         </div>
     `;
@@ -244,6 +350,8 @@ function renderOfficerRow(o) {
 
 function renderShipRow(s) {
     const targeted = s.target;
+    const dock = shipDockMap[s.id];
+    const refs = shipUsedIn[s.id];
     return `
         <div class="fleet-row ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(s.id)}">
             <div class="fleet-row-header">
@@ -252,6 +360,7 @@ function renderShipRow(s) {
                 ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
                 ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
+                ${dock != null ? `<span class="fleet-dock-badge">Dock ${dock}</span>` : ''}
             </div>
             <div class="fleet-row-fields">
                 <label class="fleet-field">
@@ -270,6 +379,7 @@ function renderShipRow(s) {
                            value="${s.userPower ?? ''}" min="0" placeholder="—" />
                 </label>
             </div>
+            ${renderShipUsedIn(refs)}
             ${renderNoteField(s)}
         </div>
     `;
@@ -279,15 +389,20 @@ function renderShipRow(s) {
 
 function renderOfficerCard(o) {
     const targeted = o.target;
+    const resv = reservationMap[o.id];
+    const conflict = officerConflicts[o.id];
+    const refs = officerUsedIn[o.id];
     return `
-        <div class="fleet-card ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(o.id)}">
+        <div class="fleet-card ${targeted ? 'fleet-targeted' : ''} ${conflict ? 'fleet-conflict' : ''}" data-id="${esc(o.id)}">
             <div class="fleet-card-header">
                 <span class="fleet-row-name">${esc(o.name)}</span>
+                ${conflict ? '<span class="fleet-conflict-badge" title="Officer assigned to multiple docks">⚠️</span>' : ''}
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
             </div>
             <div class="fleet-card-badges">
                 ${o.rarity ? `<span class="cat-badge rarity-${(o.rarity || '').toLowerCase()}">${esc(o.rarity)}</span>` : ''}
                 ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
+                ${renderReservationBadge(o.id, resv)}
             </div>
             ${renderAbilities(o)}
             <div class="fleet-card-fields">
@@ -307,6 +422,8 @@ function renderOfficerCard(o) {
                            value="${o.userPower ?? ''}" min="0" placeholder="—" />
                 </label>
             </div>
+            ${renderOfficerUsedIn(refs)}
+            ${renderReservationForm(o.id, resv)}
             ${renderNoteField(o)}
         </div>
     `;
@@ -314,11 +431,14 @@ function renderOfficerCard(o) {
 
 function renderShipCard(s) {
     const targeted = s.target;
+    const dock = shipDockMap[s.id];
+    const refs = shipUsedIn[s.id];
     return `
         <div class="fleet-card ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(s.id)}">
             <div class="fleet-card-header">
                 <span class="fleet-row-name">${esc(s.name)}</span>
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
+                ${dock != null ? `<span class="fleet-dock-badge">Dock ${dock}</span>` : ''}
             </div>
             <div class="fleet-card-badges">
                 ${s.rarity ? `<span class="cat-badge rarity-${(s.rarity || '').toLowerCase()}">${esc(s.rarity)}</span>` : ''}
@@ -342,6 +462,7 @@ function renderShipCard(s) {
                            value="${s.userPower ?? ''}" min="0" placeholder="—" />
                 </label>
             </div>
+            ${renderShipUsedIn(refs)}
             ${renderNoteField(s)}
         </div>
     `;
@@ -368,6 +489,66 @@ function renderNoteField(item) {
             <textarea class="fleet-note-input" data-id="${esc(item.id)}" data-field="targetNote"
                       placeholder="Add a note… e.g. farm X for this, comes from Borg daily loop"
                       rows="1">${esc(note)}</textarea>
+        </div>
+    `;
+}
+
+// ─── Cross-Reference Renderers (ADR-025 / #63) ─────────────
+
+const SLOT_LABELS = { captain: 'Captain', bridge_1: 'Bridge 1', bridge_2: 'Bridge 2' };
+const REF_TYPE_LABELS = { bridge_core: 'Bridge Core', loadout: 'Loadout', policy: 'Policy' };
+
+function renderReservationBadge(officerId, resv) {
+    if (!resv) return '';
+    const icon = resv.locked ? '🔒' : '🔓';
+    const label = resv.reservedFor || 'Reserved';
+    return `<span class="fleet-resv-badge ${resv.locked ? 'locked' : 'soft'}" title="${resv.locked ? 'Hard' : 'Soft'} reservation: ${esc(label)}">${icon} ${esc(label)}</span>`;
+}
+
+function renderReservationForm(officerId, resv) {
+    const reservedFor = resv?.reservedFor ?? '';
+    const locked = resv?.locked ?? false;
+    return `
+        <div class="fleet-resv-form" data-officer-id="${esc(officerId)}">
+            <span class="fleet-field-label">Reserve</span>
+            <div class="fleet-resv-controls">
+                <input type="text" class="fleet-resv-input" data-action="resv-for"
+                       value="${esc(reservedFor)}" placeholder="e.g. Swarm, PvP Anchor" />
+                <button class="fleet-resv-toggle ${locked ? 'locked' : ''}" data-action="resv-lock"
+                        title="${locked ? 'Hard lock (click to soften)' : 'Soft (click to hard-lock)'}">
+                    ${locked ? '🔒' : '🔓'}
+                </button>
+                ${resv ? `<button class="fleet-resv-clear" data-action="resv-clear" title="Clear reservation">✕</button>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function renderOfficerUsedIn(refs) {
+    if (!refs || refs.length === 0) return '';
+    const items = refs.map(r => {
+        const typeLabel = REF_TYPE_LABELS[r.type] || r.type;
+        const slotLabel = r.slot ? ` (${SLOT_LABELS[r.slot] || r.slot})` : '';
+        return `<span class="fleet-xref-item">${esc(typeLabel)}: ${esc(r.name)}${slotLabel}</span>`;
+    });
+    return `
+        <div class="fleet-xref">
+            <span class="fleet-xref-label">Used in:</span>
+            ${items.join('')}
+        </div>
+    `;
+}
+
+function renderShipUsedIn(refs) {
+    if (!refs || refs.length === 0) return '';
+    const items = refs.map(r => {
+        const priority = r.priority != null ? ` (priority ${r.priority})` : '';
+        return `<span class="fleet-xref-item">${esc(r.name)}${priority}</span>`;
+    });
+    return `
+        <div class="fleet-xref">
+            <span class="fleet-xref-label">Used in:</span>
+            ${items.join('')}
         </div>
     `;
 }
@@ -520,6 +701,90 @@ function bindEvents() {
             }
         });
     });
+
+    // ── Reservation Controls (ADR-025 / #63) ────────────────
+    bindReservationEvents(area);
+}
+
+// ─── Reservation Events (#63) ───────────────────────────────
+
+let resvTimers = {};
+
+function bindReservationEvents(area) {
+    // Debounced save on reservation text input
+    area.querySelectorAll('.fleet-resv-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const form = e.target.closest('.fleet-resv-form');
+            const officerId = form?.dataset.officerId;
+            if (!officerId) return;
+            const key = `resv:${officerId}`;
+            if (resvTimers[key]) clearTimeout(resvTimers[key]);
+            resvTimers[key] = setTimeout(() => {
+                const lockBtn = form.querySelector('[data-action="resv-lock"]');
+                const locked = lockBtn?.classList.contains('locked') ?? false;
+                saveReservation(officerId, e.target.value.trim(), locked);
+                delete resvTimers[key];
+            }, 800);
+        });
+
+        // Save on blur if pending
+        input.addEventListener('blur', (e) => {
+            const form = e.target.closest('.fleet-resv-form');
+            const officerId = form?.dataset.officerId;
+            if (!officerId) return;
+            const key = `resv:${officerId}`;
+            if (resvTimers[key]) {
+                clearTimeout(resvTimers[key]);
+                delete resvTimers[key];
+                const lockBtn = form.querySelector('[data-action="resv-lock"]');
+                const locked = lockBtn?.classList.contains('locked') ?? false;
+                saveReservation(officerId, e.target.value.trim(), locked);
+            }
+        });
+    });
+
+    // Toggle lock (soft ↔ hard)
+    area.querySelectorAll('[data-action="resv-lock"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const form = btn.closest('.fleet-resv-form');
+            const officerId = form?.dataset.officerId;
+            if (!officerId) return;
+            const input = form.querySelector('.fleet-resv-input');
+            const reservedFor = input?.value.trim() || '';
+            const wasLocked = btn.classList.contains('locked');
+            saveReservation(officerId, reservedFor, !wasLocked);
+        });
+    });
+
+    // Clear reservation
+    area.querySelectorAll('[data-action="resv-clear"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const form = btn.closest('.fleet-resv-form');
+            const officerId = form?.dataset.officerId;
+            if (!officerId) return;
+            clearReservation(officerId);
+        });
+    });
+}
+
+async function saveReservation(officerId, reservedFor, locked) {
+    try {
+        await setReservation(officerId, reservedFor || 'Reserved', locked);
+        reservationMap[officerId] = { reservedFor: reservedFor || 'Reserved', locked, notes: '' };
+        render();
+    } catch (err) {
+        console.error(`Failed to save reservation for ${officerId}:`, err);
+    }
+}
+
+async function clearReservation(officerId) {
+    try {
+        await deleteReservation(officerId);
+        delete reservationMap[officerId];
+        render();
+    } catch (err) {
+        console.error(`Failed to clear reservation for ${officerId}:`, err);
+    }
 }
 
 // ─── Save Field ─────────────────────────────────────────────

@@ -135,8 +135,8 @@ function renderDocksTab() {
             ${editingDock === 'new' ? renderDockForm(null) : ''}
             <div class="fo-grid">
                 ${sorted.length === 0
-                    ? renderEmpty('No docks configured. Create docks to assign loadouts to numbered berths.')
-                    : sorted.map(d => renderDockCard(d)).join('')}
+            ? renderEmpty('No docks configured. Create docks to assign loadouts to numbered berths.')
+            : sorted.map(d => renderDockCard(d)).join('')}
             </div>
         </div>
     `;
@@ -214,12 +214,12 @@ function renderPresetsTab() {
             ${editingPreset === 'new' ? renderPresetForm(null) : ''}
             <div class="fo-list">
                 ${presets.length === 0
-                    ? renderEmpty('No fleet presets yet. Create one to save dock assignments you can activate with one click.')
-                    : presets.map(p => {
-                        let html = renderPresetCard(p);
-                        if (editingSlots === p.id) html += renderSlotEditor(p.id);
-                        return html;
-                    }).join('')}
+            ? renderEmpty('No fleet presets yet. Create one to save dock assignments you can activate with one click.')
+            : presets.map(p => {
+                let html = renderPresetCard(p);
+                if (editingSlots === p.id) html += renderSlotEditor(p.id);
+                return html;
+            }).join('')}
             </div>
         </div>
     `;
@@ -313,21 +313,21 @@ function renderSlotEditor(presetId) {
             ${formError ? `<div class="fo-form-error">${esc(formError)}</div>` : ''}
             <div class="fo-slot-grid">
                 ${sortedDocks.length === 0
-                    ? '<div class="fo-muted">Create docks first to assign loadouts.</div>'
-                    : sortedDocks.map(dock => {
-                        const slot = slots.find(s => s.dockNumber === dock.dockNumber);
-                        const selectedLoadout = slot ? slot.loadoutId : '';
-                        return `
+            ? '<div class="fo-muted">Create docks first to assign loadouts.</div>'
+            : sortedDocks.map(dock => {
+                const slot = slots.find(s => s.dockNumber === dock.dockNumber);
+                const selectedLoadout = slot ? slot.loadoutId : '';
+                return `
                         <div class="fo-slot-row-edit">
                             <span class="fo-slot-dock-label">#${dock.dockNumber} ${esc(dock.label || '')}</span>
                             <select class="fo-form-select" data-slot-dock="${dock.dockNumber}">
                                 <option value="">— No loadout —</option>
                                 ${loadouts.map(lo =>
-                                    `<option value="${lo.id}" ${selectedLoadout === lo.id ? 'selected' : ''}>${esc(lo.name)}</option>`
-                                ).join('')}
+                    `<option value="${lo.id}" ${selectedLoadout === lo.id ? 'selected' : ''}>${esc(lo.name)}</option>`
+                ).join('')}
                             </select>
                         </div>`;
-                    }).join('')}
+            }).join('')}
             </div>
             <div class="fo-form-actions">
                 <button class="fo-btn fo-btn-secondary" data-action="cancel-slots">Cancel</button>
@@ -362,8 +362,8 @@ function renderDeploymentTab() {
                 <h4 class="fo-deploy-heading">Dock Assignments</h4>
                 <div class="fo-list">
                     ${effectiveDocks.length === 0
-                        ? renderEmpty('No dock assignments active.')
-                        : effectiveDocks.map(d => renderEffectiveDock(d)).join('')}
+            ? renderEmpty('No dock assignments active.')
+            : effectiveDocks.map(d => renderEffectiveDock(d)).join('')}
                 </div>
             </div>
 
@@ -385,9 +385,8 @@ function renderConflicts(conflicts) {
             ${conflicts.map(c => `
                 <div class="fo-conflict-row">
                     <span class="fo-conflict-officer">${esc(c.officerId)}</span>
-                    <span class="fo-conflict-detail">Used in ${c.locations.length} locations: ${
-                        c.locations.map(l => `${esc(l.entityName)}${l.slot ? ` (${l.slot})` : ''}`).join(', ')
-                    }</span>
+                    <span class="fo-conflict-detail">Used in ${c.locations.length} locations: ${c.locations.map(l => `${esc(l.entityName)}${l.slot ? ` (${l.slot})` : ''}`).join(', ')
+        }</span>
                 </div>
             `).join('')}
         </div>

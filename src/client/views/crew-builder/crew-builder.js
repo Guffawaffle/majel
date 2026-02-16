@@ -129,8 +129,8 @@ function renderCoresTab() {
             ${editingCoreId === 'new' ? renderCoreForm(null) : ''}
             <div class="crew-builder-list">
                 ${bridgeCores.length === 0
-                    ? renderEmpty('No bridge cores yet. Create one to assign officers to bridge slots.')
-                    : bridgeCores.map(c => renderCoreCard(c)).join('')}
+            ? renderEmpty('No bridge cores yet. Create one to assign officers to bridge slots.')
+            : bridgeCores.map(c => renderCoreCard(c)).join('')}
             </div>
         </div>
     `;
@@ -146,8 +146,8 @@ function renderPoliciesTab() {
             ${editingPolicyId === 'new' ? renderPolicyForm(null) : ''}
             <div class="crew-builder-list">
                 ${belowDeckPolicies.length === 0
-                    ? renderEmpty('No below deck policies yet. Create one to control auto-fill rules.')
-                    : belowDeckPolicies.map(p => renderPolicyCard(p)).join('')}
+            ? renderEmpty('No below deck policies yet. Create one to control auto-fill rules.')
+            : belowDeckPolicies.map(p => renderPolicyCard(p)).join('')}
             </div>
         </div>
     `;
@@ -169,8 +169,8 @@ function renderVariantsTab() {
             </div>
             <div class="crew-builder-list">
                 ${filtered.length === 0
-                    ? renderEmpty(loadouts.length === 0 ? 'No crew loadouts. Create some in Drydock first!' : 'No loadouts match your search.')
-                    : filtered.map(l => renderLoadoutVariantsCard(l)).join('')}
+            ? renderEmpty(loadouts.length === 0 ? 'No crew loadouts. Create some in Drydock first!' : 'No loadouts match your search.')
+            : filtered.map(l => renderLoadoutVariantsCard(l)).join('')}
             </div>
         </div>
     `;
@@ -337,8 +337,8 @@ function renderPolicyForm(policy) {
                     <span class="crew-builder-form-label">Pinned Officers <span class="crew-builder-hint">(hold Ctrl/Cmd to multi-select)</span></span>
                     <select class="crew-builder-form-select crew-builder-form-multi" data-form-field="pinned" multiple size="5">
                         ${officers.map(off =>
-                            `<option value="${esc(off.id)}" ${pinned.includes(off.id) ? 'selected' : ''}>${esc(off.name)} (L${off.userLevel || '?'})</option>`
-                        ).join('')}
+        `<option value="${esc(off.id)}" ${pinned.includes(off.id) ? 'selected' : ''}>${esc(off.name)} (L${off.userLevel || '?'})</option>`
+    ).join('')}
                     </select>
                 </label>
                 <label class="crew-builder-form-field crew-builder-form-wide">

@@ -331,3 +331,124 @@
   color: var(--accent-red);
   text-align: center;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   ADR-025 / #63 — Reservations, Cross-Refs, Conflicts
+   ═══════════════════════════════════════════════════════════ */
+
+/* Conflict indicator */
+.fleet-conflict {
+  border-left: 3px solid var(--accent-red) !important;
+}
+.fleet-conflict-badge {
+  font-size: 0.85rem;
+  cursor: help;
+}
+
+/* Reservation badge (inline in header) */
+.fleet-resv-badge {
+  font-size: 0.76rem;
+  padding: 1px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.fleet-resv-badge.soft {
+  color: var(--accent-green);
+  background: rgba(52, 211, 153, 0.1);
+}
+.fleet-resv-badge.locked {
+  color: var(--accent-orange);
+  background: rgba(251, 191, 36, 0.1);
+}
+
+/* Reservation form (inline per officer) */
+.fleet-resv-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 0;
+}
+.fleet-resv-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+.fleet-resv-input {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  outline: none;
+  min-width: 0;
+  transition: border-color var(--transition);
+}
+.fleet-resv-input:focus {
+  border-color: var(--accent-gold-dim);
+}
+.fleet-resv-toggle {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 30px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background var(--transition), border-color var(--transition);
+}
+.fleet-resv-toggle:hover {
+  border-color: var(--accent-gold-dim);
+}
+.fleet-resv-toggle.locked {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: var(--accent-orange);
+}
+.fleet-resv-clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: color var(--transition), border-color var(--transition);
+}
+.fleet-resv-clear:hover {
+  color: var(--accent-red);
+  border-color: var(--accent-red);
+}
+
+/* Cross-reference "Used in" section */
+.fleet-xref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+  font-size: 0.8rem;
+}
+.fleet-xref-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.fleet-xref-item {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 1px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
