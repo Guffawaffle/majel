@@ -339,6 +339,114 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     // No parameters — analyzes all active targets automatically
   },
 
+  // ─── Target Mutation Tools (#80) ───────────────────────────
+
+  {
+    name: "create_target",
+    description:
+      "Create a new acquisition or progression target — an officer to acquire, a ship to build, " +
+      "or a crew loadout to assemble. Includes dupe detection: warns if an active target for the same ref_id already exists. " +
+      "Call this when the Admiral says they want to target, acquire, or work toward something.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        target_type: {
+          type: Type.STRING,
+          enum: ["officer", "ship", "crew"],
+          description: "Type of target: officer (acquire/upgrade), ship (build/tier), crew (assemble loadout)",
+        },
+        ref_id: {
+          type: Type.STRING,
+          description: "Reference ID for the target entity (e.g. 'wiki:officer:james-t-kirk', 'cdn:ship:1234'). Required for officer/ship targets.",
+        },
+        loadout_id: {
+          type: Type.INTEGER,
+          description: "Loadout ID for crew targets. Links the target to a specific loadout.",
+        },
+        priority: {
+          type: Type.INTEGER,
+          description: "Priority level 1-3 (1 = high, 3 = low). Default: 2.",
+        },
+        target_tier: {
+          type: Type.INTEGER,
+          description: "Target tier/level to reach (e.g. ship tier 8, officer tier 3)",
+        },
+        target_level: {
+          type: Type.INTEGER,
+          description: "Target level to reach (e.g. officer level 50)",
+        },
+        target_rank: {
+          type: Type.STRING,
+          description: "Target rank to reach (e.g. 'Commander', 'Captain')",
+        },
+        reason: {
+          type: Type.STRING,
+          description: "Why this target matters — used for prioritization context (e.g. 'Cloaking platform acquisition', 'Needed for Kirk PvP crew')",
+        },
+      },
+      required: ["target_type"],
+    },
+  },
+  {
+    name: "update_target",
+    description:
+      "Update an existing target's priority, status, reason, or progression goals. " +
+      "Use this to change priority, update the reason, adjust target tier/level/rank, " +
+      "or set status to 'abandoned'. For marking targets complete, prefer complete_target instead.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        target_id: {
+          type: Type.INTEGER,
+          description: "Target ID to update (from list_targets)",
+        },
+        priority: {
+          type: Type.INTEGER,
+          description: "New priority level 1-3 (1 = high, 3 = low)",
+        },
+        status: {
+          type: Type.STRING,
+          enum: ["active", "abandoned"],
+          description: "New status. Use 'abandoned' to retire a target. For 'achieved', use complete_target instead.",
+        },
+        target_tier: {
+          type: Type.INTEGER,
+          description: "Updated target tier",
+        },
+        target_level: {
+          type: Type.INTEGER,
+          description: "Updated target level",
+        },
+        target_rank: {
+          type: Type.STRING,
+          description: "Updated target rank",
+        },
+        reason: {
+          type: Type.STRING,
+          description: "Updated reason/context",
+        },
+      },
+      required: ["target_id"],
+    },
+  },
+  {
+    name: "complete_target",
+    description:
+      "Mark a target as achieved/completed. Records the achievement timestamp. " +
+      "Call this when the Admiral confirms they've acquired the officer, built the ship, " +
+      "or assembled the crew loadout.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        target_id: {
+          type: Type.INTEGER,
+          description: "Target ID to mark as achieved (from list_targets)",
+        },
+      },
+      required: ["target_id"],
+    },
+  },
+
   // ─── ADR-025 Mutation Tools (Phase 3) ─────────────────────
 
   {

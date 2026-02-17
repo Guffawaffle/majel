@@ -45,6 +45,9 @@ import {
   setReservationTool,
   createVariantTool,
   getEffectiveStateTool,
+  createTargetTool,
+  updateTargetTool,
+  completeTargetTool,
 } from "./mutate-tools.js";
 
 // ─── Dispatcher ─────────────────────────────────────────────
@@ -124,6 +127,13 @@ async function dispatchTool(
       return suggestTargets(ctx);
     case "detect_target_conflicts":
       return detectConflicts(ctx);
+    // Target mutation tools (#80)
+    case "create_target":
+      return createTargetTool(args, ctx);
+    case "update_target":
+      return updateTargetTool(args, ctx);
+    case "complete_target":
+      return completeTargetTool(args, ctx);
     // ADR-025 mutation tools
     case "create_bridge_core":
       return createBridgeCoreTool(args, ctx);

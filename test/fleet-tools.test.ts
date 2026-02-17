@@ -260,7 +260,7 @@ function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStor
 describe("FLEET_TOOL_DECLARATIONS", () => {
   it("exports an array of tool declarations", () => {
     expect(Array.isArray(FLEET_TOOL_DECLARATIONS)).toBe(true);
-    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(26);
+    expect(FLEET_TOOL_DECLARATIONS.length).toBeGreaterThanOrEqual(29);
   });
 
   it("each declaration has name and description", () => {
@@ -312,6 +312,13 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("set_reservation");
     expect(names).toContain("create_variant");
     expect(names).toContain("get_effective_state");
+  });
+
+  it("includes target mutation tools (#80)", () => {
+    const names = FLEET_TOOL_DECLARATIONS.map((t) => t.name);
+    expect(names).toContain("create_target");
+    expect(names).toContain("update_target");
+    expect(names).toContain("complete_target");
   });
 
   it("search tools have required query parameter", () => {
@@ -1291,6 +1298,363 @@ describe("detect_target_conflicts", () => {
     const result = await executeFleetTool("detect_target_conflicts", {}, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Crew");
+  });
+});
+
+// ─── Target Mutation Tools (#80) ────────────────────────────
+
+describe("create_target", () => {
+  it("creates an officer target with ref_id", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        listByRef: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue({
+          id: 1,
+          targetType: "officer",
+          refId: "wiki:officer:james-t-kirk",
+          loadoutId: null,
+          priority: 1,
+          reason: "Need for PvP crew",
+          status: "active",
+          autoSuggested: false,
+          createdAt: "2026-02-17",
+          updatedAt: "2026-02-17",
+          achievedAt: null,
+        }),
+      }),
+    };
+    const result = await executeFleetTool("create_target", {
+      target_type: "officer",
+      ref_id: "wiki:officer:james-t-kirk",
+      priority: 1,
+      reason: "Need for PvP crew",
+    }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("create_target");
+    expect(result.created).toBe(true);
+    expect(result.nextSteps).toBeDefined();
+    const target = result.target as Record<string, unknown>;
+    expect(target.id).toBe(1);
+    expect(target.targetType).toBe("officer");
+    expect(target.refId).toBe("wiki:officer:james-t-kirk");
+    expect(target.priority).toBe(1);
+  });
+
+  it("creates a ship target with default priority", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        listByRef: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue({
+          id: 2,
+          targetType: "ship",
+          refId: "cdn:ship:1234",
+          loadoutId: null,
+          priority: 2,
+          reason: null,
+          status: "active",
+          autoSuggested: false,
+          createdAt: "2026-02-17",
+          updatedAt: "2026-02-17",
+          achievedAt: null,
+        }),
+      }),
+    };
+    const result = await executeFleetTool("create_target", {
+      target_type: "ship",
+      ref_id: "cdn:ship:1234",
+    }, ctx) as Record<string, unknown>;
+    expect(result.created).toBe(true);
+    const target = result.target as Record<string, unknown>;
+    expect(target.priority).toBe(2);
+  });
+
+  it("detects duplicate active targets", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        listByRef: vi.fn().mockResolvedValue([{
+          id: 5,
+          targetType: "officer",
+          refId: "wiki:officer:spock",
+          status: "active",
+          priority: 2,
+          reason: "Old reason",
+        }]),
+      }),
+    };
+    const result = await executeFleetTool("create_target", {
+      target_type: "officer",
+      ref_id: "wiki:officer:spock",
+    }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("create_target");
+    expect(result.status).toBe("duplicate_detected");
+    expect(result.existingId).toBe(5);
+    expect(result.nextSteps).toBeDefined();
+  });
+
+  it("allows target if existing ref_id is not active", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        listByRef: vi.fn().mockResolvedValue([{
+          id: 5,
+          targetType: "officer",
+          refId: "wiki:officer:spock",
+          status: "achieved",
+          priority: 2,
+        }]),
+        create: vi.fn().mockResolvedValue({
+          id: 6, targetType: "officer", refId: "wiki:officer:spock",
+          loadoutId: null, priority: 2, reason: null, status: "active",
+          autoSuggested: false, createdAt: "2026-02-17", updatedAt: "2026-02-17", achievedAt: null,
+        }),
+      }),
+    };
+    const result = await executeFleetTool("create_target", {
+      target_type: "officer",
+      ref_id: "wiki:officer:spock",
+    }, ctx) as Record<string, unknown>;
+    expect(result.created).toBe(true);
+  });
+
+  it("returns error for invalid target_type", async () => {
+    const ctx: ToolContext = { targetStore: createMockTargetStore() };
+    const result = await executeFleetTool("create_target", {
+      target_type: "weapon",
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("Invalid target_type");
+  });
+
+  it("returns error for officer target without ref_id", async () => {
+    const ctx: ToolContext = { targetStore: createMockTargetStore() };
+    const result = await executeFleetTool("create_target", {
+      target_type: "officer",
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("ref_id");
+  });
+
+  it("returns error for invalid priority", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        listByRef: vi.fn().mockResolvedValue([]),
+      }),
+    };
+    const result = await executeFleetTool("create_target", {
+      target_type: "ship",
+      ref_id: "cdn:ship:1",
+      priority: 5,
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("Priority");
+  });
+
+  it("returns error when target store unavailable", async () => {
+    const result = await executeFleetTool("create_target", {
+      target_type: "officer", ref_id: "x",
+    }, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("update_target", () => {
+  it("updates target priority and reason", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({
+          id: 1, targetType: "officer", refId: "kirk", priority: 2, status: "active", reason: null,
+        }),
+        update: vi.fn().mockResolvedValue({
+          id: 1, targetType: "officer", refId: "kirk", priority: 1, status: "active", reason: "Top priority",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("update_target", {
+      target_id: 1,
+      priority: 1,
+      reason: "Top priority",
+    }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("update_target");
+    expect(result.updated).toBe(true);
+    const target = result.target as Record<string, unknown>;
+    expect(target.priority).toBe(1);
+    expect(target.reason).toBe("Top priority");
+  });
+
+  it("abandons a target", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({
+          id: 1, targetType: "ship", refId: "enterprise", priority: 2, status: "active",
+        }),
+        update: vi.fn().mockResolvedValue({
+          id: 1, targetType: "ship", refId: "enterprise", priority: 2, status: "abandoned", reason: null,
+        }),
+      }),
+    };
+    const result = await executeFleetTool("update_target", {
+      target_id: 1,
+      status: "abandoned",
+    }, ctx) as Record<string, unknown>;
+    expect(result.updated).toBe(true);
+    const target = result.target as Record<string, unknown>;
+    expect(target.status).toBe("abandoned");
+  });
+
+  it("redirects achieved status to complete_target", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({
+          id: 1, targetType: "officer", refId: "kirk", priority: 2, status: "active",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("update_target", {
+      target_id: 1,
+      status: "achieved",
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("complete_target");
+    expect(result.nextSteps).toBeDefined();
+  });
+
+  it("returns error for target not found", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue(null),
+      }),
+    };
+    const result = await executeFleetTool("update_target", {
+      target_id: 999,
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("not found");
+  });
+
+  it("returns error for no update fields", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({
+          id: 1, targetType: "officer", refId: "kirk", priority: 2, status: "active",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("update_target", {
+      target_id: 1,
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("No fields");
+  });
+
+  it("returns error for invalid priority", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({
+          id: 1, targetType: "officer", refId: "kirk", priority: 2, status: "active",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("update_target", {
+      target_id: 1,
+      priority: 0,
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("Priority");
+  });
+
+  it("returns error when target store unavailable", async () => {
+    const result = await executeFleetTool("update_target", { target_id: 1 }, {});
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error for missing target_id", async () => {
+    const ctx: ToolContext = { targetStore: createMockTargetStore() };
+    const result = await executeFleetTool("update_target", {}, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("target_id");
+  });
+});
+
+describe("complete_target", () => {
+  it("marks an active target as achieved", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({
+          id: 1, targetType: "officer", refId: "wiki:officer:kirk",
+          priority: 1, status: "active", reason: "PvP crew",
+        }),
+        markAchieved: vi.fn().mockResolvedValue({
+          id: 1, targetType: "officer", refId: "wiki:officer:kirk",
+          priority: 1, status: "achieved", reason: "PvP crew",
+          achievedAt: "2026-02-17T12:00:00Z",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("complete_target", {
+      target_id: 1,
+    }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("complete_target");
+    expect(result.completed).toBe(true);
+    expect(result.nextSteps).toBeDefined();
+    const target = result.target as Record<string, unknown>;
+    expect(target.id).toBe(1);
+    expect(target.status).toBe("achieved");
+    expect(target.achievedAt).toBe("2026-02-17T12:00:00Z");
+  });
+
+  it("returns already_achieved for completed targets", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({
+          id: 1, targetType: "ship", refId: "enterprise",
+          status: "achieved", achievedAt: "2026-02-17",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("complete_target", {
+      target_id: 1,
+    }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("complete_target");
+    expect(result.status).toBe("already_achieved");
+    expect(result.message).toBeDefined();
+  });
+
+  it("returns error for abandoned targets", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({
+          id: 1, targetType: "officer", refId: "kirk", status: "abandoned",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("complete_target", {
+      target_id: 1,
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("abandoned");
+  });
+
+  it("returns error for target not found", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue(null),
+      }),
+    };
+    const result = await executeFleetTool("complete_target", {
+      target_id: 999,
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("not found");
+  });
+
+  it("returns error for missing target_id", async () => {
+    const ctx: ToolContext = { targetStore: createMockTargetStore() };
+    const result = await executeFleetTool("complete_target", {}, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("target_id");
+  });
+
+  it("returns error when target store unavailable", async () => {
+    const result = await executeFleetTool("complete_target", { target_id: 1 }, {});
+    expect(result).toHaveProperty("error");
   });
 });
 
