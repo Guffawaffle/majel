@@ -13,6 +13,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### CDN Data Pipeline (#83, ADR-028)
+- **`data.stfc.space` snapshot ingest** — public S3/CloudFront CDN serving complete STFC game data as static JSON
+  - Snapshot script (`scripts/stfc-snapshot.mjs`) fetches all 7 entity types + 15 translation packs (73MB)
+  - `syncCdnShips()` / `syncCdnOfficers()` parse, translate, and upsert 112 ships + 278 officers
+  - CDN entities use `cdn:ship:<gameId>` / `cdn:officer:<gameId>` IDs (coexist with legacy `raw:*` entries)
+  - CDN snapshot version (`version.txt` UUID) tracked and returned in sync response
+- **Reference store schema expansion** — new columns for ships (`hull_type`, `max_tier`, `max_level`, `build_time_in_seconds`, `officer_bonus`, `crew_slots`, `build_cost`, `levels`, `game_id`) and officers (`officer_class`, `faction`, `synergy_id`, `max_rank`, `trait_config`)
+- **Shared game enum module** (`game-enums.ts`) — hull type, officer class, rarity, faction label maps with helper functions, used by both ingest and fleet tools
+- **Store filters** — `officerClass` (int), `hullType` (int), `grade` (int) added to SQL query builders + catalog REST API query params
+
+#### CDN Data in UI (#84)
+- **Catalog officer cards** — officer class badge (`CMD`/`SCI`/`ENG`, color-coded red/blue/gold), faction badge, below-deck ability (`BD:`)
+- **Catalog ship cards** — hull type badge (Destroyer/Survey/Explorer/Battleship/Defense/Armada), max tier, max level, formatted build time
+- **Filter dropdowns** — officer class selector (officers tab), hull type selector (ships tab) with server-side SQL filtering
+- **Fleet view** — officer class + faction badges on officer rows/cards, hull type badge on ship rows/cards
+- **Client-side game enums** (`utils/game-enums.js`) — hull type, officer class labels (full + abbreviated), `formatDuration()`
+
+#### SDK Migration (ADR-027)
+- **`@google/generative-ai` → `@google/genai`** — new modular SDK with streaming, structured output, improved error handling
+  - `gemini-engine.ts` rewritten for new SDK API surface
+  - `tool-runner.ts` refactored for new function calling format
+  - System prompt and settings store rebuilt for SDK compatibility
+
+#### Views
+- **Crews view** (`#/crews`) — full composition workshop with 4 sub-tabs (Bridge Cores, Loadouts, Policies, Reservations)
+- **Plan view** (`#/plan`) — effective state dashboard with fleet presets and plan items
+- **Fleet Ops view** (`#/fleet-ops`) — docks, fleet presets, deployment with conflict detection
+
+#### Canonical SafeRouter
+- **Auto-wrap async handlers** — catches thrown errors, returns structured error responses
+- **Global error hooks** — `onError` callback for logging/metrics
+
+#### AI Tools + Briefing (ADR-025)
+- **Fleet tool integration** — `suggest_crew`, `suggest_targets`, `resolve_conflict` surface CDN-enriched fields (officerClass, faction, hullType, maxTier, officerBonus, crewSlots)
+- **Tool declarations** — descriptions updated to mention CDN field availability
+- **Enriched payloads** — all officer payloads include officerClass + faction, ship payloads include hullType + maxTier
+
+### Changed
+- **Chat timeout** — 30s → 60s for complex AI responses
+- **Session auto-titling** — sessions titled from first user message
+- **AX-friendly mutation responses** — structured JSON output for all fleet tool mutations
+- **Fleet tool schemas** — standardized for AI grokability (consistent parameter naming, descriptions)
+- **Input validation hardening** — stricter parameter validation across fleet tool mutations
+- **ADR-028 status** — "Proposed" → "Accepted" with CDN pipeline as foundational work
+
+### Fixed
+- **Fleet view** — undefined `loadoutArr` + wrong policy unwrap key
+- **Crews view** — 10 bug fixes from deep review
+- **System prompt** — rebuilt to teach Aria to use her tools effectively
+
+### Security
+- **Injection defense** — parameterized queries, rate limits, guided actions for fleet mutations
+- **CSP hardening** — hash mismatch fix + pre-commit guard
+- **Cross-cutting security** — TOCTOU fixes, N+1 elimination, apiFetch migration
+
+### Added (prior)
+
 #### Loadout Architecture (ADR-022)
 - **PostgreSQL loadout store** — `loadout-store.ts` with intent catalog, loadouts, docks, plan items, officer conflict detection
   - 100 tests covering CRUD, away members, planning, edge cases
