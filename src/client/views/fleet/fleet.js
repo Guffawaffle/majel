@@ -21,6 +21,7 @@ import {
     fetchEffectiveState, fetchCrewDocks,
 } from 'api/crews.js';
 import { esc } from 'utils/escape.js';
+import { hullTypeLabel, officerClassShort } from 'utils/game-enums.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -323,12 +324,16 @@ function renderOfficerRow(o) {
     const resv = reservationMap[o.id];
     const conflict = officerConflicts[o.id];
     const refs = officerUsedIn[o.id];
+    const classShort = officerClassShort(o.officerClass);
+    const factionName = typeof o.faction === 'object' && o.faction?.name ? o.faction.name : (typeof o.faction === 'string' ? o.faction : '');
     return `
         <div class="fleet-row ${targeted ? 'fleet-targeted' : ''} ${conflict ? 'fleet-conflict' : ''}" data-id="${esc(o.id)}">
             <div class="fleet-row-header">
                 <span class="fleet-row-name">${esc(o.name)}</span>
+                ${classShort ? `<span class="cat-badge officer-class officer-class-${classShort.toLowerCase()}">${esc(classShort)}</span>` : ''}
                 ${o.rarity ? `<span class="cat-badge rarity-${(o.rarity || '').toLowerCase()}">${esc(o.rarity)}</span>` : ''}
                 ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
+                ${factionName ? `<span class="cat-badge faction">${esc(factionName)}</span>` : ''}
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
                 ${conflict ? '<span class="fleet-conflict-badge" title="Officer assigned to multiple docks">⚠️</span>' : ''}
                 ${renderReservationBadge(o.id, resv)}
@@ -362,10 +367,12 @@ function renderShipRow(s) {
     const targeted = s.target;
     const dock = shipDockMap[s.id];
     const refs = shipUsedIn[s.id];
+    const hull = hullTypeLabel(s.hullType);
     return `
         <div class="fleet-row ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(s.id)}">
             <div class="fleet-row-header">
                 <span class="fleet-row-name">${esc(s.name)}</span>
+                ${hull ? `<span class="cat-badge hull-type">${esc(hull)}</span>` : ''}
                 ${s.rarity ? `<span class="cat-badge rarity-${(s.rarity || '').toLowerCase()}">${esc(s.rarity)}</span>` : ''}
                 ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
                 ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
@@ -402,6 +409,7 @@ function renderOfficerCard(o) {
     const resv = reservationMap[o.id];
     const conflict = officerConflicts[o.id];
     const refs = officerUsedIn[o.id];
+    const classShort = officerClassShort(o.officerClass);
     return `
         <div class="fleet-card ${targeted ? 'fleet-targeted' : ''} ${conflict ? 'fleet-conflict' : ''}" data-id="${esc(o.id)}">
             <div class="fleet-card-header">
@@ -410,6 +418,7 @@ function renderOfficerCard(o) {
                 ${targeted ? '<span class="fleet-target-badge">🎯</span>' : ''}
             </div>
             <div class="fleet-card-badges">
+                ${classShort ? `<span class="cat-badge officer-class officer-class-${classShort.toLowerCase()}">${esc(classShort)}</span>` : ''}
                 ${o.rarity ? `<span class="cat-badge rarity-${(o.rarity || '').toLowerCase()}">${esc(o.rarity)}</span>` : ''}
                 ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
                 ${renderReservationBadge(o.id, resv)}
@@ -443,6 +452,7 @@ function renderShipCard(s) {
     const targeted = s.target;
     const dock = shipDockMap[s.id];
     const refs = shipUsedIn[s.id];
+    const hull = hullTypeLabel(s.hullType);
     return `
         <div class="fleet-card ${targeted ? 'fleet-targeted' : ''}" data-id="${esc(s.id)}">
             <div class="fleet-card-header">
@@ -451,6 +461,7 @@ function renderShipCard(s) {
                 ${dock != null ? `<span class="fleet-dock-badge">Dock ${dock}</span>` : ''}
             </div>
             <div class="fleet-card-badges">
+                ${hull ? `<span class="cat-badge hull-type">${esc(hull)}</span>` : ''}
                 ${s.rarity ? `<span class="cat-badge rarity-${(s.rarity || '').toLowerCase()}">${esc(s.rarity)}</span>` : ''}
                 ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
                 ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
