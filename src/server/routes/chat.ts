@@ -17,7 +17,7 @@ export function createChatRoutes(appState: AppState): Router {
 
   // ─── Chat ───────────────────────────────────────────────────
 
-  router.post("/api/chat", requireAdmiral(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(30000), async (req, res) => {
+  router.post("/api/chat", requireAdmiral(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(60_000), async (req, res) => {
     const { message } = req.body;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 

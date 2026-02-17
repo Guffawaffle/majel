@@ -163,7 +163,9 @@ export function createTimeoutMiddleware(timeoutMs: number) {
           path: req.path, 
           timeoutMs 
         }, "request timeout");
-        sendFail(res, ErrorCode.REQUEST_TIMEOUT, `Request timeout after ${timeoutMs}ms`, 504);
+        sendFail(res, ErrorCode.REQUEST_TIMEOUT, `Request timed out after ${Math.round(timeoutMs / 1000)}s — Aria may still be working through a multi-tool chain`, 504, {
+          hints: ["Try a simpler request", "Break complex commands into smaller steps"],
+        });
       }
     }, timeoutMs);
 

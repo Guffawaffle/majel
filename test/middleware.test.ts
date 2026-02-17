@@ -156,7 +156,7 @@ describe("Timeout middleware", () => {
     expect(res.status).toBe(504);
     expect(res.body.ok).toBe(false);
     expect(res.body.error.code).toBe(ErrorCode.REQUEST_TIMEOUT);
-    expect(res.body.error.message).toContain("timeout");
+    expect(res.body.error.message).toContain("timed out");
   });
 
   it("timeout response includes request ID", async () => {

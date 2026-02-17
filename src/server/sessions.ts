@@ -181,7 +181,11 @@ export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): P
       // Auto-create session if it doesn't exist
       const existsResult = await pool.query(SQL.sessionExists, [sessionId]);
       if (existsResult.rows.length === 0) {
-        await store.create(sessionId, undefined, userId);
+        // Title from first user message — much better than "20260217-102040"
+        const title = role === "user" && text
+          ? text.slice(0, 50).replace(/\n/g, " ").trim() + (text.length > 50 ? "…" : "")
+          : undefined;
+        await store.create(sessionId, title, userId);
       }
 
       const now = new Date().toISOString();

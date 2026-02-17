@@ -76,7 +76,7 @@ describe("SessionStore", () => {
     const session = await store.get("auto-id");
     expect(session).not.toBeNull();
     expect(session!.messages).toHaveLength(1);
-    expect(session!.title).toMatch(/^\d{8}-\d{6}$/);
+    expect(session!.title).toBe("Hello from nowhere");
   });
 
   it("lists sessions in reverse chronological order", async () => {
