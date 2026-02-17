@@ -37,3 +37,6 @@ logs/
 
 # Large binary data files (see ADR-012)
 *.xlsx
+
+# CDN snapshot data (one-time import, see ADR-028)
+data/.stfc-snapshot/

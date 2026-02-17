@@ -16,7 +16,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
-import { syncGamedataOfficers, syncGamedataShips } from "../services/gamedata-ingest.js";
+import { syncGamedataOfficers, syncGamedataShips, syncCdnShips, syncCdnOfficers } from "../services/gamedata-ingest.js";
 import { syncRateLimiter } from "../rate-limit.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
@@ -288,11 +288,13 @@ export function createCatalogRoutes(appState: AppState): Router {
     const store = appState.referenceStore!;
 
     try {
-      const [officerResult, shipResult] = await Promise.all([
+      const [officerResult, shipResult, cdnShipResult, cdnOfficerResult] = await Promise.all([
         syncGamedataOfficers(store),
         syncGamedataShips(store),
+        syncCdnShips(store),
+        syncCdnOfficers(store),
       ]);
-      sendOk(res, { ...officerResult, ...shipResult });
+      sendOk(res, { ...officerResult, ...shipResult, cdnShips: cdnShipResult.ships, cdnOfficers: cdnOfficerResult.officers });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       sendFail(res, ErrorCode.INTERNAL_ERROR, `Game data sync failed: ${msg}`, 502);

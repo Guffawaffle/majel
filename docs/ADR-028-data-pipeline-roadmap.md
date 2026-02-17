@@ -18,15 +18,43 @@ This architecture means Aria is a **tactical advisor who remembers what you told
 
 ## Decision Drivers
 
-During live testing (2026-02-17), Aria self-identified three capability gaps when asked how she could improve beyond community tools like STFC.space:
+During live testing (2026-02-17), Aria self-identified capability gaps when asked how she could improve beyond community tools like STFC.space. A follow-up conversation expanded these into five concrete data domains:
+
+### Identified Capability Gaps
 
 1. **Narrative Drift** — If you upgrade a ship in-game but don't tell Aria, `suggest_crew` uses outdated stats.
 2. **Research Blindness** — No `list_research` tool exists. Hidden percentage buffs from the Combat/Galaxy research trees are invisible, making power calculations approximate.
-3. **Inventory Blindness** — No material/parts awareness. `suggest_targets` gives general advice but can't say "you need 200 more 3★ Ore to tier up the Bortas."
+3. **Inventory Blindness ("The War Chest")** — No material/parts awareness. `suggest_targets` gives general advice but can't say "you need 200 more 3★ Ore to tier up the Bortas." Extends to currencies (Faction Credits, Latinum) and ship-specific parts.
+4. **Event Blindness ("The Mission Board")** — STFC is event-driven (Faction Hunts, Mining Monday, Incursions). Without visibility into active events and their scoring parameters, Aria can't proactively optimize: *"The 'Klingon Separatists' event is active — switch Dock 1 to the Saladin Grinder to maximize points-per-hull."*
+5. **Away Team Conflicts** — Officer pool is shared between ship crews and Away Team missions. Aria doesn't know if a suggested officer is currently locked into a 12-hour Away Team mission.
+6. **Faction & Syndicate Standing** — Without knowing reputation levels with the three main factions and Syndicate/Rogue tiers, store advice is potentially inaccurate ("buy the B'Rel blueprints" — but can you actually access that store?).
+7. **Battle Log Analysis ("The Black Box")** — The ultimate evolution: post-mission analysis from combat logs. Instead of guessing why a fight was lost, Aria could identify the exact round where shield mitigation failed and suggest officer swaps to address the gap.
+
+### Sensor Package Architecture
+
+Aria proposed a tiered data model framed as "Sensor Packages" — users opt into the level of data integration they're comfortable with:
+
+| Package | Source | Safety | Coverage |
+|---------|--------|--------|----------|
+| **Standard** | Native JSON export (manual or structured chat input) | 100% safe, no 3rd party | Roster, ships, docks, basic station stats (~80% of daily needs) |
+| **Advanced** | 3rd party tools (e.g. Ripper's STFC Command Center) | User-accepted risk | Research trees, detailed materials, battle logs, events |
+| **Hybrid** | Graceful degradation across both | User chooses per domain | Full CIC when available, honest "Unknown" when not |
+
+**Key architectural principle:** The Advanced package doesn't require Majel to know *where* the data came from. A **Translator layer** maps external tool schemas (e.g. Ripper's `officer_id: 123`) to Majel's internal reference IDs (`wiki:officer:james-t-kirk`). This lets Aria consume the data without coupling to any specific mod.
+
+**Hybrid UX pattern:**
+> *"Admiral, I see your B'Rel blueprints via the Standard scan. For a detailed resource-required calculation, please upload an Advanced inventory scan or manually input your 3★ Ore count."*
+
+### 3rd Party Considerations
+
+- **Ripper's Mod (STFC Command Center)** is the community's primary deep-data extraction tool (research, battle logs, detailed inventories)
+- Majel cannot *depend* on a 3rd party mod — but ignoring the most detailed data stream available to the community would be a missed opportunity
+- Solution: treat 3rd party data as an **optional overlay**, never a requirement
+- Users who don't use mods get Standard coverage; users who do get Advanced — the same codebase handles both via the Translator pattern
 
 ## Proposed Phases
 
-### Phase 1: Game State Sync (`sync_overlay`)
+### Phase 1: Game State Sync (`sync_overlay`) — Standard Package
 
 **Goal:** A structured import path — JSON export from game client or community tools → Majel ingest.
 
@@ -60,7 +88,7 @@ During live testing (2026-02-17), Aria self-identified three capability gaps whe
 }
 ```
 
-### Phase 2: Research Tree Ingestion
+### Phase 2: Research Tree Ingestion — Advanced Package
 
 **Goal:** Let Aria see the Admiral's research levels so she can calculate *true* ship power and officer effectiveness.
 
@@ -73,16 +101,54 @@ During live testing (2026-02-17), Aria self-identified three capability gaps whe
 
 **Data requirement:** Research tree structure + Admiral's completion state per node.
 
-### Phase 3: Inventory & Resource Planning
+### Phase 3: Inventory & Resource Planning — Standard/Advanced Hybrid
 
 **Goal:** Material and parts awareness for concrete upgrade paths.
 
 **Impact:** Moves from "you should upgrade the Bortas" to "upgrading Bortas to T8 costs 450 3★ Ore, 300 3★ Crystal, 12 Bortas blueprints — you have 280 Ore, 150 Crystal, 8 BPs. Estimated 3 days of mining to close the gap."
 
 **New tools:**
-- `list_inventory` — Show material counts by category
+- `list_inventory` — Show material counts by category (Ore, Gas, Crystal, Parts, Currencies)
 - `calculate_upgrade_path` — Specific resource requirements with gap analysis
 - `estimate_acquisition_time` — Based on mining rates, daily rewards, event projections
+
+**Standard mode:** Manual entry ("I have 280 3★ Ore") stored as user overlay.  
+**Advanced mode:** Full inventory import from Ripper's/Command Center via Translator.
+
+### Phase 4: Events, Away Teams & Faction Standing — Advanced Package
+
+**Goal:** Contextual awareness of the game's dynamic state.
+
+**New tools & data:**
+- `list_active_events` — Ingest active events with scoring parameters to enable proactive dock/crew optimization
+- `list_away_teams` — Track which officers are locked into Away Team missions (prevents suggesting unavailable officers for ship crews)
+- `get_faction_standing` — Reputation levels with Federation, Klingon, Romulan factions + Syndicate/Rogue tiers (unlocks accurate store advice)
+
+**Impact:** Eliminates "invisible officer conflicts" — Aria won't suggest an officer for a ship crew if they're currently on a 12-hour Away Team mission. Event awareness enables proactive advice instead of reactive.
+
+### Phase 5: Battle Log Analysis ("The Black Box") — Advanced Package
+
+**Goal:** Post-mission combat analysis from detailed battle logs.
+
+**New tools:**
+- `analyze_battle_log` — Consume a battle log JSON, identify the failure round, and correlate with officer abilities and ship stats
+- `suggest_counter` — Given a lost battle, recommend specific crew/ship changes to address the identified weakness
+
+**Impact:** The ultimate evolution from advisor to CIC. Instead of guessing why a fight was lost, Aria could tell you: *"Your Shield Mitigation failed in Round 4 because your Defense stat wasn't high enough for Spock's ability to keep up. I suggest swapping Bones for an officer with higher base Defense."*
+
+**Prerequisite:** Research tree data (Phase 2) for accurate stat calculations.
+
+### Cross-Cutting: External Overlay Translator
+
+**Goal:** A schema-mapping layer that lets Majel consume data from any external tool without coupling to a specific mod's data format.
+
+**Approach:**
+- Define a `TranslatorConfig` per external source (e.g. `ripper-v3.translator.json`)
+- Map external IDs to Majel's internal reference IDs (e.g. `officer_id: 123` → `wiki:officer:james-t-kirk`)
+- Validate translated data against `MajelGameExport` schema before ingestion
+- Log translation results for debugging without exposing source-specific details
+
+**Benefit:** Having the capability to calculate with external data means the tool becomes exponentially more powerful the moment that data becomes available — whether from a mod or a future native export.
 
 ## Ethical & Legal Constraints
 
@@ -99,12 +165,19 @@ All data access must respect:
 | No official export API exists | Start with manual + community tool integration |
 | Research tree changes per patch | Reference data versioned by game patch |
 | Stale imports worse than no data | Track import age; warn when overlay > 7 days old |
+| 3rd party mod discontinued or broken | Translator layer decouples; Standard package always works without it |
+| Mod usage violates Scopely ToS | Majel never requires mod data; Advanced is opt-in with clear user consent |
+| Schema drift between Ripper's versions | Translator configs are versioned; validation catches mismatches |
+| Officer pool conflicts (ship vs Away Team) | Away Team data is optional enhancement; without it, Aria discloses uncertainty |
 
 ## Success Criteria
 
 - Phase 1: Admiral can paste a JSON export and see "12 officers updated, 3 ships added, 1 dock reassigned"
 - Phase 2: `suggest_crew` output includes research-adjusted power calculations
 - Phase 3: `suggest_targets` includes "resource gap" analysis with concrete numbers
+- Phase 4: Aria proactively mentions active events and avoids suggesting locked officers
+- Phase 5: Admiral can upload a battle log and receive round-by-round failure analysis
+- Translator: At least one external source (Ripper's or Command Center) can be ingested without code changes — config only
 
 ## References
 
