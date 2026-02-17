@@ -5,8 +5,7 @@
  * Uses real SQLite stores (reference + overlay) in temp directories.
  */
 
-import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
-import request from "supertest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";

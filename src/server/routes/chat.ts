@@ -10,7 +10,7 @@ import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
-import { MODEL_REGISTRY, getModelDef, resolveModelId } from "../services/gemini/index.js";
+import { MODEL_REGISTRY, getModelDef } from "../services/gemini/index.js";
 
 export function createChatRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -149,7 +149,7 @@ export function createChatRoutes(appState: AppState): Router {
         })),
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const _message = err instanceof Error ? err.message : String(err);
       sendFail(res, ErrorCode.MEMORY_ERROR, "Memory recall failed", 500, {
         hints: ["Try again or check /api/health for subsystem status"],
       });

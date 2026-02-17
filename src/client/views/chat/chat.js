@@ -38,7 +38,7 @@ registerView('chat', {
 let hasMessages = false;
 let currentSessionId = null;
 let cachedModels = null;
-let isAdmiral = false;
+let _isAdmiral = false;
 
 // ─── Model Selector ─────────────────────────────────────────
 
@@ -59,7 +59,7 @@ export async function loadModels() {
     try {
         const data = await fetchModels();
         cachedModels = data;
-        isAdmiral = true;
+        _isAdmiral = true;
 
         // Update the label in input hint
         if (data.currentDef && modelSelectorLabel) {
@@ -73,7 +73,7 @@ export async function loadModels() {
         renderModelPicker(data.models);
     } catch {
         // Non-admiral or server error — hide selector silently
-        isAdmiral = false;
+        _isAdmiral = false;
         if (modelSelectorBtn) modelSelectorBtn.classList.add('hidden');
     }
 }
@@ -300,7 +300,7 @@ function renderMarkdown(text) {
  * @param {Object} options - Optional config
  * @returns {HTMLElement} Message row element
  */
-export function addMessage(role, text, options = {}) {
+export function addMessage(role, text, _options = {}) {
     // Hide welcome screen on first message
     if (!hasMessages) {
         welcomeScreen.style.display = "none";

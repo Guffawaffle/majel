@@ -8,8 +8,7 @@
  * - Unhandled errors caught and wrapped with request ID
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import request from "supertest";
+import { describe, it, expect } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { 

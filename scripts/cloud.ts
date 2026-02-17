@@ -25,7 +25,7 @@
  * @see docs/ADR-018-cloud-deployment.md
  */
 
-import { execSync, execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -636,7 +636,7 @@ const FIXTURE_PLAN_ITEM = {
   updatedAt: "2024-06-01T00:00:00Z",
 };
 
-const FIXTURE_INTENT = {
+const _FIXTURE_INTENT = {
   key: "pvp",
   label: "PvP/Raiding",
   category: "combat",

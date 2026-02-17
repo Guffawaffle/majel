@@ -5,7 +5,7 @@
  * Tests runtime re-resolution after settings changes
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import * as path from "node:path";
 import { resolveConfig, bootstrapConfigSync } from "../src/server/config.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";

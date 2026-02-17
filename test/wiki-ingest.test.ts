@@ -10,7 +10,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
-import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
@@ -23,8 +22,6 @@ import {
   parseOfficerTable,
   parseShipTable,
 } from "../src/server/services/wiki-ingest.js";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 // ─── Helpers ────────────────────────────────────────────────

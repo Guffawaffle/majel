@@ -14,7 +14,7 @@
 import { randomBytes, randomUUID, createHmac } from "node:crypto";
 import { initSchema, withTransaction, type Pool } from "../db.js";
 import { log } from "../logger.js";
-import { hashPassword, verifyPassword, validatePassword, timingSafeCompare } from "../services/password.js";
+import { hashPassword, verifyPassword, validatePassword } from "../services/password.js";
 
 // ─── Constants ──────────────────────────────────────────────────
 

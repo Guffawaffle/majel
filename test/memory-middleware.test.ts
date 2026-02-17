@@ -2,7 +2,7 @@
  * memory-middleware.test.ts — Tests for per-request scoped memory middleware (ADR-021 D4)
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import express, { type Request, type Response, type NextFunction } from "express";
 import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";

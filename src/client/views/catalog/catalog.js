@@ -30,7 +30,7 @@ let counts = { reference: { officers: 0, ships: 0 }, overlay: {} };
 let undoStack = []; // { type, refIds, previousStates }
 let loading = false;
 let letterFilter = ''; // Active letter filter ('A', 'B', ... or '' for all)
-let isAdmin = false; // Set by app.js
+let _isAdmin = false; // Set by app.js
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -45,7 +45,7 @@ registerView('catalog', {
 // ─── Public API ─────────────────────────────────────────────
 
 /** Called by app.js to enable/disable admin-only features. */
-export function setAdminMode(admin) { isAdmin = !!admin; }
+export function setAdminMode(admin) { _isAdmin = !!admin; }
 
 export async function init() {
     const area = $("#catalog-area");
@@ -311,7 +311,7 @@ function renderGrid(items) {
 function renderOfficerCard(o) {
     const owned = o.ownershipState === 'owned';
     const unowned = o.ownershipState === 'unowned';
-    const unknown = o.ownershipState === 'unknown';
+    const _unknown = o.ownershipState === 'unknown';
     const targeted = o.target;
     const classShort = officerClassShort(o.officerClass);
     const factionName = typeof o.faction === 'object' && o.faction?.name ? o.faction.name : (typeof o.faction === 'string' ? o.faction : '');

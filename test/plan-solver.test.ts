@@ -202,7 +202,7 @@ describe("Plan Solver", () => {
   // ─── Away Team Handling ───────────────────────────────────
 
   it("handles away team items without dock assignment", async () => {
-    const loA = await seedLoadout(store, { shipId: "vidar", name: "A", officers: ["kirk"] });
+    const _loA = await seedLoadout(store, { shipId: "vidar", name: "A", officers: ["kirk"] });
     await store.upsertDock(1, { label: "D1" });
     // Plan item with away team members but no dock
     const awayItem = await store.createPlanItem({ label: "Away Mission", priority: 1, awayOfficers: ["kirk", "spock"] });

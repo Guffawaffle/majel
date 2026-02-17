@@ -381,7 +381,7 @@ const PATCH_PATTERN = /(?:patch|update|version)\s+\d+(?:\.\d+)*|updated?\s+(?:on
 export function validateResponse(
   response: string,
   contract: TaskContract,
-  gatedContext: GatedContext,
+  _gatedContext: GatedContext,
 ): ValidationResult {
   const violations: string[] = [];
 

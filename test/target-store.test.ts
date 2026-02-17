@@ -147,12 +147,12 @@ describe("get", () => {
 });
 
 describe("list", () => {
-  let t1: Target, t2: Target, t3: Target;
+  let t1: Target, t2: Target, _t3: Target;
 
   beforeEach(async () => {
     t1 = await store.create({ targetType: "officer", refId: "wiki:officer:1", priority: 1 });
     t2 = await store.create({ targetType: "ship", refId: "wiki:ship:1", priority: 2 });
-    t3 = await store.create({ targetType: "crew", loadoutId: 10, priority: 3 });
+    _t3 = await store.create({ targetType: "crew", loadoutId: 10, priority: 3 });
   });
 
   it("lists all targets", async () => {
