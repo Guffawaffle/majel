@@ -17,6 +17,7 @@ import {
     bulkSetOfficerOverlay, bulkSetShipOverlay,
 } from 'api/catalog.js';
 import { esc } from 'utils/escape.js';
+import { hullTypeLabel, officerClassShort, HULL_TYPE_LABELS, OFFICER_CLASS_LABELS, formatDuration } from 'utils/game-enums.js';
 import { registerView } from 'router';
 
 // ─── State ──────────────────────────────────────────────────
@@ -24,7 +25,7 @@ let officers = [];
 let ships = [];
 let activeTab = 'officers'; // 'officers' | 'ships'
 let searchQuery = '';
-let filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
+let filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '', officerClass: '', hullType: '' };
 let counts = { reference: { officers: 0, ships: 0 }, overlay: {} };
 let undoStack = []; // { type, refIds, previousStates }
 let loading = false;
@@ -87,6 +88,8 @@ function buildFilterArgs() {
     if (filters.group) args.group = filters.group;
     if (filters.faction) args.faction = filters.faction;
     if (filters.class) args.class = filters.class;
+    if (filters.officerClass) args.officerClass = filters.officerClass;
+    if (filters.hullType) args.hullType = filters.hullType;
     return args;
 }
 
@@ -101,7 +104,7 @@ function render() {
         ? allItems.filter(i => i.name && i.name[0].toUpperCase() === letterFilter)
         : allItems;
     const refCount = activeTab === 'officers' ? counts.reference.officers : counts.reference.ships;
-    const hasActiveFilters = filters.ownership !== 'all' || filters.target !== 'all' || filters.rarity || filters.group || filters.faction || filters.class || searchQuery || letterFilter;
+    const hasActiveFilters = filters.ownership !== 'all' || filters.target !== 'all' || filters.rarity || filters.group || filters.faction || filters.class || filters.officerClass || filters.hullType || searchQuery || letterFilter;
     const resultNote = hasActiveFilters ? `Showing ${items.length} of ${refCount} ${activeTab}` : '';
 
     // ── Fast path: if search input is focused, update dynamic sections only ──
@@ -259,6 +262,27 @@ function renderFilterChips() {
                             data-action="filter-target" data-value="${o.value}">${o.label}</button>
                 `).join('')}
             </div>
+            ${activeTab === 'officers' ? `
+            <div class="cat-filter-group">
+                <span class="cat-filter-label">Class:</span>
+                <select class="cat-filter-select" data-action="filter-officer-class">
+                    <option value="">All</option>
+                    ${Object.entries(OFFICER_CLASS_LABELS).map(([k, v]) =>
+                        `<option value="${k}" ${filters.officerClass === k ? 'selected' : ''}>${v}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            ` : `
+            <div class="cat-filter-group">
+                <span class="cat-filter-label">Hull:</span>
+                <select class="cat-filter-select" data-action="filter-hull-type">
+                    <option value="">All</option>
+                    ${Object.entries(HULL_TYPE_LABELS).map(([k, v]) =>
+                        `<option value="${k}" ${filters.hullType === k ? 'selected' : ''}>${v}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            `}
             ${filterSummary}
         </div>
     `;
@@ -289,18 +313,23 @@ function renderOfficerCard(o) {
     const unowned = o.ownershipState === 'unowned';
     const unknown = o.ownershipState === 'unknown';
     const targeted = o.target;
+    const classShort = officerClassShort(o.officerClass);
+    const factionName = typeof o.faction === 'object' && o.faction?.name ? o.faction.name : (typeof o.faction === 'string' ? o.faction : '');
 
     return `
         <div class="cat-card ${owned ? 'cat-owned' : ''} ${unowned ? 'cat-unowned' : ''} ${targeted ? 'cat-targeted' : ''}"
              data-id="${esc(o.id)}" tabindex="0" role="row">
             <div class="cat-card-header">
                 <span class="cat-card-name">${esc(o.name)}</span>
+                ${classShort ? `<span class="cat-badge officer-class officer-class-${classShort.toLowerCase()}">${esc(classShort)}</span>` : ''}
                 ${o.rarity ? `<span class="cat-badge rarity-${(o.rarity || '').toLowerCase()}">${esc(o.rarity)}</span>` : ''}
                 ${o.groupName ? `<span class="cat-badge group">${esc(o.groupName)}</span>` : ''}
+                ${factionName ? `<span class="cat-badge faction">${esc(factionName)}</span>` : ''}
             </div>
             <div class="cat-card-abilities">
                 ${abilityText(o, 'captainManeuver', 'CM')}
                 ${abilityText(o, 'officerAbility', 'OA')}
+                ${abilityText(o, 'belowDeckAbility', 'BD')}
             </div>
             <div class="cat-card-overlay">
                 <button class="cat-own-btn ${owned ? 'active' : ''}" data-action="toggle-owned" data-id="${esc(o.id)}" title="Toggle owned">
@@ -320,19 +349,23 @@ function renderShipCard(s) {
     const owned = s.ownershipState === 'owned';
     const unowned = s.ownershipState === 'unowned';
     const targeted = s.target;
+    const hull = hullTypeLabel(s.hullType);
 
     return `
         <div class="cat-card ${owned ? 'cat-owned' : ''} ${unowned ? 'cat-unowned' : ''} ${targeted ? 'cat-targeted' : ''}"
              data-id="${esc(s.id)}" tabindex="0" role="row">
             <div class="cat-card-header">
                 <span class="cat-card-name">${esc(s.name)}</span>
+                ${hull ? `<span class="cat-badge hull-type">${esc(hull)}</span>` : ''}
                 ${s.rarity ? `<span class="cat-badge rarity-${(s.rarity || '').toLowerCase()}">${esc(s.rarity)}</span>` : ''}
                 ${s.faction ? `<span class="cat-badge faction">${esc(s.faction)}</span>` : ''}
                 ${s.shipClass ? `<span class="cat-badge ship-class">${esc(s.shipClass)}</span>` : ''}
             </div>
             <div class="cat-card-meta">
                 ${s.grade ? `<span>Grade ${s.grade}</span>` : ''}
-                ${s.tier ? `<span>T${s.tier}</span>` : ''}
+                ${s.maxTier ? `<span>Max T${s.maxTier}</span>` : ''}
+                ${s.maxLevel ? `<span>Max Lv ${s.maxLevel}</span>` : ''}
+                ${s.buildTimeInSeconds ? `<span>Build: ${formatDuration(s.buildTimeInSeconds)}</span>` : ''}
             </div>
             <div class="cat-card-overlay">
                 <button class="cat-own-btn ${owned ? 'active' : ''}" data-action="toggle-owned" data-id="${esc(s.id)}" title="Toggle owned">
@@ -383,7 +416,7 @@ function bindEvents() {
             activeTab = btn.dataset.tab;
             searchQuery = '';
             letterFilter = '';
-            filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
+            filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '', officerClass: '', hullType: '' };
             undoStack = [];
             refresh();
         });
@@ -434,12 +467,28 @@ function bindEvents() {
         });
     });
 
+    // Type/class filter dropdowns
+    const officerClassSelect = area.querySelector('[data-action="filter-officer-class"]');
+    if (officerClassSelect) {
+        officerClassSelect.addEventListener('change', () => {
+            filters.officerClass = officerClassSelect.value;
+            refresh();
+        });
+    }
+    const hullTypeSelect = area.querySelector('[data-action="filter-hull-type"]');
+    if (hullTypeSelect) {
+        hullTypeSelect.addEventListener('change', () => {
+            filters.hullType = hullTypeSelect.value;
+            refresh();
+        });
+    }
+
     // Clear all filters
     area.querySelectorAll('[data-action="clear-all-filters"]').forEach(btn => {
         btn.addEventListener('click', () => {
             searchQuery = '';
             letterFilter = '';
-            filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '' };
+            filters = { ownership: 'all', target: 'all', rarity: '', group: '', faction: '', class: '', officerClass: '', hullType: '' };
             refresh();
         });
     });

@@ -171,6 +171,23 @@
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }
+
+/* ── Filter Select Dropdowns ── */
+
+.cat-filter-select {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.cat-filter-select:hover { border-color: var(--border-light); }
+.cat-filter-select:focus { border-color: var(--accent-gold); box-shadow: 0 0 0 2px rgba(240, 160, 48, 0.15); }
 .cat-result-count {
   font-size: 12px;
   color: var(--text-muted);
@@ -331,6 +348,11 @@
 .cat-badge.group { background: rgba(96, 160, 255, 0.12); color: var(--accent-blue); }
 .cat-badge.ship-class { background: var(--bg-tertiary); color: var(--text-muted); }
 .cat-badge.faction { background: rgba(240, 160, 48, 0.12); color: var(--accent-gold); }
+.cat-badge.hull-type { background: rgba(251, 146, 60, 0.12); color: var(--accent-orange); }
+.cat-badge.officer-class { font-weight: 700; }
+.cat-badge.officer-class-cmd { background: rgba(255, 69, 58, 0.12); color: #ff6b5b; }
+.cat-badge.officer-class-sci { background: rgba(96, 160, 255, 0.12); color: var(--accent-blue); }
+.cat-badge.officer-class-eng { background: rgba(240, 160, 48, 0.12); color: var(--accent-gold); }
 .cat-badge.rarity-common { background: rgba(160, 160, 160, 0.12); color: #a0a0a0; }
 .cat-badge.rarity-uncommon { background: rgba(52, 211, 153, 0.12); color: var(--accent-green); }
 .cat-badge.rarity-rare { background: rgba(96, 160, 255, 0.12); color: var(--accent-blue); }

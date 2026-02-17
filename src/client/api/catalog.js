@@ -39,7 +39,7 @@ export async function fetchOfficers() {
 
 /**
  * Fetch merged catalog officers (reference + overlay)
- * @param {Object} filters - { q?, rarity?, group?, ownership?, target? }
+ * @param {Object} filters - { q?, rarity?, group?, ownership?, target?, officerClass? }
  * @returns {Promise<Array>} Merged officer records
  */
 export async function fetchCatalogOfficers(filters = {}) {
@@ -49,6 +49,7 @@ export async function fetchCatalogOfficers(filters = {}) {
     if (filters.group) params.set("group", filters.group);
     if (filters.ownership) params.set("ownership", filters.ownership);
     if (filters.target !== undefined) params.set("target", String(filters.target));
+    if (filters.officerClass) params.set("officerClass", filters.officerClass);
     const qs = params.toString();
     const data = await apiFetch(`/api/catalog/officers/merged${qs ? "?" + qs : ""}`);
     return data?.officers || [];
@@ -56,7 +57,7 @@ export async function fetchCatalogOfficers(filters = {}) {
 
 /**
  * Fetch merged catalog ships (reference + overlay)
- * @param {Object} filters - { q?, rarity?, faction?, class?, ownership?, target? }
+ * @param {Object} filters - { q?, rarity?, faction?, class?, ownership?, target?, hullType? }
  * @returns {Promise<Array>} Merged ship records
  */
 export async function fetchCatalogShips(filters = {}) {
@@ -67,6 +68,7 @@ export async function fetchCatalogShips(filters = {}) {
     if (filters.class) params.set("class", filters.class);
     if (filters.ownership) params.set("ownership", filters.ownership);
     if (filters.target !== undefined) params.set("target", String(filters.target));
+    if (filters.hullType) params.set("hullType", filters.hullType);
     const qs = params.toString();
     const data = await apiFetch(`/api/catalog/ships/merged${qs ? "?" + qs : ""}`);
     return data?.ships || [];
