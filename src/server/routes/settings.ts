@@ -115,12 +115,12 @@ export function createSettingsRoutes(appState: AppState): Router {
     sendOk(res, { results });
   });
 
-  router.delete("/api/settings/:key(*)", admiral, async (req, res) => {
+  router.delete("/api/settings/{*key}", admiral, async (req, res) => {
     if (!appState.settingsStore) {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
 
-    const key = req.params.key;
+    const key = req.params.key as string;
     const deleted = await appState.settingsStore.delete(key);
 
     if (deleted) {
