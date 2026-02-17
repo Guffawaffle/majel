@@ -16,6 +16,8 @@
 
 import type { BridgeSlot, VariantPatch } from "../../types/crew-types.js";
 import type { ToolContext } from "./declarations.js";
+import type { TargetStatus, TargetType, UpdateTargetInput } from "../../stores/target-store.js";
+import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES } from "../../stores/target-store.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -309,5 +311,295 @@ export async function getEffectiveStateTool(ctx: ToolContext): Promise<object> {
         slot: loc.slot,
       })),
     })),
+  };
+}
+
+// ─── Target Mutation Tools (#80) ────────────────────────────
+
+export async function createTargetTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.targetStore) {
+    return { tool: "create_target", error: "Target system not available." };
+  }
+
+  const targetType = str(args, "target_type") as TargetType;
+  if (!targetType || !VALID_TARGET_TYPES.includes(targetType)) {
+    return {
+      tool: "create_target",
+      error: `Invalid target_type. Must be one of: ${VALID_TARGET_TYPES.join(", ")}.`,
+      input: { target_type: targetType || null },
+    };
+  }
+
+  const refId = str(args, "ref_id") || null;
+  const loadoutId = args.loadout_id != null ? Number(args.loadout_id) : null;
+
+  // officer/ship targets should have a ref_id; crew targets should have a loadout_id
+  if ((targetType === "officer" || targetType === "ship") && !refId) {
+    return {
+      tool: "create_target",
+      error: `ref_id is required for ${targetType} targets.`,
+      input: { target_type: targetType, ref_id: null },
+    };
+  }
+  if (targetType === "crew" && !loadoutId && !refId) {
+    return {
+      tool: "create_target",
+      error: "crew targets require either loadout_id or ref_id.",
+      input: { target_type: targetType, loadout_id: null, ref_id: null },
+    };
+  }
+
+  // Dupe detection — check for active targets with the same ref_id
+  if (refId) {
+    const existing = await ctx.targetStore.listByRef(refId);
+    const activeMatch = existing.find((t) => t.status === "active");
+    if (activeMatch) {
+      return {
+        tool: "create_target",
+        status: "duplicate_detected",
+        existingId: activeMatch.id,
+        existingType: activeMatch.targetType,
+        existingPriority: activeMatch.priority,
+        existingReason: activeMatch.reason,
+        message: `An active ${activeMatch.targetType} target for ${refId} already exists (ID ${activeMatch.id}).`,
+        nextSteps: [
+          `Use update_target to modify the existing target (ID ${activeMatch.id}).`,
+          "Use list_targets to see all current targets.",
+        ],
+      };
+    }
+  }
+
+  const priority = args.priority != null ? Number(args.priority) : 2;
+  if (priority < 1 || priority > 3) {
+    return {
+      tool: "create_target",
+      error: "Priority must be between 1 and 3 (1 = high, 3 = low).",
+      input: { priority },
+    };
+  }
+
+  const reason = str(args, "reason") || null;
+  const targetTier = args.target_tier != null ? Number(args.target_tier) : null;
+  const targetLevel = args.target_level != null ? Number(args.target_level) : null;
+  const targetRank = str(args, "target_rank") || null;
+
+  const target = await ctx.targetStore.create({
+    targetType,
+    refId,
+    loadoutId,
+    priority,
+    reason: reason ? reason.slice(0, MAX_NOTES_LEN) : null,
+    targetTier,
+    targetLevel,
+    targetRank,
+  });
+
+  return {
+    tool: "create_target",
+    created: true,
+    target: {
+      id: target.id,
+      targetType: target.targetType,
+      refId: target.refId,
+      loadoutId: target.loadoutId,
+      priority: target.priority,
+      reason: target.reason,
+      status: target.status,
+    },
+    nextSteps: [
+      "Use list_targets to see all current targets.",
+      "Use suggest_targets to get AI-driven acquisition recommendations.",
+      "Use complete_target when this goal is achieved.",
+    ],
+  };
+}
+
+export async function updateTargetTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.targetStore) {
+    return { tool: "update_target", error: "Target system not available." };
+  }
+
+  const targetId = Number(args.target_id);
+  if (!targetId || isNaN(targetId)) {
+    return {
+      tool: "update_target",
+      error: "Valid target_id is required.",
+      input: { target_id: args.target_id ?? null },
+    };
+  }
+
+  const existing = await ctx.targetStore.get(targetId);
+  if (!existing) {
+    return {
+      tool: "update_target",
+      error: `Target not found with ID ${targetId}.`,
+      input: { target_id: targetId },
+    };
+  }
+
+  const fields: UpdateTargetInput = {};
+  let hasUpdates = false;
+
+  if (args.priority != null) {
+    const p = Number(args.priority);
+    if (p < 1 || p > 3) {
+      return {
+        tool: "update_target",
+        error: "Priority must be between 1 and 3 (1 = high, 3 = low).",
+        input: { target_id: targetId, priority: args.priority },
+      };
+    }
+    fields.priority = p;
+    hasUpdates = true;
+  }
+
+  if (args.status != null) {
+    const s = str(args, "status") as TargetStatus;
+    if (!VALID_TARGET_STATUSES.includes(s)) {
+      return {
+        tool: "update_target",
+        error: `Invalid status. Must be one of: ${VALID_TARGET_STATUSES.join(", ")}.`,
+        input: { target_id: targetId, status: s },
+      };
+    }
+    // For "achieved", direct to complete_target which uses markAchieved
+    if (s === "achieved") {
+      return {
+        tool: "update_target",
+        error: "To mark a target achieved, use complete_target instead — it records the achievement timestamp.",
+        input: { target_id: targetId, status: s },
+        nextSteps: [`Call complete_target with target_id ${targetId}.`],
+      };
+    }
+    fields.status = s;
+    hasUpdates = true;
+  }
+
+  if (args.reason != null) {
+    fields.reason = str(args, "reason").slice(0, MAX_NOTES_LEN) || null;
+    hasUpdates = true;
+  }
+  if (args.target_tier != null) {
+    fields.targetTier = Number(args.target_tier);
+    hasUpdates = true;
+  }
+  if (args.target_level != null) {
+    fields.targetLevel = Number(args.target_level);
+    hasUpdates = true;
+  }
+  if (args.target_rank != null) {
+    fields.targetRank = str(args, "target_rank") || null;
+    hasUpdates = true;
+  }
+
+  if (!hasUpdates) {
+    return {
+      tool: "update_target",
+      error: "No fields to update — provide at least one of: priority, status, reason, target_tier, target_level, target_rank.",
+      input: { target_id: targetId },
+    };
+  }
+
+  const updated = await ctx.targetStore.update(targetId, fields);
+  if (!updated) {
+    return { tool: "update_target", error: `Failed to update target ${targetId}.` };
+  }
+
+  return {
+    tool: "update_target",
+    updated: true,
+    target: {
+      id: updated.id,
+      targetType: updated.targetType,
+      refId: updated.refId,
+      priority: updated.priority,
+      status: updated.status,
+      reason: updated.reason,
+    },
+    nextSteps: [
+      "Use list_targets to see updated target list.",
+      updated.status === "abandoned"
+        ? "Target has been abandoned — it will no longer appear in active recommendations."
+        : "Use complete_target when this goal is achieved.",
+    ],
+  };
+}
+
+export async function completeTargetTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.targetStore) {
+    return { tool: "complete_target", error: "Target system not available." };
+  }
+
+  const targetId = Number(args.target_id);
+  if (!targetId || isNaN(targetId)) {
+    return {
+      tool: "complete_target",
+      error: "Valid target_id is required.",
+      input: { target_id: args.target_id ?? null },
+    };
+  }
+
+  const existing = await ctx.targetStore.get(targetId);
+  if (!existing) {
+    return {
+      tool: "complete_target",
+      error: `Target not found with ID ${targetId}.`,
+      input: { target_id: targetId },
+    };
+  }
+
+  if (existing.status === "achieved") {
+    return {
+      tool: "complete_target",
+      status: "already_achieved",
+      target: {
+        id: existing.id,
+        targetType: existing.targetType,
+        refId: existing.refId,
+        achievedAt: existing.achievedAt,
+      },
+      message: "This target was already marked as achieved.",
+    };
+  }
+
+  if (existing.status === "abandoned") {
+    return {
+      tool: "complete_target",
+      error: "Cannot complete an abandoned target. Use update_target to reactivate it first (set status to 'active').",
+      input: { target_id: targetId },
+    };
+  }
+
+  const achieved = await ctx.targetStore.markAchieved(targetId);
+  if (!achieved) {
+    return { tool: "complete_target", error: `Failed to mark target ${targetId} as achieved.` };
+  }
+
+  return {
+    tool: "complete_target",
+    completed: true,
+    target: {
+      id: achieved.id,
+      targetType: achieved.targetType,
+      refId: achieved.refId,
+      priority: achieved.priority,
+      reason: achieved.reason,
+      status: achieved.status,
+      achievedAt: achieved.achievedAt,
+    },
+    nextSteps: [
+      "Use suggest_targets for new acquisition recommendations.",
+      "Use list_targets with status 'achieved' to review accomplishments.",
+    ],
   };
 }
