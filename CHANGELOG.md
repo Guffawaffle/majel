@@ -50,6 +50,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tool declarations** — descriptions updated to mention CDN field availability
 - **Enriched payloads** — all officer payloads include officerClass + faction, ship payloads include hullType + maxTier
 
+#### Target Mutation Tools (#80)
+- **`create_target`** — create acquisition targets (officer/ship/crew) with dupe detection via active `ref_id` check, priority 1-3, optional tier/level/rank goals
+- **`update_target`** — modify priority, status (active/abandoned), reason, or progression fields; redirects 'achieved' to `complete_target`
+- **`complete_target`** — mark targets achieved with timestamp; guards against abandoned/already-achieved states
+- **System prompt** — target tools added to mutation rules and tool selection guide
+
+#### Dupe Detection (#81)
+- **`create_bridge_core`** — detects duplicate by name (case-insensitive) and by member set (same 3 officers regardless of order or name)
+- **`create_loadout`** — detects duplicate by name within the same ship (case-insensitive)
+- **`create_variant`** — detects duplicate by name within the same base loadout (case-insensitive)
+- All dupe responses follow AX-friendly pattern: `status: "duplicate_detected"`, existing entity details, `nextSteps`
+
 ### Changed
 - **Chat timeout** — 30s → 60s for complex AI responses
 - **Session auto-titling** — sessions titled from first user message
