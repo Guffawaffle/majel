@@ -1,8 +1,21 @@
 # ADR-028: Data Pipeline Roadmap — From Overlay to CIC
 
-**Status:** Proposed  
-**Date:** 2026-02-17  
+**Status:** Accepted  
+**Date:** 2026-02-17 (accepted 2026-02-19)  
 **Author:** Admiral (with self-assessment input from Aria/Gemini 3 Flash Preview)
+
+### Implementation Progress
+
+| Work | Issue | Status | Notes |
+|------|-------|--------|-------|
+| **CDN Reference Enrichment** | #83 | ✅ Complete | `data.stfc.space` static snapshot — 112 ships, 278 officers, hull_type/officerClass/faction/grade from game files. Enriches T2 reference catalog. |
+| **CDN UI Surfacing** | #84 | ✅ Complete | Catalog & fleet views display CDN-sourced badges (hull type, officer class, faction). Filter dropdowns for officer class and hull type. |
+| **Ship Class Audit** | #79 | ✅ Complete | Resolved by CDN hull_type enum — authoritative game-file classification. |
+| Phase 1: Game State Sync | #73 | Not started | `sync_overlay` JSON import |
+| Phase 2: Research Trees | #74 | Not started | Research tree ingestion |
+| Phase 3: Inventory | — | Not started | Resource planning |
+| Phase 4: Events/Away Teams | — | Not started | Dynamic game state |
+| Phase 5: Battle Logs | — | Not started | Combat analysis |
 
 ## Context
 
