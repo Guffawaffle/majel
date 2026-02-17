@@ -1712,6 +1712,66 @@ describe("create_bridge_core", () => {
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("bridge slots");
   });
+
+  it("detects duplicate by name (#81)", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listBridgeCores: vi.fn().mockResolvedValue([{
+          id: 7, name: "Kirk Trio",
+          members: [
+            { officerId: "kirk", slot: "captain" },
+            { officerId: "spock", slot: "bridge_1" },
+            { officerId: "mccoy", slot: "bridge_2" },
+          ],
+        }]),
+      }),
+    };
+    const result = await executeFleetTool("create_bridge_core", {
+      name: "Kirk Trio", captain: "uhura", bridge_1: "scotty", bridge_2: "sulu",
+    }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("create_bridge_core");
+    expect(result.status).toBe("duplicate_detected");
+    expect(result.existingId).toBe(7);
+    expect(result.existingName).toBe("Kirk Trio");
+    expect(result.nextSteps).toBeDefined();
+  });
+
+  it("detects duplicate by member set regardless of name (#81)", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listBridgeCores: vi.fn().mockResolvedValue([{
+          id: 7, name: "Original Trio",
+          members: [
+            { officerId: "kirk", slot: "captain" },
+            { officerId: "spock", slot: "bridge_1" },
+            { officerId: "mccoy", slot: "bridge_2" },
+          ],
+        }]),
+      }),
+    };
+    // Same officers, different name and different slots
+    const result = await executeFleetTool("create_bridge_core", {
+      name: "TOS Bridge", captain: "mccoy", bridge_1: "kirk", bridge_2: "spock",
+    }, ctx) as Record<string, unknown>;
+    expect(result.status).toBe("duplicate_detected");
+    expect(result.existingId).toBe(7);
+    expect(result.existingName).toBe("Original Trio");
+  });
+
+  it("detects name duplicate case-insensitively (#81)", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listBridgeCores: vi.fn().mockResolvedValue([{
+          id: 3, name: "PvP Crew",
+          members: [{ officerId: "a", slot: "captain" }, { officerId: "b", slot: "bridge_1" }, { officerId: "c", slot: "bridge_2" }],
+        }]),
+      }),
+    };
+    const result = await executeFleetTool("create_bridge_core", {
+      name: "pvp crew", captain: "x", bridge_1: "y", bridge_2: "z",
+    }, ctx) as Record<string, unknown>;
+    expect(result.status).toBe("duplicate_detected");
+  });
 });
 
 describe("create_loadout", () => {
@@ -1757,6 +1817,53 @@ describe("create_loadout", () => {
     const result = await executeFleetTool("create_loadout", { ship_id: "x" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Name");
+  });
+
+  it("detects duplicate loadout by name within ship (#81)", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listLoadouts: vi.fn().mockResolvedValue([{
+          id: 10, name: "Mining Alpha", shipId: "ship-enterprise",
+        }]),
+      }),
+    };
+    const result = await executeFleetTool("create_loadout", {
+      ship_id: "ship-enterprise", name: "Mining Alpha",
+    }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("create_loadout");
+    expect(result.status).toBe("duplicate_detected");
+    expect(result.existingId).toBe(10);
+    expect(result.existingName).toBe("Mining Alpha");
+    expect(result.nextSteps).toBeDefined();
+  });
+
+  it("detects loadout name dupe case-insensitively (#81)", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listLoadouts: vi.fn().mockResolvedValue([{
+          id: 10, name: "Mining Alpha", shipId: "ship-enterprise",
+        }]),
+      }),
+    };
+    const result = await executeFleetTool("create_loadout", {
+      ship_id: "ship-enterprise", name: "mining alpha",
+    }, ctx) as Record<string, unknown>;
+    expect(result.status).toBe("duplicate_detected");
+  });
+
+  it("allows same loadout name on different ships (#81)", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listLoadouts: vi.fn().mockResolvedValue([]),  // empty for different ship
+        createLoadout: vi.fn().mockResolvedValue({
+          id: 11, name: "Mining Alpha", shipId: "ship-saladin",
+        }),
+      }),
+    };
+    const result = await executeFleetTool("create_loadout", {
+      ship_id: "ship-saladin", name: "Mining Alpha",
+    }, ctx) as Record<string, unknown>;
+    expect(result.created).toBe(true);
   });
 });
 
@@ -1901,6 +2008,38 @@ describe("create_variant", () => {
     const result = await executeFleetTool("create_variant", { loadout_id: 10 }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Name");
+  });
+
+  it("detects duplicate variant by name within loadout (#81)", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listVariants: vi.fn().mockResolvedValue([{
+          id: 3, name: "PvP Swap", baseLoadoutId: 10,
+        }]),
+      }),
+    };
+    const result = await executeFleetTool("create_variant", {
+      loadout_id: 10, name: "PvP Swap", captain: "uhura",
+    }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("create_variant");
+    expect(result.status).toBe("duplicate_detected");
+    expect(result.existingId).toBe(3);
+    expect(result.existingName).toBe("PvP Swap");
+    expect(result.nextSteps).toBeDefined();
+  });
+
+  it("detects variant name dupe case-insensitively (#81)", async () => {
+    const ctx: ToolContext = {
+      crewStore: createMockCrewStore({
+        listVariants: vi.fn().mockResolvedValue([{
+          id: 3, name: "PvP Swap", baseLoadoutId: 10,
+        }]),
+      }),
+    };
+    const result = await executeFleetTool("create_variant", {
+      loadout_id: 10, name: "pvp swap",
+    }, ctx) as Record<string, unknown>;
+    expect(result.status).toBe("duplicate_detected");
   });
 });
 

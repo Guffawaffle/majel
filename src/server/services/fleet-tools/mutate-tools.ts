@@ -77,6 +77,52 @@ export async function createBridgeCoreTool(
     { officerId: bridge2, slot: "bridge_2" },
   ];
 
+  // ─── Dupe detection (#81) ───────────────────────────────
+  const existingCores = await ctx.crewStore.listBridgeCores();
+
+  // Check name match
+  const nameMatch = existingCores.find(
+    (c) => c.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (nameMatch) {
+    return {
+      tool: "create_bridge_core",
+      status: "duplicate_detected",
+      existingId: nameMatch.id,
+      existingName: nameMatch.name,
+      existingMembers: nameMatch.members.map((m) => ({ officerId: m.officerId, slot: m.slot })),
+      message: `A bridge core named "${nameMatch.name}" already exists (ID ${nameMatch.id}).`,
+      nextSteps: [
+        `Use the existing bridge core ID ${nameMatch.id} in create_loadout.`,
+        "Choose a different name to create a new bridge core.",
+      ],
+    };
+  }
+
+  // Check member-set match (same 3 officers regardless of slot/name)
+  const requestedOfficers = [captain, bridge1, bridge2].sort();
+  const memberMatch = existingCores.find((c) => {
+    const existing = c.members.map((m) => m.officerId).sort();
+    return existing.length === 3 &&
+      existing[0] === requestedOfficers[0] &&
+      existing[1] === requestedOfficers[1] &&
+      existing[2] === requestedOfficers[2];
+  });
+  if (memberMatch) {
+    return {
+      tool: "create_bridge_core",
+      status: "duplicate_detected",
+      existingId: memberMatch.id,
+      existingName: memberMatch.name,
+      existingMembers: memberMatch.members.map((m) => ({ officerId: m.officerId, slot: m.slot })),
+      message: `A bridge core with the same three officers already exists: "${memberMatch.name}" (ID ${memberMatch.id}).`,
+      nextSteps: [
+        `Use the existing bridge core ID ${memberMatch.id} in create_loadout.`,
+        "Create with a different officer combination if this isn't the right crew.",
+      ],
+    };
+  }
+
   const core = await ctx.crewStore.createBridgeCore(name, members, notes);
   return {
     tool: "create_bridge_core",
@@ -118,6 +164,27 @@ export async function createLoadoutTool(
     fields.intentKeys = (args.intent_keys as string[]).map((k) => String(k).trim()).filter(Boolean);
   }
   fields.notes = validNotes(args);
+
+  // ─── Dupe detection (#81) ───────────────────────────────
+  const existingLoadouts = await ctx.crewStore.listLoadouts({ shipId });
+  const nameMatch = existingLoadouts.find(
+    (l) => l.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (nameMatch) {
+    return {
+      tool: "create_loadout",
+      status: "duplicate_detected",
+      existingId: nameMatch.id,
+      existingName: nameMatch.name,
+      existingShipId: nameMatch.shipId,
+      message: `A loadout named "${nameMatch.name}" already exists for this ship (ID ${nameMatch.id}).`,
+      nextSteps: [
+        `Use the existing loadout ID ${nameMatch.id}.`,
+        "Use create_variant to create an alternate configuration on the existing loadout.",
+        "Choose a different name to create a new loadout.",
+      ],
+    };
+  }
 
   const loadout = await ctx.crewStore.createLoadout(fields);
   return {
@@ -240,6 +307,26 @@ export async function createVariantTool(
   if (Object.keys(bridgeOverrides).length > 0) patch.bridge = bridgeOverrides;
 
   const notes = validNotes(args);
+
+  // ─── Dupe detection (#81) ───────────────────────────────
+  const existingVariants = await ctx.crewStore.listVariants(loadoutId);
+  const nameMatch = existingVariants.find(
+    (v) => v.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (nameMatch) {
+    return {
+      tool: "create_variant",
+      status: "duplicate_detected",
+      existingId: nameMatch.id,
+      existingName: nameMatch.name,
+      existingBaseLoadoutId: nameMatch.baseLoadoutId,
+      message: `A variant named "${nameMatch.name}" already exists on this loadout (ID ${nameMatch.id}).`,
+      nextSteps: [
+        `Use the existing variant ID ${nameMatch.id}.`,
+        "Choose a different name to create a new variant.",
+      ],
+    };
+  }
 
   const variant = await ctx.crewStore.createVariant(loadoutId, name, patch, notes);
   return {
