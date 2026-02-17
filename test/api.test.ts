@@ -6,7 +6,6 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
-import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import type { GeminiEngine } from "../src/server/services/gemini/index.js";

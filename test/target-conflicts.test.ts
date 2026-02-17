@@ -10,10 +10,10 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { detectTargetConflicts, type ResourceConflict } from "../src/server/services/target-conflicts.js";
+import { detectTargetConflicts } from "../src/server/services/target-conflicts.js";
 import type { Target, TargetStore } from "../src/server/stores/target-store.js";
 import type { CrewStore } from "../src/server/stores/crew-store.js";
-import type { LoadoutWithRefs, BridgeSlot, OfficerConflict, EffectiveDockState } from "../src/server/types/crew-types.js";
+import type { LoadoutWithRefs, BridgeSlot, EffectiveDockState } from "../src/server/types/crew-types.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 

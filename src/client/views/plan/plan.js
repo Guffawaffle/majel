@@ -16,10 +16,9 @@
 
 import {
     fetchFleetPresets, createFleetPreset, updateFleetPreset, deleteFleetPreset,
-    setFleetPresetSlots, activateFleetPreset,
+    activateFleetPreset,
     fetchCrewPlanItems, createCrewPlanItem, updateCrewPlanItem, deleteCrewPlanItem,
     fetchEffectiveState, fetchCrewLoadouts, fetchBridgeCores, fetchBelowDeckPolicies,
-    fetchVariants,
 } from 'api/crews.js';
 import { fetchCatalogOfficers } from 'api/catalog.js';
 import { esc } from 'utils/escape.js';
@@ -38,8 +37,8 @@ let effectiveState = { docks: [], awayTeams: [], conflicts: [] };
 let fleetPresets = [];
 let planItems = [];
 let loadouts = [];
-let bridgeCores = [];
-let belowDeckPolicies = [];
+let _bridgeCores = [];
+let _belowDeckPolicies = [];
 let officers = [];
 let activeTab = 'state';  // 'state' | 'presets' | 'items'
 let loading = false;
@@ -47,7 +46,7 @@ let formError = '';
 
 // Editing state
 let editingPresetId = null;     // preset id or 'new'
-let editingPresetSlots = null;  // slot editing state for a preset
+const _editingPresetSlots = null;  // slot editing state for a preset
 let overrideDock = null;        // dock number being overridden
 let editingPlanItemId = null;   // plan item id or 'new'
 
@@ -91,8 +90,8 @@ export async function refresh() {
         fleetPresets = Array.isArray(presetsData) ? presetsData : (presetsData?.fleetPresets ?? []);
         planItems = Array.isArray(itemsData) ? itemsData : (itemsData?.planItems ?? []);
         loadouts = Array.isArray(loadoutsData) ? loadoutsData : (loadoutsData?.loadouts ?? []);
-        bridgeCores = Array.isArray(coresData) ? coresData : (coresData?.bridgeCores ?? []);
-        belowDeckPolicies = Array.isArray(policiesData) ? policiesData : (policiesData?.belowDeckPolicies ?? []);
+        _bridgeCores = Array.isArray(coresData) ? coresData : (coresData?.bridgeCores ?? []);
+        _belowDeckPolicies = Array.isArray(policiesData) ? policiesData : (policiesData?.belowDeckPolicies ?? []);
         officers = Array.isArray(officerData) ? officerData : (officerData?.officers ?? []);
         render();
     } catch (err) {

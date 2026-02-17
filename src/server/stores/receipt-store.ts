@@ -153,7 +153,7 @@ export async function createReceiptStore(adminPool: Pool, runtimePool?: Pool): P
       // For reference layer, check for composition dependencies before allowing undo
       if (receipt.layer === "reference") {
         // Check if any added reference officers/ships are used in bridge_core_members or loadouts
-        const addedIds = (receipt.changeset.added ?? []).map((item: any) => item.id).filter(Boolean);
+        const addedIds = (receipt.changeset.added ?? []).map((item) => (item as Record<string, unknown>).id).filter(Boolean);
         if (addedIds.length > 0) {
           // Check bridge_core_members
           const bcmCheck = await pool.query(
@@ -194,8 +194,8 @@ export async function createReceiptStore(adminPool: Pool, runtimePool?: Pool): P
       if (!receipt) throw new Error(`Receipt ${id} not found`);
 
       // Move resolved items from unresolved → changeset.added
-      const currentUnresolved = (receipt.unresolved ?? []) as any[];
-      const resolvedSet = new Set(resolvedItems.map((item: any) => JSON.stringify(item)));
+      const currentUnresolved = (receipt.unresolved ?? []) as Record<string, unknown>[];
+      const resolvedSet = new Set(resolvedItems.map((item) => JSON.stringify(item)));
       const stillUnresolved = currentUnresolved.filter(
         (item) => !resolvedSet.has(JSON.stringify(item)),
       );

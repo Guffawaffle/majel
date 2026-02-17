@@ -58,7 +58,7 @@ import {
 import { bootstrapConfigSync, resolveConfig } from "./config.js";
 
 // Envelope (ADR-004)
-import { envelopeMiddleware, errorHandler, createTimeoutMiddleware, sendFail, ErrorCode } from "./envelope.js";
+import { envelopeMiddleware, errorHandler, sendFail, ErrorCode } from "./envelope.js";
 
 // Rate limiting
 import { globalRateLimiter } from "./rate-limit.js";

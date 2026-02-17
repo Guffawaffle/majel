@@ -13,7 +13,7 @@
  * Pattern: factory function createCrewStore(adminPool, appPool) → CrewStore.
  */
 
-import { initSchema, withTransaction, type Pool, type PoolClient } from "../db.js";
+import { initSchema, withTransaction, type Pool } from "../db.js";
 import { log } from "../logger.js";
 
 import type {
@@ -42,7 +42,7 @@ import type {
   EffectiveDockState,
 } from "../types/crew-types.js";
 
-import { VALID_BRIDGE_SLOTS, VALID_BELOW_DECK_MODES } from "../types/crew-types.js";
+import { VALID_BRIDGE_SLOTS } from "../types/crew-types.js";
 
 export type {
   BridgeCore, BridgeCoreMember, BridgeCoreWithMembers,

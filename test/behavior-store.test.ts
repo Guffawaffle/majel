@@ -12,8 +12,6 @@ import {
   type BehaviorStore,
   PRIOR_ALPHA,
   PRIOR_BETA,
-  MIN_OBSERVATIONS,
-  MIN_CONFIDENCE,
 } from "../src/server/stores/behavior-store.js";
 import { createMicroRunner, type ContextSources } from "../src/server/services/micro-runner.js";
 

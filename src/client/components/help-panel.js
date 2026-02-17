@@ -13,7 +13,7 @@
  */
 
 import { esc } from 'utils/escape.js';
-import { getHelpForView, getGlobalHelp, getHelpViewNames, helpContent } from 'components/help-content.js';
+import { getHelpForView, getHelpViewNames, helpContent } from 'components/help-content.js';
 
 let panel = null;
 let backdrop = null;
@@ -130,7 +130,6 @@ export function isHelpOpen() { return isOpen; }
  */
 function renderContent(viewName) {
     const help = getHelpForView(viewName);
-    const global = getGlobalHelp();
     const isGlobalView = !viewName || !helpContent[viewName];
 
     // Build sections HTML

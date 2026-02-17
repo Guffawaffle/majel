@@ -12,14 +12,12 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import express from "express";
 import cookieParser from "cookie-parser";
-import request from "supertest";
 import { testRequest } from "./helpers/test-request.js";
 import { createInviteStore, type InviteStore } from "../src/server/stores/invite-store.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import { bootstrapConfigSync, type AppConfig } from "../src/server/config.js";
-import { envelopeMiddleware, sendOk, sendFail, ErrorCode } from "../src/server/envelope.js";
+import { envelopeMiddleware, sendOk } from "../src/server/envelope.js";
 import { requireAdmiral, requireVisitor, TENANT_COOKIE } from "../src/server/services/auth.js";
-import type { AppState as AppStateType } from "../src/server/app-context.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;

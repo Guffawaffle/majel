@@ -11,15 +11,14 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { createPool, ensureAppRole, initSchema, type Pool } from "../src/server/db.js";
+import { createPool, ensureAppRole, type Pool } from "../src/server/db.js";
 import { createTestPool, cleanDatabase } from "./helpers/pg-test.js";
-import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
-import { createBehaviorStore, type BehaviorStore } from "../src/server/stores/behavior-store.js";
+import { createSettingsStore } from "../src/server/stores/settings.js";
+import { createBehaviorStore } from "../src/server/stores/behavior-store.js";
 import {
   createFrameStoreFactory,
-  type FrameStoreFactory,
 } from "../src/server/stores/postgres-frame-store.js";
-import type { Frame, FrameStore } from "@smartergpt/lex/store";
+import type { Frame } from "@smartergpt/lex/store";
 
 // ─── Setup ──────────────────────────────────────────────────────
 

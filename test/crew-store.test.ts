@@ -161,11 +161,10 @@ describe("CrewStore — Bridge Cores", () => {
 
 describe("CrewStore — Below Deck Policies", () => {
   let store: CrewStore;
-  let refStore: ReferenceStore;
 
   beforeEach(async () => {
     await cleanDatabase(pool);
-    refStore = await createReferenceStore(pool);
+    await createReferenceStore(pool);
     store = await createCrewStore(pool);
   });
 
