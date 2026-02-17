@@ -26,6 +26,7 @@ import 'views/crews/crews.js';
 import 'views/plan/plan.js';
 import 'views/diagnostics/diagnostics.js';
 import * as router from 'router';
+import { initHelpPanel, toggleHelp, closeHelp } from 'components/help-panel.js';
 
 // ─── DOM Elements ───────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -160,6 +161,17 @@ if (logoutBtn) {
         try { await _fetch("/api/auth/logout", { method: "POST" }); } catch (_) { /* ignore logout failure */ }
         window.location.href = "/";
     });
+}
+
+// ─── Help Panel ─────────────────────────────────────────────
+const helpBtn = $("#help-btn");
+if (helpBtn) {
+    initHelpPanel();
+    helpBtn.addEventListener("click", () => {
+        toggleHelp(router.getCurrentView());
+    });
+    // Close help panel on view navigation
+    router.onNavigate(() => closeHelp());
 }
 
 // ─── Init ───────────────────────────────────────────────────

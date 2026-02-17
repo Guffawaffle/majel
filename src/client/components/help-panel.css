@@ -1,0 +1,335 @@
+/* ═══════════════════════════════════════════════════════════
+   Help Panel — Contextual Slide-in Drawer
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Title Bar Button ── */
+
+.help-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
+  width: 28px;
+  height: 28px;
+}
+.help-btn:hover {
+  color: var(--accent-gold);
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+.help-btn.active {
+  color: var(--accent-gold);
+  background: rgba(240, 160, 48, 0.1);
+  border-color: rgba(240, 160, 48, 0.3);
+}
+
+/* ── Backdrop ── */
+
+.help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 299;
+  background: rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.help-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Panel ── */
+
+.help-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 300;
+  width: 380px;
+  max-width: 90vw;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+.help-panel.open {
+  transform: translateX(0);
+}
+
+/* ── Header ── */
+
+.help-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.help-header-text {
+  flex: 1;
+  min-width: 0;
+}
+.help-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  margin: 0 0 4px;
+}
+.help-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+.help-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition), background var(--transition);
+}
+.help-close:hover {
+  color: var(--accent-gold);
+  background: var(--bg-hover);
+}
+
+/* ── Scrollable Body ── */
+
+.help-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* ── Sections ── */
+
+.help-section {
+  margin-bottom: 20px;
+}
+.help-section-heading {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent-blue);
+  margin: 0 0 8px;
+}
+.help-section-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.help-section-body p {
+  margin: 0 0 8px;
+}
+.help-section-body p:last-child {
+  margin-bottom: 0;
+}
+.help-section-body ul,
+.help-section-body ol {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.help-section-body li {
+  margin-bottom: 4px;
+}
+.help-section-body strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.help-section-body em {
+  color: var(--text-muted);
+}
+
+/* ── Tips ── */
+
+.help-tips {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 16px;
+}
+.help-tips-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent-gold);
+  margin-bottom: 8px;
+}
+.help-tips ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.help-tips li {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 3px 0 3px 16px;
+  position: relative;
+  line-height: 1.45;
+}
+.help-tips li::before {
+  content: '›';
+  position: absolute;
+  left: 0;
+  color: var(--accent-gold);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+/* ── Keyboard Shortcuts ── */
+
+.help-keys {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 16px;
+}
+.help-keys-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent-blue);
+  margin-bottom: 8px;
+}
+.help-keys-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  align-items: center;
+}
+.help-keys-grid kbd {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text-primary);
+  white-space: nowrap;
+  font-weight: 600;
+}
+.help-keys-grid span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ── Divider ── */
+
+.help-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0;
+}
+
+/* ── About Ariadne Button ── */
+
+.help-about-btn {
+  display: block;
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition), border-color var(--transition);
+}
+.help-about-btn:hover {
+  background: var(--bg-hover);
+  border-color: rgba(240, 160, 48, 0.3);
+}
+
+/* ── View Index ── */
+
+.help-index {
+  margin-bottom: 8px;
+}
+.help-index-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.help-index-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.help-index-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+  text-align: left;
+}
+.help-index-link:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent-blue);
+}
+.help-index-link.current {
+  background: rgba(96, 160, 255, 0.08);
+  border-color: rgba(96, 160, 255, 0.3);
+  cursor: default;
+}
+.help-index-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.help-index-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.help-index-link.current .help-index-name {
+  color: var(--accent-blue);
+}
+
+/* ── Mobile ── */
+
+@media (max-width: 768px) {
+  .help-panel {
+    width: 100%;
+    max-width: 100vw;
+  }
+}

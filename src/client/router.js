@@ -30,6 +30,7 @@ const HASH_REDIRECTS = { 'admin': 'admiral' };
 let currentView = null;
 const viewHistory = [];
 let userRoleFn = () => null;
+const navCallbacks = [];
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -93,6 +94,12 @@ export function getRegisteredViews() { return views; }
  * Use for views that are eager-initialized during startup.
  */
 export function markInitialized(name) { initialized.add(name); }
+
+/**
+ * Register a callback to be called on every navigation.
+ * @param {(viewName: string) => void} fn
+ */
+export function onNavigate(fn) { navCallbacks.push(fn); }
 
 // ─── Navigation ─────────────────────────────────────────────
 
@@ -177,6 +184,9 @@ export async function navigateToView(name, { pushHistory = true, updateUrl = tru
     if (backBtn) {
         backBtn.classList.toggle('hidden', viewHistory.length === 0 || name === 'chat');
     }
+
+    // Notify navigation listeners
+    for (const fn of navCallbacks) fn(name);
 }
 
 // ─── Hash Routing ───────────────────────────────────────────
