@@ -16,7 +16,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
-import { syncGamedataOfficers, syncGamedataShips, syncCdnShips, syncCdnOfficers } from "../services/gamedata-ingest.js";
+import { syncGamedataOfficers, syncGamedataShips, syncCdnShips, syncCdnOfficers, getCdnVersion } from "../services/gamedata-ingest.js";
 import { syncRateLimiter } from "../rate-limit.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
@@ -85,14 +85,17 @@ export function createCatalogRoutes(appState: AppState): Router {
     }
     const rarity = typeof req.query.rarity === "string" ? req.query.rarity : undefined;
     const group = typeof req.query.group === "string" ? req.query.group : undefined;
+    const officerClass = typeof req.query.officerClass === "string" ? parseInt(req.query.officerClass, 10) : undefined;
+    const validOfficerClass = officerClass != null && !isNaN(officerClass) ? officerClass : undefined;
 
     let officers;
     if (q) {
       officers = await store.searchOfficers(q);
       if (rarity) officers = officers.filter(o => o.rarity === rarity);
       if (group) officers = officers.filter(o => o.groupName === group);
+      if (validOfficerClass != null) officers = officers.filter(o => o.officerClass === validOfficerClass);
     } else {
-      officers = await store.listOfficers({ rarity, groupName: group });
+      officers = await store.listOfficers({ rarity, groupName: group, officerClass: validOfficerClass });
     }
 
     sendOk(res, { officers, count: officers.length });
@@ -109,6 +112,8 @@ export function createCatalogRoutes(appState: AppState): Router {
     }
     const rarity = typeof req.query.rarity === "string" ? req.query.rarity : undefined;
     const group = typeof req.query.group === "string" ? req.query.group : undefined;
+    const officerClass = typeof req.query.officerClass === "string" ? parseInt(req.query.officerClass, 10) : undefined;
+    const validOfficerClass = officerClass != null && !isNaN(officerClass) ? officerClass : undefined;
     const ownership = typeof req.query.ownership === "string" ? req.query.ownership : undefined;
     const targetFilter = typeof req.query.target === "string" ? req.query.target : undefined;
 
@@ -117,8 +122,9 @@ export function createCatalogRoutes(appState: AppState): Router {
       officers = await refStore.searchOfficers(q);
       if (rarity) officers = officers.filter(o => o.rarity === rarity);
       if (group) officers = officers.filter(o => o.groupName === group);
+      if (validOfficerClass != null) officers = officers.filter(o => o.officerClass === validOfficerClass);
     } else {
-      officers = await refStore.listOfficers({ rarity, groupName: group });
+      officers = await refStore.listOfficers({ rarity, groupName: group, officerClass: validOfficerClass });
     }
 
     const overlayMap = new Map<string, Awaited<ReturnType<NonNullable<typeof overlayStore>["getOfficerOverlay"]>>>();
@@ -188,6 +194,10 @@ export function createCatalogRoutes(appState: AppState): Router {
     const rarity = typeof req.query.rarity === "string" ? req.query.rarity : undefined;
     const faction = typeof req.query.faction === "string" ? req.query.faction : undefined;
     const shipClass = typeof req.query.class === "string" ? req.query.class : undefined;
+    const hullType = typeof req.query.hullType === "string" ? parseInt(req.query.hullType, 10) : undefined;
+    const validHullType = hullType != null && !isNaN(hullType) ? hullType : undefined;
+    const grade = typeof req.query.grade === "string" ? parseInt(req.query.grade, 10) : undefined;
+    const validGrade = grade != null && !isNaN(grade) ? grade : undefined;
 
     let ships;
     if (q) {
@@ -195,8 +205,10 @@ export function createCatalogRoutes(appState: AppState): Router {
       if (rarity) ships = ships.filter(s => s.rarity === rarity);
       if (faction) ships = ships.filter(s => s.faction === faction);
       if (shipClass) ships = ships.filter(s => s.shipClass === shipClass);
+      if (validHullType != null) ships = ships.filter(s => s.hullType === validHullType);
+      if (validGrade != null) ships = ships.filter(s => s.grade === validGrade);
     } else {
-      ships = await store.listShips({ rarity, faction, shipClass });
+      ships = await store.listShips({ rarity, faction, shipClass, hullType: validHullType, grade: validGrade });
     }
 
     sendOk(res, { ships, count: ships.length });
@@ -214,6 +226,10 @@ export function createCatalogRoutes(appState: AppState): Router {
     const rarity = typeof req.query.rarity === "string" ? req.query.rarity : undefined;
     const faction = typeof req.query.faction === "string" ? req.query.faction : undefined;
     const shipClass = typeof req.query.class === "string" ? req.query.class : undefined;
+    const hullType = typeof req.query.hullType === "string" ? parseInt(req.query.hullType, 10) : undefined;
+    const validHullType = hullType != null && !isNaN(hullType) ? hullType : undefined;
+    const grade = typeof req.query.grade === "string" ? parseInt(req.query.grade, 10) : undefined;
+    const validGrade = grade != null && !isNaN(grade) ? grade : undefined;
     const ownership = typeof req.query.ownership === "string" ? req.query.ownership : undefined;
     const targetFilter = typeof req.query.target === "string" ? req.query.target : undefined;
 
@@ -223,8 +239,10 @@ export function createCatalogRoutes(appState: AppState): Router {
       if (rarity) ships = ships.filter(s => s.rarity === rarity);
       if (faction) ships = ships.filter(s => s.faction === faction);
       if (shipClass) ships = ships.filter(s => s.shipClass === shipClass);
+      if (validHullType != null) ships = ships.filter(s => s.hullType === validHullType);
+      if (validGrade != null) ships = ships.filter(s => s.grade === validGrade);
     } else {
-      ships = await refStore.listShips({ rarity, faction, shipClass });
+      ships = await refStore.listShips({ rarity, faction, shipClass, hullType: validHullType, grade: validGrade });
     }
 
     const overlayMap = new Map<string, Awaited<ReturnType<NonNullable<typeof overlayStore>["getShipOverlay"]>>>();
@@ -294,7 +312,8 @@ export function createCatalogRoutes(appState: AppState): Router {
         syncCdnShips(store),
         syncCdnOfficers(store),
       ]);
-      sendOk(res, { ...officerResult, ...shipResult, cdnShips: cdnShipResult.ships, cdnOfficers: cdnOfficerResult.officers });
+      const cdnVersion = await getCdnVersion();
+      sendOk(res, { ...officerResult, ...shipResult, cdnShips: cdnShipResult.ships, cdnOfficers: cdnOfficerResult.officers, cdnVersion });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       sendFail(res, ErrorCode.INTERNAL_ERROR, `Game data sync failed: ${msg}`, 502);

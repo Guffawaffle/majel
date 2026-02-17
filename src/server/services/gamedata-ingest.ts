@@ -18,6 +18,25 @@ import { fileURLToPath } from "node:url";
 import type { ReferenceStore, CreateReferenceOfficerInput, CreateReferenceShipInput } from "../stores/reference-store.js";
 import { log } from "../logger.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const projectRoot = join(__dirname, "..", "..", "..");
+
+/**
+ * Read the CDN snapshot version identifier (UUID from data/.stfc-snapshot/version.txt).
+ * Returns null if no snapshot exists.
+ */
+export async function getCdnVersion(): Promise<string | null> {
+  const versionPath = join(projectRoot, "data", ".stfc-snapshot", "version.txt");
+  try {
+    await access(versionPath);
+    const raw = await readFile(versionPath, "utf-8");
+    return raw.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Types ──────────────────────────────────────────────────
 
 interface RawAbility {
@@ -227,39 +246,13 @@ export async function syncGamedataShips(
 
 // ─── Enum Maps ──────────────────────────────────────────────
 
-const HULL_TYPE_NAMES: Record<number, string> = {
-  0: "Destroyer",
-  1: "Survey",
-  2: "Explorer",
-  3: "Battleship",
-  4: "Defense",
-  5: "Armada",
-};
+import { HULL_TYPE_LABELS, OFFICER_CLASS_LABELS, RARITY_LABELS, FACTION_LABELS } from "./game-enums.js";
 
-const RARITY_NAMES: Record<number, string> = {
-  0: "base",
-  1: "common",
-  2: "uncommon",
-  3: "rare",
-  4: "epic",
-};
-
-const OFFICER_CLASS_NAMES: Record<number, string> = {
-  1: "Command",
-  2: "Science",
-  3: "Engineering",
-};
-
-const FACTION_NAMES: Record<number, string> = {
-  2064723306: "Federation",
-  4153667145: "Klingon",
-  669838839: "Romulan",
-  2489857622: "Swarm",
-  2943562711: "Borg",
-  1750120904: "Eclipse",
-  2143656960: "Rogue",
-  157476182: "Assimilated",
-};
+// Re-export for backward compat
+const HULL_TYPE_NAMES = HULL_TYPE_LABELS;
+const RARITY_NAMES = RARITY_LABELS;
+const OFFICER_CLASS_NAMES = OFFICER_CLASS_LABELS;
+const FACTION_NAMES = FACTION_LABELS;
 
 // ─── CDN Translation Helpers ────────────────────────────────
 

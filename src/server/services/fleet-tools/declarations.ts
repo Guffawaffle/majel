@@ -49,7 +49,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "search_officers",
     description:
       "Search for officers by name (partial match, case-insensitive). " +
-      "Returns matching officers with reservation status (if reserved/locked). " +
+      "Returns matching officers with class (Command/Science/Engineering), faction, " +
+      "abilities, rarity, group, and reservation status. " +
       "Call this when the Admiral asks about a specific officer or wants to find officers matching a name.",
     parameters: {
       type: Type.OBJECT,
@@ -66,6 +67,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "search_ships",
     description:
       "Search for ships by name (partial match, case-insensitive). " +
+      "Returns matching ships with hull type (Explorer/Battleship/Destroyer/Survey), grade, rarity, faction, and max tier. " +
       "Call this when the Admiral asks about a specific ship or wants to find ships matching a name.",
     parameters: {
       type: Type.OBJECT,
@@ -81,8 +83,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "get_officer_detail",
     description:
-      "Get full details for a specific officer: reference data (abilities, rarity, group) " +
-      "merged with the Admiral's overlay (ownership, level, rank, targeting). " +
+      "Get full details for a specific officer: reference data (class, faction, abilities with values, " +
+      "rarity, group, synergy, max rank, traits) merged with the Admiral's overlay (ownership, level, rank, targeting). " +
       "Call this when the Admiral asks for detailed info about a particular officer they've already identified.",
     parameters: {
       type: Type.OBJECT,
@@ -98,7 +100,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "get_ship_detail",
     description:
-      "Get full details for a specific ship: reference data (class, grade, faction, rarity) " +
+      "Get full details for a specific ship: reference data (hull type, class, grade, faction, rarity, " +
+      "max tier/level, build time, officer bonus curves, crew slot unlocks, ship ability) " +
       "merged with the Admiral's overlay (ownership, tier, level, targeting). " +
       "Call this when the Admiral asks for detailed info about a particular ship they've already identified.",
     parameters: {
@@ -147,7 +150,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "list_owned_officers",
     description:
-      "List all officers the Admiral owns, with abilities and overlay data (level, rank, power). " +
+      "List all officers the Admiral owns, with class (Command/Science/Engineering), faction, " +
+      "abilities, and overlay data (level, rank, power). " +
       "Call this when suggesting crews, analyzing fleet composition, or checking available officers. " +
       "Returns merged reference + overlay data for each owned officer.",
     // No parameters
@@ -215,7 +219,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "suggest_crew",
     description:
       "Gather all context needed to suggest an optimal crew for a ship and activity. " +
-      "Returns: ship details, intent info, all owned officers with abilities, " +
+      "Returns: ship details (hull type, officer bonus curves, crew slots), intent info, " +
+      "all owned officers with class/faction/abilities, " +
       "existing loadouts for this ship, and officer reservations (locked officers are unavailable). " +
       "Can suggest BridgeCore creation, BelowDeckPolicy selection, and variant creation. " +
       "Use your STFC knowledge to recommend the best captain + bridge + below-deck officers " +
