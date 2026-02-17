@@ -33,6 +33,16 @@ export interface ReferenceOfficer {
   tags: Record<string, unknown> | null;
   /** Stable numeric game ID from game data */
   officerGameId: number | null;
+  /** Officer class: 1=Command, 2=Science, 3=Engineering */
+  officerClass: number | null;
+  /** Faction reference (JSONB: {id, name}) */
+  faction: Record<string, unknown> | null;
+  /** Synergy group ID from CDN */
+  synergyId: number | null;
+  /** Maximum rank (1-5) */
+  maxRank: number | null;
+  /** Trait configuration from CDN (JSONB) */
+  traitConfig: Record<string, unknown> | null;
   source: string;
   sourceUrl: string | null;
   sourcePageId: string | null;
@@ -55,6 +65,24 @@ export interface ReferenceShip {
   ability: Record<string, unknown> | null;
   warpRange: number[] | null;
   link: string | null;
+  /** Hull type: 0=Destroyer, 1=Survey, 2=Explorer, 3=Battleship, 4=Defense, 5=Armada */
+  hullType: number | null;
+  /** Build time in seconds */
+  buildTimeInSeconds: number | null;
+  /** Maximum tier from CDN */
+  maxTier: number | null;
+  /** Maximum level from CDN */
+  maxLevel: number | null;
+  /** Officer bonus curves (JSONB: {attack, defense, health}) */
+  officerBonus: Record<string, unknown> | null;
+  /** Crew slot unlock schedule (JSONB) */
+  crewSlots: Record<string, unknown>[] | null;
+  /** Build cost resources (JSONB) */
+  buildCost: Record<string, unknown>[] | null;
+  /** Per-level HP/shield curves (JSONB) */
+  levels: Record<string, unknown>[] | null;
+  /** Stable numeric game ID from CDN */
+  gameId: number | null;
   source: string;
   sourceUrl: string | null;
   sourcePageId: string | null;
@@ -66,20 +94,34 @@ export interface ReferenceShip {
   updatedAt: string;
 }
 
-export type CreateReferenceOfficerInput = Omit<ReferenceOfficer, "createdAt" | "updatedAt" | "license" | "attribution" | "abilities" | "tags" | "officerGameId"> & {
+export type CreateReferenceOfficerInput = Omit<ReferenceOfficer, "createdAt" | "updatedAt" | "license" | "attribution" | "abilities" | "tags" | "officerGameId" | "officerClass" | "faction" | "synergyId" | "maxRank" | "traitConfig"> & {
   license?: string;
   attribution?: string;
   abilities?: Record<string, unknown> | null;
   tags?: Record<string, unknown> | null;
   officerGameId?: number | null;
+  officerClass?: number | null;
+  faction?: Record<string, unknown> | null;
+  synergyId?: number | null;
+  maxRank?: number | null;
+  traitConfig?: Record<string, unknown> | null;
 };
 
-export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "updatedAt" | "license" | "attribution" | "ability" | "warpRange" | "link"> & {
+export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "updatedAt" | "license" | "attribution" | "ability" | "warpRange" | "link" | "hullType" | "buildTimeInSeconds" | "maxTier" | "maxLevel" | "officerBonus" | "crewSlots" | "buildCost" | "levels" | "gameId"> & {
   license?: string;
   attribution?: string;
   ability?: Record<string, unknown> | null;
   warpRange?: number[] | null;
   link?: string | null;
+  hullType?: number | null;
+  buildTimeInSeconds?: number | null;
+  maxTier?: number | null;
+  maxLevel?: number | null;
+  officerBonus?: Record<string, unknown> | null;
+  crewSlots?: Record<string, unknown>[] | null;
+  buildCost?: Record<string, unknown>[] | null;
+  levels?: Record<string, unknown>[] | null;
+  gameId?: number | null;
 };
 
 // ─── Store Interface ────────────────────────────────────────
@@ -127,6 +169,11 @@ const SCHEMA_STATEMENTS = [
     abilities JSONB,
     tags JSONB,
     officer_game_id BIGINT,
+    officer_class INTEGER,
+    faction JSONB,
+    synergy_id BIGINT,
+    max_rank INTEGER,
+    trait_config JSONB,
     source TEXT NOT NULL,
     source_url TEXT,
     source_page_id TEXT,
@@ -147,6 +194,21 @@ const SCHEMA_STATEMENTS = [
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'officer_game_id') THEN
       ALTER TABLE reference_officers ADD COLUMN officer_game_id BIGINT;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'officer_class') THEN
+      ALTER TABLE reference_officers ADD COLUMN officer_class INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'faction') THEN
+      ALTER TABLE reference_officers ADD COLUMN faction JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'synergy_id') THEN
+      ALTER TABLE reference_officers ADD COLUMN synergy_id BIGINT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'max_rank') THEN
+      ALTER TABLE reference_officers ADD COLUMN max_rank INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_officers' AND column_name = 'trait_config') THEN
+      ALTER TABLE reference_officers ADD COLUMN trait_config JSONB;
+    END IF;
   END $$`,
   `CREATE INDEX IF NOT EXISTS idx_ref_officers_name ON reference_officers(name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_officers_group ON reference_officers(group_name)`,
@@ -159,6 +221,15 @@ const SCHEMA_STATEMENTS = [
     rarity TEXT,
     faction TEXT,
     tier INTEGER,
+    hull_type INTEGER,
+    build_time_in_seconds BIGINT,
+    max_tier INTEGER,
+    max_level INTEGER,
+    officer_bonus JSONB,
+    crew_slots JSONB,
+    build_cost JSONB,
+    levels JSONB,
+    game_id BIGINT,
     source TEXT NOT NULL,
     source_url TEXT,
     source_page_id TEXT,
@@ -179,6 +250,33 @@ const SCHEMA_STATEMENTS = [
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'link') THEN
       ALTER TABLE reference_ships ADD COLUMN link TEXT;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'hull_type') THEN
+      ALTER TABLE reference_ships ADD COLUMN hull_type INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'build_time_in_seconds') THEN
+      ALTER TABLE reference_ships ADD COLUMN build_time_in_seconds BIGINT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'max_tier') THEN
+      ALTER TABLE reference_ships ADD COLUMN max_tier INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'max_level') THEN
+      ALTER TABLE reference_ships ADD COLUMN max_level INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'officer_bonus') THEN
+      ALTER TABLE reference_ships ADD COLUMN officer_bonus JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'crew_slots') THEN
+      ALTER TABLE reference_ships ADD COLUMN crew_slots JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'build_cost') THEN
+      ALTER TABLE reference_ships ADD COLUMN build_cost JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'levels') THEN
+      ALTER TABLE reference_ships ADD COLUMN levels JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'game_id') THEN
+      ALTER TABLE reference_ships ADD COLUMN game_id BIGINT;
+    END IF;
   END $$`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_name ON reference_ships(name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_class ON reference_ships(ship_class)`,
@@ -188,12 +286,18 @@ const SCHEMA_STATEMENTS = [
 const OFFICER_COLS = `id, name, rarity, group_name AS "groupName", captain_maneuver AS "captainManeuver",
   officer_ability AS "officerAbility", below_deck_ability AS "belowDeckAbility",
   abilities, tags, officer_game_id AS "officerGameId",
+  officer_class AS "officerClass", faction, synergy_id AS "synergyId",
+  max_rank AS "maxRank", trait_config AS "traitConfig",
   source, source_url AS "sourceUrl", source_page_id AS "sourcePageId",
   source_revision_id AS "sourceRevisionId", source_revision_timestamp AS "sourceRevisionTimestamp",
   license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SHIP_COLS = `id, name, ship_class AS "shipClass", grade, rarity, faction, tier,
   ability, warp_range AS "warpRange", link,
+  hull_type AS "hullType", build_time_in_seconds AS "buildTimeInSeconds",
+  max_tier AS "maxTier", max_level AS "maxLevel",
+  officer_bonus AS "officerBonus", crew_slots AS "crewSlots",
+  build_cost AS "buildCost", levels, game_id AS "gameId",
   source, source_url AS "sourceUrl", source_page_id AS "sourcePageId",
   source_revision_id AS "sourceRevisionId", source_revision_timestamp AS "sourceRevisionTimestamp",
   license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -201,13 +305,14 @@ const SHIP_COLS = `id, name, ship_class AS "shipClass", grade, rarity, faction, 
 const SQL = {
   // Officers
   insertOfficer: `INSERT INTO reference_officers (id, name, rarity, group_name, captain_maneuver, officer_ability, below_deck_ability,
-    abilities, tags, officer_game_id,
+    abilities, tags, officer_game_id, officer_class, faction, synergy_id, max_rank, trait_config,
     source, source_url, source_page_id, source_revision_id, source_revision_timestamp, license, attribution, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
   updateOfficer: `UPDATE reference_officers SET name = $1, rarity = $2, group_name = $3, captain_maneuver = $4, officer_ability = $5,
     below_deck_ability = $6, abilities = $7, tags = $8, officer_game_id = $9,
-    source = $10, source_url = $11, source_page_id = $12, source_revision_id = $13,
-    source_revision_timestamp = $14, license = $15, attribution = $16, updated_at = $17 WHERE id = $18`,
+    officer_class = $10, faction = $11, synergy_id = $12, max_rank = $13, trait_config = $14,
+    source = $15, source_url = $16, source_page_id = $17, source_revision_id = $18,
+    source_revision_timestamp = $19, license = $20, attribution = $21, updated_at = $22 WHERE id = $23`,
   getOfficer: `SELECT ${OFFICER_COLS} FROM reference_officers WHERE id = $1`,
   findOfficerByName: `SELECT ${OFFICER_COLS} FROM reference_officers WHERE LOWER(name) = LOWER($1)`,
   listOfficers: `SELECT ${OFFICER_COLS} FROM reference_officers ORDER BY name`,
@@ -219,12 +324,15 @@ const SQL = {
   // Ships
   insertShip: `INSERT INTO reference_ships (id, name, ship_class, grade, rarity, faction, tier,
     ability, warp_range, link,
+    hull_type, build_time_in_seconds, max_tier, max_level, officer_bonus, crew_slots, build_cost, levels, game_id,
     source, source_url, source_page_id, source_revision_id, source_revision_timestamp, license, attribution, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
   updateShip: `UPDATE reference_ships SET name = $1, ship_class = $2, grade = $3, rarity = $4, faction = $5, tier = $6,
     ability = $7, warp_range = $8, link = $9,
-    source = $10, source_url = $11, source_page_id = $12, source_revision_id = $13,
-    source_revision_timestamp = $14, license = $15, attribution = $16, updated_at = $17 WHERE id = $18`,
+    hull_type = $10, build_time_in_seconds = $11, max_tier = $12, max_level = $13,
+    officer_bonus = $14, crew_slots = $15, build_cost = $16, levels = $17, game_id = $18,
+    source = $19, source_url = $20, source_page_id = $21, source_revision_id = $22,
+    source_revision_timestamp = $23, license = $24, attribution = $25, updated_at = $26 WHERE id = $27`,
   getShip: `SELECT ${SHIP_COLS} FROM reference_ships WHERE id = $1`,
   findShipByName: `SELECT ${SHIP_COLS} FROM reference_ships WHERE LOWER(name) = LOWER($1)`,
   listShips: `SELECT ${SHIP_COLS} FROM reference_ships ORDER BY name`,
@@ -285,6 +393,11 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
         input.abilities ? JSON.stringify(input.abilities) : null,
         input.tags ? JSON.stringify(input.tags) : null,
         input.officerGameId ?? null,
+        input.officerClass ?? null,
+        input.faction ? JSON.stringify(input.faction) : null,
+        input.synergyId ?? null,
+        input.maxRank ?? null,
+        input.traitConfig ? JSON.stringify(input.traitConfig) : null,
         input.source, input.sourceUrl, input.sourcePageId,
         input.sourceRevisionId, input.sourceRevisionTimestamp,
         license, attribution, now, now,
@@ -327,6 +440,11 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
           input.abilities ? JSON.stringify(input.abilities) : null,
           input.tags ? JSON.stringify(input.tags) : null,
           input.officerGameId ?? null,
+          input.officerClass ?? null,
+          input.faction ? JSON.stringify(input.faction) : null,
+          input.synergyId ?? null,
+          input.maxRank ?? null,
+          input.traitConfig ? JSON.stringify(input.traitConfig) : null,
           input.source, input.sourceUrl, input.sourcePageId,
           input.sourceRevisionId, input.sourceRevisionTimestamp,
           input.license ?? DEFAULT_LICENSE, input.attribution ?? DEFAULT_ATTRIBUTION,
@@ -355,6 +473,15 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
         input.ability ? JSON.stringify(input.ability) : null,
         input.warpRange ? JSON.stringify(input.warpRange) : null,
         input.link ?? null,
+        input.hullType ?? null,
+        input.buildTimeInSeconds ?? null,
+        input.maxTier ?? null,
+        input.maxLevel ?? null,
+        input.officerBonus ? JSON.stringify(input.officerBonus) : null,
+        input.crewSlots ? JSON.stringify(input.crewSlots) : null,
+        input.buildCost ? JSON.stringify(input.buildCost) : null,
+        input.levels ? JSON.stringify(input.levels) : null,
+        input.gameId ?? null,
         input.source, input.sourceUrl, input.sourcePageId,
         input.sourceRevisionId, input.sourceRevisionTimestamp,
         license, attribution, now, now,
@@ -396,6 +523,15 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
           input.ability ? JSON.stringify(input.ability) : null,
           input.warpRange ? JSON.stringify(input.warpRange) : null,
           input.link ?? null,
+          input.hullType ?? null,
+          input.buildTimeInSeconds ?? null,
+          input.maxTier ?? null,
+          input.maxLevel ?? null,
+          input.officerBonus ? JSON.stringify(input.officerBonus) : null,
+          input.crewSlots ? JSON.stringify(input.crewSlots) : null,
+          input.buildCost ? JSON.stringify(input.buildCost) : null,
+          input.levels ? JSON.stringify(input.levels) : null,
+          input.gameId ?? null,
           input.source, input.sourceUrl, input.sourcePageId,
           input.sourceRevisionId, input.sourceRevisionTimestamp,
           input.license ?? DEFAULT_LICENSE, input.attribution ?? DEFAULT_ATTRIBUTION,
@@ -429,6 +565,11 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
               officer.abilities ? JSON.stringify(officer.abilities) : null,
               officer.tags ? JSON.stringify(officer.tags) : null,
               officer.officerGameId ?? null,
+              officer.officerClass ?? null,
+              officer.faction ? JSON.stringify(officer.faction) : null,
+              officer.synergyId ?? null,
+              officer.maxRank ?? null,
+              officer.traitConfig ? JSON.stringify(officer.traitConfig) : null,
               officer.source, officer.sourceUrl, officer.sourcePageId,
               officer.sourceRevisionId, officer.sourceRevisionTimestamp,
               officer.license ?? DEFAULT_LICENSE, officer.attribution ?? DEFAULT_ATTRIBUTION,
@@ -442,6 +583,11 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
               officer.abilities ? JSON.stringify(officer.abilities) : null,
               officer.tags ? JSON.stringify(officer.tags) : null,
               officer.officerGameId ?? null,
+              officer.officerClass ?? null,
+              officer.faction ? JSON.stringify(officer.faction) : null,
+              officer.synergyId ?? null,
+              officer.maxRank ?? null,
+              officer.traitConfig ? JSON.stringify(officer.traitConfig) : null,
               officer.source, officer.sourceUrl, officer.sourcePageId,
               officer.sourceRevisionId, officer.sourceRevisionTimestamp,
               officer.license ?? DEFAULT_LICENSE, officer.attribution ?? DEFAULT_ATTRIBUTION,
@@ -468,6 +614,15 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
               ship.ability ? JSON.stringify(ship.ability) : null,
               ship.warpRange ? JSON.stringify(ship.warpRange) : null,
               ship.link ?? null,
+              ship.hullType ?? null,
+              ship.buildTimeInSeconds ?? null,
+              ship.maxTier ?? null,
+              ship.maxLevel ?? null,
+              ship.officerBonus ? JSON.stringify(ship.officerBonus) : null,
+              ship.crewSlots ? JSON.stringify(ship.crewSlots) : null,
+              ship.buildCost ? JSON.stringify(ship.buildCost) : null,
+              ship.levels ? JSON.stringify(ship.levels) : null,
+              ship.gameId ?? null,
               ship.source, ship.sourceUrl, ship.sourcePageId,
               ship.sourceRevisionId, ship.sourceRevisionTimestamp,
               ship.license ?? DEFAULT_LICENSE, ship.attribution ?? DEFAULT_ATTRIBUTION,
@@ -480,6 +635,15 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
               ship.ability ? JSON.stringify(ship.ability) : null,
               ship.warpRange ? JSON.stringify(ship.warpRange) : null,
               ship.link ?? null,
+              ship.hullType ?? null,
+              ship.buildTimeInSeconds ?? null,
+              ship.maxTier ?? null,
+              ship.maxLevel ?? null,
+              ship.officerBonus ? JSON.stringify(ship.officerBonus) : null,
+              ship.crewSlots ? JSON.stringify(ship.crewSlots) : null,
+              ship.buildCost ? JSON.stringify(ship.buildCost) : null,
+              ship.levels ? JSON.stringify(ship.levels) : null,
+              ship.gameId ?? null,
               ship.source, ship.sourceUrl, ship.sourcePageId,
               ship.sourceRevisionId, ship.sourceRevisionTimestamp,
               ship.license ?? DEFAULT_LICENSE, ship.attribution ?? DEFAULT_ATTRIBUTION,

@@ -15,6 +15,23 @@ import { SEED_INTENTS, type SeedIntent } from "../../types/crew-types.js";
 /** Maximum results for search tools to avoid overwhelming the model context. */
 const SEARCH_LIMIT = 20;
 
+/** Hull type numeric → human label (from stfc.space frontend). */
+const HULL_TYPE_LABELS: Record<number, string> = {
+  0: "Destroyer",
+  1: "Survey",
+  2: "Explorer",
+  3: "Battleship",
+  4: "Defense",
+  5: "Armada",
+};
+
+/** Officer class numeric → human label. */
+const OFFICER_CLASS_LABELS: Record<number, string> = {
+  1: "Command",
+  2: "Science",
+  3: "Engineering",
+};
+
 // ─── Phase 1: Core Read Tools ───────────────────────────────
 
 export async function getFleetOverview(ctx: ToolContext): Promise<object> {
@@ -81,8 +98,10 @@ export async function searchOfficers(query: string, ctx: ToolContext): Promise<o
       name: o.name,
       rarity: o.rarity,
       group: o.groupName,
+      officerClass: o.officerClass != null ? OFFICER_CLASS_LABELS[o.officerClass] ?? o.officerClass : null,
       captainManeuver: o.captainManeuver,
       officerAbility: o.officerAbility,
+      ...(o.faction ? { faction: (o.faction as Record<string, unknown>).name ?? null } : {}),
       ...(res ? { reservation: { reservedFor: res.reservedFor, locked: res.locked } } : {}),
     };
   });
@@ -111,6 +130,8 @@ export async function searchShips(query: string, ctx: ToolContext): Promise<obje
     rarity: s.rarity,
     faction: s.faction,
     tier: s.tier,
+    hullType: s.hullType != null ? HULL_TYPE_LABELS[s.hullType] ?? s.hullType : null,
+    maxTier: s.maxTier,
   }));
 
   return {
@@ -139,9 +160,15 @@ export async function getOfficerDetail(officerId: string, ctx: ToolContext): Pro
       name: officer.name,
       rarity: officer.rarity,
       group: officer.groupName,
+      officerClass: officer.officerClass != null ? OFFICER_CLASS_LABELS[officer.officerClass] ?? officer.officerClass : null,
+      faction: officer.faction ? (officer.faction as Record<string, unknown>).name ?? null : null,
       captainManeuver: officer.captainManeuver,
       officerAbility: officer.officerAbility,
       belowDeckAbility: officer.belowDeckAbility,
+      maxRank: officer.maxRank,
+      synergyId: officer.synergyId,
+      abilities: officer.abilities,
+      traitConfig: officer.traitConfig,
       source: officer.source,
     },
   };
@@ -187,6 +214,13 @@ export async function getShipDetail(shipId: string, ctx: ToolContext): Promise<o
       rarity: ship.rarity,
       faction: ship.faction,
       tier: ship.tier,
+      hullType: ship.hullType != null ? HULL_TYPE_LABELS[ship.hullType] ?? ship.hullType : null,
+      maxTier: ship.maxTier,
+      maxLevel: ship.maxLevel,
+      buildTimeInSeconds: ship.buildTimeInSeconds,
+      officerBonus: ship.officerBonus,
+      crewSlots: ship.crewSlots,
+      ability: ship.ability,
       source: ship.source,
     },
   };

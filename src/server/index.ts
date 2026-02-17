@@ -39,7 +39,7 @@ import { createCrewStore } from "./stores/crew-store.js";
 import { createReceiptStore } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
-import { syncGamedataOfficers, syncGamedataShips } from "./services/gamedata-ingest.js";
+import { syncGamedataOfficers, syncGamedataShips, syncCdnShips, syncCdnOfficers } from "./services/gamedata-ingest.js";
 import { createOverlayStore } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
@@ -351,21 +351,28 @@ async function boot(): Promise<void> {
       log.boot.info("first boot detected — seeding reference data from game data");
       const officerResult = await syncGamedataOfficers(state.referenceStore);
       const shipResult = await syncGamedataShips(state.referenceStore);
+      // ADR-028: Also ingest CDN snapshot data (richer, authoritative)
+      const cdnShipResult = await syncCdnShips(state.referenceStore);
+      const cdnOfficerResult = await syncCdnOfficers(state.referenceStore);
+      const totalOfficers = officerResult.officers.total + cdnOfficerResult.officers.total;
+      const totalShips = shipResult.ships.total + cdnShipResult.ships.total;
       log.boot.info({
-        officers: officerResult.officers.total,
-        ships: shipResult.ships.total,
+        officers: totalOfficers,
+        ships: totalShips,
+        cdnOfficers: cdnOfficerResult.officers.total,
+        cdnShips: cdnShipResult.ships.total,
       }, "reference data auto-seeded");
       await state.receiptStore.createReceipt({
         sourceType: "auto_seed",
         sourceMeta: {
-          officers: officerResult.officers.total,
-          ships: shipResult.ships.total,
-          source: "bundled game data (data/raw-*.json)",
+          officers: totalOfficers,
+          ships: totalShips,
+          source: "bundled game data (data/raw-*.json) + CDN snapshot (data.stfc.space)",
         },
         layer: "reference",
         changeset: { added: [
-          { type: "officers", count: officerResult.officers.total },
-          { type: "ships", count: shipResult.ships.total },
+          { type: "officers", count: totalOfficers },
+          { type: "ships", count: totalShips },
         ]},
       });
     }
