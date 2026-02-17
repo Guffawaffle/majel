@@ -1365,7 +1365,9 @@ describe("create_loadout", () => {
       ship_id: "ship-enterprise",
       name: "Mining Alpha",
     }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("create_loadout");
     expect(result.created).toBe(true);
+    expect(result.nextSteps).toBeDefined();
     const lo = result.loadout as Record<string, unknown>;
     expect(lo.id).toBe(10);
     expect(lo.name).toBe("Mining Alpha");
@@ -1404,6 +1406,7 @@ describe("activate_preset", () => {
       }),
     };
     const result = await executeFleetTool("activate_preset", { preset_id: 5 }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("activate_preset");
     expect(result.guidedAction).toBe(true);
     expect(result.actionType).toBe("activate_preset");
     expect(result.presetId).toBe(5);
@@ -1446,7 +1449,8 @@ describe("set_reservation", () => {
       reserved_for: "PvP Crew",
       locked: true,
     }, ctx) as Record<string, unknown>;
-    expect(result.set).toBe(true);
+    expect(result.tool).toBe("set_reservation");
+    expect(result.action).toBe("set");
     const res = result.reservation as Record<string, unknown>;
     expect(res.officerId).toBe("kirk");
     expect(res.reservedFor).toBe("PvP Crew");
@@ -1463,7 +1467,8 @@ describe("set_reservation", () => {
       officer_id: "kirk",
       reserved_for: "",
     }, ctx) as Record<string, unknown>;
-    expect(result.cleared).toBe(true);
+    expect(result.tool).toBe("set_reservation");
+    expect(result.action).toBe("cleared");
     expect(result.officerId).toBe("kirk");
     expect(result.existed).toBe(true);
   });
@@ -1504,7 +1509,9 @@ describe("create_variant", () => {
       name: "PvP Swap",
       captain: "uhura",
     }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("create_variant");
     expect(result.created).toBe(true);
+    expect(result.nextSteps).toBeDefined();
     const v = result.variant as Record<string, unknown>;
     expect(v.id).toBe(3);
     expect(v.baseLoadoutId).toBe(10);
@@ -1539,8 +1546,10 @@ describe("get_effective_state", () => {
       crewStore: createMockCrewStore(),
     };
     const result = await executeFleetTool("get_effective_state", {}, ctx) as Record<string, unknown>;
-    expect(result.totalDocks).toBe(2);
-    expect(result.totalConflicts).toBe(1);
+    expect(result.tool).toBe("get_effective_state");
+    const summary = result.summary as Record<string, unknown>;
+    expect(summary.totalDocks).toBe(2);
+    expect(summary.conflicts).toBe(1);
     expect(result.activePreset).toBeNull();
     const docks = result.docks as unknown[];
     expect(docks.length).toBe(2);
@@ -1557,6 +1566,7 @@ describe("get_effective_state", () => {
       }),
     };
     const result = await executeFleetTool("get_effective_state", {}, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("get_effective_state");
     const preset = result.activePreset as Record<string, unknown>;
     expect(preset.id).toBe(1);
     expect(preset.name).toBe("War Config");
