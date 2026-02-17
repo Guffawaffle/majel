@@ -11,26 +11,10 @@
 import type { ToolContext } from "./declarations.js";
 import { detectTargetConflicts } from "../target-conflicts.js";
 import { SEED_INTENTS, type SeedIntent } from "../../types/crew-types.js";
+import { hullTypeLabel, officerClassLabel } from "../game-enums.js";
 
 /** Maximum results for search tools to avoid overwhelming the model context. */
 const SEARCH_LIMIT = 20;
-
-/** Hull type numeric → human label (from stfc.space frontend). */
-const HULL_TYPE_LABELS: Record<number, string> = {
-  0: "Destroyer",
-  1: "Survey",
-  2: "Explorer",
-  3: "Battleship",
-  4: "Defense",
-  5: "Armada",
-};
-
-/** Officer class numeric → human label. */
-const OFFICER_CLASS_LABELS: Record<number, string> = {
-  1: "Command",
-  2: "Science",
-  3: "Engineering",
-};
 
 // ─── Phase 1: Core Read Tools ───────────────────────────────
 
@@ -98,7 +82,7 @@ export async function searchOfficers(query: string, ctx: ToolContext): Promise<o
       name: o.name,
       rarity: o.rarity,
       group: o.groupName,
-      officerClass: o.officerClass != null ? OFFICER_CLASS_LABELS[o.officerClass] ?? o.officerClass : null,
+      officerClass: officerClassLabel(o.officerClass),
       captainManeuver: o.captainManeuver,
       officerAbility: o.officerAbility,
       ...(o.faction ? { faction: (o.faction as Record<string, unknown>).name ?? null } : {}),
@@ -130,7 +114,7 @@ export async function searchShips(query: string, ctx: ToolContext): Promise<obje
     rarity: s.rarity,
     faction: s.faction,
     tier: s.tier,
-    hullType: s.hullType != null ? HULL_TYPE_LABELS[s.hullType] ?? s.hullType : null,
+    hullType: hullTypeLabel(s.hullType),
     maxTier: s.maxTier,
   }));
 
@@ -160,7 +144,7 @@ export async function getOfficerDetail(officerId: string, ctx: ToolContext): Pro
       name: officer.name,
       rarity: officer.rarity,
       group: officer.groupName,
-      officerClass: officer.officerClass != null ? OFFICER_CLASS_LABELS[officer.officerClass] ?? officer.officerClass : null,
+      officerClass: officerClassLabel(officer.officerClass),
       faction: officer.faction ? (officer.faction as Record<string, unknown>).name ?? null : null,
       captainManeuver: officer.captainManeuver,
       officerAbility: officer.officerAbility,
@@ -214,7 +198,7 @@ export async function getShipDetail(shipId: string, ctx: ToolContext): Promise<o
       rarity: ship.rarity,
       faction: ship.faction,
       tier: ship.tier,
-      hullType: ship.hullType != null ? HULL_TYPE_LABELS[ship.hullType] ?? ship.hullType : null,
+      hullType: hullTypeLabel(ship.hullType),
       maxTier: ship.maxTier,
       maxLevel: ship.maxLevel,
       buildTimeInSeconds: ship.buildTimeInSeconds,
@@ -343,6 +327,8 @@ export async function listOwnedOfficers(ctx: ToolContext): Promise<object> {
       name: ref.name,
       rarity: ref.rarity,
       group: ref.groupName,
+      officerClass: officerClassLabel(ref.officerClass),
+      faction: ref.faction ? (ref.faction as Record<string, unknown>).name ?? null : null,
       captainManeuver: ref.captainManeuver,
       officerAbility: ref.officerAbility,
       belowDeckAbility: ref.belowDeckAbility,
@@ -530,6 +516,8 @@ export async function suggestCrew(
         name: ref.name,
         rarity: ref.rarity,
         group: ref.groupName,
+        officerClass: officerClassLabel(ref.officerClass),
+        faction: ref.faction ? (ref.faction as Record<string, unknown>).name ?? null : null,
         captainManeuver: ref.captainManeuver,
         officerAbility: ref.officerAbility,
         belowDeckAbility: ref.belowDeckAbility,
@@ -569,6 +557,10 @@ export async function suggestCrew(
       grade: ship.grade,
       rarity: ship.rarity,
       faction: ship.faction,
+      hullType: hullTypeLabel(ship.hullType),
+      maxTier: ship.maxTier,
+      officerBonus: ship.officerBonus,
+      crewSlots: ship.crewSlots,
     },
     intent,
     ownedOfficers,
@@ -688,6 +680,8 @@ export async function resolveConflict(officerId: string, ctx: ToolContext): Prom
         name: alt.name,
         rarity: alt.rarity,
         group: alt.groupName,
+        officerClass: officerClassLabel(alt.officerClass),
+        faction: alt.faction ? (alt.faction as Record<string, unknown>).name ?? null : null,
         captainManeuver: alt.captainManeuver,
         officerAbility: alt.officerAbility,
         belowDeckAbility: alt.belowDeckAbility,
@@ -717,6 +711,8 @@ export async function resolveConflict(officerId: string, ctx: ToolContext): Prom
       name: officer.name,
       rarity: officer.rarity,
       group: officer.groupName,
+      officerClass: officerClassLabel(officer.officerClass),
+      faction: officer.faction ? (officer.faction as Record<string, unknown>).name ?? null : null,
       captainManeuver: officer.captainManeuver,
       officerAbility: officer.officerAbility,
       belowDeckAbility: officer.belowDeckAbility,
@@ -846,6 +842,8 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
           name: ref.name,
           rarity: ref.rarity,
           group: ref.groupName,
+          officerClass: officerClassLabel(ref.officerClass),
+          faction: ref.faction ? (ref.faction as Record<string, unknown>).name ?? null : null,
           captainManeuver: ref.captainManeuver,
           officerAbility: ref.officerAbility,
           belowDeckAbility: ref.belowDeckAbility,
@@ -871,6 +869,7 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
           grade: ref.grade,
           rarity: ref.rarity,
           faction: ref.faction,
+          hullType: hullTypeLabel(ref.hullType),
           tier: overlay.tier ?? ref.tier,
           level: overlay.level,
         };

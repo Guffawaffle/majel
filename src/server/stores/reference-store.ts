@@ -130,7 +130,7 @@ export interface ReferenceStore {
   createOfficer(officer: CreateReferenceOfficerInput): Promise<ReferenceOfficer>;
   getOfficer(id: string): Promise<ReferenceOfficer | null>;
   findOfficerByName(name: string): Promise<ReferenceOfficer | null>;
-  listOfficers(filters?: { rarity?: string; groupName?: string }): Promise<ReferenceOfficer[]>;
+  listOfficers(filters?: { rarity?: string; groupName?: string; officerClass?: number }): Promise<ReferenceOfficer[]>;
   searchOfficers(query: string): Promise<ReferenceOfficer[]>;
   upsertOfficer(officer: CreateReferenceOfficerInput): Promise<ReferenceOfficer>;
   deleteOfficer(id: string): Promise<boolean>;
@@ -138,7 +138,7 @@ export interface ReferenceStore {
   createShip(ship: CreateReferenceShipInput): Promise<ReferenceShip>;
   getShip(id: string): Promise<ReferenceShip | null>;
   findShipByName(name: string): Promise<ReferenceShip | null>;
-  listShips(filters?: { rarity?: string; faction?: string; shipClass?: string }): Promise<ReferenceShip[]>;
+  listShips(filters?: { rarity?: string; faction?: string; shipClass?: string; hullType?: number; grade?: number }): Promise<ReferenceShip[]>;
   searchShips(query: string): Promise<ReferenceShip[]>;
   upsertShip(ship: CreateReferenceShipInput): Promise<ReferenceShip>;
   deleteShip(id: string): Promise<boolean>;
@@ -351,12 +351,13 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
   log.boot.debug("reference store initialized");
 
   // Dynamic filtered list helpers
-  async function listOfficersFiltered(filters: { rarity?: string; groupName?: string }): Promise<ReferenceOfficer[]> {
+  async function listOfficersFiltered(filters: { rarity?: string; groupName?: string; officerClass?: number }): Promise<ReferenceOfficer[]> {
     const clauses: string[] = [];
     const params: (string | number)[] = [];
     let paramIdx = 1;
     if (filters.rarity) { clauses.push(`rarity = $${paramIdx++}`); params.push(filters.rarity); }
     if (filters.groupName) { clauses.push(`group_name = $${paramIdx++}`); params.push(filters.groupName); }
+    if (filters.officerClass != null) { clauses.push(`officer_class = $${paramIdx++}`); params.push(filters.officerClass); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const result = await pool.query(
       `SELECT ${OFFICER_COLS} FROM reference_officers ${where} ORDER BY name`,
@@ -365,13 +366,15 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
     return result.rows as ReferenceOfficer[];
   }
 
-  async function listShipsFiltered(filters: { rarity?: string; faction?: string; shipClass?: string }): Promise<ReferenceShip[]> {
+  async function listShipsFiltered(filters: { rarity?: string; faction?: string; shipClass?: string; hullType?: number; grade?: number }): Promise<ReferenceShip[]> {
     const clauses: string[] = [];
     const params: (string | number)[] = [];
     let paramIdx = 1;
     if (filters.rarity) { clauses.push(`rarity = $${paramIdx++}`); params.push(filters.rarity); }
     if (filters.faction) { clauses.push(`faction = $${paramIdx++}`); params.push(filters.faction); }
     if (filters.shipClass) { clauses.push(`ship_class = $${paramIdx++}`); params.push(filters.shipClass); }
+    if (filters.hullType != null) { clauses.push(`hull_type = $${paramIdx++}`); params.push(filters.hullType); }
+    if (filters.grade != null) { clauses.push(`grade = $${paramIdx++}`); params.push(filters.grade); }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const result = await pool.query(
       `SELECT ${SHIP_COLS} FROM reference_ships ${where} ORDER BY name`,
