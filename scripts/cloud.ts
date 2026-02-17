@@ -308,7 +308,7 @@ async function cmdDeploy(): Promise<void> {
     healthData = JSON.parse(raw);
     healthOk = true;
   } catch {
-    healthOk = false;
+    /* healthOk already false */
   }
 
   if (AX_MODE) {
