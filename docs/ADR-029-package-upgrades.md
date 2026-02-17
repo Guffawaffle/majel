@@ -1,8 +1,9 @@
 # ADR-029 — Package Version Upgrades
 
-**Status:** Proposed  
+**Status:** Accepted ✅ (all phases complete)  
 **Date:** 2025-07-25  
-**Context:** All 7 outdated dependencies are major-version bumps (except one minor). This plan sequences upgrades by risk to keep the app deployable at every step.
+**Completed:** 2026-02-17  
+**Context:** All 7 outdated dependencies were major-version bumps (except one minor). Upgrades sequenced by risk — all 5 phases executed successfully.
 
 ---
 
@@ -129,4 +130,4 @@ Each phase is a separate commit. If any phase breaks, revert and investigate bef
 
 ## Decision
 
-Upgrade in the order above. Phases 1–4 can be done immediately (low risk, no code changes). Phase 5 (Express 5) requires 2 known code changes and type augmentation review — schedule when test infrastructure is stable.
+All upgrades completed. Phases 1–4 landed in commit `b4a23ae` (Phases 1-4) and Phase 5 in commit `4b2a64e` (Express 5). Zero outdated packages, zero npm audit vulnerabilities.
