@@ -47,7 +47,7 @@ export function createReceiptRoutes(appState: AppState): Router {
   router.get("/api/import/receipts/:id", async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.RECEIPT_STORE_NOT_AVAILABLE, "Receipt store not available", 503);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid receipt ID", 400);
     const receipt = await store.getReceipt(id);
     if (!receipt) return sendFail(res, ErrorCode.NOT_FOUND, `Receipt ${id} not found`, 404);
@@ -59,7 +59,7 @@ export function createReceiptRoutes(appState: AppState): Router {
   router.post("/api/import/receipts/:id/undo", admiral, async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.RECEIPT_STORE_NOT_AVAILABLE, "Receipt store not available", 503);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid receipt ID", 400);
     const result = await store.undoReceipt(id);
     if (!result.success) {
@@ -74,7 +74,7 @@ export function createReceiptRoutes(appState: AppState): Router {
   router.post("/api/import/receipts/:id/resolve", admiral, async (req, res) => {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.RECEIPT_STORE_NOT_AVAILABLE, "Receipt store not available", 503);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid receipt ID", 400);
     const { resolvedItems } = req.body;
     if (!Array.isArray(resolvedItems)) {

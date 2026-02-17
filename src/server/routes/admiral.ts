@@ -80,11 +80,11 @@ export function createAdmiralRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Invite store not available", 503);
     }
 
-    if (req.params.code.length > 100) {
+    if ((req.params.code as string).length > 100) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid invite code", 400);
     }
 
-    const revoked = await appState.inviteStore.revokeCode(req.params.code);
+    const revoked = await appState.inviteStore.revokeCode(req.params.code as string);
     if (!revoked) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Invite code not found", 404);
     }
@@ -107,11 +107,11 @@ export function createAdmiralRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Invite store not available", 503);
     }
 
-    if (req.params.id.length > 100) {
+    if ((req.params.id as string).length > 100) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid session ID", 400);
     }
 
-    const deleted = await appState.inviteStore.deleteSession(req.params.id);
+    const deleted = await appState.inviteStore.deleteSession(req.params.id as string);
     if (!deleted) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }

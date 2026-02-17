@@ -40,15 +40,15 @@ export function createSessionRoutes(appState: AppState): Router {
     if (!appState.sessionStore) {
       return sendFail(res, ErrorCode.SESSION_STORE_NOT_AVAILABLE, "Session store not available", 503);
     }
-    if (req.params.id.length > 200) {
+    if ((req.params.id as string).length > 200) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
     // Ownership check: owner or admiral
-    const owner = await appState.sessionStore.getOwner(req.params.id);
+    const owner = await appState.sessionStore.getOwner(req.params.id as string);
     const userId = res.locals.userId as string;
     // null owner = unowned legacy session → only admirals may access
     if (owner === null) {
-      const session = await appState.sessionStore.get(req.params.id);
+      const session = await appState.sessionStore.get(req.params.id as string);
       if (!session) return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
       if (!res.locals.isAdmiral) return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
       return sendOk(res, session);
@@ -56,7 +56,7 @@ export function createSessionRoutes(appState: AppState): Router {
     if (owner !== userId && !res.locals.isAdmiral) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    const session = await appState.sessionStore.get(req.params.id);
+    const session = await appState.sessionStore.get(req.params.id as string);
     if (!session) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
@@ -67,7 +67,7 @@ export function createSessionRoutes(appState: AppState): Router {
     if (!appState.sessionStore) {
       return sendFail(res, ErrorCode.SESSION_STORE_NOT_AVAILABLE, "Session store not available", 503);
     }
-    if (req.params.id.length > 200) {
+    if ((req.params.id as string).length > 200) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
     const { title } = req.body;
@@ -78,7 +78,7 @@ export function createSessionRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Title must be ${MAX_TITLE} characters or fewer`, 400);
     }
     // Ownership check: owner or admiral
-    const owner = await appState.sessionStore.getOwner(req.params.id);
+    const owner = await appState.sessionStore.getOwner(req.params.id as string);
     const userId = res.locals.userId as string;
     // null owner = unowned legacy session → only admirals may modify
     if (owner === null && !res.locals.isAdmiral) {
@@ -87,22 +87,22 @@ export function createSessionRoutes(appState: AppState): Router {
     if (owner !== null && owner !== userId && !res.locals.isAdmiral) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    const updated = await appState.sessionStore.updateTitle(req.params.id, title.trim());
+    const updated = await appState.sessionStore.updateTitle(req.params.id as string, title.trim());
     if (!updated) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    sendOk(res, { id: req.params.id, title: title.trim(), status: "updated" });
+    sendOk(res, { id: req.params.id as string, title: title.trim(), status: "updated" });
   });
 
   router.delete("/api/sessions/:id", async (req, res) => {
     if (!appState.sessionStore) {
       return sendFail(res, ErrorCode.SESSION_STORE_NOT_AVAILABLE, "Session store not available", 503);
     }
-    if (req.params.id.length > 200) {
+    if ((req.params.id as string).length > 200) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
     // Ownership check: owner or admiral
-    const owner = await appState.sessionStore.getOwner(req.params.id);
+    const owner = await appState.sessionStore.getOwner(req.params.id as string);
     const userId = res.locals.userId as string;
     // null owner = unowned legacy session → only admirals may delete
     if (owner === null && !res.locals.isAdmiral) {
@@ -111,11 +111,11 @@ export function createSessionRoutes(appState: AppState): Router {
     if (owner !== null && owner !== userId && !res.locals.isAdmiral) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    const deleted = await appState.sessionStore.delete(req.params.id);
+    const deleted = await appState.sessionStore.delete(req.params.id as string);
     if (!deleted) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    sendOk(res, { id: req.params.id, status: "deleted" });
+    sendOk(res, { id: req.params.id as string, status: "deleted" });
   });
 
   return router;

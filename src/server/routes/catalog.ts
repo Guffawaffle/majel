@@ -174,7 +174,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.get("/api/catalog/officers/:id", async (req, res) => {
     if (!requireReferenceStore(res)) return;
-    const officer = await appState.referenceStore!.getOfficer(req.params.id);
+    const officer = await appState.referenceStore!.getOfficer(req.params.id as string);
     if (!officer) return sendFail(res, ErrorCode.NOT_FOUND, "Officer not found", 404);
     sendOk(res, officer);
   });
@@ -292,7 +292,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.get("/api/catalog/ships/:id", async (req, res) => {
     if (!requireReferenceStore(res)) return;
-    const ship = await appState.referenceStore!.getShip(req.params.id);
+    const ship = await appState.referenceStore!.getShip(req.params.id as string);
     if (!ship) return sendFail(res, ErrorCode.NOT_FOUND, "Ship not found", 404);
     sendOk(res, ship);
   });
@@ -340,7 +340,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   router.patch("/api/catalog/officers/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
-    const refId = req.params.id;
+    const refId = req.params.id as string;
 
     if (appState.referenceStore && !(await appState.referenceStore.getOfficer(refId))) {
       return sendFail(res, ErrorCode.NOT_FOUND, `Reference officer not found: ${refId}`, 404);
@@ -389,7 +389,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.delete("/api/catalog/officers/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const deleted = await appState.overlayStore!.deleteOfficerOverlay(req.params.id);
+    const deleted = await appState.overlayStore!.deleteOfficerOverlay(req.params.id as string);
     sendOk(res, { deleted });
   });
 
@@ -400,7 +400,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   router.patch("/api/catalog/ships/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
     const overlay = appState.overlayStore!;
-    const refId = req.params.id;
+    const refId = req.params.id as string;
 
     if (appState.referenceStore && !(await appState.referenceStore.getShip(refId))) {
       return sendFail(res, ErrorCode.NOT_FOUND, `Reference ship not found: ${refId}`, 404);
@@ -449,7 +449,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.delete("/api/catalog/ships/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const deleted = await appState.overlayStore!.deleteShipOverlay(req.params.id);
+    const deleted = await appState.overlayStore!.deleteShipOverlay(req.params.id as string);
     sendOk(res, { deleted });
   });
 

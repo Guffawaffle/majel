@@ -90,7 +90,7 @@ export function createTargetRoutes(appState: AppState): Router {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
-    const id = Number(req.params.id);
+    const id = Number(req.params.id as string);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid target ID", 400);
 
     const target = await store.get(id);
@@ -182,7 +182,7 @@ export function createTargetRoutes(appState: AppState): Router {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
-    const id = Number(req.params.id);
+    const id = Number(req.params.id as string);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid target ID", 400);
 
     const { targetTier, targetRank, targetLevel, reason, priority, status } = req.body;
@@ -228,7 +228,7 @@ export function createTargetRoutes(appState: AppState): Router {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
-    const id = Number(req.params.id);
+    const id = Number(req.params.id as string);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid target ID", 400);
 
     const deleted = await store.delete(id);
@@ -242,7 +242,7 @@ export function createTargetRoutes(appState: AppState): Router {
     const store = getStore();
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
-    const id = Number(req.params.id);
+    const id = Number(req.params.id as string);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid target ID", 400);
 
     const target = await store.markAchieved(id);

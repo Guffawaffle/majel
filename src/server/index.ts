@@ -239,7 +239,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createReceiptRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
-  app.get("/app/*", (_req, res) => {
+  app.get("/app/{*splat}", (_req, res) => {
     res.sendFile(path.join(clientDir, "index.html"));
   });
 
