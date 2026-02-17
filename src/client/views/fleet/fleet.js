@@ -180,7 +180,7 @@ const RARITY_ORDER = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
 function sortItems(items) {
     const sorted = [...items];
     sorted.sort((a, b) => {
-        let cmp = 0;
+        let cmp;
         switch (sortField) {
             case 'level':
                 cmp = (a.userLevel || 0) - (b.userLevel || 0);

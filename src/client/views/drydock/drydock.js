@@ -82,7 +82,7 @@ export async function refresh() {
 function sortItems(items) {
     const sorted = [...items];
     sorted.sort((a, b) => {
-        let cmp = 0;
+        let cmp;
         switch (sortField) {
             case 'ship':
                 cmp = (shipName(a.shipId) || '').localeCompare(shipName(b.shipId) || '');

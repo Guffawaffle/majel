@@ -47,6 +47,7 @@ export default tseslint.config(
             }],
             '@typescript-eslint/no-explicit-any': 'warn',
             'no-console': 'off', // pino handles logging, but server scripts use console
+            'no-useless-assignment': 'off', // false positives on $${idx++} query-builder pattern
         },
     },
 
@@ -103,6 +104,7 @@ export default tseslint.config(
             '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
             '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/no-require-imports': 'off',
+            'no-useless-assignment': 'off', // false positives on $${idx++} pattern
         },
     },
 
