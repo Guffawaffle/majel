@@ -62,6 +62,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`create_variant`** — detects duplicate by name within the same base loadout (case-insensitive)
 - All dupe responses follow AX-friendly pattern: `status: "duplicate_detected"`, existing entity details, `nextSteps`
 
+#### Contextual Help System
+- **Help panel** — slide-in drawer triggered by `?` button in the title bar, shows context-aware help for the current view
+- **Per-view help content** — structured help for all 10 views: Chat, Catalog, Fleet, Drydock, Crew Builder, Fleet Ops, Crews, Plan, Diagnostics, Admiral Console
+- **Browsable** — navigate between views' help from within the panel; "About Ariadne" global overview accessible from any view
+- **Non-obtrusive UX** — no walkthroughs, no tooltips, no interruptions; purely pull-based (only appears when you click `?`)
+- **Keyboard shortcuts** — per-view shortcut reference (Catalog: Space/T/arrows; Chat: Enter/Shift+Enter)
+- **Tips** — contextual quick-tips for each view's key workflows
+- **Router hook** — `onNavigate()` callback for view change listeners; help panel auto-closes on navigation
+
 ### Changed
 - **Chat timeout** — 30s → 60s for complex AI responses
 - **Session auto-titling** — sessions titled from first user message
