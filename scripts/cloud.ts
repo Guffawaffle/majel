@@ -25,8 +25,8 @@
  * @see docs/ADR-018-cloud-deployment.md
  */
 
-import { execFileSync, spawn } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -827,6 +827,191 @@ async function cmdSql(): Promise<void> {
   }
 }
 
+// ─── DB Operations ──────────────────────────────────────────────
+
+async function cmdDbSeed(): Promise<void> {
+  const start = Date.now();
+  
+  humanLog("🌱 Seeding Cloud DB from CDN snapshot...");
+  humanLog("────────────────────────────────────────");
+  
+  // Get password from Secret Manager
+  const password = runCapture(`gcloud secrets versions access latest --secret=cloudsql-password --project ${PROJECT}`);
+  
+  // Get Cloud SQL IP
+  const instance = gcloudJson<{ ipAddresses?: Array<{ type?: string; ipAddress?: string }> }>(`sql instances describe majel-pg --project ${PROJECT}`);
+  const publicIp = instance.ipAddresses?.find(ip => ip.type === "PRIMARY")?.ipAddress;
+  
+  if (!publicIp) {
+    humanError("❌ Could not find Cloud SQL public IP");
+    process.exit(1);
+  }
+  
+  humanLog(`   Connecting to ${publicIp}:5432...`);
+  
+  // Run seed script
+  const env = {
+    ...process.env,
+    CLOUD_DB_HOST: publicIp,
+    CLOUD_DB_PORT: "5432",
+    CLOUD_DB_PASSWORD: password,
+  };
+  
+  const result = spawnSync("npx", ["tsx", "scripts/seed-cloud-db.ts"], {
+    cwd: process.cwd(),
+    env,
+    stdio: AX_MODE ? "pipe" : "inherit",
+    encoding: "utf-8",
+  });
+  
+  if (result.status !== 0) {
+    if (AX_MODE) {
+      axOutput("db:seed", start, { status: "failed" }, {
+        success: false,
+        errors: ["Seed script failed", result.stderr || "Unknown error"],
+        hints: ["Ensure IP is authorized: npm run cloud:db:auth", "Check CDN snapshot exists: data/.stfc-snapshot/"],
+      });
+    } else {
+      humanError("❌ Seed failed");
+    }
+    process.exit(1);
+  }
+  
+  if (AX_MODE) {
+    axOutput("db:seed", start, { status: "completed", output: result.stdout || "" });
+  }
+}
+
+async function cmdDbWipe(): Promise<void> {
+  const start = Date.now();
+  const args = process.argv.slice(2);
+  const force = args.includes("--force") || args.includes("-f");
+  
+  if (!force) {
+    humanError("⚠️  This will DELETE ALL officers from the cloud database!");
+    humanError("   Add --force to confirm");
+    process.exit(1);
+  }
+  
+  humanLog("🗑️  Wiping reference_officers table...");
+  
+  // Get password from Secret Manager
+  const password = runCapture(`gcloud secrets versions access latest --secret=cloudsql-password --project ${PROJECT}`);
+  
+  // Get Cloud SQL IP
+  const instance = gcloudJson<{ ipAddresses?: Array<{ type?: string; ipAddress?: string }> }>(`sql instances describe majel-pg --project ${PROJECT}`);
+  const publicIp = instance.ipAddresses?.find(ip => ip.type === "PRIMARY")?.ipAddress;
+  
+  if (!publicIp) {
+    humanError("❌ Could not find Cloud SQL public IP");
+    process.exit(1);
+  }
+  
+  // Create temp script to wipe
+  const wipeScript = `
+import pg from "pg";
+const pool = new pg.Pool({
+  host: "${publicIp}",
+  port: 5432,
+  user: "postgres",
+  password: process.env.CLOUD_DB_PASSWORD,
+  database: "majel",
+});
+const result = await pool.query("DELETE FROM reference_officers");
+console.log(JSON.stringify({ deleted: result.rowCount }));
+await pool.end();
+`;
+
+  // Write to temp file (tsx -e doesn't support top-level await)
+  const tmpFile = resolve(process.cwd(), ".tmp-db-wipe.mts");
+  writeFileSync(tmpFile, wipeScript);
+  
+  const result = spawnSync("npx", ["tsx", tmpFile], {
+    cwd: process.cwd(),
+    env: { ...process.env, CLOUD_DB_PASSWORD: password },
+    stdio: "pipe",
+    encoding: "utf-8",
+  });
+  
+  // Clean up temp file
+  try { unlinkSync(tmpFile); } catch { /* ignore */ }
+  
+  let deleted = 0;
+  try {
+    const output = JSON.parse(result.stdout);
+    deleted = output.deleted || 0;
+  } catch { /* ignore */ }
+  
+  if (AX_MODE) {
+    axOutput("db:wipe", start, { deleted, status: result.status === 0 ? "completed" : "failed" });
+  } else {
+    humanLog(`✅ Deleted ${deleted} officers`);
+  }
+}
+
+async function cmdDbCount(): Promise<void> {
+  const start = Date.now();
+  
+  // Get password from Secret Manager
+  const password = runCapture(`gcloud secrets versions access latest --secret=cloudsql-password --project ${PROJECT}`);
+  
+  // Get Cloud SQL IP
+  const instance = gcloudJson<{ ipAddresses?: Array<{ type?: string; ipAddress?: string }> }>(`sql instances describe majel-pg --project ${PROJECT}`);
+  const publicIp = instance.ipAddresses?.find(ip => ip.type === "PRIMARY")?.ipAddress;
+  
+  if (!publicIp) {
+    humanError("❌ Could not find Cloud SQL public IP");
+    process.exit(1);
+  }
+  
+  // Write temp script (avoids tsx -e top-level await issues)
+  const countScript = `
+import pg from "pg";
+const pool = new pg.Pool({
+  host: "${publicIp}",
+  port: 5432,
+  user: "postgres",
+  password: process.env.CLOUD_DB_PASSWORD,
+  database: "majel",
+});
+const result = await pool.query(\`
+  SELECT 
+    (SELECT COUNT(*) FROM reference_officers) as officers,
+    (SELECT COUNT(*) FROM reference_ships) as ships
+\`);
+console.log(JSON.stringify(result.rows[0]));
+await pool.end();
+`;
+
+  // Write to temp file (tsx -e doesn't support top-level await)
+  const tmpFile = resolve(process.cwd(), ".tmp-db-count.mts");
+  writeFileSync(tmpFile, countScript);
+  
+  const result = spawnSync("npx", ["tsx", tmpFile], {
+    cwd: process.cwd(),
+    env: { ...process.env, CLOUD_DB_PASSWORD: password },
+    stdio: "pipe",
+    encoding: "utf-8",
+  });
+  
+  // Clean up temp file
+  try { unlinkSync(tmpFile); } catch { /* ignore */ }
+  
+  let counts = { officers: 0, ships: 0 };
+  try {
+    counts = JSON.parse(result.stdout);
+  } catch { /* ignore */ }
+  
+  if (AX_MODE) {
+    axOutput("db:count", start, counts);
+  } else {
+    humanLog("📊 Cloud DB Counts");
+    humanLog("────────────────────────────────────────");
+    humanLog(`   Officers: ${counts.officers}`);
+    humanLog(`   Ships:    ${counts.ships}`);
+  }
+}
+
 async function cmdRevisions(): Promise<void> {
   const start = Date.now();
 
@@ -1441,6 +1626,10 @@ const COMMANDS: Record<string, CommandDef> = {
   canary:    { fn: cmdCanary,    tier: "write", alias: "cloud:canary",    description: "Deploy with partial traffic (default 10%)" },
   promote:   { fn: cmdPromote,   tier: "write", alias: "cloud:promote",   description: "Route 100% traffic to a specific revision" },
   ssh:       { fn: cmdSsh,       tier: "write", alias: "cloud:ssh",       description: "Start Cloud SQL Auth Proxy for local psql" },
+  // DB operations (requires IP authorization)
+  "db:seed":  { fn: cmdDbSeed,   tier: "write", alias: "cloud:db:seed",  description: "Seed Cloud DB from CDN snapshot" },
+  "db:wipe":  { fn: cmdDbWipe,   tier: "write", alias: "cloud:db:wipe",  description: "Delete all officers (--force required)" },
+  "db:count": { fn: cmdDbCount,  tier: "read",  alias: "cloud:db:count", description: "Show officer/ship counts in Cloud DB" },
 };
 
 // ─── Main ───────────────────────────────────────────────────────
