@@ -117,7 +117,6 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_targets_status ON targets(status)`,
   `CREATE INDEX IF NOT EXISTS idx_targets_ref_id ON targets(ref_id)`,
   `CREATE INDEX IF NOT EXISTS idx_targets_priority ON targets(priority)`,
-  `CREATE INDEX IF NOT EXISTS idx_targets_user ON targets(user_id)`,
 
   // Migration: add user_id to existing tables that lack it
   `DO $$ BEGIN
@@ -130,6 +129,9 @@ const SCHEMA_STATEMENTS = [
       ALTER TABLE targets ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local';
     END IF;
   END $$`,
+
+  // user_id index (must come AFTER migration adds the column)
+  `CREATE INDEX IF NOT EXISTS idx_targets_user ON targets(user_id)`,
 
   // RLS policies
   `ALTER TABLE targets ENABLE ROW LEVEL SECURITY`,

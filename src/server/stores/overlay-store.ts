@@ -125,7 +125,6 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_officer_overlay_state ON officer_overlay(ownership_state)`,
   `CREATE INDEX IF NOT EXISTS idx_officer_overlay_target ON officer_overlay(target) WHERE target = TRUE`,
-  `CREATE INDEX IF NOT EXISTS idx_officer_overlay_user ON officer_overlay(user_id)`,
 
   `CREATE TABLE IF NOT EXISTS ship_overlay (
     user_id TEXT NOT NULL DEFAULT 'local',
@@ -143,7 +142,6 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ship_overlay_state ON ship_overlay(ownership_state)`,
   `CREATE INDEX IF NOT EXISTS idx_ship_overlay_target ON ship_overlay(target) WHERE target = TRUE`,
-  `CREATE INDEX IF NOT EXISTS idx_ship_overlay_user ON ship_overlay(user_id)`,
 
   // Migration: add user_id to existing tables that lack it
   `DO $$ BEGIN
@@ -171,6 +169,10 @@ const SCHEMA_STATEMENTS = [
       ALTER TABLE ship_overlay ADD PRIMARY KEY (user_id, ref_id);
     END IF;
   END $$`,
+
+  // user_id indexes (must come AFTER migration adds the column)
+  `CREATE INDEX IF NOT EXISTS idx_officer_overlay_user ON officer_overlay(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_ship_overlay_user ON ship_overlay(user_id)`,
 
   // RLS policies
   `ALTER TABLE officer_overlay ENABLE ROW LEVEL SECURITY`,
