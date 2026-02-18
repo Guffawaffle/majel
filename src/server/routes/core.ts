@@ -77,6 +77,10 @@ export function createCoreRoutes(appState: AppState): Router {
         { method: "GET", path: "/api/settings", auth: "lieutenant", description: "All settings with resolved values" },
         { method: "PATCH", path: "/api/settings", auth: "admiral", description: "Update one or more settings" },
         { method: "DELETE", path: "/api/settings/:key", auth: "admiral", description: "Reset a setting to its default" },
+        // ── Per-User Settings (#86) ──
+        { method: "GET", path: "/api/user-settings", auth: "visitor", description: "All user-overridable settings (merged with defaults)" },
+        { method: "PUT", path: "/api/user-settings/:key", auth: "visitor", description: "Set a per-user preference override" },
+        { method: "DELETE", path: "/api/user-settings/:key", auth: "visitor", description: "Remove per-user override (revert to default)" },
         { method: "GET", path: "/api/sessions", auth: "lieutenant", description: "List saved chat sessions" },
         { method: "GET", path: "/api/sessions/:id", auth: "lieutenant", description: "Get a session with all messages" },
         { method: "PATCH", path: "/api/sessions/:id", auth: "lieutenant", description: "Update session title" },
