@@ -39,7 +39,7 @@ import { createCrewStore } from "./stores/crew-store.js";
 import { createReceiptStore } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
-import { syncGamedataOfficers, syncGamedataShips, syncCdnShips, syncCdnOfficers } from "./services/gamedata-ingest.js";
+import { syncCdnShips, syncCdnOfficers } from "./services/gamedata-ingest.js";
 import { createOverlayStoreFactory } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
@@ -362,19 +362,15 @@ async function boot(): Promise<void> {
     log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
 
     // Always sync reference data on boot — bulkUpsert is idempotent (ON CONFLICT UPDATE).
-    // Bundled JSON (data/raw-*.json) is always available; CDN snapshot may not be present.
+    // CDN-only sync (ADR-028: data.stfc.space is authoritative, legacy raw-*.json deprecated).
     try {
-      log.boot.info("syncing reference data (bundled + CDN)");
-      const [officerResult, shipResult, cdnShipResult, cdnOfficerResult] = await Promise.all([
-        syncGamedataOfficers(state.referenceStore),
-        syncGamedataShips(state.referenceStore),
+      log.boot.info("syncing reference data (CDN)");
+      const [cdnShipResult, cdnOfficerResult] = await Promise.all([
         syncCdnShips(state.referenceStore),
         syncCdnOfficers(state.referenceStore),
       ]);
       const postCounts = await state.referenceStore.counts();
       log.boot.info({
-        bundledOfficers: officerResult.officers.total,
-        bundledShips: shipResult.ships.total,
         cdnOfficers: cdnOfficerResult.officers.total,
         cdnShips: cdnShipResult.ships.total,
         totalOfficers: postCounts.officers,
