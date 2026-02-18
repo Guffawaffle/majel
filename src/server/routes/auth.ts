@@ -101,6 +101,13 @@ export function createAuthRoutes(appState: AppState): Router {
       const message = /duplicate|already exists|unique/i.test(raw)
         ? "An account with this email already exists"
         : "Sign-up failed";
+
+      appState.auditStore?.logEvent({
+        event: "auth.signup",
+        detail: { email, success: false, reason: message },
+        ...auditMeta(req),
+      });
+
       sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
     }
   });
@@ -280,6 +287,14 @@ export function createAuthRoutes(appState: AppState): Router {
       sendOk(res, { message: "Password changed. All other sessions have been signed out." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Password change failed";
+
+      appState.auditStore?.logEvent({
+        event: "auth.password.change",
+        actorId: res.locals.userId ?? null,
+        detail: { success: false, reason: message },
+        ...auditMeta(req),
+      });
+
       sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
     }
   });
@@ -448,6 +463,13 @@ export function createAuthRoutes(appState: AppState): Router {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to redeem invite code";
+
+      appState.auditStore?.logEvent({
+        event: "auth.invite.redeem",
+        detail: { success: false, reason: message },
+        ...auditMeta(req),
+      });
+
       sendFail(res, ErrorCode.FORBIDDEN, message, 403);
     }
   });

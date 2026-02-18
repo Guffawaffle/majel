@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-14 | Branch: `arch/loadout-inversion`
+> Updated: 2026-02-18 | Branch: `main`
 
 ---
 
@@ -81,6 +81,50 @@
   - File: `src/server/routes/core.ts` — `safeCounts()` now wraps with `active` + `error` fallback
 - [x] **E5 (MINOR):** `res.locals` untyped — `tenantId = userId` conflation
   - File: `src/server/express-locals.d.ts` — Express module augmentation with typed Locals
+
+---
+
+## Auth Overhaul Post-Review (#91)
+
+Review findings from 10-agent code review of the SOC2 auth overhaul (2026-02-18).
+F1–F3 fixed inline. Remaining items below.
+
+### FAIL — Must Fix
+
+- [x] **F1:** Signup failure catch not audited — brute-force/enumeration blind spot *(fixed fb2ac0a+)*
+- [x] **F2:** Change-password failure catch not audited — wrong-password brute-force *(fixed fb2ac0a+)*
+- [x] **F3:** Invite redeem failure catch not audited — code-guessing *(fixed fb2ac0a+)*
+- [ ] **F4:** `app-context.test.ts` local `makeState` missing `auditStore` + 2 fields, uses `as AppState` cast
+- [ ] **F5:** `auth.test.ts` local `makeState` missing 5 AppState fields
+- [ ] **F6:** 4 more test files with local `makeState` (auth-validation, crew-validation, admiral-routes, multimodal-chat) — should import shared
+- [ ] **F7:** RUNBOOK query #4 (rate limits) is broken — `subsystem="http"` + `"rate limit"` text never appears in 429 logs. Fix: use `httpRequest.status=429`
+
+### WARN — Should Fix
+
+#### Audit Store
+- [ ] **W1:** `String(created_at)` returns non-ISO date — use `.toISOString()`
+- [ ] **W2:** No upper-bound cap on query `limit` param — cap at 1000
+- [ ] **W3:** `SELECT *` in audit queries — fragile if schema evolves; use explicit column list
+- [ ] **W4:** Append-only not enforced at DB role level — `majel_app` has DELETE on `auth_audit_log`; revoke or add trigger
+
+#### Auth Routes
+- [ ] **W5:** `verify-email` and `reset-password` audit events missing `actorId`/`targetId`
+- [ ] **W6:** Verify-email failure (invalid token) not audited
+- [ ] **W7:** Reset-password failure paths not audited
+- [ ] **W8:** Bootstrap middleware uses `admin.role_change` event (misleading) — rename to `admin.bootstrap_auth`
+- [ ] **W9:** Bootstrap middleware constructs IP/UA inline — use `auditMeta(req)` for consistency
+- [ ] **W10:** `GET /api/auth/admiral/users` (list users) not audited — sensitive admin read
+
+#### Logger / GCP
+- [ ] **W12:** Redact paths only 1-level deep (`*.token`) — deeper paths like `req.headers.authorization` missed
+
+#### IP Allowlist
+- [ ] **W15:** No IP syntax validation in `parseAllowedIps` — garbage entries silently ignored
+- [ ] **W16:** `trust proxy` hardcoded to `1` — needs comment for multi-proxy deployments
+- [ ] **W17:** No dedicated unit tests for `ip-allowlist.ts`
+
+#### RUNBOOK
+- [ ] **W18:** Missing query recipes: password reset abuse, signup spikes, 5xx errors, boot events, IP allowlist blocks
 
 ---
 
