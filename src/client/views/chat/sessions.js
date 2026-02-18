@@ -60,9 +60,7 @@ function renderSessionList() {
 
     sessionListEl.innerHTML = sessions.map((s) => {
         const isActive = s.id === currentSessionId;
-        const preview = s.preview
-            ? s.preview.length > 40 ? s.preview.slice(0, 40) + "…" : s.preview
-            : "Empty session";
+        const preview = s.preview || "Empty session";
         return `
       <div class="session-item ${isActive ? "active" : ""}" data-session-id="${s.id}">
         <div class="session-item-content">
