@@ -1,0 +1,13 @@
+{
+  "version": "604f6b8b-4a2c-41e8-8e1a-27895fc036c8",
+  "fetchedAt": "2026-02-17T11:46:15.291Z",
+  "source": "data.stfc.space (Ripper's CDN)",
+  "license": "PolyForm Perimeter (community datamined game data)",
+  "approval": "Ripper approved one-time use as raw template for Majel",
+  "types": {
+    "officer": {
+      "summaryCount": 278,
+      "detailsFetched": true
+    }
+  }
+}
