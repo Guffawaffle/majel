@@ -11,7 +11,8 @@
 | **CDN Reference Enrichment** | #83 | ✅ Complete | `data.stfc.space` static snapshot — 112 ships, 278 officers, hull_type/officerClass/faction/grade from game files. Enriches T2 reference catalog. |
 | **CDN UI Surfacing** | #84 | ✅ Complete | Catalog & fleet views display CDN-sourced badges (hull type, officer class, faction). Filter dropdowns for officer class and hull type. |
 | **Ship Class Audit** | #79 | ✅ Complete | Resolved by CDN hull_type enum — authoritative game-file classification. |
-| **Legacy JSON Deprecation** | — | ✅ Complete | Boot and catalog sync now CDN-only. `syncGamedataOfficers`/`syncGamedataShips` marked @deprecated. |
+| **Legacy JSON Deprecation** | — | ✅ Complete | Boot no longer syncs reference data. `syncGamedataOfficers`/`syncGamedataShips` removed from boot path. |
+| **External DB Seeding** | — | ✅ Complete | CDN data seeded via `scripts/seed-cloud-db.ts` running locally against cloud DB via Cloud SQL proxy. No runtime CDN fetch, no bundled JSON in Docker image. |
 | Phase 1: Game State Sync | #73 | Not started | `sync_overlay` JSON import |
 | Phase 2: Research Trees | #74 | Not started | Research tree ingestion |
 | Phase 3: Inventory | — | Not started | Resource planning |
@@ -25,7 +26,7 @@ Majel currently operates on a three-tier intelligence model:
 | Tier | Source | Freshness | Coverage |
 |------|--------|-----------|----------|
 | **T1** — User Overlays | Manual input via UI + AI chat | Stale until user updates | Officers (65), Ships (20), Loadouts, Targets |
-| **T2** — Reference Catalog | CDN sync on boot (`data.stfc.space` snapshot) | Refreshed each boot | 278 officers, 112 ships, abilities, hull types, build costs |
+| **T2** — Reference Catalog | External seed from `data.stfc.space` snapshot via `scripts/seed-cloud-db.ts` | Static until re-seeded | 278 officers, 112 ships, abilities, hull types, build costs |
 | **T3** — Training Knowledge | Gemini's training data | Frozen at training cutoff | Meta strategies, game mechanics, community wisdom |
 
 This architecture means Aria is a **tactical advisor who remembers what you told her**, not a real-time Combat Information Center (CIC). The gap between T1 (what the Admiral tells Aria) and ground truth (what's actually happening in-game) creates "narrative drift" — Aria may suggest crews based on stale ship tiers or missing officer upgrades.

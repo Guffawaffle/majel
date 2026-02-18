@@ -510,8 +510,14 @@ async function cmdSync(): Promise<void> {
   const start = Date.now();
   const url = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.url)'`);
 
-  humanLog("🔄 Syncing catalog on production...");
+  humanLog("� Querying catalog counts on production...");
   humanLog("────────────────────────────────────────");
+  humanLog("");
+  humanLog("ℹ️  Note: Catalog data is seeded externally via scripts/seed-cloud-db.ts");
+  humanLog("   To seed/update the cloud DB, run:");
+  humanLog("   Terminal 1: npx tsx scripts/cloud.ts ssh");
+  humanLog("   Terminal 2: CLOUD_DB_PASSWORD=<pw> npx tsx scripts/seed-cloud-db.ts");
+  humanLog("");
 
   try {
     // Get identity token for authenticated request
@@ -524,6 +530,7 @@ async function cmdSync(): Promise<void> {
         url: `${url}/api/catalog/sync`,
         status: "completed",
         result: data,
+        note: "Data seeded externally via scripts/seed-cloud-db.ts",
       });
     } else {
       humanLog(`  URL:      ${url}/api/catalog/sync`);
@@ -536,11 +543,11 @@ async function cmdSync(): Promise<void> {
     if (AX_MODE) {
       axOutput("sync", start, { url: `${url}/api/catalog/sync`, status: "failed" }, {
         success: false,
-        errors: ["Catalog sync failed", msg],
-        hints: ["Check logs: npm run cloud:logs", "Verify auth: gcloud auth print-identity-token"],
+        errors: ["Catalog query failed", msg],
+        hints: ["Check logs: npm run cloud:logs", "Seed data: npx tsx scripts/seed-cloud-db.ts"],
       });
     } else {
-      humanError(`❌ Catalog sync failed: ${url}/api/catalog/sync`);
+      humanError(`❌ Catalog query failed: ${url}/api/catalog/sync`);
       humanError(`   Error: ${msg}`);
       humanError("   Check: npm run cloud:logs");
     }
