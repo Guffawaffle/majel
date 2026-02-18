@@ -1,11 +1,10 @@
 /**
- * reference-store.ts — Canonical Reference Data Store (ADR-015 / ADR-016)
+ * reference-store.ts — Canonical Reference Data Store (ADR-015 / ADR-016 / ADR-028)
  *
  * Majel — STFC Fleet Intelligence System
  *
  * PostgreSQL-backed store for reference entities (officers, ships).
- * Officers are sourced from structured game data (raw-officers.json).
- * Ships table retained for future data sourcing.
+ * Data is sourced from data.stfc.space CDN snapshot (ADR-028).
  *
  * User state (ownership, targeting, level) lives in overlay-store.ts.
  * This module is the T2 reference tier in the MicroRunner authority ladder.
