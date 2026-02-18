@@ -74,6 +74,82 @@ function stripColorTags(text: string): string {
   return text.replace(/<\/?color[^>]*>/gi, "").trim();
 }
 
+/**
+ * Sanitize HTML to allow only safe formatting tags (<i>, <b>, <em>, <strong>).
+ * All other tags are stripped.
+ */
+function sanitizeHtml(text: string): string {
+  // Whitelist of allowed tags (case-insensitive)
+  const allowedTags = new Set(["i", "b", "em", "strong"]);
+  
+  // Replace tags: keep allowed ones, strip others
+  return text.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (match, tagName) => {
+    return allowedTags.has(tagName.toLowerCase()) ? match : "";
+  }).trim();
+}
+
+interface AbilityValue {
+  value: number;
+  chance: number;
+}
+
+/**
+ * Format ability description by replacing C# format placeholders with actual values.
+ * 
+ * Placeholder format: {N:format} or {N}
+ * - N = index into values array
+ * - format = C# format specifier (#,#% or 0.#% = percentage)
+ * 
+ * Each placeholder is replaced independently with its indexed value.
+ * Uses `chance` field when it's != 1, otherwise uses `value` field.
+ * Detects percentages from format specifier (contains %) or if value is decimal < 1.
+ */
+function formatAbilityDescription(
+  description: string | null | undefined,
+  values: AbilityValue[] | null | undefined,
+  isPercentage: boolean
+): string | null {
+  if (!description) return null;
+
+  let formatted = description;
+
+  // Replace each placeholder {N:format} or {N} with indexed value
+  if (values && values.length > 0) {
+    // Match {0:0.#%}, {1:#,#%}, {2}, etc.
+    formatted = formatted.replace(/\{(\d+)(?::([^}]+))?\}/g, (match, indexStr, format) => {
+      const index = parseInt(indexStr, 10);
+      if (index >= values.length) return match; // Keep original if out of bounds
+      
+      const entry = values[index];
+      // Use chance if it's not 1 (indicates a probability), otherwise use value
+      const rawValue = entry.chance !== 1 ? entry.chance : entry.value;
+      
+      // Check if should format as percentage:
+      // 1. Format specifier contains %
+      // 2. isPercentage flag is true  
+      // 3. Value is decimal < 1 (heuristic for percentages)
+      const formatAsPercent = (format && format.includes('%')) || isPercentage || (rawValue > 0 && rawValue < 1);
+      
+      if (formatAsPercent) {
+        const pct = rawValue * 100;
+        // Format nicely: 5%, 7.5%, 10%
+        return pct % 1 === 0 ? `${pct}%` : `${pct.toFixed(1)}%`;
+      }
+      
+      // Non-percentage: format as number
+      return rawValue % 1 === 0 ? String(rawValue) : rawValue.toFixed(2);
+    });
+  }
+
+  // Sanitize HTML (keep <i>, <b>, strip everything else like <color>)
+  formatted = sanitizeHtml(formatted);
+
+  // Clean up any double spaces
+  formatted = formatted.replace(/\s+/g, " ").trim();
+
+  return formatted;
+}
+
 interface TranslationEntry {
   id: number | null;
   key: string;
@@ -304,7 +380,7 @@ async function main(): Promise<void> {
       const oaText = officer.ability?.loca_id != null ? officerAbilityTextMap.get(officer.ability.loca_id) : null;
       const bdText = officer.below_decks_ability?.loca_id != null ? officerAbilityTextMap.get(officer.below_decks_ability.loca_id) : null;
 
-      // Try to load detail
+      // Try to load detail (has full ability values array)
       let detail = null;
       try {
         const detailPath = join(SNAPSHOT_DIR, "officer", `${officer.id}.json`);
@@ -313,33 +389,55 @@ async function main(): Promise<void> {
         }
       } catch { /* ignore */ }
 
-      // Build abilities
+      // Get ability values from detail (preferred) or summary
+      const cmValues = detail?.captain_ability?.values ?? officer.captain_ability?.values ?? null;
+      const oaValues = detail?.ability?.values ?? officer.ability?.values ?? null;
+      const bdValues = detail?.below_decks_ability?.values ?? officer.below_decks_ability?.values ?? null;
+
+      // Format ability descriptions with actual value ranges
+      const cmDesc = formatAbilityDescription(
+        cmText?.shortDescription ?? cmText?.description,
+        cmValues,
+        officer.captain_ability?.value_is_percentage ?? false
+      );
+      const oaDesc = formatAbilityDescription(
+        oaText?.shortDescription ?? oaText?.description,
+        oaValues,
+        officer.ability?.value_is_percentage ?? false
+      );
+      const bdDesc = formatAbilityDescription(
+        bdText?.shortDescription ?? bdText?.description,
+        bdValues,
+        officer.below_decks_ability?.value_is_percentage ?? false
+      );
+
+      // Build abilities (with formatted descriptions)
       const abilities: Record<string, unknown> = {};
       if (officer.captain_ability) {
         abilities.captainManeuver = {
           name: cmText?.name ?? null,
-          description: cmText?.description ?? null,
-          shortDescription: cmText?.shortDescription ?? null,
+          description: formatAbilityDescription(cmText?.description, cmValues, officer.captain_ability.value_is_percentage ?? false),
+          shortDescription: cmDesc,
           valueIsPercentage: officer.captain_ability.value_is_percentage,
-          values: officer.captain_ability.values,
+          values: cmValues,
         };
       }
       if (officer.ability) {
         abilities.officerAbility = {
           name: oaText?.name ?? null,
-          description: oaText?.description ?? null,
-          shortDescription: oaText?.shortDescription ?? null,
+          description: formatAbilityDescription(oaText?.description, oaValues, officer.ability.value_is_percentage ?? false),
+          shortDescription: oaDesc,
           valueIsPercentage: officer.ability.value_is_percentage,
-          values: officer.ability.values,
+          values: oaValues,
         };
       }
       if (officer.below_decks_ability) {
         abilities.belowDeckAbility = {
           name: bdText?.name ?? null,
-          description: bdText?.description ?? null,
-          shortDescription: bdText?.shortDescription ?? null,
+          description: formatAbilityDescription(bdText?.description, bdValues, officer.below_decks_ability.value_is_percentage ?? false),
+          shortDescription: bdDesc,
           valueIsPercentage: officer.below_decks_ability.value_is_percentage,
-          values: officer.below_decks_ability.values,
+          values: bdValues,
         };
       }
 
@@ -383,9 +481,9 @@ async function main(): Promise<void> {
         name,
         rarityStr,
         className,
-        cmText?.shortDescription ?? cmText?.description ?? null,
-        oaText?.shortDescription ?? oaText?.description ?? null,
-        bdText?.shortDescription ?? bdText?.description ?? null,
+        cmDesc,
+        oaDesc,
+        bdDesc,
         Object.keys(abilities).length > 0 ? JSON.stringify(abilities) : null,
         null, // tags — CDN doesn't have activity tags
         officer.id,
