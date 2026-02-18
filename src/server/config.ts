@@ -49,12 +49,19 @@ export interface AppConfig {
   databaseAdminUrl: string;
 
   // ── Auth (ADR-018 Phase 2) ──────────────────────────────────
-  /** Admin bearer token — if empty, auth is disabled (local/demo mode) */
+  /** Admin bearer token — bootstrap-only (#91 Phase B) */
   adminToken: string;
   /** Secret used for invite code HMAC generation */
   inviteSecret: string;
-  /** Whether auth is enforced (true when adminToken is set) */
+  /**
+   * Whether auth is enforced (#91 Phase D).
+   * Always true in production. Only disabled in dev when no adminToken.
+   */
   authEnabled: boolean;
+
+  // ── Network Security ────────────────────────────────────────
+  /** Comma-separated IP allowlist. Empty = no restriction (local dev). */
+  allowedIps: string[];
 
   // ── Logging ─────────────────────────────────────────────────
   /** Log level (silent, debug, info, warn, error) */
@@ -133,6 +140,9 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
   const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
   const inviteSecret = process.env.MAJEL_INVITE_SECRET || "";
 
+  // IP allowlist (env-only — comma-separated, empty = no restriction)
+  const allowedIps = parseAllowedIps(process.env.MAJEL_ALLOWED_IPS);
+
   // Warn if auth is enabled but invite secret is empty (codes would be forgeable)
   if (adminToken && !inviteSecret) {
     console.warn("WARNING: MAJEL_INVITE_SECRET not set while auth is enabled — invite codes are insecure");
@@ -154,7 +164,8 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
     databaseAdminUrl,
     adminToken,
     inviteSecret,
-    authEnabled: adminToken.length > 0,
+    authEnabled: nodeEnv === "production" || adminToken.length > 0,
+    allowedIps,
     logLevel,
     logPretty,
   };
@@ -180,6 +191,7 @@ export function bootstrapConfigSync(): AppConfig {
   const logPretty = resolveLogPretty(isTest, isDev);
   const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
   const inviteSecret = process.env.MAJEL_INVITE_SECRET || "";
+  const allowedIps = parseAllowedIps(process.env.MAJEL_ALLOWED_IPS);
   return {
     port: parseInt(process.env.MAJEL_PORT || process.env.PORT || "3000", 10),
     nodeEnv,
@@ -191,8 +203,23 @@ export function bootstrapConfigSync(): AppConfig {
     databaseAdminUrl: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel",
     adminToken,
     inviteSecret,
-    authEnabled: adminToken.length > 0,
+    authEnabled: nodeEnv === "production" || adminToken.length > 0,
+    allowedIps,
     logLevel,
     logPretty,
   };
+}
+
+// ─── IP Allowlist Helper ─────────────────────────────────────────
+
+/**
+ * Parse comma-separated IP allowlist.
+ * Returns empty array (no restriction) when env var is unset/empty.
+ */
+function parseAllowedIps(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map(ip => ip.trim())
+    .filter(ip => ip.length > 0);
 }

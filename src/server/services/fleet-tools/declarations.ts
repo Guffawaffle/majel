@@ -17,14 +17,27 @@ import type { TargetStore } from "../../stores/target-store.js";
 // ─── Tool Context ───────────────────────────────────────────
 
 /**
- * Stores required by fleet tools. Injected at engine creation time.
- * All fields are optional — tools gracefully degrade when stores are unavailable.
+ * Stores required by fleet tools. Injected per-request via ToolContextFactory.
+ * All store fields are optional — tools gracefully degrade when stores are unavailable.
+ *
+ * userId is required for user-scoped operations (#85).
+ * Stores should already be scoped to the user when provided.
  */
 export interface ToolContext {
+  /** The authenticated user's ID. Required for user-scoped data access. */
+  userId: string;
   referenceStore?: ReferenceStore | null;
   overlayStore?: OverlayStore | null;
   crewStore?: CrewStore | null;
   targetStore?: TargetStore | null;
+}
+
+/**
+ * Factory that produces user-scoped ToolContext instances (#85).
+ * The GeminiEngine holds this factory and creates a scoped context per chat() call.
+ */
+export interface ToolContextFactory {
+  forUser(userId: string): ToolContext;
 }
 
 // ─── Tool Declarations ──────────────────────────────────────
@@ -525,7 +538,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       "Look up a fleet preset and return a guided action for the Admiral to activate it in the UI. " +
       "This is a fleet-wide change (deactivates all other presets), so Aria provides instructions " +
-      "rather than executing directly. Tell the Admiral to use Fleet Ops → Presets tab to activate.",
+      "rather than executing directly. Tell the Admiral to use Plan → Fleet Presets tab to activate.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -613,5 +626,89 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "away teams, officer conflicts, and source attribution (preset vs manual). " +
       "Call this when the Admiral asks about the current fleet state, what's running, or dock assignments.",
     // No parameters
+  },
+  {
+    name: "set_ship_overlay",
+    description:
+      "Record the Admiral's actual in-game ship progression on a specific ship: current tier, level, power, " +
+      "and ownership state. Use this when the Admiral tells you their ship's current tier/level (e.g. 'my Serene Squall " +
+      "is at tier 9 level 45'). Also sets ownership state and target flag. " +
+      "Provide ship_id from search_ships or get_ship_detail results.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ship_id: {
+          type: Type.STRING,
+          description: "The ship reference ID (e.g. 'cdn:ship:697653604')",
+        },
+        ownership_state: {
+          type: Type.STRING,
+          description: "Ownership state: 'owned', 'unowned', or 'unknown'",
+        },
+        tier: {
+          type: Type.NUMBER,
+          description: "Current tier (e.g. 9)",
+        },
+        level: {
+          type: Type.NUMBER,
+          description: "Current level (e.g. 45)",
+        },
+        power: {
+          type: Type.NUMBER,
+          description: "Current power rating",
+        },
+        target: {
+          type: Type.BOOLEAN,
+          description: "Whether this ship is a fleet priority target",
+        },
+        target_note: {
+          type: Type.STRING,
+          description: "Optional note about this ship's target status",
+        },
+      },
+      required: ["ship_id"],
+    },
+  },
+  {
+    name: "set_officer_overlay",
+    description:
+      "Record the Admiral's actual in-game officer progression: current level, rank (1-5), power, " +
+      "and ownership state. Use this when the Admiral tells you their officer's current level or rank " +
+      "(e.g. 'Kirk is rank 4 level 50'). " +
+      "Provide officer_id from search_officers or get_officer_detail results.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        officer_id: {
+          type: Type.STRING,
+          description: "The officer reference ID (e.g. 'cdn:officer:988947581')",
+        },
+        ownership_state: {
+          type: Type.STRING,
+          description: "Ownership state: 'owned', 'unowned', or 'unknown'",
+        },
+        level: {
+          type: Type.NUMBER,
+          description: "Current level",
+        },
+        rank: {
+          type: Type.STRING,
+          description: "Current rank (1-5)",
+        },
+        power: {
+          type: Type.NUMBER,
+          description: "Current power contribution",
+        },
+        target: {
+          type: Type.BOOLEAN,
+          description: "Whether this officer is a fleet priority target",
+        },
+        target_note: {
+          type: Type.STRING,
+          description: "Optional note about this officer's target status",
+        },
+      },
+      required: ["officer_id"],
+    },
   },
 ];

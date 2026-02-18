@@ -24,7 +24,12 @@ document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
 const CSS_HREF_PATTERN = /^(views\/[\w-]+\/[\w-]+\.css|components\/[\w-]+\.css|styles\/[\w-]+\.css)$/;
 
 // Hash redirect map — backward compatibility
-const HASH_REDIRECTS = { 'admin': 'admiral' };
+const HASH_REDIRECTS = {
+    'admin': 'admiral',
+    'drydock': 'crews',
+    'crew-builder': 'crews',
+    'fleet-ops': 'plan',
+};
 
 // ─── State ──────────────────────────────────────────────────
 let currentView = null;

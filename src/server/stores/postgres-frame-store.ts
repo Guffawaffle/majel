@@ -16,6 +16,8 @@
 import {
   initSchema,
   withTransaction,
+  withUserScope,
+  withUserRead,
   type Pool,
   type PoolClient,
 } from "../db.js";
@@ -195,46 +197,9 @@ function decodeCursor(cursor: string): CursorPayload | null {
   }
 }
 
-// ─── withUserScope — RLS session binding ────────────────────────
-
-/**
- * Execute a callback inside a transaction with RLS user scope set.
- * Composes on db.ts withTransaction — adds only the set_config call.
- * `SET LOCAL` is transaction-scoped — automatically cleared on COMMIT/ROLLBACK.
- */
-export async function withUserScope<T>(
-  pool: Pool,
-  userId: string,
-  fn: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  return withTransaction(pool, async (client) => {
-    await client.query("SELECT set_config('app.current_user_id', $1, true)", [
-      userId,
-    ]);
-    return fn(client);
-  });
-}
-
-/**
- * Execute a single read query with RLS scope but without transactional overhead.
- * Saves 2 round-trips (BEGIN/COMMIT) compared to withUserScope.
- * NOT safe for writes — use withUserScope for mutations.
- */
-async function withUserRead<T>(
-  pool: Pool,
-  userId: string,
-  fn: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("SELECT set_config('app.current_user_id', $1, false)", [
-      userId,
-    ]);
-    return await fn(client);
-  } finally {
-    client.release();
-  }
-}
+// Re-export withUserScope from db.ts for backward compatibility
+// (imported by frame-maintenance.ts)
+export { withUserScope } from "../db.js";
 
 // ─── PostgresFrameStore ─────────────────────────────────────────
 

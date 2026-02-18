@@ -75,13 +75,42 @@ function resolveTransport(): pino.TransportSingleOptions | undefined {
 const level = resolveLevel();
 const transport = resolveTransport();
 
+/**
+ * Map pino numeric levels to GCP Cloud Logging severity strings.
+ * @see https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity
+ */
+const PINO_TO_GCP_SEVERITY: Record<number, string> = {
+  10: "DEBUG",    // trace
+  20: "DEBUG",    // debug
+  30: "INFO",     // info
+  40: "WARNING",  // warn
+  50: "ERROR",    // error
+  60: "CRITICAL", // fatal
+};
+
+/** Whether to emit GCP-compatible JSON (production = no pino-pretty). */
+const GCP_FORMAT = !IS_TEST && !transport;
+
 export const rootLogger: Logger = pino({
   level,
   ...(transport ? { transport } : {}),
+  // Use "message" key for GCP Cloud Logging compatibility (default: "msg")
+  ...(GCP_FORMAT ? { messageKey: "message" } : {}),
   // Base fields on every log line
   base: { service: "majel" },
   // ISO timestamps for JSON output
   timestamp: pino.stdTimeFunctions.isoTime,
+  formatters: {
+    // In production, emit "severity": "INFO" instead of "level": 30
+    // so Cloud Logging maps log levels automatically.
+    ...(GCP_FORMAT
+      ? {
+          level(label: string, number: number) {
+            return { severity: PINO_TO_GCP_SEVERITY[number] || label.toUpperCase(), level: number };
+          },
+        }
+      : {}),
+  },
   // Redact sensitive fields from all log output
   redact: {
     paths: [
@@ -118,6 +147,8 @@ export const log = {
   fleet: rootLogger.child({ subsystem: "fleet" }),
   /** HTTP/API layer */
   http: rootLogger.child({ subsystem: "http" }),
+  /** Authentication & authorization events */
+  auth: rootLogger.child({ subsystem: "auth" }),
   /** Root logger (for one-off use) */
   root: rootLogger,
 };

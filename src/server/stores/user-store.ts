@@ -140,6 +140,8 @@ const SQL = {
   listUsers: `SELECT id, email, email_verified, display_name, role, locked_at, last_login_at, created_at
     FROM users ORDER BY created_at DESC`,
   countUsers: `SELECT COUNT(*) as count FROM users`,
+  countAdmirals: `SELECT COUNT(*) as count FROM users WHERE role = 'admiral'`,
+  countAdmiralsExcluding: `SELECT COUNT(*) as count FROM users WHERE role = 'admiral' AND id != $1`,
 
   // Sessions
   insertSession: `INSERT INTO user_sessions (id, user_id, ip_address, user_agent, expires_at)
@@ -345,6 +347,10 @@ export interface UserStore {
   unlockUser(userId: string): Promise<boolean>;
   deleteUser(userId: string): Promise<boolean>;
   countUsers(): Promise<number>;
+  /** Check if at least one Admiral exists (bootstrap detection). */
+  hasAdmiral(): Promise<boolean>;
+  /** Check if at least one Admiral exists other than the given userId. */
+  hasOtherAdmiral(excludeUserId: string): Promise<boolean>;
 
   // ── Cleanup ──────────────────────────────────────────────
   /** Delete expired sessions. Returns count of rows removed. */
@@ -667,6 +673,16 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
     async countUsers(): Promise<number> {
       const res = await pool.query(SQL.countUsers);
       return parseInt((res.rows[0] as Record<string, unknown>).count as string, 10);
+    },
+
+    async hasAdmiral(): Promise<boolean> {
+      const res = await pool.query(SQL.countAdmirals);
+      return parseInt((res.rows[0] as Record<string, unknown>).count as string, 10) > 0;
+    },
+
+    async hasOtherAdmiral(excludeUserId: string): Promise<boolean> {
+      const res = await pool.query(SQL.countAdmiralsExcluding, [excludeUserId]);
+      return parseInt((res.rows[0] as Record<string, unknown>).count as string, 10) > 0;
     },
 
     // ── Cleanup ──────────────────────────────────────────

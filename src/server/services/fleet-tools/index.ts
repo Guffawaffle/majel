@@ -11,7 +11,7 @@ import { log } from "../../logger.js";
 import type { ToolContext } from "./declarations.js";
 
 // Re-export public surface
-export { FLEET_TOOL_DECLARATIONS, type ToolContext } from "./declarations.js";
+export { FLEET_TOOL_DECLARATIONS, type ToolContext, type ToolContextFactory } from "./declarations.js";
 
 // ─── Read tool implementations ──────────────────────────────
 import {
@@ -48,6 +48,8 @@ import {
   createTargetTool,
   updateTargetTool,
   completeTargetTool,
+  setShipOverlayTool,
+  setOfficerOverlayTool,
 } from "./mutate-tools.js";
 
 // ─── Dispatcher ─────────────────────────────────────────────
@@ -147,6 +149,11 @@ async function dispatchTool(
       return createVariantTool(args, ctx);
     case "get_effective_state":
       return getEffectiveStateTool(ctx);
+    // Overlay mutation tools
+    case "set_ship_overlay":
+      return setShipOverlayTool(args, ctx);
+    case "set_officer_overlay":
+      return setOfficerOverlayTool(args, ctx);
     default:
       return { error: `Unknown tool: ${name}` };
   }

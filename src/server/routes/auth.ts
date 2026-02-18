@@ -19,7 +19,7 @@
  *   GET  /api/auth/dev-verify      — Dev-only: verify email by address
  */
 
-import type { Router } from "express";
+import type { Router, Request } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { SESSION_COOKIE, TENANT_COOKIE, requireRole, requireAdmiral } from "../services/auth.js";
@@ -27,6 +27,23 @@ import { timingSafeCompare } from "../services/password.js";
 import { authRateLimiter } from "../rate-limit.js";
 import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../services/email.js";
 import { createSafeRouter } from "../safe-router.js";
+import type { AuditLogInput } from "../stores/audit-store.js";
+
+/** Extract IP + User-Agent from a request for audit logging. */
+function auditMeta(req: Request): Pick<AuditLogInput, "ip" | "userAgent"> {
+  return {
+    ip: req.ip || req.socket.remoteAddress || null,
+    userAgent: req.headers["user-agent"] || null,
+  };
+}
+
+/** Check if at least one Admiral exists other than `excludeId`. */
+async function hasOtherAdmiral(
+  userStore: NonNullable<AppState["userStore"]>,
+  excludeId: string,
+): Promise<boolean> {
+  return userStore.hasOtherAdmiral(excludeId);
+}
 
 export function createAuthRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -50,8 +67,8 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!password || typeof password !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Password is required", 400);
     }
-    if (password.length < 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be at least 8 characters", 400);
+    if (password.length < 15) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be at least 15 characters", 400);
     }
     if (password.length > 200) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be 200 characters or fewer", 400);
@@ -73,6 +90,11 @@ export function createAuthRoutes(appState: AppState): Router {
         message: "Account created. Please check your email to verify your address.",
         user: { id: result.user.id, email: result.user.email, displayName: result.user.displayName },
       }, 201);
+
+      appState.auditStore?.logEvent({
+        event: "auth.signup", actorId: result.user.id,
+        detail: { email: result.user.email }, ...auditMeta(req),
+      });
     } catch (err) {
       const raw = err instanceof Error ? err.message : "Sign-up failed";
       // Map known errors to safe messages; suppress internal details
@@ -102,6 +124,10 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid or expired verification token", 400);
     }
 
+    appState.auditStore?.logEvent({
+      event: "auth.verify_email", ...auditMeta(req),
+    });
+
     sendOk(res, { verified: true, message: "Email verified. You can now sign in." });
   });
 
@@ -126,6 +152,12 @@ export function createAuthRoutes(appState: AppState): Router {
     }
 
     try {
+      // Session rotation: destroy existing session before creating new one (#91 Phase C)
+      const oldSessionToken = req.cookies?.[SESSION_COOKIE];
+      if (oldSessionToken && appState.userStore) {
+        await appState.userStore.destroySession(oldSessionToken);
+      }
+
       const ip = req.ip || req.socket.remoteAddress || undefined;
       const ua = req.headers["user-agent"] || undefined;
       const result = await appState.userStore.signIn(email, password, ip, ua);
@@ -143,9 +175,20 @@ export function createAuthRoutes(appState: AppState): Router {
         user: result.user,
         message: `Welcome back, ${result.user.displayName}.`,
       });
+
+      appState.auditStore?.logEvent({
+        event: "auth.signin.success", actorId: result.user.id,
+        detail: { email: result.user.email }, ...auditMeta(req),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign-in failed";
       sendFail(res, ErrorCode.UNAUTHORIZED, message, 401);
+
+      appState.auditStore?.logEvent({
+        event: "auth.signin.failure",
+        detail: { email: typeof email === "string" ? email : null, reason: message },
+        ...auditMeta(req),
+      });
     }
   });
 
@@ -174,6 +217,10 @@ export function createAuthRoutes(appState: AppState): Router {
     res.clearCookie(SESSION_COOKIE, clearOpts);
     res.clearCookie(TENANT_COOKIE, clearOpts);
 
+    appState.auditStore?.logEvent({
+      event: "auth.logout", actorId: res.locals.userId ?? null, ...auditMeta(req),
+    });
+
     sendOk(res, { message: "Signed out." });
   });
 
@@ -184,6 +231,10 @@ export function createAuthRoutes(appState: AppState): Router {
     }
 
     await appState.userStore.destroyAllSessions(res.locals.userId!);
+
+    appState.auditStore?.logEvent({
+      event: "auth.logout_all", actorId: res.locals.userId!, ...auditMeta(_req),
+    });
 
     const clearOpts = { httpOnly: true, sameSite: "strict" as const, secure: appState.config.nodeEnv === "production", path: "/" };
     res.clearCookie(SESSION_COOKIE, clearOpts);
@@ -208,8 +259,8 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!newPassword || typeof newPassword !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "New password is required", 400);
     }
-    if (newPassword.length < 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 8 characters", 400);
+    if (newPassword.length < 15) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 15 characters", 400);
     }
     if (newPassword.length > 200) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be 200 characters or fewer", 400);
@@ -221,6 +272,11 @@ export function createAuthRoutes(appState: AppState): Router {
       await appState.userStore.changePassword(
         res.locals.userId!, currentPassword, newPassword, sessionToken,
       );
+
+      appState.auditStore?.logEvent({
+        event: "auth.password.change", actorId: res.locals.userId!, ...auditMeta(req),
+      });
+
       sendOk(res, { message: "Password changed. All other sessions have been signed out." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Password change failed";
@@ -248,6 +304,12 @@ export function createAuthRoutes(appState: AppState): Router {
       sendPasswordResetEmail(email, token).catch(() => {});
     }
 
+    appState.auditStore?.logEvent({
+      event: "auth.password.reset_request",
+      detail: { email: typeof email === "string" ? email : null },
+      ...auditMeta(req),
+    });
+
     sendOk(res, { message: "If that email is registered, a reset link has been sent." });
   });
 
@@ -267,8 +329,8 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!newPassword || typeof newPassword !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "New password is required", 400);
     }
-    if (newPassword.length < 8) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 8 characters", 400);
+    if (newPassword.length < 15) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 15 characters", 400);
     }
     if (newPassword.length > 200) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be 200 characters or fewer", 400);
@@ -279,6 +341,11 @@ export function createAuthRoutes(appState: AppState): Router {
       if (!reset) {
         return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid or expired reset token", 400);
       }
+
+      appState.auditStore?.logEvent({
+        event: "auth.password.reset_complete", ...auditMeta(req),
+      });
+
       sendOk(res, { message: "Password has been reset. Please sign in with your new password." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Password reset failed";
@@ -293,12 +360,16 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendOk(res, { tier: "admiral", authEnabled: false, tenantId: "local" });
     }
 
-    // Check for admin bearer token (timing-safe comparison)
+    // Check for admin bearer token — bootstrap-only (#91 Phase B)
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
       if (appState.config.adminToken && timingSafeCompare(token, appState.config.adminToken)) {
-        return sendOk(res, { tier: "admiral", authEnabled: true, tenantId: "admiral" });
+        const hasAdmiral = appState.userStore ? await appState.userStore.hasAdmiral() : false;
+        if (!hasAdmiral) {
+          return sendOk(res, { tier: "admiral", authEnabled: true, tenantId: "admiral", bootstrap: true });
+        }
+        // Admiral exists → token ignored, fall through to session check
       }
     }
 
@@ -369,22 +440,39 @@ export function createAuthRoutes(appState: AppState): Router {
         tier: "visitor",
         message: "Welcome aboard, Ensign. Explore freely.",
       }, 201);
+
+      appState.auditStore?.logEvent({
+        event: "auth.invite.redeem",
+        detail: { tenantId: session.tenantId },
+        ...auditMeta(req),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to redeem invite code";
       sendFail(res, ErrorCode.FORBIDDEN, message, 403);
     }
   });
 
-  // ── Admiral Console Routes ────────────────────────────────
-  // These routes accept both Bearer token AND session-cookie admirals.
-  // Bearer token is still needed for the very first promotion (no admirals yet).
-  router.use("/api/auth/admiral", (req, res, next) => {
-    // Try Bearer token first (always works for bootstrapping, timing-safe)
+  // ── Admiral Console Routes (#91 Phase B) ───────────────────
+  // Bearer token is bootstrap-only: only works when no real Admiral exists.
+  // After the first Admiral is promoted, all admin routes require session-cookie auth.
+  router.use("/api/auth/admiral", async (req, res, next) => {
+    // Try Bearer token — but ONLY if no Admiral exists yet (bootstrap mode)
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
       if (appState.config.adminToken && timingSafeCompare(token, appState.config.adminToken)) {
-        return next();
+        // Check if we're still in bootstrap mode
+        const hasAdmiral = appState.userStore ? await appState.userStore.hasAdmiral() : false;
+        if (!hasAdmiral) {
+          appState.auditStore?.logEvent({
+            event: "admin.role_change",
+            detail: { bootstrap: true, note: "Bearer token used in bootstrap mode" },
+            ip: req.ip || req.socket.remoteAddress || null,
+            userAgent: req.headers["user-agent"] || null,
+          });
+          return next();
+        }
+        // Admiral exists → Bearer is dead for admin routes
       }
     }
     // Fall back to session-based admiral check
@@ -416,6 +504,15 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
 
+    // Last-Admiral guard (#91 Phase D): prevent demoting the last Admiral
+    if (user.role === "admiral" && role !== "admiral") {
+      const hasOther = await hasOtherAdmiral(appState.userStore, user.id);
+      if (!hasOther) {
+        return sendFail(res, ErrorCode.INVALID_PARAM,
+          "Cannot demote the last Admiral. Promote another user first.", 400);
+      }
+    }
+
     const updated = await appState.userStore.setRole(user.id, role);
     if (!updated) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update role", 500);
@@ -424,6 +521,14 @@ export function createAuthRoutes(appState: AppState): Router {
     sendOk(res, {
       message: `${updated.displayName} promoted to ${role}.`,
       user: updated,
+    });
+
+    appState.auditStore?.logEvent({
+      event: "admin.role_change",
+      actorId: res.locals.userId ?? null,
+      targetId: user.id,
+      detail: { email, oldRole: user.role, newRole: role },
+      ...auditMeta(req),
     });
   });
 
@@ -471,6 +576,14 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update lock status", 500);
     }
 
+    appState.auditStore?.logEvent({
+      event: locked ? "admin.lock_user" : "admin.unlock_user",
+      actorId: res.locals.userId ?? null,
+      targetId: user.id,
+      detail: { email, reason: reason || null },
+      ...auditMeta(req),
+    });
+
     sendOk(res, { message: `${user.displayName} ${locked ? "locked" : "unlocked"}.` });
   });
 
@@ -494,10 +607,27 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
 
+    // Last-Admiral guard (#91 Phase D): prevent deleting the last Admiral
+    if (user.role === "admiral") {
+      const hasOther = await hasOtherAdmiral(appState.userStore, user.id);
+      if (!hasOther) {
+        return sendFail(res, ErrorCode.INVALID_PARAM,
+          "Cannot delete the last Admiral. Promote another user first.", 400);
+      }
+    }
+
     const deleted = await appState.userStore.deleteUser(user.id);
     if (!deleted) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to delete user", 500);
     }
+
+    appState.auditStore?.logEvent({
+      event: "admin.delete_user",
+      actorId: res.locals.userId ?? null,
+      targetId: user.id,
+      detail: { email },
+      ...auditMeta(req),
+    });
 
     sendOk(res, { message: `User ${email} deleted.` });
   });

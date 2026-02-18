@@ -321,6 +321,12 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("complete_target");
   });
 
+  it("includes overlay mutation tools", () => {
+    const names = FLEET_TOOL_DECLARATIONS.map((t) => t.name);
+    expect(names).toContain("set_ship_overlay");
+    expect(names).toContain("set_officer_overlay");
+  });
+
   it("search tools have required query parameter", () => {
     const searchOfficers = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "search_officers");
     expect(searchOfficers?.parameters?.required).toContain("query");
@@ -1883,8 +1889,8 @@ describe("activate_preset", () => {
     expect(result.presetId).toBe(5);
     expect(result.presetName).toBe("War Preset");
     expect(result.slotCount).toBe(1);
-    expect(result.uiPath).toBe("/app#fleet-ops/presets");
-    expect((result.message as string)).toContain("Fleet Ops");
+    expect(result.uiPath).toBe("/app#plan/presets");
+    expect((result.message as string)).toContain("Plan");
   });
 
   it("returns error when preset not found", async () => {
@@ -2077,6 +2083,191 @@ describe("get_effective_state", () => {
 
   it("returns error when crew store unavailable", async () => {
     const result = await executeFleetTool("get_effective_state", {}, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+// ─── Overlay Mutation Tools ─────────────────────────────────
+
+describe("set_ship_overlay", () => {
+  it("sets ship overlay with all fields", async () => {
+    const mockOverlay = {
+      refId: "cdn:ship:12345",
+      ownershipState: "owned",
+      tier: 9,
+      level: 45,
+      power: 125000,
+      target: true,
+      targetNote: "Priority upgrade",
+    };
+    const ctx: ToolContext = {
+      overlayStore: createMockOverlayStore({
+        setShipOverlay: vi.fn().mockResolvedValue(mockOverlay),
+      }),
+    };
+    const result = await executeFleetTool("set_ship_overlay", {
+      ship_id: "cdn:ship:12345",
+      ownership_state: "owned",
+      tier: 9,
+      level: 45,
+      power: 125000,
+      target: true,
+      target_note: "Priority upgrade",
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("set_ship_overlay");
+    expect(result.updated).toBe(true);
+    expect(result.shipId).toBe("cdn:ship:12345");
+    expect(result.nextSteps).toBeDefined();
+    const overlay = result.overlay as Record<string, unknown>;
+    expect(overlay.ownershipState).toBe("owned");
+    expect(overlay.tier).toBe(9);
+    expect(overlay.level).toBe(45);
+    expect(overlay.power).toBe(125000);
+  });
+
+  it("sets only tier and level", async () => {
+    const mockOverlay = {
+      refId: "cdn:ship:999",
+      ownershipState: null,
+      tier: 5,
+      level: 30,
+      power: null,
+      target: null,
+      targetNote: null,
+    };
+    const ctx: ToolContext = {
+      overlayStore: createMockOverlayStore({
+        setShipOverlay: vi.fn().mockResolvedValue(mockOverlay),
+      }),
+    };
+    const result = await executeFleetTool("set_ship_overlay", {
+      ship_id: "cdn:ship:999",
+      tier: 5,
+      level: 30,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("set_ship_overlay");
+    expect(result.updated).toBe(true);
+    const overlay = result.overlay as Record<string, unknown>;
+    expect(overlay.tier).toBe(5);
+    expect(overlay.level).toBe(30);
+  });
+
+  it("returns error for missing ship_id", async () => {
+    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const result = await executeFleetTool("set_ship_overlay", {
+      tier: 9,
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("ship_id");
+  });
+
+  it("returns error for invalid ownership_state", async () => {
+    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const result = await executeFleetTool("set_ship_overlay", {
+      ship_id: "cdn:ship:123",
+      ownership_state: "maybe",
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("ownership_state");
+  });
+
+  it("returns error when overlay store unavailable", async () => {
+    const result = await executeFleetTool("set_ship_overlay", {
+      ship_id: "cdn:ship:123",
+    }, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("set_officer_overlay", () => {
+  it("sets officer overlay with all fields", async () => {
+    const mockOverlay = {
+      refId: "cdn:officer:98765",
+      ownershipState: "owned",
+      level: 50,
+      rank: "4",
+      power: 8500,
+      target: false,
+      targetNote: null,
+    };
+    const ctx: ToolContext = {
+      overlayStore: createMockOverlayStore({
+        setOfficerOverlay: vi.fn().mockResolvedValue(mockOverlay),
+      }),
+    };
+    const result = await executeFleetTool("set_officer_overlay", {
+      officer_id: "cdn:officer:98765",
+      ownership_state: "owned",
+      level: 50,
+      rank: "4",
+      power: 8500,
+      target: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("set_officer_overlay");
+    expect(result.updated).toBe(true);
+    expect(result.officerId).toBe("cdn:officer:98765");
+    expect(result.nextSteps).toBeDefined();
+    const overlay = result.overlay as Record<string, unknown>;
+    expect(overlay.ownershipState).toBe("owned");
+    expect(overlay.level).toBe(50);
+    expect(overlay.rank).toBe("4");
+    expect(overlay.power).toBe(8500);
+  });
+
+  it("sets only level and rank", async () => {
+    const mockOverlay = {
+      refId: "cdn:officer:111",
+      ownershipState: null,
+      level: 35,
+      rank: "3",
+      power: null,
+      target: null,
+      targetNote: null,
+    };
+    const ctx: ToolContext = {
+      overlayStore: createMockOverlayStore({
+        setOfficerOverlay: vi.fn().mockResolvedValue(mockOverlay),
+      }),
+    };
+    const result = await executeFleetTool("set_officer_overlay", {
+      officer_id: "cdn:officer:111",
+      level: 35,
+      rank: "3",
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("set_officer_overlay");
+    expect(result.updated).toBe(true);
+    const overlay = result.overlay as Record<string, unknown>;
+    expect(overlay.level).toBe(35);
+    expect(overlay.rank).toBe("3");
+  });
+
+  it("returns error for missing officer_id", async () => {
+    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const result = await executeFleetTool("set_officer_overlay", {
+      level: 50,
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("officer_id");
+  });
+
+  it("returns error for invalid ownership_state", async () => {
+    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const result = await executeFleetTool("set_officer_overlay", {
+      officer_id: "cdn:officer:123",
+      ownership_state: "perhaps",
+    }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+    expect((result.error as string)).toContain("ownership_state");
+  });
+
+  it("returns error when overlay store unavailable", async () => {
+    const result = await executeFleetTool("set_officer_overlay", {
+      officer_id: "cdn:officer:123",
+    }, {});
     expect(result).toHaveProperty("error");
   });
 });

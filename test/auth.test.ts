@@ -54,6 +54,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     overlayStore: null,
     inviteStore: null,
     userStore: null,
+    auditStore: null,
     startupComplete: true,
     config: makeConfig(),
     ...overrides,

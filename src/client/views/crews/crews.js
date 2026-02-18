@@ -74,6 +74,13 @@ let loading = false;
 let formError = '';
 let variantFormError = '';
 
+// Loadouts tab filter/sort state (ported from Drydock — ADR-030)
+let loadoutSearch = '';
+let loadoutFilterIntent = '';
+let loadoutFilterActive = '';
+let loadoutSortField = 'name';
+let loadoutSortDir = 'asc';
+
 // Editing state
 let editingCoreId = null;      // core id or 'new'
 let editingLoadoutId = null;   // loadout id or 'new'
@@ -89,7 +96,7 @@ const $ = (sel) => document.querySelector(sel);
 
 registerView('crews', {
     area: $('#crews-area'),
-    icon: '⚓', title: 'Crews', subtitle: 'Composition workshop — cores, loadouts, policies & reservations',
+    icon: '⚓', title: 'Workshop', subtitle: 'Composition workshop — cores, loadouts, policies & reservations',
     cssHref: 'views/crews/crews.css',
     init, refresh,
 });
@@ -297,20 +304,112 @@ function renderCoreForm(core) {
 // ═══════════════════════════════════════════════════════════
 
 function renderLoadoutsTab() {
+    // Apply filters & sort (ported from Drydock — ADR-030)
+    let filtered = loadouts;
+    if (loadoutSearch) {
+        const q = loadoutSearch.toLowerCase();
+        filtered = filtered.filter(l =>
+            (l.name && l.name.toLowerCase().includes(q)) ||
+            (getShipName(l.shipId) || '').toLowerCase().includes(q)
+        );
+    }
+    if (loadoutFilterIntent) {
+        filtered = filtered.filter(l =>
+            Array.isArray(l.intentKeys) && l.intentKeys.includes(loadoutFilterIntent)
+        );
+    }
+    if (loadoutFilterActive === 'true') {
+        filtered = filtered.filter(l => l.isActive);
+    } else if (loadoutFilterActive === 'false') {
+        filtered = filtered.filter(l => !l.isActive);
+    }
+    const items = sortLoadouts(filtered);
+
+    // Stats bar
+    const total = loadouts.length;
+    const active = loadouts.filter(l => l.isActive).length;
+    const uniqueShips = new Set(loadouts.map(l => l.shipId)).size;
+
+    // Collect all intent keys for filter dropdown
+    const intentKeysSet = new Set();
+    for (const l of loadouts) {
+        for (const k of (l.intentKeys || [])) intentKeysSet.add(k);
+    }
+    const intentKeys = [...intentKeysSet].sort();
+
+    const sortOptions = [
+        { value: 'name', label: 'Name' },
+        { value: 'ship', label: 'Ship' },
+        { value: 'priority', label: 'Priority' },
+    ];
+
     return `
         <div class="crews-section">
-            <div class="crews-toolbar">
-                <h3 class="crews-toolbar-title">Crew Loadouts</h3>
+            <div class="crews-stats-bar">
+                <span class="crews-stat"><strong>${total}</strong> loadout${total !== 1 ? 's' : ''}</span>
+                <span class="crews-stat-sep">·</span>
+                <span class="crews-stat"><strong>${active}</strong> active</span>
+                <span class="crews-stat-sep">·</span>
+                <span class="crews-stat"><strong>${uniqueShips}</strong> ship${uniqueShips !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="crews-toolbar crews-toolbar-loadouts">
+                <div class="crews-search-wrap">
+                    <input type="text" class="crews-search" placeholder="Search loadouts…" value="${esc(loadoutSearch)}" />
+                </div>
+                <div class="crews-filters">
+                    <select class="crews-filter-select" data-filter="intent" title="Filter by intent">
+                        <option value="">All intents</option>
+                        ${intentKeys.map(k => {
+        const intent = INTENT_CATALOG.find(i => i.key === k);
+        return `<option value="${esc(k)}" ${loadoutFilterIntent === k ? 'selected' : ''}>${intent ? intent.icon + ' ' : ''}${esc(intent ? intent.label : k)}</option>`;
+    }).join('')}
+                    </select>
+                    <select class="crews-filter-select" data-filter="active" title="Filter by status">
+                        <option value="" ${loadoutFilterActive === '' ? 'selected' : ''}>All</option>
+                        <option value="true" ${loadoutFilterActive === 'true' ? 'selected' : ''}>Active</option>
+                        <option value="false" ${loadoutFilterActive === 'false' ? 'selected' : ''}>Inactive</option>
+                    </select>
+                </div>
+                <div class="crews-sort">
+                    <label class="crews-sort-label">Sort:</label>
+                    <select class="crews-sort-select" data-action="loadout-sort-field">
+                        ${sortOptions.map(o => `<option value="${o.value}" ${loadoutSortField === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+                    </select>
+                    <button class="crews-sort-dir" data-action="loadout-sort-dir" title="Toggle sort direction">
+                        ${loadoutSortDir === 'asc' ? '↑' : '↓'}
+                    </button>
+                </div>
                 <button class="crews-create-btn" data-action="create-loadout">+ New Loadout</button>
             </div>
             ${editingLoadoutId === 'new' ? renderLoadoutForm(null) : ''}
             <div class="crews-list">
-                ${loadouts.length === 0
-            ? renderEmpty('No crew loadouts yet. Create one to combine a ship, bridge core, policy and intents.')
-            : loadouts.map(l => renderLoadoutCard(l)).join('')}
+                ${items.length === 0
+            ? renderEmpty(loadouts.length === 0
+                ? 'No crew loadouts yet. Create one to combine a ship, bridge core, policy and intents.'
+                : 'No loadouts match the current filters.')
+            : items.map(l => renderLoadoutCard(l)).join('')}
             </div>
         </div>
     `;
+}
+
+function sortLoadouts(items) {
+    const sorted = [...items];
+    sorted.sort((a, b) => {
+        let cmp;
+        switch (loadoutSortField) {
+            case 'ship':
+                cmp = (getShipName(a.shipId) || '').localeCompare(getShipName(b.shipId) || '');
+                break;
+            case 'priority':
+                cmp = (a.priority || 0) - (b.priority || 0);
+                break;
+            default: // name
+                cmp = (a.name || '').localeCompare(b.name || '');
+        }
+        return loadoutSortDir === 'desc' ? -cmp : cmp;
+    });
+    return sorted;
 }
 
 function renderLoadoutCard(loadout) {
@@ -851,6 +950,38 @@ function bindEvents() {
     });
 
     bindAction('save-core', () => handleSaveCore());
+
+    // ─── Loadouts: Search, Filters & Sort (ADR-030) ────────
+
+    const searchInput = area.querySelector('.crews-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            loadoutSearch = searchInput.value;
+            render();
+        });
+    }
+
+    area.querySelectorAll('.crews-filter-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            const filter = sel.dataset.filter;
+            if (filter === 'intent') loadoutFilterIntent = sel.value;
+            if (filter === 'active') loadoutFilterActive = sel.value;
+            render();
+        });
+    });
+
+    const sortFieldSelect = area.querySelector('[data-action="loadout-sort-field"]');
+    if (sortFieldSelect) {
+        sortFieldSelect.addEventListener('change', () => {
+            loadoutSortField = sortFieldSelect.value;
+            render();
+        });
+    }
+
+    bindAction('loadout-sort-dir', () => {
+        loadoutSortDir = loadoutSortDir === 'asc' ? 'desc' : 'asc';
+        render();
+    });
 
     // ─── Loadouts ───────────────────────────────────────────
 

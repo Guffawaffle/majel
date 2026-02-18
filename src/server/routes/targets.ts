@@ -21,15 +21,16 @@ export function createTargetRoutes(appState: AppState): Router {
   const admiral = requireAdmiral(appState);
   router.use("/api/targets", visitor);
 
-  /** Guard: return the store or 503 */
-  function getStore() {
-    return appState.targetStore;
+  /** Guard: return a user-scoped store or the backward-compat store, or null */
+  function getStore(res: import("express").Response) {
+    const userId = (res.locals.userId as string) || "local";
+    return appState.targetStoreFactory?.forUser(userId) ?? appState.targetStore;
   }
 
   // ─── List targets ─────────────────────────────────────────
 
   router.get("/api/targets", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
     const targetType = req.query.type as string | undefined;
@@ -68,7 +69,7 @@ export function createTargetRoutes(appState: AppState): Router {
   // ─── Counts (must precede /:id to avoid param match) ─────
 
   router.get("/api/targets/counts", async (_req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
     const counts = await store.counts();
     sendOk(res, counts);
@@ -77,7 +78,7 @@ export function createTargetRoutes(appState: AppState): Router {
   // ─── Conflicts (#18, must precede /:id) ───────────────────
 
   router.get("/api/targets/conflicts", async (_req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
     if (!appState.crewStore) return sendFail(res, ErrorCode.LOADOUT_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const conflicts = await detectTargetConflicts(store, appState.crewStore);
@@ -87,7 +88,7 @@ export function createTargetRoutes(appState: AppState): Router {
   // ─── Get target ───────────────────────────────────────────
 
   router.get("/api/targets/:id", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
     const id = Number(req.params.id as string);
@@ -101,7 +102,7 @@ export function createTargetRoutes(appState: AppState): Router {
   // ─── Create target ───────────────────────────────────────
 
   router.post("/api/targets", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
     const { targetType, refId, loadoutId, targetTier, targetRank, targetLevel, reason, priority, autoSuggested } = req.body;
@@ -179,7 +180,7 @@ export function createTargetRoutes(appState: AppState): Router {
   // ─── Update target ───────────────────────────────────────
 
   router.patch("/api/targets/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
     const id = Number(req.params.id as string);
@@ -225,7 +226,7 @@ export function createTargetRoutes(appState: AppState): Router {
   // ─── Delete target ───────────────────────────────────────
 
   router.delete("/api/targets/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
     const id = Number(req.params.id as string);
@@ -239,7 +240,7 @@ export function createTargetRoutes(appState: AppState): Router {
   // ─── Mark achieved ───────────────────────────────────────
 
   router.post("/api/targets/:id/achieve", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.TARGET_STORE_NOT_AVAILABLE, "Target store not available", 503);
 
     const id = Number(req.params.id as string);

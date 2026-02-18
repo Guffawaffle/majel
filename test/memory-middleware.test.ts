@@ -10,7 +10,7 @@ import { attachScopedMemory } from "../src/server/services/memory-middleware.js"
 import type { AppState } from "../src/server/app-context.js";
 import type { MemoryService } from "../src/server/services/memory.js";
 import type { FrameStoreFactory } from "../src/server/stores/postgres-frame-store.js";
-import { bootstrapConfigSync } from "../src/server/config.js";
+import { makeState } from "./helpers/make-state.js";
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -32,25 +32,7 @@ function makeMockFactory(): FrameStoreFactory & { forUser: ReturnType<typeof vi.
   } as unknown as FrameStoreFactory & { forUser: ReturnType<typeof vi.fn> };
 }
 
-function makeState(overrides: Partial<AppState> = {}): AppState {
-  return {
-    pool: null,
-    geminiEngine: null,
-    memoryService: null,
-    frameStoreFactory: null,
-    settingsStore: null,
-    sessionStore: null,
-    crewStore: null,
-    behaviorStore: null,
-    referenceStore: null,
-    overlayStore: null,
-    inviteStore: null,
-    userStore: null,
-    startupComplete: false,
-    config: bootstrapConfigSync(),
-    ...overrides,
-  };
-}
+// makeState imported from ./helpers/make-state.js
 
 /**
  * Build a minimal Express app that:

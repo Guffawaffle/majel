@@ -7,10 +7,10 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
-import { createApp, type AppState } from "../src/server/index.js";
+import { createApp } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 import { createOverlayStore, type OverlayStore } from "../src/server/stores/overlay-store.js";
-import { bootstrapConfigSync } from "../src/server/config.js";
+import { makeReadyState as makeState } from "./helpers/make-state.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -19,24 +19,7 @@ let pool: Pool;
 let refStore: ReferenceStore;
 let overlayStore: OverlayStore;
 
-function makeState(overrides: Partial<AppState> = {}): AppState {
-  return {
-    pool: null,
-    geminiEngine: null,
-    memoryService: null,
-    frameStoreFactory: null,
-    settingsStore: null,
-    sessionStore: null,
-    crewStore: null,
-    behaviorStore: null,
-    referenceStore: null,
-    overlayStore: null,
-    inviteStore: null,
-    startupComplete: true,
-    config: bootstrapConfigSync(),
-    ...overrides,
-  };
-}
+// makeState imported from ./helpers/make-state.js (makeReadyState)
 
 async function seedData(store: ReferenceStore) {
   await store.upsertOfficer({

@@ -321,9 +321,12 @@ interface CdnShipSummary {
   art_id: number;
   loca_id: number;
   max_tier: number;
+  max_level: number;
   rarity: string;
   grade: number;
   hull_type: number;
+  blueprints_required: number;
+  build_requirements: Array<{ requirement_type: string; requirement_id: number; requirement_level: number }>;
   faction: { id: number; loca_id: number } | null;
 }
 
@@ -342,6 +345,19 @@ interface CdnShipDetail {
   officer_bonus: Record<string, Array<{ value: number; bonus: number }>>;
   crew_slots: Array<{ slots: string; unlock_level: number }>;
   levels: Array<{ level: number; xp: number; shield: number; health: number }>;
+  tiers: Array<{
+    tier: number;
+    buffs: Record<string, number>;
+    duration: number;
+    components: Array<{
+      id: number;
+      data: Record<string, unknown>;
+      build_cost: Array<{ resource_id: number; amount: number }>;
+      build_time_in_seconds: number;
+    }>;
+  }>;
+  blueprints_required: number;
+  build_requirements: Array<{ requirement_type: string; requirement_id: number; requirement_level: number }>;
   ability: Array<{ id: number; value_is_percentage: boolean; values: Array<{ value: number; chance: number }> }>;
 }
 
@@ -448,6 +464,9 @@ export async function syncCdnShips(
       crewSlots: detail?.crew_slots ?? null,
       buildCost: detail?.build_cost ?? null,
       levels: detail?.levels ?? null,
+      tiers: detail?.tiers ?? null,
+      buildRequirements: detail?.build_requirements ?? ship.build_requirements ?? null,
+      blueprintsRequired: detail?.blueprints_required ?? ship.blueprints_required ?? null,
       gameId: ship.id,
       source: "cdn:data.stfc.space",
       sourceUrl: `https://data.stfc.space/ship/${ship.id}.json`,

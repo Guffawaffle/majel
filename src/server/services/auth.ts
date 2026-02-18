@@ -1,5 +1,5 @@
 /**
- * auth.ts — Authentication Middleware (ADR-019 Phase 1)
+ * auth.ts — Authentication Middleware (ADR-019 Phase 1, #91 Phase B)
  *
  * Majel — STFC Fleet Intelligence System
  *
@@ -9,8 +9,10 @@
  *   Captain    — Full fleet management, unlimited chat (with token cap)
  *   Admiral    — Full system access, user management
  *
- * Backward compatible: MAJEL_ADMIN_TOKEN bearer continues to work
- * as a virtual Admiral session during transition.
+ * MAJEL_ADMIN_TOKEN is bootstrap-only (#91 Phase B):
+ *   - Only recognized as virtual Admiral when NO Admiral exists in the DB
+ *   - Once a real Admiral is created, the token is permanently ignored
+ *   - This prevents a non-expiring, non-revocable backdoor
  *
  * When MAJEL_ADMIN_TOKEN is not set, auth is disabled (local dev mode).
  */
@@ -51,20 +53,26 @@ async function resolveIdentity(
   lockedAt: string | null;
   source: "admin-token" | "session" | "legacy-tenant";
 } | null> {
-  // 1. Bearer token → virtual Admiral
+  // 1. Bearer token → bootstrap-only virtual Admiral (#91 Phase B)
+  //    Once a real Admiral exists, the token is permanently ignored.
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ") && appState.config.adminToken) {
     const token = authHeader.slice(7);
     if (timingSafeCompare(token, appState.config.adminToken)) {
-      return {
-        userId: deriveAdminUserId(appState.config.adminToken),
-        role: "admiral",
-        email: "admin@majel.local",
-        displayName: "Admiral",
-        emailVerified: true,
-        lockedAt: null,
-        source: "admin-token",
-      };
+      // Check if bootstrap mode: no user store OR no Admiral in DB
+      const isBootstrap = !appState.userStore || !(await appState.userStore.hasAdmiral());
+      if (isBootstrap) {
+        return {
+          userId: deriveAdminUserId(appState.config.adminToken),
+          role: "admiral",
+          email: "admin@majel.local",
+          displayName: "Admiral (Bootstrap)",
+          emailVerified: true,
+          lockedAt: null,
+          source: "admin-token",
+        };
+      }
+      // Admiral exists → token is dead. Fall through to session auth.
     }
   }
 

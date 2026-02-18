@@ -37,11 +37,17 @@ export function createCatalogRoutes(appState: AppState): Router {
   }
 
   function requireOverlayStore(res: import("express").Response): boolean {
-    if (!appState.overlayStore) {
+    if (!appState.overlayStoreFactory && !appState.overlayStore) {
       sendFail(res, ErrorCode.OVERLAY_STORE_NOT_AVAILABLE, "Overlay store not available", 503);
       return false;
     }
     return true;
+  }
+
+  /** #85: Get a user-scoped overlay store for the current request */
+  function getOverlayStore(res: import("express").Response) {
+    const userId = (res.locals.userId as string) || "local";
+    return appState.overlayStoreFactory?.forUser(userId) ?? appState.overlayStore;
   }
 
   function isValidOwnership(v: unknown): v is OwnershipState {
@@ -104,7 +110,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   router.get("/api/catalog/officers/merged", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const refStore = appState.referenceStore!;
-    const overlayStore = appState.overlayStore;
+    const overlayStore = getOverlayStore(res);
 
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     if (q.length > 500) {
@@ -217,7 +223,7 @@ export function createCatalogRoutes(appState: AppState): Router {
   router.get("/api/catalog/ships/merged", async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const refStore = appState.referenceStore!;
-    const overlayStore = appState.overlayStore;
+    const overlayStore = getOverlayStore(res);
 
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     if (q.length > 500) {
@@ -326,7 +332,8 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.get("/api/catalog/counts", async (req, res) => {
     const refCounts = appState.referenceStore ? await appState.referenceStore.counts() : { officers: 0, ships: 0 };
-    const overlayCounts = appState.overlayStore ? await appState.overlayStore.counts() : {
+    const overlayStore = getOverlayStore(res);
+    const overlayCounts = overlayStore ? await overlayStore.counts() : {
       officers: { total: 0, owned: 0, unowned: 0, unknown: 0, targeted: 0 },
       ships: { total: 0, owned: 0, unowned: 0, unknown: 0, targeted: 0 },
     };
@@ -339,7 +346,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.patch("/api/catalog/officers/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const overlay = appState.overlayStore!;
+    const overlay = getOverlayStore(res)!;
     const refId = req.params.id as string;
 
     if (appState.referenceStore && !(await appState.referenceStore.getOfficer(refId))) {
@@ -389,7 +396,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.delete("/api/catalog/officers/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const deleted = await appState.overlayStore!.deleteOfficerOverlay(req.params.id as string);
+    const deleted = await getOverlayStore(res)!.deleteOfficerOverlay(req.params.id as string);
     sendOk(res, { deleted });
   });
 
@@ -399,7 +406,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.patch("/api/catalog/ships/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const overlay = appState.overlayStore!;
+    const overlay = getOverlayStore(res)!;
     const refId = req.params.id as string;
 
     if (appState.referenceStore && !(await appState.referenceStore.getShip(refId))) {
@@ -449,7 +456,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.delete("/api/catalog/ships/:id/overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const deleted = await appState.overlayStore!.deleteShipOverlay(req.params.id as string);
+    const deleted = await getOverlayStore(res)!.deleteShipOverlay(req.params.id as string);
     sendOk(res, { deleted });
   });
 
@@ -459,7 +466,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.post("/api/catalog/officers/bulk-overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const overlay = appState.overlayStore!;
+    const overlay = getOverlayStore(res)!;
     const { refIds, ownershipState, target } = req.body;
 
     if (!Array.isArray(refIds) || refIds.length === 0) {
@@ -499,7 +506,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   router.post("/api/catalog/ships/bulk-overlay", admiral, async (req, res) => {
     if (!requireOverlayStore(res)) return;
-    const overlay = appState.overlayStore!;
+    const overlay = getOverlayStore(res)!;
     const { refIds, ownershipState, target } = req.body;
 
     if (!Array.isArray(refIds) || refIds.length === 0) {

@@ -19,6 +19,7 @@ import {
     activateFleetPreset,
     fetchCrewPlanItems, createCrewPlanItem, updateCrewPlanItem, deleteCrewPlanItem,
     fetchEffectiveState, fetchCrewLoadouts, fetchBridgeCores, fetchBelowDeckPolicies,
+    fetchCrewDocks, upsertCrewDock, deleteCrewDock,
 } from 'api/crews.js';
 import { fetchCatalogOfficers } from 'api/catalog.js';
 import { esc } from 'utils/escape.js';
@@ -40,7 +41,8 @@ let loadouts = [];
 let _bridgeCores = [];
 let _belowDeckPolicies = [];
 let officers = [];
-let activeTab = 'state';  // 'state' | 'presets' | 'items'
+let docks = [];  // dock metadata for Docks tab (ADR-030)
+let activeTab = 'state';  // 'state' | 'docks' | 'presets' | 'items'
 let loading = false;
 let formError = '';
 
@@ -49,6 +51,7 @@ let editingPresetId = null;     // preset id or 'new'
 const _editingPresetSlots = null;  // slot editing state for a preset
 let overrideDock = null;        // dock number being overridden
 let editingPlanItemId = null;   // plan item id or 'new'
+let editingDockNum = null;      // dock number being edited, or 'new'
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -56,7 +59,7 @@ const $ = (sel) => document.querySelector(sel);
 
 registerView('plan', {
     area: $('#plan-area'),
-    icon: '🗺️', title: 'Plan', subtitle: 'Fleet state dashboard — docks, presets & assignments',
+    icon: '🗺️', title: 'Plan', subtitle: 'Fleet state — docks, presets & assignments',
     cssHref: 'views/plan/plan.css',
     init, refresh,
 });
@@ -72,7 +75,7 @@ export async function refresh() {
     if (loading) return;
     loading = true;
     try {
-        const [stateData, presetsData, itemsData, loadoutsData, coresData, policiesData, officerData] = await Promise.all([
+        const [stateData, presetsData, itemsData, loadoutsData, coresData, policiesData, officerData, docksData] = await Promise.all([
             fetchEffectiveState(),
             fetchFleetPresets(),
             fetchCrewPlanItems(),
@@ -80,6 +83,7 @@ export async function refresh() {
             fetchBridgeCores(),
             fetchBelowDeckPolicies(),
             fetchCatalogOfficers({ ownership: 'owned' }),
+            fetchCrewDocks(),
         ]);
         const state = stateData?.effectiveState ?? stateData ?? {};
         effectiveState = {
@@ -93,6 +97,7 @@ export async function refresh() {
         _bridgeCores = Array.isArray(coresData) ? coresData : (coresData?.bridgeCores ?? []);
         _belowDeckPolicies = Array.isArray(policiesData) ? policiesData : (policiesData?.belowDeckPolicies ?? []);
         officers = Array.isArray(officerData) ? officerData : (officerData?.officers ?? []);
+        docks = Array.isArray(docksData) ? docksData : (docksData?.docks ?? []);
         render();
     } catch (err) {
         console.error('Plan refresh failed:', err);
@@ -119,6 +124,7 @@ function render() {
 function renderTabBar() {
     const tabs = [
         { key: 'state', label: 'Effective State', icon: '📊' },
+        { key: 'docks', label: 'Docks', icon: '⚓', count: docks.length },
         { key: 'presets', label: 'Fleet Presets', icon: '💾' },
         { key: 'items', label: 'Plan Items', icon: '📋' },
     ];
@@ -126,7 +132,7 @@ function renderTabBar() {
         <div class="plan-tabs">
             ${tabs.map(t => `
                 <button class="plan-tab ${activeTab === t.key ? 'active' : ''}" data-tab="${t.key}">
-                    <span class="plan-tab-icon">${t.icon}</span> ${t.label}
+                    <span class="plan-tab-icon">${t.icon}</span> ${t.label}${t.count != null ? ` <span class="plan-tab-count">${t.count}</span>` : ''}
                 </button>
             `).join('')}
         </div>
@@ -136,6 +142,7 @@ function renderTabBar() {
 function renderContent() {
     switch (activeTab) {
         case 'state': return renderStateTab();
+        case 'docks': return renderDocksTab();
         case 'presets': return renderPresetsTab();
         case 'items': return renderItemsTab();
         default: return '';
@@ -318,6 +325,93 @@ function renderOverrideForm(dockNumber) {
             </div>
         </div>
     `;
+}
+
+// ═══════════════════════════════════════════════════════════
+// DOCKS TAB (migrated from fleet-ops — ADR-030)
+// ═══════════════════════════════════════════════════════════
+
+function renderDocksTab() {
+    const sorted = [...docks].sort((a, b) => a.dockNumber - b.dockNumber);
+    return `
+        <div class="plan-section">
+            <div class="plan-toolbar">
+                <h3 class="plan-toolbar-title">Ship Docks</h3>
+                <button class="plan-create-btn" data-action="create-dock">+ New Dock</button>
+            </div>
+            ${editingDockNum === 'new' ? renderDockForm(null) : ''}
+            <div class="plan-list">
+                ${sorted.length === 0
+            ? renderEmpty('No docks configured. Create docks to assign loadouts to numbered berths.')
+            : sorted.map(d => renderDockCard_(d)).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderDockCard_(dock) {
+    if (editingDockNum === dock.dockNumber) return renderDockForm(dock);
+    const lockIcon = dock.unlocked ? '🔓' : '🔒';
+    return `
+        <div class="plan-card" data-dock="${dock.dockNumber}">
+            <div class="plan-card-header">
+                <div class="plan-card-title">
+                    <span class="plan-badge">#${dock.dockNumber}</span>
+                    <span class="plan-card-name">${esc(dock.label || `Dock ${dock.dockNumber}`)}</span>
+                    <span title="${dock.unlocked ? 'Unlocked' : 'Locked'}">${lockIcon}</span>
+                </div>
+                <div class="plan-card-actions">
+                    <button class="plan-action-btn" data-action="edit-dock" data-num="${dock.dockNumber}" title="Edit">✎</button>
+                    <button class="plan-action-btn plan-action-danger" data-action="delete-dock" data-num="${dock.dockNumber}" title="Delete">✕</button>
+                </div>
+            </div>
+            ${dock.notes ? `<div class="plan-card-notes">${esc(dock.notes)}</div>` : ''}
+        </div>
+    `;
+}
+
+function renderDockForm(dock) {
+    const isNew = !dock;
+    const d = dock || { dockNumber: nextDockNumber(), label: '', unlocked: true, notes: '' };
+    return `
+        <div class="plan-form" data-form-id="${isNew ? 'new-dock' : `dock-${d.dockNumber}`}">
+            <div class="plan-form-header">
+                <h3>${isNew ? 'Create Dock' : `Edit Dock #${d.dockNumber}`}</h3>
+                <button class="plan-action-btn" data-action="cancel-dock" title="Cancel">✕</button>
+            </div>
+            ${formError ? `<div class="plan-form-error">${esc(formError)}</div>` : ''}
+            <div class="plan-form-grid">
+                <label class="plan-form-field">
+                    <span class="plan-form-label">Dock Number *</span>
+                    <input type="number" class="plan-form-input" data-form-field="dockNumber"
+                           value="${d.dockNumber}" min="1" max="99" ${isNew ? '' : 'disabled'} required />
+                </label>
+                <label class="plan-form-field">
+                    <span class="plan-form-label">Label</span>
+                    <input type="text" class="plan-form-input" data-form-field="label"
+                           value="${esc(d.label || '')}" placeholder="e.g. Main Warship" maxlength="100" />
+                </label>
+                <label class="plan-form-field plan-form-checkbox-field">
+                    <input type="checkbox" data-form-field="unlocked" ${d.unlocked ? 'checked' : ''} />
+                    <span class="plan-form-label">Unlocked</span>
+                </label>
+                <label class="plan-form-field plan-form-wide">
+                    <span class="plan-form-label">Notes</span>
+                    <textarea class="plan-form-input plan-form-textarea" data-form-field="notes"
+                              maxlength="500" placeholder="Optional notes…">${esc(d.notes || '')}</textarea>
+                </label>
+            </div>
+            <div class="plan-form-actions">
+                <button class="plan-btn plan-btn-secondary" data-action="cancel-dock">Cancel</button>
+                <button class="plan-btn plan-btn-primary" data-action="save-dock">${isNew ? 'Create' : 'Save'}</button>
+            </div>
+        </div>
+    `;
+}
+
+function nextDockNumber() {
+    if (docks.length === 0) return 1;
+    return Math.max(...docks.map(d => d.dockNumber)) + 1;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -563,11 +657,60 @@ function bindEvents() {
             activeTab = btn.dataset.tab;
             editingPresetId = null;
             editingPlanItemId = null;
+            editingDockNum = null;
             overrideDock = null;
             formError = '';
             render();
         });
     });
+
+    // ─── Docks CRUD (ADR-030: migrated from fleet-ops) ─────
+
+    bindAction('create-dock', () => {
+        editingDockNum = 'new';
+        formError = '';
+        render();
+    });
+
+    area.querySelectorAll('[data-action="edit-dock"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            editingDockNum = parseInt(btn.dataset.num, 10);
+            formError = '';
+            render();
+        });
+    });
+
+    area.querySelectorAll('[data-action="delete-dock"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const num = parseInt(btn.dataset.num, 10);
+            const confirmed = await showConfirmDialog({
+                title: `Delete dock #${num}?`,
+                subtitle: 'This action cannot be undone.',
+                severity: 'info',
+            });
+            if (!confirmed) return;
+            try {
+                await deleteCrewDock(num);
+                docks = docks.filter(d => d.dockNumber !== num);
+                render();
+            } catch (err) {
+                formError = err.message || 'Failed to delete dock.';
+                render();
+            }
+        });
+    });
+
+    area.querySelectorAll('[data-action="cancel-dock"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            editingDockNum = null;
+            formError = '';
+            render();
+        });
+    });
+
+    bindAction('save-dock', () => handleSaveDock());
 
     // ─── Effective State: Override / Clear ───────────────────
 
@@ -752,6 +895,41 @@ function bindAction(action, handler) {
 // ═══════════════════════════════════════════════════════════
 // SAVE HANDLERS
 // ═══════════════════════════════════════════════════════════
+
+async function handleSaveDock() {
+    const area = $('#plan-area');
+    const form = area?.querySelector('.plan-form');
+    if (!form) return;
+
+    const getValue = (f) => {
+        const el = form.querySelector(`[data-form-field="${f}"]`);
+        if (!el) return '';
+        if (el.type === 'checkbox') return el.checked;
+        return el.value;
+    };
+
+    const num = parseInt(getValue('dockNumber'), 10);
+    if (!num || num < 1 || num > 99) { formError = 'Dock number must be 1–99.'; render(); return; }
+
+    const label = (getValue('label') || '').trim() || null;
+    const unlocked = getValue('unlocked');
+    const notes = (getValue('notes') || '').trim() || null;
+
+    try {
+        await upsertCrewDock(num, { label, unlocked, notes });
+        const idx = docks.findIndex(d => d.dockNumber === num);
+        const now = new Date().toISOString();
+        const updated = { dockNumber: num, label, unlocked, notes, createdAt: now, updatedAt: now };
+        if (idx !== -1) docks[idx] = { ...docks[idx], ...updated };
+        else docks.push(updated);
+        editingDockNum = null;
+        formError = '';
+        render();
+    } catch (err) {
+        formError = err.message || 'Failed to save dock.';
+        render();
+    }
+}
 
 async function handleSaveOverride() {
     const area = $('#plan-area');

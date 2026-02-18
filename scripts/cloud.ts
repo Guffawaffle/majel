@@ -506,6 +506,48 @@ async function cmdHealth(): Promise<void> {
   }
 }
 
+async function cmdSync(): Promise<void> {
+  const start = Date.now();
+  const url = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.url)'`);
+
+  humanLog("🔄 Syncing catalog on production...");
+  humanLog("────────────────────────────────────────");
+
+  try {
+    // Get identity token for authenticated request
+    const token = runCapture(`gcloud auth print-identity-token`);
+    const raw = runCapture(`curl -sf -X POST ${url}/api/catalog/sync -H 'Authorization: Bearer ${token}' -H 'X-Requested-With: majel-client' --max-time 120`);
+    const data = JSON.parse(raw);
+
+    if (AX_MODE) {
+      axOutput("sync", start, {
+        url: `${url}/api/catalog/sync`,
+        status: "completed",
+        result: data,
+      });
+    } else {
+      humanLog(`  URL:      ${url}/api/catalog/sync`);
+      humanLog(`  Status:   ✅ completed`);
+      humanLog(`  Result:`);
+      console.log(JSON.stringify(data, null, 2));
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (AX_MODE) {
+      axOutput("sync", start, { url: `${url}/api/catalog/sync`, status: "failed" }, {
+        success: false,
+        errors: ["Catalog sync failed", msg],
+        hints: ["Check logs: npm run cloud:logs", "Verify auth: gcloud auth print-identity-token"],
+      });
+    } else {
+      humanError(`❌ Catalog sync failed: ${url}/api/catalog/sync`);
+      humanError(`   Error: ${msg}`);
+      humanError("   Check: npm run cloud:logs");
+    }
+    process.exit(1);
+  }
+}
+
 async function cmdSecrets(): Promise<void> {
   const start = Date.now();
 
@@ -1382,6 +1424,7 @@ const COMMANDS: Record<string, CommandDef> = {
   metrics:   { fn: cmdMetrics,   tier: "read",  alias: "cloud:metrics",   description: "Log-based metrics: latency, errors, status codes (1h)" },
   costs:     { fn: cmdCosts,     tier: "read",  alias: "cloud:costs",     description: "Estimated monthly costs (Cloud Run + Cloud SQL)" },
   warm:      { fn: cmdWarm,      tier: "read",  alias: "cloud:warm",      description: "Send warmup pings to detect cold starts" },
+  sync:      { fn: cmdSync,      tier: "read",  alias: "cloud:sync",      description: "Run catalog sync on production (CDN → DB)" },
   // Tier: write (requires .cloud-auth)
   deploy:    { fn: cmdDeploy,    tier: "write", alias: "cloud:deploy",    description: "Full pipeline: local-ci \u2192 build \u2192 deploy \u2192 health check" },
   build:     { fn: cmdBuild,     tier: "write", alias: "cloud:build",     description: "Build container image via Cloud Build" },

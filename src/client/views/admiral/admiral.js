@@ -84,18 +84,18 @@ function render() {
     if (!area) return;
 
     area.innerHTML = `
-        <div class="admin-tabs">
-            <button class="admin-tab ${activeTab === 'users' ? 'active' : ''}" data-tab="users">👥 Users</button>
-            <button class="admin-tab ${activeTab === 'invites' ? 'active' : ''}" data-tab="invites">🎫 Invites</button>
-            <button class="admin-tab ${activeTab === 'sessions' ? 'active' : ''}" data-tab="sessions">🔑 Sessions</button>
+        <div class="admiral-tabs">
+            <button class="admiral-tab ${activeTab === 'users' ? 'active' : ''}" data-tab="users">👥 Users</button>
+            <button class="admiral-tab ${activeTab === 'invites' ? 'active' : ''}" data-tab="invites">🎫 Invites</button>
+            <button class="admiral-tab ${activeTab === 'sessions' ? 'active' : ''}" data-tab="sessions">🔑 Sessions</button>
         </div>
-        <div class="admin-panel">
-            ${loading ? '<div class="admin-loading">Loading…</div>' : renderActiveTab()}
+        <div class="admiral-panel">
+            ${loading ? '<div class="admiral-loading">Loading…</div>' : renderActiveTab()}
         </div>
     `;
 
     // Wire tab buttons
-    area.querySelectorAll(".admin-tab").forEach(btn => {
+    area.querySelectorAll(".admiral-tab").forEach(btn => {
         btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     });
 
@@ -116,7 +116,7 @@ function renderActiveTab() {
 
 function renderUsers() {
     if (!users.length) {
-        return '<div class="admin-empty">No registered users.</div>';
+        return '<div class="admiral-empty">No registered users.</div>';
     }
 
     const rows = users.map(u => {
@@ -127,22 +127,22 @@ function renderUsers() {
             .join('');
 
         return `
-            <tr class="${isLocked ? 'admin-row-locked' : ''}">
-                <td class="admin-cell-email" title="${esc(u.email)}">${esc(u.email)}</td>
+            <tr class="${isLocked ? 'admiral-row-locked' : ''}">
+                <td class="admiral-cell-email" title="${esc(u.email)}">${esc(u.email)}</td>
                 <td>${esc(u.displayName)}</td>
                 <td>
-                    <select class="admin-role-select" data-email="${esc(u.email)}" ${isSelf ? 'disabled title="Cannot change own role"' : ''}>
+                    <select class="admiral-role-select" data-email="${esc(u.email)}" ${isSelf ? 'disabled title="Cannot change own role"' : ''}>
                         ${roleOptions}
                     </select>
                 </td>
                 <td>${u.emailVerified ? '✅' : '❌'}</td>
                 <td>${isLocked ? '🔒' : '—'}</td>
-                <td class="admin-cell-date">${fmtDate(u.createdAt)}</td>
-                <td class="admin-cell-actions">
-                    <button class="admin-btn-lock" data-email="${esc(u.email)}" data-locked="${isLocked}" ${isSelf ? 'disabled' : ''}>
+                <td class="admiral-cell-date">${fmtDate(u.createdAt)}</td>
+                <td class="admiral-cell-actions">
+                    <button class="admiral-btn-lock" data-email="${esc(u.email)}" data-locked="${isLocked}" ${isSelf ? 'disabled' : ''}>
                         ${isLocked ? '🔓 Unlock' : '🔒 Lock'}
                     </button>
-                    <button class="admin-btn-delete-user" data-email="${esc(u.email)}" ${isSelf ? 'disabled' : ''}>
+                    <button class="admiral-btn-delete-user" data-email="${esc(u.email)}" ${isSelf ? 'disabled' : ''}>
                         🗑️
                     </button>
                 </td>
@@ -151,8 +151,8 @@ function renderUsers() {
     }).join('');
 
     return `
-        <div class="admin-table-wrap">
-            <table class="admin-table">
+        <div class="admiral-table-wrap">
+            <table class="admiral-table">
                 <thead>
                     <tr>
                         <th>Email</th>
@@ -167,7 +167,7 @@ function renderUsers() {
                 <tbody>${rows}</tbody>
             </table>
         </div>
-        <div class="admin-count">${users.length} user${users.length !== 1 ? 's' : ''}</div>
+        <div class="admiral-count">${users.length} user${users.length !== 1 ? 's' : ''}</div>
     `;
 }
 
@@ -175,21 +175,21 @@ function renderUsers() {
 
 function renderInvites() {
     const form = `
-        <div class="admin-invite-form">
-            <input type="text" id="invite-label" placeholder="Label (optional)" class="admin-input" />
-            <input type="number" id="invite-max-uses" placeholder="Max uses" min="1" max="100" value="10" class="admin-input admin-input-sm" />
-            <select id="invite-expiry" class="admin-input admin-input-sm">
+        <div class="admiral-invite-form">
+            <input type="text" id="invite-label" placeholder="Label (optional)" class="admiral-input" />
+            <input type="number" id="invite-max-uses" placeholder="Max uses" min="1" max="100" value="10" class="admiral-input admiral-input-sm" />
+            <select id="invite-expiry" class="admiral-input admiral-input-sm">
                 <option value="1h">1 hour</option>
                 <option value="24h">24 hours</option>
                 <option value="7d" selected>7 days</option>
                 <option value="30d">30 days</option>
             </select>
-            <button id="admin-create-invite" class="admin-btn-primary">+ Create</button>
+            <button id="admiral-create-invite" class="admiral-btn-primary">+ Create</button>
         </div>
     `;
 
     if (!invites.length) {
-        return form + '<div class="admin-empty">No invite codes.</div>';
+        return form + '<div class="admiral-empty">No invite codes.</div>';
     }
 
     const rows = invites.map(inv => {
@@ -199,26 +199,26 @@ function renderInvites() {
         const codeMasked = inv.code.slice(0, 6) + '…';
 
         return `
-            <tr class="${isRevoked || isExpired ? 'admin-row-muted' : ''}">
+            <tr class="${isRevoked || isExpired ? 'admiral-row-muted' : ''}">
                 <td>
-                    <code class="admin-code" title="${esc(inv.code)}">${codeMasked}</code>
-                    <button class="admin-btn-copy" data-code="${esc(inv.code)}" title="Copy code">📋</button>
+                    <code class="admiral-code" title="${esc(inv.code)}">${codeMasked}</code>
+                    <button class="admiral-btn-copy" data-code="${esc(inv.code)}" title="Copy code">📋</button>
                 </td>
                 <td>${esc(inv.label || '—')}</td>
                 <td>${inv.usedCount ?? 0} / ${inv.maxUses ?? '∞'}</td>
                 <td>${status}</td>
-                <td class="admin-cell-date">${fmtDate(inv.createdAt)}</td>
-                <td class="admin-cell-date">${inv.expiresAt ? fmtDate(inv.expiresAt) : 'Never'}</td>
-                <td class="admin-cell-actions">
-                    ${!isRevoked ? `<button class="admin-btn-revoke" data-code="${esc(inv.code)}">Revoke</button>` : ''}
+                <td class="admiral-cell-date">${fmtDate(inv.createdAt)}</td>
+                <td class="admiral-cell-date">${inv.expiresAt ? fmtDate(inv.expiresAt) : 'Never'}</td>
+                <td class="admiral-cell-actions">
+                    ${!isRevoked ? `<button class="admiral-btn-revoke" data-code="${esc(inv.code)}">Revoke</button>` : ''}
                 </td>
             </tr>
         `;
     }).join('');
 
     return form + `
-        <div class="admin-table-wrap">
-            <table class="admin-table">
+        <div class="admiral-table-wrap">
+            <table class="admiral-table">
                 <thead>
                     <tr>
                         <th>Code</th>
@@ -233,7 +233,7 @@ function renderInvites() {
                 <tbody>${rows}</tbody>
             </table>
         </div>
-        <div class="admin-count">${invites.length} invite${invites.length !== 1 ? 's' : ''}</div>
+        <div class="admiral-count">${invites.length} invite${invites.length !== 1 ? 's' : ''}</div>
     `;
 }
 
@@ -241,29 +241,29 @@ function renderInvites() {
 
 function renderSessions() {
     const killAllBtn = sessions.length > 0
-        ? '<button id="admin-kill-all-sessions" class="admin-btn-danger">Kill All Sessions</button>'
+        ? '<button id="admiral-kill-all-sessions" class="admiral-btn-danger">Kill All Sessions</button>'
         : '';
 
     if (!sessions.length) {
-        return '<div class="admin-empty">No active tenant sessions.</div>';
+        return '<div class="admiral-empty">No active tenant sessions.</div>';
     }
 
     const rows = sessions.map(s => `
         <tr>
-            <td><code class="admin-code">${esc(s.tenantId?.slice(0, 12) ?? s.id?.slice(0, 12) ?? '?')}…</code></td>
+            <td><code class="admiral-code">${esc(s.tenantId?.slice(0, 12) ?? s.id?.slice(0, 12) ?? '?')}…</code></td>
             <td>${esc(s.inviteCode || '—')}</td>
-            <td class="admin-cell-date">${fmtDate(s.createdAt)}</td>
-            <td class="admin-cell-date">${fmtDate(s.lastSeenAt)}</td>
-            <td class="admin-cell-actions">
-                <button class="admin-btn-kill-session" data-id="${esc(s.tenantId || s.id)}">Kill</button>
+            <td class="admiral-cell-date">${fmtDate(s.createdAt)}</td>
+            <td class="admiral-cell-date">${fmtDate(s.lastSeenAt)}</td>
+            <td class="admiral-cell-actions">
+                <button class="admiral-btn-kill-session" data-id="${esc(s.tenantId || s.id)}">Kill</button>
             </td>
         </tr>
     `).join('');
 
     return `
-        <div class="admin-session-toolbar">${killAllBtn}</div>
-        <div class="admin-table-wrap">
-            <table class="admin-table">
+        <div class="admiral-session-toolbar">${killAllBtn}</div>
+        <div class="admiral-table-wrap">
+            <table class="admiral-table">
                 <thead>
                     <tr>
                         <th>Session ID</th>
@@ -276,7 +276,7 @@ function renderSessions() {
                 <tbody>${rows}</tbody>
             </table>
         </div>
-        <div class="admin-count">${sessions.length} session${sessions.length !== 1 ? 's' : ''}</div>
+        <div class="admiral-count">${sessions.length} session${sessions.length !== 1 ? 's' : ''}</div>
     `;
 }
 
@@ -284,7 +284,7 @@ function renderSessions() {
 
 function wireActions(area) {
     // Role change selects
-    area.querySelectorAll(".admin-role-select").forEach(sel => {
+    area.querySelectorAll(".admiral-role-select").forEach(sel => {
         sel.addEventListener("change", async () => {
             const email = sel.dataset.email;
             const role = sel.value;
@@ -302,7 +302,7 @@ function wireActions(area) {
     });
 
     // Lock/unlock buttons
-    area.querySelectorAll(".admin-btn-lock").forEach(btn => {
+    area.querySelectorAll(".admiral-btn-lock").forEach(btn => {
         btn.addEventListener("click", async () => {
             const email = btn.dataset.email;
             const isLocked = btn.dataset.locked === 'true';
@@ -318,7 +318,7 @@ function wireActions(area) {
     });
 
     // Delete user buttons
-    area.querySelectorAll(".admin-btn-delete-user").forEach(btn => {
+    area.querySelectorAll(".admiral-btn-delete-user").forEach(btn => {
         btn.addEventListener("click", async () => {
             const email = btn.dataset.email;
             if (!confirm(`⚠️ Permanently delete ${email}? This cannot be undone.`)) return;
@@ -332,7 +332,7 @@ function wireActions(area) {
     });
 
     // Create invite button
-    const createBtn = area.querySelector("#admin-create-invite");
+    const createBtn = area.querySelector("#admiral-create-invite");
     if (createBtn) {
         createBtn.addEventListener("click", async () => {
             const label = area.querySelector("#invite-label")?.value?.trim() || undefined;
@@ -353,7 +353,7 @@ function wireActions(area) {
     }
 
     // Copy code buttons
-    area.querySelectorAll(".admin-btn-copy").forEach(btn => {
+    area.querySelectorAll(".admiral-btn-copy").forEach(btn => {
         btn.addEventListener("click", async () => {
             try {
                 await navigator.clipboard.writeText(btn.dataset.code);
@@ -366,7 +366,7 @@ function wireActions(area) {
     });
 
     // Revoke invite buttons
-    area.querySelectorAll(".admin-btn-revoke").forEach(btn => {
+    area.querySelectorAll(".admiral-btn-revoke").forEach(btn => {
         btn.addEventListener("click", async () => {
             if (!confirm("Revoke this invite code?")) return;
             try {
@@ -379,7 +379,7 @@ function wireActions(area) {
     });
 
     // Kill single session
-    area.querySelectorAll(".admin-btn-kill-session").forEach(btn => {
+    area.querySelectorAll(".admiral-btn-kill-session").forEach(btn => {
         btn.addEventListener("click", async () => {
             if (!confirm("Kill this session?")) return;
             try {
@@ -392,7 +392,7 @@ function wireActions(area) {
     });
 
     // Kill all sessions
-    const killAllBtn = area.querySelector("#admin-kill-all-sessions");
+    const killAllBtn = area.querySelector("#admiral-kill-all-sessions");
     if (killAllBtn) {
         killAllBtn.addEventListener("click", async () => {
             if (!confirm(`⚠️ Kill all ${sessions.length} tenant session(s)?`)) return;

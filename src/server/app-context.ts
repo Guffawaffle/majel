@@ -14,10 +14,11 @@ import type { CrewStore } from "./stores/crew-store.js";
 import type { ReceiptStore } from "./stores/receipt-store.js";
 import type { BehaviorStore } from "./stores/behavior-store.js";
 import type { ReferenceStore } from "./stores/reference-store.js";
-import type { OverlayStore } from "./stores/overlay-store.js";
+import type { OverlayStore, OverlayStoreFactory } from "./stores/overlay-store.js";
 import type { InviteStore } from "./stores/invite-store.js";
 import type { UserStore } from "./stores/user-store.js";
-import type { TargetStore } from "./stores/target-store.js";
+import type { TargetStore, TargetStoreFactory } from "./stores/target-store.js";
+import type { AuditStore } from "./stores/audit-store.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./services/micro-runner.js";
@@ -42,9 +43,15 @@ export interface AppState {
   behaviorStore: BehaviorStore | null;
   referenceStore: ReferenceStore | null;
   overlayStore: OverlayStore | null;
+  /** #85: Factory that creates per-user RLS-scoped OverlayStores. */
+  overlayStoreFactory: OverlayStoreFactory | null;
   inviteStore: InviteStore | null;
   userStore: UserStore | null;
   targetStore: TargetStore | null;
+  /** #85: Factory that creates per-user RLS-scoped TargetStores. */
+  targetStoreFactory: TargetStoreFactory | null;
+  /** #91 Phase A: Append-only audit log for auth events. */
+  auditStore: AuditStore | null;
   startupComplete: boolean;
   config: AppConfig;
 }
