@@ -5,10 +5,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { readFleetConfig, buildMicroRunnerFromState, type AppState } from "../src/server/app-context.js";
+import { readFleetConfig, buildMicroRunnerFromState } from "../src/server/app-context.js";
 import { createSettingsStore } from "../src/server/stores/settings.js";
-import { bootstrapConfigSync } from "../src/server/config.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
+import { makeState } from "./helpers/make-state.js";
 
 let pool: Pool;
 beforeAll(() => { pool = createTestPool(); });
@@ -33,29 +33,6 @@ describe("readFleetConfig", () => {
 });
 
 describe("buildMicroRunnerFromState", () => {
-  function makeState(overrides: Partial<AppState> = {}): AppState {
-    return {
-      adminPool: null,
-      pool: null,
-      geminiEngine: null,
-      memoryService: null,
-      frameStoreFactory: null,
-      settingsStore: null,
-      sessionStore: null,
-      crewStore: null,
-      receiptStore: null,
-      behaviorStore: null,
-      referenceStore: null,
-      overlayStore: null,
-      inviteStore: null,
-      userStore: null,
-      targetStore: null,
-      startupComplete: false,
-      config: bootstrapConfigSync(),
-      ...overrides,
-    } as AppState;
-  }
-
   it("returns a MicroRunner even without reference store", async () => {
     const runner = await buildMicroRunnerFromState(makeState());
     expect(runner).toBeDefined();

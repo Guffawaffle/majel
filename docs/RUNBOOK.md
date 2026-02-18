@@ -124,8 +124,7 @@ Detects clients hitting rate limits (auth endpoints are rate-limited to prevent 
 resource.type="cloud_run_revision"
 resource.labels.service_name="majel"
 severity="WARNING"
-jsonPayload.subsystem="http"
-"rate limit"
+jsonPayload.event="rate_limit.hit"
 ```
 
 ### 5. All auth events for a specific user

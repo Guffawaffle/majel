@@ -15,7 +15,6 @@ import { testRequest } from "./helpers/test-request.js";
 import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
 import type { AppState } from "../src/server/app-context.js";
-import { bootstrapConfigSync } from "../src/server/config.js";
 import { createCrewStore, type CrewStore } from "../src/server/stores/crew-store.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
@@ -24,30 +23,15 @@ let pool: Pool;
 beforeAll(() => { pool = createTestPool(); });
 afterAll(async () => { await pool.end(); });
 
+import { makeReadyState, makeConfig } from "./helpers/make-state.js";
+
 const ADMIN_TOKEN = "test-crew-validation";
 
 function makeState(overrides: Partial<AppState> = {}): AppState {
-  return {
-    adminPool: null,
-    pool: null,
-    geminiEngine: null,
-    memoryService: null,
-    frameStoreFactory: null,
-    settingsStore: null,
-    sessionStore: null,
-    crewStore: null,
-    receiptStore: null,
-    behaviorStore: null,
-    referenceStore: null,
-    overlayStore: null,
-    inviteStore: null,
-    userStore: null,
-    targetStore: null,
-    auditStore: null,
-    startupComplete: true,
-    config: { ...bootstrapConfigSync(), adminToken: ADMIN_TOKEN, authEnabled: true },
+  return makeReadyState({
+    config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
     ...overrides,
-  };
+  });
 }
 
 const bearer = `Bearer ${ADMIN_TOKEN}`;
