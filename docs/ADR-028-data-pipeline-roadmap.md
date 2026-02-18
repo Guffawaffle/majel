@@ -25,7 +25,7 @@ Majel currently operates on a three-tier intelligence model:
 | Tier | Source | Freshness | Coverage |
 |------|--------|-----------|----------|
 | **T1** — User Overlays | Manual input via UI + AI chat | Stale until user updates | Officers (65), Ships (20), Loadouts, Targets |
-| **T2** — Reference Catalog | One-time JSON import (`gamedata-ingest`) | Static (patch-lagged) | Officer stats, ship stats, abilities |
+| **T2** — Reference Catalog | CDN sync on boot (`data.stfc.space` snapshot) | Refreshed each boot | 278 officers, 112 ships, abilities, hull types, build costs |
 | **T3** — Training Knowledge | Gemini's training data | Frozen at training cutoff | Meta strategies, game mechanics, community wisdom |
 
 This architecture means Aria is a **tactical advisor who remembers what you told her**, not a real-time Combat Information Center (CIC). The gap between T1 (what the Admiral tells Aria) and ground truth (what's actually happening in-game) creates "narrative drift" — Aria may suggest crews based on stale ship tiers or missing officer upgrades.
