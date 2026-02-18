@@ -94,16 +94,16 @@ F1–F3 fixed inline. Remaining items below.
 - [x] **F1:** Signup failure catch not audited — brute-force/enumeration blind spot *(fixed fb2ac0a+)*
 - [x] **F2:** Change-password failure catch not audited — wrong-password brute-force *(fixed fb2ac0a+)*
 - [x] **F3:** Invite redeem failure catch not audited — code-guessing *(fixed fb2ac0a+)*
-- [ ] **F4:** `app-context.test.ts` local `makeState` missing `auditStore` + 2 fields, uses `as AppState` cast
-- [ ] **F5:** `auth.test.ts` local `makeState` missing 5 AppState fields
-- [ ] **F6:** 4 more test files with local `makeState` (auth-validation, crew-validation, admiral-routes, multimodal-chat) — should import shared
-- [ ] **F7:** RUNBOOK query #4 (rate limits) is broken — `subsystem="http"` + `"rate limit"` text never appears in 429 logs. Fix: use `httpRequest.status=429`
+- [x] **F4:** `app-context.test.ts` local `makeState` missing `auditStore` + 2 fields, uses `as AppState` cast *(fixed 62d9a22)*
+- [x] **F5:** `auth.test.ts` local `makeState` missing 5 AppState fields *(fixed 62d9a22)*
+- [x] **F6:** 4 more test files with local `makeState` (auth-validation, crew-validation, admiral-routes, multimodal-chat) — should import shared *(fixed 62d9a22)*
+- [x] **F7:** RUNBOOK query #4 (rate limits) is broken — `subsystem="http"` + `"rate limit"` text never appears in 429 logs. Fix: added `log.http.warn` with `event="rate_limit.hit"` to all 4 handlers + updated RUNBOOK query *(fixed 62d9a22)*
 
 ### WARN — Should Fix
 
 #### Audit Store
-- [ ] **W1:** `String(created_at)` returns non-ISO date — use `.toISOString()`
-- [ ] **W2:** No upper-bound cap on query `limit` param — cap at 1000
+- [x] **W1:** `String(created_at)` returns non-ISO date — use `.toISOString()` *(fixed 62d9a22)*
+- [x] **W2:** No upper-bound cap on query `limit` param — cap at 1000 *(fixed 62d9a22)*
 - [ ] **W3:** `SELECT *` in audit queries — fragile if schema evolves; use explicit column list
 - [ ] **W4:** Append-only not enforced at DB role level — `majel_app` has DELETE on `auth_audit_log`; revoke or add trigger
 
