@@ -39,7 +39,6 @@ import { createCrewStore } from "./stores/crew-store.js";
 import { createReceiptStore } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
-import { syncCdnShips, syncCdnOfficers } from "./services/gamedata-ingest.js";
 import { createOverlayStoreFactory } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
@@ -356,29 +355,12 @@ async function boot(): Promise<void> {
   }
 
   // 2f. Initialize reference store
+  // Data is seeded externally via scripts/seed-cloud-db.ts (ADR-028).
+  // No boot-time sync — DB is the source of truth, not local snapshot files.
   try {
     state.referenceStore = await createReferenceStore(adminPool, pool);
     const refCounts = await state.referenceStore.counts();
     log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
-
-    // Always sync reference data on boot — bulkUpsert is idempotent (ON CONFLICT UPDATE).
-    // CDN-only sync (ADR-028: data.stfc.space is authoritative, legacy raw-*.json deprecated).
-    try {
-      log.boot.info("syncing reference data (CDN)");
-      const [cdnShipResult, cdnOfficerResult] = await Promise.all([
-        syncCdnShips(state.referenceStore),
-        syncCdnOfficers(state.referenceStore),
-      ]);
-      const postCounts = await state.referenceStore.counts();
-      log.boot.info({
-        cdnOfficers: cdnOfficerResult.officers.total,
-        cdnShips: cdnShipResult.ships.total,
-        totalOfficers: postCounts.officers,
-        totalShips: postCounts.ships,
-      }, "reference data synced");
-    } catch (syncErr) {
-      log.boot.warn({ err: syncErr instanceof Error ? syncErr.message : String(syncErr) }, "reference data sync failed (non-fatal, using existing data)");
-    }
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
   }

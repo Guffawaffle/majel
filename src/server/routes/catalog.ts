@@ -18,7 +18,6 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
-import { syncCdnShips, syncCdnOfficers, getCdnVersion } from "../services/gamedata-ingest.js";
 import { syncRateLimiter } from "../rate-limit.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
@@ -306,29 +305,25 @@ export function createCatalogRoutes(appState: AppState): Router {
   });
 
   // ═══════════════════════════════════════════════════════════
-  // Game Data Sync
+  // Game Data Sync (Deprecated — ADR-028)
   // ═══════════════════════════════════════════════════════════
 
+  // CDN data is seeded externally via scripts/seed-cloud-db.ts.
+  // This endpoint returns current counts; actual sync is done via the seed script.
   router.post("/api/catalog/sync", syncRateLimiter, requireAdmiral(appState), async (req, res) => {
     if (!requireReferenceStore(res)) return;
     const store = appState.referenceStore!;
 
     try {
-      // CDN-only sync (ADR-028: legacy JSON deprecated)
-      const [cdnShipResult, cdnOfficerResult] = await Promise.all([
-        syncCdnShips(store),
-        syncCdnOfficers(store),
-      ]);
-      const cdnVersion = await getCdnVersion();
+      const counts = await store.counts();
       sendOk(res, {
-        officers: cdnOfficerResult.officers,
-        ships: cdnShipResult.ships,
-        cdnVersion,
-        source: "data.stfc.space",
+        officers: { total: counts.officers, note: "Data seeded externally via scripts/seed-cloud-db.ts" },
+        ships: { total: counts.ships, note: "Data seeded externally via scripts/seed-cloud-db.ts" },
+        source: "database (seeded from data.stfc.space CDN)",
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      sendFail(res, ErrorCode.INTERNAL_ERROR, `Game data sync failed: ${msg}`, 502);
+      sendFail(res, ErrorCode.INTERNAL_ERROR, `Catalog query failed: ${msg}`, 502);
     }
   });
 
