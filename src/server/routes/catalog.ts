@@ -4,7 +4,9 @@
  * Endpoints for browsing the reference catalog (officers, ships) and
  * managing the user's overlay state (ownership, targeting).
  *
- * Reference data is sourced from structured game data (raw-officers.json).
+ * Reference data is sourced from data.stfc.space CDN snapshot (ADR-028).
+ * Legacy raw-*.json files are deprecated.
+ *
  * Overlay data is full CRUD — the user's personal relationship to each entity.
  *
  * All handlers async for @libsql/client (ADR-018 Phase 1).
@@ -16,7 +18,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
-import { syncGamedataOfficers, syncGamedataShips, syncCdnShips, syncCdnOfficers, getCdnVersion } from "../services/gamedata-ingest.js";
+import { syncCdnShips, syncCdnOfficers, getCdnVersion } from "../services/gamedata-ingest.js";
 import { syncRateLimiter } from "../rate-limit.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
@@ -312,14 +314,18 @@ export function createCatalogRoutes(appState: AppState): Router {
     const store = appState.referenceStore!;
 
     try {
-      const [officerResult, shipResult, cdnShipResult, cdnOfficerResult] = await Promise.all([
-        syncGamedataOfficers(store),
-        syncGamedataShips(store),
+      // CDN-only sync (ADR-028: legacy JSON deprecated)
+      const [cdnShipResult, cdnOfficerResult] = await Promise.all([
         syncCdnShips(store),
         syncCdnOfficers(store),
       ]);
       const cdnVersion = await getCdnVersion();
-      sendOk(res, { ...officerResult, ...shipResult, cdnShips: cdnShipResult.ships, cdnOfficers: cdnOfficerResult.officers, cdnVersion });
+      sendOk(res, {
+        officers: cdnOfficerResult.officers,
+        ships: cdnShipResult.ships,
+        cdnVersion,
+        source: "data.stfc.space",
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       sendFail(res, ErrorCode.INTERNAL_ERROR, `Game data sync failed: ${msg}`, 502);

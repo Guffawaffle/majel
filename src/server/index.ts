@@ -39,7 +39,7 @@ import { createCrewStore } from "./stores/crew-store.js";
 import { createReceiptStore } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
-import { syncGamedataOfficers, syncGamedataShips, syncCdnShips, syncCdnOfficers } from "./services/gamedata-ingest.js";
+import { syncCdnShips, syncCdnOfficers } from "./services/gamedata-ingest.js";
 import { createOverlayStoreFactory } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
@@ -361,35 +361,23 @@ async function boot(): Promise<void> {
     const refCounts = await state.referenceStore.counts();
     log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
 
-    // ADR-026 D8: Auto-seed reference data on first boot
-    if (refCounts.officers === 0 && state.receiptStore) {
-      log.boot.info("first boot detected — seeding reference data from game data");
-      const officerResult = await syncGamedataOfficers(state.referenceStore);
-      const shipResult = await syncGamedataShips(state.referenceStore);
-      // ADR-028: Also ingest CDN snapshot data (richer, authoritative)
-      const cdnShipResult = await syncCdnShips(state.referenceStore);
-      const cdnOfficerResult = await syncCdnOfficers(state.referenceStore);
-      const totalOfficers = officerResult.officers.total + cdnOfficerResult.officers.total;
-      const totalShips = shipResult.ships.total + cdnShipResult.ships.total;
+    // Always sync reference data on boot — bulkUpsert is idempotent (ON CONFLICT UPDATE).
+    // CDN-only sync (ADR-028: legacy JSON deprecated, data.stfc.space is authoritative).
+    try {
+      log.boot.info("syncing reference data (CDN)");
+      const [cdnShipResult, cdnOfficerResult] = await Promise.all([
+        syncCdnShips(state.referenceStore),
+        syncCdnOfficers(state.referenceStore),
+      ]);
+      const postCounts = await state.referenceStore.counts();
       log.boot.info({
-        officers: totalOfficers,
-        ships: totalShips,
         cdnOfficers: cdnOfficerResult.officers.total,
         cdnShips: cdnShipResult.ships.total,
-      }, "reference data auto-seeded");
-      await state.receiptStore.createReceipt({
-        sourceType: "auto_seed",
-        sourceMeta: {
-          officers: totalOfficers,
-          ships: totalShips,
-          source: "bundled game data (data/raw-*.json) + CDN snapshot (data.stfc.space)",
-        },
-        layer: "reference",
-        changeset: { added: [
-          { type: "officers", count: totalOfficers },
-          { type: "ships", count: totalShips },
-        ]},
-      });
+        totalOfficers: postCounts.officers,
+        totalShips: postCounts.ships,
+      }, "reference data synced");
+    } catch (syncErr) {
+      log.boot.warn({ err: syncErr instanceof Error ? syncErr.message : String(syncErr) }, "reference data sync failed (non-fatal, using existing data)");
     }
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");

@@ -1,15 +1,14 @@
 /**
- * gamedata-ingest.ts — Structured Game Data Ingest (#55, #74)
+ * gamedata-ingest.ts — Reference Data Ingest (ADR-028)
  *
  * Majel — STFC Fleet Intelligence System
  *
- * Reads from two sources:
- * 1. data/raw-officers.json + data/raw-ships.json (legacy cheat-sheet/wiki data)
- * 2. data/.stfc-snapshot/ (CDN snapshot from data.stfc.space — full game data)
+ * Primary source: data/.stfc-snapshot/ (CDN snapshot from data.stfc.space)
+ * CDN data is authoritative: hull types, officer bonuses, build costs, tier/level curves,
+ * crew slots, trait configs, ability values. Uses `cdn:ship:<gameId>` and `cdn:officer:<gameId>` IDs.
  *
- * CDN data is richer: hull types, officer bonuses, build costs, tier/level curves,
- * crew slots, trait configs, ability values. CDN entities use `cdn:ship:<gameId>`
- * and `cdn:officer:<gameId>` IDs to coexist with legacy `raw:*` entries.
+ * @deprecated Legacy data/raw-*.json functions are retained but no longer used.
+ * Boot and catalog sync are CDN-only as of ADR-028 completion.
  */
 
 import { readFile, access } from "node:fs/promises";
@@ -100,8 +99,7 @@ function abilityToText(ability: RawAbility | undefined): string | null {
 
 /**
  * Load the bundled raw-officers.json and bulk upsert into the reference store.
- *
- * @returns Summary with counts and metadata.
+ * * @deprecated Use syncCdnOfficers() instead. Legacy JSON files are no longer authoritative (ADR-028). * @returns Summary with counts and metadata.
  */
 export async function syncGamedataOfficers(
   store: ReferenceStore,
@@ -192,6 +190,7 @@ function makeShipId(name: string): string {
 /**
  * Load the bundled raw-ships.json and bulk upsert into the reference store.
  *
+ * @deprecated Use syncCdnShips() instead. Legacy JSON files are no longer authoritative (ADR-028).
  * @returns Summary with counts and metadata.
  */
 export async function syncGamedataShips(
