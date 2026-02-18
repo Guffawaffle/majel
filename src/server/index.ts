@@ -44,6 +44,7 @@ import { createOverlayStoreFactory } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
 import { createAuditStore } from "./stores/audit-store.js";
+import { createUserSettingsStore } from "./stores/user-settings-store.js";
 import { createTargetStoreFactory } from "./stores/target-store.js";
 import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
@@ -71,6 +72,7 @@ import { createIpAllowlist } from "./ip-allowlist.js";
 import { createCoreRoutes } from "./routes/core.js";
 import { createChatRoutes } from "./routes/chat.js";
 import { createSettingsRoutes } from "./routes/settings.js";
+import { createUserSettingsRoutes } from "./routes/user-settings.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { createCatalogRoutes } from "./routes/catalog.js";
 import { createDiagnosticQueryRoutes } from "./routes/diagnostic-query.js";
@@ -113,6 +115,7 @@ const state: AppState = {
   targetStore: null,
   targetStoreFactory: null,
   auditStore: null,
+  userSettingsStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -242,6 +245,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createAdmiralRoutes(appState));
   app.use(createChatRoutes(appState));
   app.use(createSettingsRoutes(appState));
+  app.use(createUserSettingsRoutes(appState));
   app.use(createSessionRoutes(appState));
   app.use(createCatalogRoutes(appState));
   app.use(createDiagnosticQueryRoutes(appState));
@@ -429,6 +433,16 @@ async function boot(): Promise<void> {
     log.boot.info("audit store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "audit store init failed");
+  }
+
+  // 2i¾. Initialize user settings store (#86)
+  try {
+    if (state.settingsStore) {
+      state.userSettingsStore = await createUserSettingsStore(adminPool, pool, state.settingsStore);
+      log.boot.info("user settings store online");
+    }
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "user settings store init failed");
   }
 
   // 2j. Initialize target store (#17, #85: factory pattern for per-user RLS scoping)

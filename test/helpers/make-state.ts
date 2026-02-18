@@ -36,6 +36,7 @@ export function makeState(overrides: Partial<AppState> = {}): AppState {
     targetStore: null,
     targetStoreFactory: null,
     auditStore: null,
+    userSettingsStore: null,
     startupComplete: false,
     config: bootstrapConfigSync(),
     ...overrides,

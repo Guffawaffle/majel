@@ -19,6 +19,7 @@ import type { InviteStore } from "./stores/invite-store.js";
 import type { UserStore } from "./stores/user-store.js";
 import type { TargetStore, TargetStoreFactory } from "./stores/target-store.js";
 import type { AuditStore } from "./stores/audit-store.js";
+import type { UserSettingsStore } from "./stores/user-settings-store.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./services/micro-runner.js";
@@ -52,6 +53,8 @@ export interface AppState {
   targetStoreFactory: TargetStoreFactory | null;
   /** #91 Phase A: Append-only audit log for auth events. */
   auditStore: AuditStore | null;
+  /** #86: Per-user settings overrides. */
+  userSettingsStore: UserSettingsStore | null;
   startupComplete: boolean;
   config: AppConfig;
 }
