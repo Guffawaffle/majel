@@ -149,7 +149,7 @@ function rowToEntry(row: Record<string, unknown>): AuditEntry {
     ipAddress: (row.ip_address as string) ?? null,
     userAgent: (row.user_agent as string) ?? null,
     detail: (row.detail as Record<string, unknown>) ?? null,
-    createdAt: String(row.created_at),
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   };
 }
 
@@ -193,22 +193,26 @@ export async function createAuditStore(adminPool: Pool, runtimePool?: Pool): Pro
     },
 
     async queryByActor(actorId: string, limit = 100): Promise<AuditEntry[]> {
-      const result = await pool.query(SQL.queryByActor, [actorId, limit]);
+      const safeLimit = Math.min(limit, 1000);
+      const result = await pool.query(SQL.queryByActor, [actorId, safeLimit]);
       return result.rows.map(rowToEntry);
     },
 
     async queryByTarget(targetId: string, limit = 100): Promise<AuditEntry[]> {
-      const result = await pool.query(SQL.queryByTarget, [targetId, limit]);
+      const safeLimit = Math.min(limit, 1000);
+      const result = await pool.query(SQL.queryByTarget, [targetId, safeLimit]);
       return result.rows.map(rowToEntry);
     },
 
     async queryByEvent(event: AuditEvent, limit = 100): Promise<AuditEntry[]> {
-      const result = await pool.query(SQL.queryByEvent, [event, limit]);
+      const safeLimit = Math.min(limit, 1000);
+      const result = await pool.query(SQL.queryByEvent, [event, safeLimit]);
       return result.rows.map(rowToEntry);
     },
 
     async queryRecent(limit = 100): Promise<AuditEntry[]> {
-      const result = await pool.query(SQL.queryRecent, [limit]);
+      const safeLimit = Math.min(limit, 1000);
+      const result = await pool.query(SQL.queryRecent, [safeLimit]);
       return result.rows.map(rowToEntry);
     },
 

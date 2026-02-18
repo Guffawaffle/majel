@@ -10,6 +10,7 @@
 
 import rateLimit from "express-rate-limit";
 import { sendFail } from "./envelope.js";
+import { log } from "./logger.js";
 
 const IS_TEST = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
 
@@ -29,7 +30,8 @@ export const authRateLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 
   // Custom error response using Majel's envelope format
-  handler: (_req, res) => {
+  handler: (req, res) => {
+    log.http.warn({ ip: req.ip, path: req.path, event: "rate_limit.hit", limiter: "auth" }, "rate limit exceeded");
     sendFail(
       res,
       "RATE_LIMITED",
@@ -52,7 +54,8 @@ export const chatRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
-  handler: (_req, res) => {
+  handler: (req, res) => {
+    log.http.warn({ ip: req.ip, path: req.path, event: "rate_limit.hit", limiter: "chat" }, "rate limit exceeded");
     sendFail(res, "RATE_LIMITED", "Chat rate limit reached. Please wait before sending more messages.", 429);
   },
   skip: () => IS_TEST,
@@ -69,7 +72,8 @@ export const globalRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
-  handler: (_req, res) => {
+  handler: (req, res) => {
+    log.http.warn({ ip: req.ip, path: req.path, event: "rate_limit.hit", limiter: "global" }, "rate limit exceeded");
     sendFail(res, "RATE_LIMITED", "Too many requests. Please slow down.", 429);
   },
   skip: () => IS_TEST,
@@ -85,7 +89,8 @@ export const syncRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
-  handler: (_req, res) => {
+  handler: (req, res) => {
+    log.http.warn({ ip: req.ip, path: req.path, event: "rate_limit.hit", limiter: "sync" }, "rate limit exceeded");
     sendFail(res, "RATE_LIMITED", "Sync rate limit reached. Please wait before syncing again.", 429);
   },
   skip: () => IS_TEST,

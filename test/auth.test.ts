@@ -15,7 +15,6 @@ import cookieParser from "cookie-parser";
 import { testRequest } from "./helpers/test-request.js";
 import { createInviteStore, type InviteStore } from "../src/server/stores/invite-store.js";
 import { createApp, type AppState } from "../src/server/index.js";
-import { bootstrapConfigSync, type AppConfig } from "../src/server/config.js";
 import { envelopeMiddleware, sendOk } from "../src/server/envelope.js";
 import { requireAdmiral, requireVisitor, TENANT_COOKIE } from "../src/server/services/auth.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
@@ -29,37 +28,11 @@ beforeAll(() => {
 afterAll(async () => {
   await pool.end();
 });
+import { makeReadyState as makeState, makeConfig } from "./helpers/make-state.js";
+
 const ADMIN_TOKEN = "test-admiral-token-12345";
 
 // ─── Helpers ────────────────────────────────────────────────────
-
-function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
-  return {
-    ...bootstrapConfigSync(),
-    ...overrides,
-  };
-}
-
-function makeState(overrides: Partial<AppState> = {}): AppState {
-  return {
-    pool: null,
-    geminiEngine: null,
-    memoryService: null,
-    frameStoreFactory: null,
-    settingsStore: null,
-    sessionStore: null,
-    crewStore: null,
-    behaviorStore: null,
-    referenceStore: null,
-    overlayStore: null,
-    inviteStore: null,
-    userStore: null,
-    auditStore: null,
-    startupComplete: true,
-    config: makeConfig(),
-    ...overrides,
-  };
-}
 
 /** Build a minimal test app with auth middleware on a test endpoint. */
 function buildTestApp(appState: AppState) {

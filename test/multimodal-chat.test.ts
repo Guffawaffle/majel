@@ -11,37 +11,19 @@ import { testRequest } from "./helpers/test-request.js";
 import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
 import type { AppState } from "../src/server/app-context.js";
-import { bootstrapConfigSync } from "../src/server/config.js";
 import { createGeminiEngine, type ImagePart } from "../src/server/services/gemini/index.js";
 
 // ─── App setup ──────────────────────────────────────────────
 
+import { makeReadyState, makeConfig } from "./helpers/make-state.js";
+
 const ADMIN_TOKEN = "test-multimodal-token";
 
 function makeState(overrides: Partial<AppState> = {}): AppState {
-  return {
-    adminPool: null,
-    pool: null,
-    geminiEngine: null,
-    memoryService: null,
-    frameStoreFactory: null,
-    settingsStore: null,
-    sessionStore: null,
-    crewStore: null,
-    receiptStore: null,
-    behaviorStore: null,
-    referenceStore: null,
-    overlayStore: null,
-    overlayStoreFactory: null,
-    inviteStore: null,
-    userStore: null,
-    targetStore: null,
-    targetStoreFactory: null,
-    auditStore: null,
-    startupComplete: true,
-    config: { ...bootstrapConfigSync(), adminToken: ADMIN_TOKEN, authEnabled: true },
+  return makeReadyState({
+    config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
     ...overrides,
-  };
+  });
 }
 
 const bearer = `Bearer ${ADMIN_TOKEN}`;
