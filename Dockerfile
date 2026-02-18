@@ -48,6 +48,7 @@ COPY --from=builder /app/dist ./dist
 COPY legacy/ legacy/
 COPY docs/ docs/
 COPY favicon/ favicon/
+COPY data/ data/
 
 # Run as non-root user (defense-in-depth)
 RUN groupadd --gid 1001 majel && \
