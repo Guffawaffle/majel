@@ -120,13 +120,6 @@ export async function createUserSettingsStore(
 
       // 2. System setting (settings table → env → schema default)
       const systemValue = await systemSettingsStore.get(key);
-      const def = SCHEMA_MAP.get(key);
-
-      // Determine source: check if it's in the system DB, env, or schema default
-      if (def?.envVar && process.env[def.envVar]) {
-        // Could be env but system store resolves this for us
-        return { key, value: systemValue, source: "system" };
-      }
       return { key, value: systemValue, source: "default" };
     },
 
