@@ -1,6 +1,6 @@
 # ADR-008: Image Interpretation — Screenshot-to-Data Pipeline
 
-**Status:** Proposed  
+**Status:** Phase A Implemented  
 **Date:** 2026-02-08  
 **Authors:** Guff, Majel (Gemini advisor), Opie (Claude)
 

@@ -11,9 +11,9 @@
 
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
-import { createApp, type AppState } from "../src/server/index.js";
+import { createApp } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
-import { bootstrapConfigSync } from "../src/server/config.js";
+import { makeReadyState as makeState } from "./helpers/make-state.js";
 import {
   cleanWikitext,
   slugify,
@@ -29,23 +29,7 @@ import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 let pool: Pool;
 let refStore: ReferenceStore;
 
-function makeState(overrides: Partial<AppState> = {}): AppState {
-  return {
-    geminiEngine: null,
-    memoryService: null,
-    frameStoreFactory: null,
-    settingsStore: null,
-    sessionStore: null,
-    crewStore: null,
-    behaviorStore: null,
-    referenceStore: null,
-    overlayStore: null,
-    inviteStore: null,
-    startupComplete: true,
-    config: bootstrapConfigSync(),
-    ...overrides,
-  };
-}
+// makeState imported from ./helpers/make-state.js (makeReadyState)
 
 beforeAll(() => { pool = createTestPool(); });
 afterAll(async () => { await pool.end(); });

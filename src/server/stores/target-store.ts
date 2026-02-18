@@ -1,5 +1,5 @@
 /**
- * target-store.ts — Structured target/goal tracking store (#17)
+ * target-store.ts — Structured target/goal tracking store (#17, #85)
  *
  * Majel — STFC Fleet Intelligence System
  *
@@ -7,13 +7,18 @@
  * ships, and crew loadouts. Complements the overlay's simple `target`
  * boolean with specific goals, progress tracking, and model-suggested targets.
  *
+ * Security (#85):
+ * - user_id column on every row — each user has their own targets
+ * - RLS policies enforce isolation at the database level
+ * - TargetStoreFactory produces user-scoped stores via forUser(userId)
+ *
  * Three target types:
  * - officer: acquire or upgrade a specific officer
  * - ship: build or tier a specific ship
  * - crew: assemble a specific loadout (links to loadout_id)
  */
 
-import { initSchema, type Pool } from "../db.js";
+import { initSchema, withUserScope, withUserRead, type Pool, type PoolClient } from "../db.js";
 import { log } from "../logger.js";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -87,11 +92,13 @@ export interface TargetStore {
   close(): void;
 }
 
-// ─── Schema ─────────────────────────────────────────────────
+// ─── Schema (#85: user_id + RLS) ────────────────────────────
 
 const SCHEMA_STATEMENTS = [
+  // Fresh install: table with user_id
   `CREATE TABLE IF NOT EXISTS targets (
     id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'local',
     target_type TEXT NOT NULL CHECK (target_type IN ('officer', 'ship', 'crew')),
     ref_id TEXT,
     loadout_id INTEGER,
@@ -110,6 +117,33 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_targets_status ON targets(status)`,
   `CREATE INDEX IF NOT EXISTS idx_targets_ref_id ON targets(ref_id)`,
   `CREATE INDEX IF NOT EXISTS idx_targets_priority ON targets(priority)`,
+  `CREATE INDEX IF NOT EXISTS idx_targets_user ON targets(user_id)`,
+
+  // Migration: add user_id to existing tables that lack it
+  `DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'targets'
+    ) AND NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'targets' AND column_name = 'user_id'
+    ) THEN
+      ALTER TABLE targets ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local';
+    END IF;
+  END $$`,
+
+  // RLS policies
+  `ALTER TABLE targets ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE targets FORCE ROW LEVEL SECURITY`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies
+      WHERE tablename = 'targets' AND policyname = 'targets_user_isolation'
+    ) THEN
+      CREATE POLICY targets_user_isolation ON targets
+        USING (user_id = current_setting('app.current_user_id', true))
+        WITH CHECK (user_id = current_setting('app.current_user_id', true));
+    END IF;
+  END $$`,
 ];
 
 // ─── SQL ────────────────────────────────────────────────────
@@ -121,8 +155,8 @@ const SQL = {
   list: `SELECT ${COLS} FROM targets ORDER BY priority ASC, created_at DESC`,
   listByRefId: `SELECT ${COLS} FROM targets WHERE ref_id = $1 ORDER BY priority ASC, created_at DESC`,
   get: `SELECT ${COLS} FROM targets WHERE id = $1`,
-  create: `INSERT INTO targets (target_type, ref_id, loadout_id, target_tier, target_rank, target_level, reason, priority, auto_suggested)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  create: `INSERT INTO targets (user_id, target_type, ref_id, loadout_id, target_tier, target_rank, target_level, reason, priority, auto_suggested)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING ${COLS}`,
   delete: `DELETE FROM targets WHERE id = $1`,
   markAchieved: `UPDATE targets SET status = 'achieved', achieved_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING ${COLS}`,
@@ -160,10 +194,9 @@ function mapRow(row: Record<string, unknown>): Target {
 
 // ─── Filtered Queries ───────────────────────────────────────
 
-async function listFiltered(
-  pool: Pool,
+function buildFilterQuery(
   filters: { targetType?: TargetType; status?: TargetStatus; priority?: number; refId?: string },
-): Promise<Target[]> {
+): { sql: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -185,126 +218,162 @@ async function listFiltered(
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const sql = `SELECT ${COLS} FROM targets ${where} ORDER BY priority ASC, created_at DESC`;
-  const result = await pool.query(sql, params);
-  return result.rows.map(mapRow);
+  return { sql: `SELECT ${COLS} FROM targets ${where} ORDER BY priority ASC, created_at DESC`, params };
 }
 
-// ─── Factory ────────────────────────────────────────────────
+// ─── Scoped Store Implementation ────────────────────────────
 
-export async function createTargetStore(
-  adminPool: Pool,
-  runtimePool?: Pool,
-): Promise<TargetStore> {
-  await initSchema(adminPool, SCHEMA_STATEMENTS);
-  const pool = runtimePool ?? adminPool;
-
-  log.boot.debug("target store schema initialized");
-
+function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
   return {
     async list(filters?) {
-      if (filters && Object.keys(filters).length > 0) {
-        return listFiltered(pool, filters);
-      }
-      const result = await pool.query(SQL.list);
-      return result.rows.map(mapRow);
+      return withUserRead(pool, userId, async (client) => {
+        if (filters && Object.keys(filters).length > 0) {
+          const { sql, params } = buildFilterQuery(filters);
+          const result = await client.query(sql, params);
+          return result.rows.map(mapRow);
+        }
+        const result = await client.query(SQL.list);
+        return result.rows.map(mapRow);
+      });
     },
 
     async get(id) {
-      const result = await pool.query(SQL.get, [id]);
-      return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
+      return withUserRead(pool, userId, async (client) => {
+        const result = await client.query(SQL.get, [id]);
+        return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
+      });
     },
 
     async create(input) {
-      const result = await pool.query(SQL.create, [
-        input.targetType,
-        input.refId ?? null,
-        input.loadoutId ?? null,
-        input.targetTier ?? null,
-        input.targetRank ?? null,
-        input.targetLevel ?? null,
-        input.reason ?? null,
-        input.priority ?? 2,
-        input.autoSuggested ?? false,
-      ]);
-      return mapRow(result.rows[0]);
+      return withUserScope(pool, userId, async (client) => {
+        const result = await client.query(SQL.create, [
+          userId,
+          input.targetType,
+          input.refId ?? null,
+          input.loadoutId ?? null,
+          input.targetTier ?? null,
+          input.targetRank ?? null,
+          input.targetLevel ?? null,
+          input.reason ?? null,
+          input.priority ?? 2,
+          input.autoSuggested ?? false,
+        ]);
+        return mapRow(result.rows[0]);
+      });
     },
 
     async update(id, fields) {
-      // Build dynamic SET clause — only update provided fields
-      const setClauses: string[] = [];
-      const params: unknown[] = [id];
+      return withUserScope(pool, userId, async (client) => {
+        const setClauses: string[] = [];
+        const params: unknown[] = [id];
 
-      if (fields.targetTier !== undefined) {
-        params.push(fields.targetTier);
-        setClauses.push(`target_tier = $${params.length}`);
-      }
-      if (fields.targetRank !== undefined) {
-        params.push(fields.targetRank);
-        setClauses.push(`target_rank = $${params.length}`);
-      }
-      if (fields.targetLevel !== undefined) {
-        params.push(fields.targetLevel);
-        setClauses.push(`target_level = $${params.length}`);
-      }
-      if (fields.reason !== undefined) {
-        params.push(fields.reason);
-        setClauses.push(`reason = $${params.length}`);
-      }
-      if (fields.priority !== undefined) {
-        params.push(fields.priority);
-        setClauses.push(`priority = $${params.length}`);
-      }
-      if (fields.status !== undefined) {
-        params.push(fields.status);
-        setClauses.push(`status = $${params.length}`);
-      }
+        if (fields.targetTier !== undefined) {
+          params.push(fields.targetTier);
+          setClauses.push(`target_tier = $${params.length}`);
+        }
+        if (fields.targetRank !== undefined) {
+          params.push(fields.targetRank);
+          setClauses.push(`target_rank = $${params.length}`);
+        }
+        if (fields.targetLevel !== undefined) {
+          params.push(fields.targetLevel);
+          setClauses.push(`target_level = $${params.length}`);
+        }
+        if (fields.reason !== undefined) {
+          params.push(fields.reason);
+          setClauses.push(`reason = $${params.length}`);
+        }
+        if (fields.priority !== undefined) {
+          params.push(fields.priority);
+          setClauses.push(`priority = $${params.length}`);
+        }
+        if (fields.status !== undefined) {
+          params.push(fields.status);
+          setClauses.push(`status = $${params.length}`);
+        }
 
-      if (setClauses.length === 0) {
-        // Nothing to update — return current state
-        const result = await pool.query(SQL.get, [id]);
+        if (setClauses.length === 0) {
+          const result = await client.query(SQL.get, [id]);
+          return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
+        }
+
+        setClauses.push(`updated_at = NOW()`);
+        const sql = `UPDATE targets SET ${setClauses.join(", ")} WHERE id = $1 RETURNING ${COLS}`;
+        const result = await client.query(sql, params);
         return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
-      }
-
-      setClauses.push(`updated_at = NOW()`);
-      const sql = `UPDATE targets SET ${setClauses.join(", ")} WHERE id = $1 RETURNING ${COLS}`;
-      const result = await pool.query(sql, params);
-      return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
+      });
     },
 
     async delete(id) {
-      const result = await pool.query(SQL.delete, [id]);
-      return result.rowCount! > 0;
+      return withUserScope(pool, userId, async (client) => {
+        const result = await client.query(SQL.delete, [id]);
+        return result.rowCount! > 0;
+      });
     },
 
     async markAchieved(id) {
-      const result = await pool.query(SQL.markAchieved, [id]);
-      return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
+      return withUserScope(pool, userId, async (client) => {
+        const result = await client.query(SQL.markAchieved, [id]);
+        return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
+      });
     },
 
     async listByRef(refId) {
-      const result = await pool.query(SQL.listByRefId, [refId]);
-      return result.rows.map(mapRow);
+      return withUserRead(pool, userId, async (client) => {
+        const result = await client.query(SQL.listByRefId, [refId]);
+        return result.rows.map(mapRow);
+      });
     },
 
     async counts() {
-      const result = await pool.query(SQL.counts);
-      const row = result.rows[0];
-      return {
-        total: Number(row.total),
-        active: Number(row.active),
-        achieved: Number(row.achieved),
-        abandoned: Number(row.abandoned),
-        byType: {
-          officer: Number(row.type_officer),
-          ship: Number(row.type_ship),
-          crew: Number(row.type_crew),
-        },
-      };
+      return withUserRead(pool, userId, async (client) => {
+        const result = await client.query(SQL.counts);
+        const row = result.rows[0];
+        return {
+          total: Number(row.total),
+          active: Number(row.active),
+          achieved: Number(row.achieved),
+          abandoned: Number(row.abandoned),
+          byType: {
+            officer: Number(row.type_officer),
+            ship: Number(row.type_ship),
+            crew: Number(row.type_crew),
+          },
+        };
+      });
     },
 
     close() {
       // Pool lifecycle managed by index.ts
     },
   };
+}
+
+// ─── Factory (#85) ──────────────────────────────────────────
+
+export class TargetStoreFactory {
+  constructor(private pool: Pool) {}
+
+  forUser(userId: string): TargetStore {
+    return createScopedTargetStore(this.pool, userId);
+  }
+}
+
+export async function createTargetStoreFactory(
+  adminPool: Pool,
+  runtimePool?: Pool,
+): Promise<TargetStoreFactory> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
+  log.boot.debug("target store initialized (user-scoped, RLS)");
+  return new TargetStoreFactory(pool);
+}
+
+/** Backward-compatible: returns a store scoped to "local" user. */
+export async function createTargetStore(
+  adminPool: Pool,
+  runtimePool?: Pool,
+): Promise<TargetStore> {
+  const factory = await createTargetStoreFactory(adminPool, runtimePool);
+  return factory.forUser("local");
 }

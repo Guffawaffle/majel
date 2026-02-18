@@ -102,12 +102,18 @@ export function createSettingsRoutes(appState: AppState): Router {
         null, // dock briefing removed (ADR-025)
         runner,
         modelName,
-        {
-          referenceStore: appState.referenceStore,
-          overlayStore: appState.overlayStore,
-          crewStore: appState.crewStore,
-          targetStore: appState.targetStore,
-        },
+        // #85: Build ToolContextFactory for per-user scoping
+        (appState.referenceStore || appState.overlayStoreFactory || appState.crewStore || appState.targetStoreFactory) ? {
+          forUser(userId: string) {
+            return {
+              userId,
+              referenceStore: appState.referenceStore,
+              overlayStore: appState.overlayStoreFactory?.forUser(userId) ?? appState.overlayStore,
+              crewStore: appState.crewStore,
+              targetStore: appState.targetStoreFactory?.forUser(userId) ?? appState.targetStore,
+            };
+          },
+        } : null,
       );
       log.boot.info({ model: appState.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine refreshed with updated fleet config");
     }
@@ -120,7 +126,7 @@ export function createSettingsRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "Settings store not available", 503);
     }
 
-    const key = req.params.key as string;
+    const key = String(req.params.key);
     const deleted = await appState.settingsStore.delete(key);
 
     if (deleted) {

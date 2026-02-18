@@ -14,6 +14,7 @@
     "dev:bg": "npm run kill --silent; mkdir -p logs && MAJEL_LOG_PRETTY=true npm run dev > logs/dev.log 2>&1 & echo $! > .dev.pid && echo 'Majel running in background (PID: '$(cat .dev.pid)')' && echo '  Logs: npm run dev:log'",
     "dev:log": "tail -f logs/dev.log",
     "dev:stop": "npm run kill --silent; rm -f .dev.pid; echo 'Majel stopped'",
+    "dev:wait": "echo '⏳ Waiting for server...' && for i in $(seq 1 60); do curl -sf http://localhost:${MAJEL_PORT:-3000}/api/health 2>/dev/null | grep -q '\"status\":\"online\"' && echo '✅ Server ready' && exit 0; sleep 1; done; echo '❌ Server not ready after 60s' && exit 1",
     "kill": "lsof -t -i:${MAJEL_PORT:-3000} | xargs -r kill -9 2>/dev/null; echo '🔪 Port ${MAJEL_PORT:-3000} cleared'",
     "clean": "rm -rf dist coverage .smartergpt/lex/settings.db .smartergpt/lex/chat.db .test-sessions.db",
     "rebuild": "npm run clean && npm run build",
@@ -52,6 +53,9 @@
     "pg:check": "docker exec majel-postgres-1 pg_isready -U majel -q 2>/dev/null && echo '✅ PostgreSQL is running' || (echo '❌ PostgreSQL is NOT running — run: npm run pg:start' && exit 1)",
     "pg:start": "docker start majel-postgres-1 2>/dev/null || docker compose up -d postgres; echo '⏳ Waiting for PostgreSQL...'; for i in $(seq 1 30); do docker exec majel-postgres-1 pg_isready -U majel -q 2>/dev/null && echo '✅ PostgreSQL ready' && exit 0; sleep 1; done; echo '❌ PostgreSQL failed to start within 30s' && exit 1",
     "pg:stop": "docker stop majel-postgres-1 && echo '🛑 PostgreSQL stopped'",
+    "sync": "curl -sf -X POST http://localhost:${MAJEL_PORT:-3000}/api/catalog/sync -H \"Authorization: Bearer ${MAJEL_ADMIN_TOKEN}\" -H \"X-Requested-With: majel-client\" | python3 -m json.tool && echo '✅ Catalog sync complete'",
+    "sync:wait": "echo '⏳ Waiting for server...' && for i in $(seq 1 30); do curl -sf http://localhost:${MAJEL_PORT:-3000}/api/health >/dev/null 2>&1 && npm run sync && exit 0; sleep 1; done; echo '❌ Server not ready' && exit 1",
+    "cloud:sync": "tsx scripts/cloud.ts sync",
     "gh": "node scripts/gh.mjs"
   },
   "keywords": [
@@ -62,6 +66,10 @@
   ],
   "author": "Admiral Guff",
   "license": "ISC",
+  "overrides": {
+    "rimraf": "^6.1.3",
+    "glob": "^13.0.3"
+  },
   "dependencies": {
     "@google/genai": "^1.41.0",
     "@smartergpt/lex": "^2.5.0",

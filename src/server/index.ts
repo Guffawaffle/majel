@@ -40,10 +40,11 @@ import { createReceiptStore } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
 import { syncGamedataOfficers, syncGamedataShips, syncCdnShips, syncCdnOfficers } from "./services/gamedata-ingest.js";
-import { createOverlayStore } from "./stores/overlay-store.js";
+import { createOverlayStoreFactory } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
-import { createTargetStore } from "./stores/target-store.js";
+import { createAuditStore } from "./stores/audit-store.js";
+import { createTargetStoreFactory } from "./stores/target-store.js";
 import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
@@ -62,6 +63,9 @@ import { envelopeMiddleware, errorHandler, sendFail, ErrorCode } from "./envelop
 
 // Rate limiting
 import { globalRateLimiter } from "./rate-limit.js";
+
+// IP allowlist
+import { createIpAllowlist } from "./ip-allowlist.js";
 
 // Route modules
 import { createCoreRoutes } from "./routes/core.js";
@@ -103,9 +107,12 @@ const state: AppState = {
   behaviorStore: null,
   referenceStore: null,
   overlayStore: null,
+  overlayStoreFactory: null,
   inviteStore: null,
   userStore: null,
   targetStore: null,
+  targetStoreFactory: null,
+  auditStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -124,7 +131,11 @@ export function createApp(appState: AppState): express.Express {
   // AX-First response envelope (ADR-004) — requestId + timing on every request
   // MUST come before body parser so request ID is available for all errors
   app.use(envelopeMiddleware);
-  
+
+  // IP allowlist — blocks non-allowlisted IPs before any processing.
+  // Empty list (no MAJEL_ALLOWED_IPS) = no restriction (local dev).
+  app.use(createIpAllowlist(appState.config.allowedIps));
+
   // Body parser with size limit (ADR-005 Phase 4)
   app.use(express.json({ limit: '100kb' }));
 
@@ -380,14 +391,16 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
   }
 
-  // 2g. Initialize overlay store
+  // 2g. Initialize overlay store (#85: factory pattern for per-user RLS scoping)
   try {
-    state.overlayStore = await createOverlayStore(adminPool, pool);
+    const overlayFactory = await createOverlayStoreFactory(adminPool, pool);
+    state.overlayStoreFactory = overlayFactory;
+    state.overlayStore = overlayFactory.forUser("local"); // backward compat
     const overlayCounts = await state.overlayStore.counts();
     log.boot.info({
       officerOverlays: overlayCounts.officers.total,
       shipOverlays: overlayCounts.ships.total,
-    }, "overlay store online");
+    }, "overlay store online (RLS-scoped)");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "overlay store init failed");
   }
@@ -410,11 +423,21 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "user store init failed");
   }
 
-  // 2j. Initialize target store (#17)
+  // 2i½. Initialize audit store (#91 Phase A)
   try {
-    state.targetStore = await createTargetStore(adminPool, pool);
+    state.auditStore = await createAuditStore(adminPool, pool);
+    log.boot.info("audit store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "audit store init failed");
+  }
+
+  // 2j. Initialize target store (#17, #85: factory pattern for per-user RLS scoping)
+  try {
+    const targetFactory = await createTargetStoreFactory(adminPool, pool);
+    state.targetStoreFactory = targetFactory;
+    state.targetStore = targetFactory.forUser("local"); // backward compat
     const targetCounts = await state.targetStore.counts();
-    log.boot.info({ targets: targetCounts.total, active: targetCounts.active }, "target store online");
+    log.boot.info({ targets: targetCounts.total, active: targetCounts.active }, "target store online (RLS-scoped)");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "target store init failed");
   }
@@ -422,24 +445,33 @@ async function boot(): Promise<void> {
   // Resolve config from settings store
   const { geminiApiKey } = state.config;
 
-  // 3. Initialize Gemini engine
+  // 3. Initialize Gemini engine (#85: ToolContextFactory for per-user scoping)
   if (geminiApiKey) {
     const runner = await buildMicroRunnerFromState(state);
     const modelName = state.settingsStore
       ? await state.settingsStore.get("model.name")
       : undefined;
+
+    // Build a ToolContextFactory that creates user-scoped ToolContext per chat() call
+    const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStore || state.targetStoreFactory) ? {
+      forUser(userId: string) {
+        return {
+          userId,
+          referenceStore: state.referenceStore,
+          overlayStore: state.overlayStoreFactory?.forUser(userId) ?? null,
+          crewStore: state.crewStore,      // crew store not user-scoped yet (follow-up)
+          targetStore: state.targetStoreFactory?.forUser(userId) ?? null,
+        };
+      },
+    } : null;
+
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,
       await readFleetConfig(state.settingsStore),
       null, // dock briefing removed (ADR-025)
       runner,
       modelName,
-      {
-        referenceStore: state.referenceStore,
-        overlayStore: state.overlayStore,
-        crewStore: state.crewStore,
-        targetStore: state.targetStore,
-      },
+      toolContextFactory,
     );
     log.boot.info({ model: state.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
   } else {
@@ -474,6 +506,10 @@ async function boot(): Promise<void> {
       }
       if (cleaned > 0) {
         log.boot.info({ cleaned }, "session:gc");
+        state.auditStore?.logEvent({
+          event: "auth.session.expired_cleanup",
+          detail: { cleaned },
+        });
       }
     } catch (err) {
       log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "session:gc:error");

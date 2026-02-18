@@ -2,7 +2,7 @@
  * routes/chat.ts — Chat, history, and memory recall routes.
  */
 
-import type { Router } from "express";
+import express, { type Router } from "express";
 import type { AppState } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
@@ -11,14 +11,23 @@ import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
 import { MODEL_REGISTRY, getModelDef } from "../services/gemini/index.js";
+import type { ImagePart } from "../services/gemini/index.js";
+
+/** Allowed image MIME types for multimodal chat (ADR-008) */
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+/** Max base64 image data size: ~10MB base64 ≈ ~7.5MB raw image */
+const MAX_IMAGE_DATA_LENGTH = 10 * 1024 * 1024;
 
 export function createChatRoutes(appState: AppState): Router {
   const router = createSafeRouter();
 
   // ─── Chat ───────────────────────────────────────────────────
 
-  router.post("/api/chat", requireAdmiral(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(60_000), async (req, res) => {
-    const { message } = req.body;
+  // Route-specific body limit: 10MB to accommodate base64 image payloads (ADR-008)
+  const chatBodyParser = express.json({ limit: '10mb' });
+
+  router.post("/api/chat", chatBodyParser, requireAdmiral(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(60_000), async (req, res) => {
+    const { message, image: rawImage } = req.body;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 
     if (sessionId.length > 200 || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
@@ -34,6 +43,21 @@ export function createChatRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Message must be 10,000 characters or fewer", 400);
     }
 
+    // ── Image validation (ADR-008 Phase A) ────────────────
+    let imagePart: ImagePart | undefined;
+    if (rawImage) {
+      if (typeof rawImage !== "object" || !rawImage.data || !rawImage.mimeType) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "Image must have 'data' (base64) and 'mimeType' fields", 400);
+      }
+      if (!ALLOWED_IMAGE_TYPES.has(rawImage.mimeType)) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, `Unsupported image type: ${rawImage.mimeType}. Allowed: ${[...ALLOWED_IMAGE_TYPES].join(", ")}`, 400);
+      }
+      if (typeof rawImage.data !== "string" || rawImage.data.length > MAX_IMAGE_DATA_LENGTH) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, `Image data must be a base64 string under ${Math.round(MAX_IMAGE_DATA_LENGTH / 1024 / 1024)}MB`, 400);
+      }
+      imagePart = { inlineData: { data: rawImage.data, mimeType: rawImage.mimeType } };
+    }
+
     if (!appState.geminiEngine) {
       return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready", 503, {
         detail: { reason: appState.startupComplete ? "no API key configured" : "initializing" },
@@ -42,7 +66,8 @@ export function createChatRoutes(appState: AppState): Router {
     }
 
     try {
-      const answer = await appState.geminiEngine.chat(message, sessionId);
+      const userId = res.locals.userId as string | undefined;
+      const answer = await appState.geminiEngine.chat(message, sessionId, imagePart, userId);
 
       // Persist to Lex memory — user-scoped via RLS (ADR-021 D4)
       // Falls back to appState.memoryService if middleware didn't attach

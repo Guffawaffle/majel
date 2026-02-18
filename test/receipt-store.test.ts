@@ -7,6 +7,8 @@
 
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { createReceiptStore, type ReceiptStore } from "../src/server/stores/receipt-store.js";
+import { createReferenceStore } from "../src/server/stores/reference-store.js";
+import { createCrewStore } from "../src/server/stores/crew-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;

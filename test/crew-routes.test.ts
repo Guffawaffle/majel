@@ -10,8 +10,7 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
 import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
-import type { AppState } from "../src/server/app-context.js";
-import { bootstrapConfigSync } from "../src/server/config.js";
+import { makeState } from "./helpers/make-state.js";
 import { createCrewStore, type CrewStore } from "../src/server/stores/crew-store.js";
 import { createReceiptStore, type ReceiptStore } from "../src/server/stores/receipt-store.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
@@ -28,28 +27,7 @@ const REF_DEFAULTS = {
   sourceRevisionId: null, sourceRevisionTimestamp: null,
 };
 
-function makeState(overrides: Partial<AppState> = {}): AppState {
-  return {
-    adminPool: null,
-    pool: null,
-    geminiEngine: null,
-    memoryService: null,
-    frameStoreFactory: null,
-    settingsStore: null,
-    sessionStore: null,
-    crewStore: null,
-    receiptStore: null,
-    behaviorStore: null,
-    referenceStore: null,
-    overlayStore: null,
-    inviteStore: null,
-    userStore: null,
-    targetStore: null,
-    startupComplete: false,
-    config: bootstrapConfigSync(),
-    ...overrides,
-  };
-}
+// makeState imported from ./helpers/make-state.js
 
 async function seedOfficer(store: ReferenceStore, id: string, name: string) {
   await store.upsertOfficer({ id, name, rarity: "Epic", groupName: "Test", captainManeuver: null, officerAbility: null, belowDeckAbility: null, ...REF_DEFAULTS });

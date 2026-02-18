@@ -18,6 +18,8 @@ import type { BridgeSlot, VariantPatch } from "../../types/crew-types.js";
 import type { ToolContext } from "./declarations.js";
 import type { TargetStatus, TargetType, UpdateTargetInput } from "../../stores/target-store.js";
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES } from "../../stores/target-store.js";
+import type { OwnershipState, SetShipOverlayInput, SetOfficerOverlayInput } from "../../stores/overlay-store.js";
+import { VALID_OWNERSHIP_STATES } from "../../stores/overlay-store.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -226,9 +228,9 @@ export async function activatePresetTool(presetId: number, ctx: ToolContext): Pr
     slotCount: preset.slots.length,
     message:
       `To activate this preset (${preset.slots.length} dock slots), ` +
-      "direct the Admiral to Fleet Ops → Presets tab → click Activate. " +
+      "direct the Admiral to Plan → Fleet Presets tab → click Activate. " +
       "This is a fleet-wide change that deactivates all other presets.",
-    uiPath: "/app#fleet-ops/presets",
+    uiPath: "/app#plan/presets",
   };
 }
 
@@ -688,5 +690,109 @@ export async function completeTargetTool(
       "Use suggest_targets for new acquisition recommendations.",
       "Use list_targets with status 'achieved' to review accomplishments.",
     ],
+  };
+}
+
+// ─── Overlay Mutation Tools ─────────────────────────────────
+
+/**
+ * Set or update a ship's personal overlay: ownership state, current tier/level/power.
+ * This lets the Admiral record their actual in-game ship progression.
+ */
+export async function setShipOverlayTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.overlayStore) {
+    return { tool: "set_ship_overlay", error: "Overlay store not available." };
+  }
+
+  const shipId = str(args, "ship_id");
+  if (!shipId) {
+    return { tool: "set_ship_overlay", error: "ship_id is required.", input: args };
+  }
+
+  if (args.ownership_state != null && !VALID_OWNERSHIP_STATES.includes(args.ownership_state as OwnershipState)) {
+    return {
+      tool: "set_ship_overlay",
+      error: `Invalid ownership_state. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`,
+      input: { ownership_state: args.ownership_state },
+    };
+  }
+
+  const input: SetShipOverlayInput = { refId: shipId };
+  if (args.ownership_state != null) input.ownershipState = args.ownership_state as OwnershipState;
+  if (args.tier != null) input.tier = Number(args.tier);
+  if (args.level != null) input.level = Number(args.level);
+  if (args.power != null) input.power = Number(args.power);
+  if (args.target != null) input.target = Boolean(args.target);
+  if (args.target_note != null) input.targetNote = str(args, "target_note").slice(0, MAX_NOTES_LEN);
+
+  const overlay = await ctx.overlayStore.setShipOverlay(input);
+
+  return {
+    tool: "set_ship_overlay",
+    updated: true,
+    shipId,
+    overlay: {
+      ownershipState: overlay.ownershipState,
+      tier: overlay.tier,
+      level: overlay.level,
+      power: overlay.power,
+      target: overlay.target,
+      targetNote: overlay.targetNote,
+    },
+    nextSteps: ["Use get_ship_detail to see the full ship record with updated overlay."],
+  };
+}
+
+/**
+ * Set or update an officer's personal overlay: ownership state, current level/rank/power.
+ * This lets the Admiral record their actual in-game officer progression.
+ */
+export async function setOfficerOverlayTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.overlayStore) {
+    return { tool: "set_officer_overlay", error: "Overlay store not available." };
+  }
+
+  const officerId = str(args, "officer_id");
+  if (!officerId) {
+    return { tool: "set_officer_overlay", error: "officer_id is required.", input: args };
+  }
+
+  if (args.ownership_state != null && !VALID_OWNERSHIP_STATES.includes(args.ownership_state as OwnershipState)) {
+    return {
+      tool: "set_officer_overlay",
+      error: `Invalid ownership_state. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`,
+      input: { ownership_state: args.ownership_state },
+    };
+  }
+
+  const input: SetOfficerOverlayInput = { refId: officerId };
+  if (args.ownership_state != null) input.ownershipState = args.ownership_state as OwnershipState;
+  if (args.level != null) input.level = Number(args.level);
+  if (args.rank != null) input.rank = str(args, "rank");
+  if (args.power != null) input.power = Number(args.power);
+  if (args.target != null) input.target = Boolean(args.target);
+  if (args.target_note != null) input.targetNote = str(args, "target_note").slice(0, MAX_NOTES_LEN);
+
+  const overlay = await ctx.overlayStore.setOfficerOverlay(input);
+
+  return {
+    tool: "set_officer_overlay",
+    updated: true,
+    officerId,
+    overlay: {
+      ownershipState: overlay.ownershipState,
+      level: overlay.level,
+      rank: overlay.rank,
+      power: overlay.power,
+      target: overlay.target,
+      targetNote: overlay.targetNote,
+    },
+    nextSteps: ["Use get_officer_detail to see the full officer record with updated overlay."],
   };
 }

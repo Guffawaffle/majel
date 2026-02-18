@@ -23,16 +23,13 @@ let onKeyDown = null;
 
 // View display names and icons for the nav index
 const VIEW_META = {
-    chat:           { icon: '💬', label: 'Chat' },
-    catalog:        { icon: '📋', label: 'Catalog' },
-    fleet:          { icon: '🚀', label: 'Fleet' },
-    drydock:        { icon: '⚓', label: 'Drydock' },
-    'crew-builder': { icon: '👥', label: 'Crew Builder' },
-    'fleet-ops':    { icon: '🎯', label: 'Fleet Ops' },
-    crews:          { icon: '⚓', label: 'Crews' },
-    plan:           { icon: '🗺️', label: 'Plan' },
-    diagnostics:    { icon: '⚡', label: 'Diagnostics' },
-    admiral:        { icon: '🛡️', label: 'Admiral Console' },
+    chat: { icon: '💬', label: 'Chat' },
+    catalog: { icon: '📋', label: 'Catalog' },
+    fleet: { icon: '🚀', label: 'Fleet' },
+    crews: { icon: '⚓', label: 'Workshop' },
+    plan: { icon: '🗺️', label: 'Plan' },
+    diagnostics: { icon: '⚡', label: 'Diagnostics' },
+    admiral: { icon: '🛡️', label: 'Admiral Console' },
 };
 
 /**
@@ -224,9 +221,9 @@ function buildViewIndex(currentView) {
     const views = getHelpViewNames();
     return `<div class="help-index-grid">
         ${views.map(name => {
-            const meta = VIEW_META[name] || { icon: '📄', label: name };
-            const isCurrent = name === currentView;
-            return `
+        const meta = VIEW_META[name] || { icon: '📄', label: name };
+        const isCurrent = name === currentView;
+        return `
                 <button class="help-index-link ${isCurrent ? 'current' : ''}"
                         data-help-view="${esc(name)}"
                         ${isCurrent ? 'disabled' : ''}>
@@ -234,6 +231,6 @@ function buildViewIndex(currentView) {
                     <span class="help-index-name">${esc(meta.label)}</span>
                 </button>
             `;
-        }).join('')}
+    }).join('')}
     </div>`;
 }

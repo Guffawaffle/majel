@@ -17,8 +17,7 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
 import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
-import type { AppState } from "../src/server/app-context.js";
-import { bootstrapConfigSync } from "../src/server/config.js";
+import { makeState } from "./helpers/make-state.js";
 import { createTargetStore, type TargetStore } from "../src/server/stores/target-store.js";
 import { createCrewStore } from "../src/server/stores/crew-store.js";
 import { createReferenceStore } from "../src/server/stores/reference-store.js";
@@ -28,30 +27,7 @@ let pool: Pool;
 beforeAll(() => { pool = createTestPool(); });
 afterAll(async () => { await pool.end(); });
 
-// ─── Helpers ────────────────────────────────────────────────
-
-function makeState(overrides: Partial<AppState> = {}): AppState {
-  return {
-    adminPool: null,
-    pool: null,
-    geminiEngine: null,
-    memoryService: null,
-    frameStoreFactory: null,
-    settingsStore: null,
-    sessionStore: null,
-    crewStore: null,
-    receiptStore: null,
-    behaviorStore: null,
-    referenceStore: null,
-    overlayStore: null,
-    inviteStore: null,
-    userStore: null,
-    targetStore: null,
-    startupComplete: false,
-    config: bootstrapConfigSync(),
-    ...overrides,
-  };
-}
+// makeState imported from ./helpers/make-state.js
 
 // ═════════════════════════════════════════════════════════════
 // Store Not Available (503)

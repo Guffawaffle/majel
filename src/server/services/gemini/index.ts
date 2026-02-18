@@ -23,6 +23,7 @@ import { log } from "../../logger.js";
 import { type MicroRunner, VALIDATION_DISCLAIMER } from "../micro-runner.js";
 import {
   type ToolContext,
+  type ToolContextFactory,
   FLEET_TOOL_DECLARATIONS,
   executeFleetTool,
 } from "../fleet-tools/index.js";
@@ -48,9 +49,20 @@ export interface FleetConfig {
   shipHangarSlots: number;
 }
 
+/**
+ * Image attachment for multimodal chat (ADR-008 Phase A).
+ * Maps directly to the Gemini SDK's inlineData Part format.
+ */
+export interface ImagePart {
+  inlineData: {
+    data: string;       // base64-encoded image data
+    mimeType: string;   // image/png, image/jpeg, image/webp
+  };
+}
+
 export interface GeminiEngine {
-  /** Send a message and get the response text. Optional sessionId for isolation. */
-  chat(message: string, sessionId?: string): Promise<string>;
+  /** Send a message and get the response text. Optional sessionId for isolation. Optional image attachment. Optional userId for user-scoped tool access (#85). */
+  chat(message: string, sessionId?: string, image?: ImagePart, userId?: string): Promise<string>;
   /** Get the full conversation history. Optional sessionId (default: "default"). */
   getHistory(sessionId?: string): Array<{ role: string; text: string }>;
   /** Get the number of active sessions. */
@@ -102,7 +114,7 @@ export function createGeminiEngine(
   dockBriefing?: string | null,
   microRunner?: MicroRunner | null,
   initialModelId?: string | null,
-  toolContext?: ToolContext | null,
+  toolContextFactory?: ToolContextFactory | null,
 ): GeminiEngine {
   // I5: Fail fast with clear message if API key is missing
   if (!apiKey) {
@@ -110,10 +122,9 @@ export function createGeminiEngine(
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  // Build tools array if tool context is available and has any stores
-  const hasToolContext = toolContext &&
-    (toolContext.referenceStore || toolContext.overlayStore || toolContext.crewStore);
-  const systemInstruction = buildSystemPrompt(fleetConfig, dockBriefing, !!hasToolContext);
+  // Build tools array if tool context factory is available
+  const hasToolContext = !!toolContextFactory;
+  const systemInstruction = buildSystemPrompt(fleetConfig, dockBriefing, hasToolContext);
 
   let currentModelId = resolveModelId(initialModelId);
 
@@ -150,7 +161,7 @@ export function createGeminiEngine(
     hasFleetConfig: !!fleetConfig,
     hasDockBriefing: !!dockBriefing,
     hasMicroRunner: !!microRunner,
-    hasToolContext: !!hasToolContext,
+    hasToolContext,
     toolCount: hasToolContext ? FLEET_TOOL_DECLARATIONS.length : 0,
     promptLen: systemInstruction.length,
   }, "init");
@@ -282,6 +293,7 @@ export function createGeminiEngine(
     chat: Chat,
     initialFunctionCalls: FunctionCall[],
     sessionId: string,
+    scopedContext: ToolContext,
   ): Promise<string> {
     let functionCalls = initialFunctionCalls;
     let round = 0;
@@ -313,7 +325,7 @@ export function createGeminiEngine(
           const result = await executeFleetTool(
             fc.name!,
             fc.args as Record<string, unknown>,
-            toolContext!,
+            scopedContext,
           );
           return {
             functionResponse: {
@@ -350,10 +362,26 @@ export function createGeminiEngine(
   }
 
   return {
-    async chat(message: string, sessionId = "default"): Promise<string> {
-      return withSessionLock(sessionId, async () => {
-      const session = getSession(sessionId);
-      log.gemini.debug({ sessionId, messageLen: message.length, historyLen: session.history.length }, "chat:send");
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string): Promise<string> {
+      // #85: Namespace session keys by userId to prevent cross-user session leakage
+      const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
+      return withSessionLock(sessionKey, async () => {
+      const session = getSession(sessionKey);
+      log.gemini.debug({ sessionId: sessionKey, messageLen: message.length, hasImage: !!image, historyLen: session.history.length, userId }, "chat:send");
+
+      // #85: Create user-scoped tool context for this chat call
+      const scopedContext = hasToolContext ? toolContextFactory!.forUser(userId ?? "local") : null;
+
+      // ── Build multimodal message parts (ADR-008) ────────
+      // When an image is attached, we build a Part[] array: [imagePart, textPart]
+      // The SDK's sendMessage() accepts string | Part[] natively.
+      function buildMessageParts(text: string): string | Part[] {
+        if (!image) return text;
+        return [
+          { inlineData: image.inlineData } as Part,
+          { text } as Part,
+        ];
+      }
 
       // ── MicroRunner pipeline (optional) ──────────────────
       if (microRunner) {
@@ -361,7 +389,8 @@ export function createGeminiEngine(
         const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message);
 
         // Send augmented message (with gated context prepended)
-        const result = await session.chat.sendMessage({ message: augmentedMessage });
+        // Image attached on first message only (augmentedMessage includes gated context)
+        const result = await session.chat.sendMessage({ message: buildMessageParts(augmentedMessage) });
 
         // Check for function calls before text extraction
         let responseText: string;
@@ -369,27 +398,27 @@ export function createGeminiEngine(
 
         if (functionCalls && functionCalls.length > 0) {
           // Handle function call loop — tool results feed back to model
-          responseText = await handleFunctionCalls(session.chat, functionCalls, sessionId);
+          responseText = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!);
         } else {
           responseText = result.text ?? "";
         }
 
         // Validate response against contract
         const validation = await microRunner.validate(
-          responseText, contract, gatedContext, sessionId, startTime, message,
+          responseText, contract, gatedContext, sessionKey, startTime, message,
         );
         const receipt = validation.receipt;
 
         // Single repair pass if validation failed
         if (validation.needsRepair && validation.repairPrompt) {
-          log.gemini.debug({ sessionId, violations: receipt.validationDetails }, "microrunner:repair");
+          log.gemini.debug({ sessionId: sessionKey, violations: receipt.validationDetails }, "microrunner:repair");
           const repairResult = await session.chat.sendMessage({ message: validation.repairPrompt });
           responseText = repairResult.text ?? "";
           receipt.repairAttempted = true;
 
           // Re-validate the repaired response
           const revalidation = await microRunner.validate(
-            responseText, contract, gatedContext, sessionId, startTime, message,
+            responseText, contract, gatedContext, sessionKey, startTime, message,
           );
           receipt.validationResult = revalidation.receipt.validationResult === "pass" ? "repaired" : "fail";
           receipt.validationDetails = revalidation.receipt.validationDetails;
@@ -404,26 +433,26 @@ export function createGeminiEngine(
         microRunner.finalize(receipt);
 
         recordTurnAndTrim(session, message, responseText);
-        log.gemini.debug({ sessionId, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
+        log.gemini.debug({ sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
         return responseText;
       }
 
       // ── Standard path (no MicroRunner) ────────────────────
-      const result = await session.chat.sendMessage({ message });
+      const result = await session.chat.sendMessage({ message: buildMessageParts(message) });
 
       // Check for function calls before text extraction
       let responseText: string;
       const functionCalls = hasToolContext ? result.functionCalls : undefined;
 
       if (functionCalls && functionCalls.length > 0) {
-        responseText = await handleFunctionCalls(session.chat, functionCalls, sessionId);
+        responseText = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!);
       } else {
         responseText = result.text ?? "";
       }
 
-      recordTurnAndTrim(session, message, responseText);
+      recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText);
 
-      log.gemini.debug({ sessionId, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
+      log.gemini.debug({ sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
       return responseText;
       }); // end withSessionLock
     },

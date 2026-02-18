@@ -25,6 +25,14 @@ const modelSelectorLabel = $("#model-selector-label");
 const modelPicker = $("#model-picker");
 const modelPickerList = $("#model-picker-list");
 
+// ADR-008 Phase A: Image upload elements
+const imageUploadBtn = $("#image-upload-btn");
+const imageUploadInput = $("#image-upload");
+const imagePreviewBar = $("#image-preview-bar");
+const imagePreviewThumb = $("#image-preview-thumb");
+const imagePreviewName = $("#image-preview-name");
+const imagePreviewRemove = $("#image-preview-remove");
+
 // ─── View Registration ──────────────────────────────────────
 registerView('chat', {
     area: chatArea,
@@ -39,6 +47,67 @@ let hasMessages = false;
 let currentSessionId = null;
 let cachedModels = null;
 let _isAdmiral = false;
+
+// ADR-008 Phase A: Pending image attachment state
+let pendingImage = null; // { data: string (base64), mimeType: string, name: string, dataUrl: string }
+
+// ─── Image Helpers (ADR-008 Phase A) ────────────────────────
+
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_IMAGE_SIZE_BYTES = 7.5 * 1024 * 1024; // ~7.5MB raw (becomes ~10MB base64)
+
+/**
+ * Read a File/Blob as base64 and set as pending image.
+ * @param {File|Blob} file - The image file
+ * @param {string} [name] - Display name (defaults to file.name)
+ */
+function attachImage(file, name) {
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        addMessage("error", `Unsupported image type: ${file.type}. Use PNG, JPEG, or WebP.`);
+        return;
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        addMessage("error", `Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 7.5MB.`);
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        const dataUrl = reader.result;
+        // Extract base64 data (strip "data:image/png;base64," prefix)
+        const base64 = dataUrl.split(",")[1];
+        pendingImage = {
+            data: base64,
+            mimeType: file.type,
+            name: name || file.name || "pasted image",
+            dataUrl,
+        };
+        showImagePreview();
+        updateSendButton();
+    };
+    reader.readAsDataURL(file);
+}
+
+/** Show the image preview bar with the pending image */
+function showImagePreview() {
+    if (!pendingImage || !imagePreviewBar) return;
+    imagePreviewThumb.src = pendingImage.dataUrl;
+    imagePreviewName.textContent = pendingImage.name;
+    imagePreviewBar.classList.remove("hidden");
+}
+
+/** Clear the pending image and hide preview */
+function clearPendingImage() {
+    pendingImage = null;
+    if (imagePreviewBar) imagePreviewBar.classList.add("hidden");
+    if (imageUploadInput) imageUploadInput.value = "";
+    updateSendButton();
+}
+
+/** Update send button state: enabled if text or image present */
+function updateSendButton() {
+    sendBtn.disabled = !chatInput.value.trim() && !pendingImage;
+}
 
 // ─── Model Selector ─────────────────────────────────────────
 
@@ -298,6 +367,7 @@ function renderMarkdown(text) {
  * @param {string} role - Message role: 'user', 'model', 'system', or 'error'
  * @param {string} text - Message text
  * @param {Object} options - Optional config
+ * @param {string} [options.imageDataUrl] - Data URL for an attached image thumbnail
  * @returns {HTMLElement} Message row element
  */
 export function addMessage(role, text, _options = {}) {
@@ -352,11 +422,17 @@ export function addMessage(role, text, _options = {}) {
         </div>`
             : "";
 
+    // Image thumbnail for user messages with attachments (ADR-008)
+    const imageHtml = _options.imageDataUrl
+        ? `<img class="message-image" src="${_options.imageDataUrl}" alt="Attached screenshot" />`
+        : "";
+
     row.innerHTML = `
     <div class="message-content">
       <div class="message-avatar">${avatarLabel}</div>
       <div class="message-body">
         <div class="message-sender">${senderName}</div>
+        ${imageHtml}
         <div class="message-text">${bodyHtml}</div>
         ${actionsHtml}
       </div>
@@ -427,15 +503,16 @@ export function setSessionId(sessionId) {
 /**
  * Send a chat message
  * @param {string} message - User message
+ * @param {{ data: string, mimeType: string } | null} image - Optional image attachment
  * @param {Function} onRefreshSessions - Callback to refresh session list
  */
-async function sendChat(message, onRefreshSessions) {
+async function sendChat(message, image, onRefreshSessions) {
     chatInput.disabled = true;
     sendBtn.disabled = true;
     addTypingIndicator();
 
     try {
-        const data = await apiSendChat(currentSessionId, message);
+        const data = await apiSendChat(currentSessionId, message, image || undefined);
         removeTypingIndicator();
 
         addMessage("model", data.answer);
@@ -450,7 +527,7 @@ async function sendChat(message, onRefreshSessions) {
         }
     } finally {
         chatInput.disabled = false;
-        sendBtn.disabled = !chatInput.value.trim();
+        sendBtn.disabled = !chatInput.value.trim() && !pendingImage;
         chatInput.focus();
     }
 }
@@ -465,14 +542,21 @@ export function init(onRefreshSessions) {
     chatForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const message = chatInput.value.trim();
-        if (!message) return;
+        if (!message && !pendingImage) return;
 
-        addMessage("user", message);
+        // Capture image before clearing
+        const imageToSend = pendingImage
+            ? { data: pendingImage.data, mimeType: pendingImage.mimeType }
+            : null;
+        const imageDataUrl = pendingImage?.dataUrl;
+
+        addMessage("user", message || "(image attached)", { imageDataUrl });
         chatInput.value = "";
         chatInput.style.height = "auto";
+        clearPendingImage();
         sendBtn.disabled = true;
 
-        sendChat(message, onRefreshSessions);
+        sendChat(message || "What's in this image?", imageToSend, onRefreshSessions);
     });
 
     // Auto-grow textarea
@@ -481,14 +565,14 @@ export function init(onRefreshSessions) {
         chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + "px";
 
         // Enable/disable send button based on content
-        sendBtn.disabled = !chatInput.value.trim();
+        updateSendButton();
     });
 
     // Enter to send, Shift+Enter for newline
     chatInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            if (chatInput.value.trim()) {
+            if (chatInput.value.trim() || pendingImage) {
                 chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
             }
         }
@@ -539,6 +623,55 @@ export function init(onRefreshSessions) {
             chatInput.dispatchEvent(new Event("input"));
             chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
         });
+    });
+
+    // ── Image Upload & Paste (ADR-008 Phase A) ────────────────
+
+    // Upload button triggers hidden file input
+    if (imageUploadBtn && imageUploadInput) {
+        imageUploadBtn.addEventListener("click", () => imageUploadInput.click());
+
+        imageUploadInput.addEventListener("change", () => {
+            const file = imageUploadInput.files[0];
+            if (file) attachImage(file);
+        });
+    }
+
+    // Remove image button
+    if (imagePreviewRemove) {
+        imagePreviewRemove.addEventListener("click", clearPendingImage);
+    }
+
+    // Paste from clipboard (Ctrl+V with image data — killer UX for screenshots)
+    chatInput.addEventListener("paste", (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.type.startsWith("image/")) {
+                e.preventDefault();
+                const blob = item.getAsFile();
+                if (blob) attachImage(blob, "clipboard image");
+                return;
+            }
+        }
+    });
+
+    // Drag-and-drop images onto chat area
+    chatArea.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        chatArea.classList.add("drag-over");
+    });
+    chatArea.addEventListener("dragleave", () => {
+        chatArea.classList.remove("drag-over");
+    });
+    chatArea.addEventListener("drop", (e) => {
+        e.preventDefault();
+        chatArea.classList.remove("drag-over");
+        const file = e.dataTransfer?.files[0];
+        if (file && file.type.startsWith("image/")) {
+            attachImage(file);
+            chatInput.focus();
+        }
     });
 
     // ── Model Selector ──────────────────────────────────────

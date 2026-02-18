@@ -5,6 +5,14 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["test/**/*.test.ts"],
+    // Clear auth/secret env vars so tests run in deterministic "dev mode" (auth disabled).
+    // Tests that need auth explicitly set config overrides.
+    env: {
+      MAJEL_ADMIN_TOKEN: "",
+      MAJEL_INVITE_SECRET: "",
+      MAJEL_ALLOWED_IPS: "",
+      GEMINI_API_KEY: "",
+    },
     coverage: {
       provider: "v8",
       include: ["src/server/**/*.ts"],
@@ -14,10 +22,10 @@ export default defineConfig({
         // boot() and shutdown() are integration-level (real ports, process.exit)
         // sheets.ts OAuth flow requires real Google credentials
         // Per-file thresholds enforce coverage where it matters
-        lines: 45,
+        lines: 60,
         functions: 60,
-        branches: 55,
-        statements: 45,
+        branches: 60,
+        statements: 60,
         perFile: false,
       },
     },

@@ -201,67 +201,28 @@ export const helpContent = {
         keys: []
     },
 
-    // ─── Drydock ────────────────────────────────────────────
-    drydock: {
-        title: 'Drydock — Ship Loadouts',
-        intro: 'Configure crew loadouts for your ships. Assign bridge officers, below-deck policies, intents, and priorities.',
-        sections: [
-            {
-                heading: 'What\'s a Loadout?',
-                body: `
-                    <p>A <strong>loadout</strong> is a complete ship configuration: which ship, which bridge core (captain + two bridge officers), which below-deck policy, and tagging for what activities it's meant for.</p>
-                `
-            },
-            {
-                heading: 'Creating a Loadout',
-                body: `
-                    <p>Click <strong>+ New Loadout</strong> and fill in:</p>
-                    <ul>
-                        <li><strong>Ship</strong> — dropdown of your owned ships</li>
-                        <li><strong>Bridge Core</strong> — a named officer trio (create in Crew Builder first)</li>
-                        <li><strong>Below Deck Policy</strong> — how remaining officers are selected</li>
-                        <li><strong>Priority</strong> (0–999) — higher priority loadouts get officer preference</li>
-                        <li><strong>Intents</strong> — comma-separated activity tags (pvp, armada, mining, etc.)</li>
-                        <li><strong>Tags</strong> — your own organizational labels</li>
-                        <li><strong>Notes</strong> — free-form notes</li>
-                    </ul>
-                `
-            },
-            {
-                heading: 'Intents',
-                body: `
-                    <p>Intents categorize what a loadout is <em>for</em>. There are <strong>21 predefined intents</strong> across three categories:</p>
-                    <ul>
-                        <li><strong>Mining</strong> — gas, crystal, ore, tritanium, dilithium, parasteel, latinum, isogen, data</li>
-                        <li><strong>Combat</strong> — grinding, swarm, eclipse, armada, solo armada, pvp, base defense</li>
-                        <li><strong>Utility</strong> — general, exploration, cargo run, events, voyages, away team</li>
-                    </ul>
-                    <p>Ask Aria to "find loadouts for pvp" and she'll use these tags.</p>
-                `
-            }
-        ],
-        tips: [
-            'Create bridge cores and below-deck policies in Crew Builder before building loadouts',
-            'Use intents to tag what each loadout is for — Aria searches by intent',
-            'Priority determines which loadout gets an officer when there\'s a conflict',
-        ],
-        keys: []
-    },
-
-    // ─── Crew Builder ───────────────────────────────────────
-    'crew-builder': {
-        title: 'Crew Builder — Officer Configurations',
-        intro: 'Create and manage bridge cores (officer trios), below-deck policies, and crew variants.',
+    // ─── Workshop (Crews) ──────────────────────────────────
+    crews: {
+        title: 'Workshop — Composition Workshop',
+        intro: 'The comprehensive crew management view. Bridge cores, loadouts, policies, and reservations all in one place.',
         sections: [
             {
                 heading: 'Bridge Cores',
                 body: `
-                    <p>A <strong>bridge core</strong> is a named group of three officers: <em>Captain</em>, <em>Bridge 1</em>, <em>Bridge 2</em>. These are the officers that sit in a ship's bridge seats.</p>
-                    <p>Create a core, then reference it in Drydock loadouts. One core can be used across multiple loadouts.</p>
+                    <p>A <strong>bridge core</strong> is a named group of three officers: <em>Captain</em>, <em>Bridge 1</em>, <em>Bridge 2</em>. These sit in a ship's bridge seats.</p>
+                    <p><strong>"Used in" cross-references</strong> show which loadouts reference each core.</p>
                 `
             },
             {
-                heading: 'Below Deck Policies',
+                heading: 'Loadouts',
+                body: `
+                    <p>A <strong>loadout</strong> is a complete ship configuration: which ship, bridge core, below-deck policy, and activity tags.</p>
+                    <p>Full loadout management with inline variant expansion. Includes an <strong>intent picker</strong> with 21 predefined intents organized by category (mining, combat, utility).</p>
+                    <p>Use the <strong>search</strong>, <strong>intent filter</strong>, and <strong>sort controls</strong> to find loadouts quickly.</p>
+                `
+            },
+            {
+                heading: 'Policies',
                 body: `
                     <p>Controls how the below-deck crew is filled. Three modes:</p>
                     <ul>
@@ -269,79 +230,6 @@ export const helpContent = {
                         <li><strong>Pinned Only</strong> — use only the officers you've pinned</li>
                         <li><strong>Stats Fill Only</strong> — fill purely by stats, ignore abilities</li>
                     </ul>
-                    <p>You can pin specific officers to always be included below deck.</p>
-                `
-            },
-            {
-                heading: 'Variants',
-                body: `
-                    <p>A <strong>variant</strong> is a modification of an existing loadout — swap one bridge officer, change the policy, etc. Instead of creating a whole new loadout, create a variant patch.</p>
-                `
-            }
-        ],
-        tips: [
-            'Name your bridge cores descriptively — "Kirk PvP Trio" is better than "Core 7"',
-            'Bridge cores are reusable — the same trio can power multiple loadouts',
-            'Ask Aria to "create a bridge core with Kirk, Spock, and McCoy" via chat',
-        ],
-        keys: []
-    },
-
-    // ─── Fleet Ops ──────────────────────────────────────────
-    'fleet-ops': {
-        title: 'Fleet Ops — Docks & Presets',
-        intro: 'Manage your ship berths (docks), create fleet presets, and view the deployment state.',
-        sections: [
-            {
-                heading: 'Docks',
-                body: `
-                    <p>Docks are numbered berths (1–99) where ships are parked. Each dock has a label, lock state (🔒/🔓), and optional notes.</p>
-                    <p><strong>Locked docks</strong> won't be reassigned when you activate a preset.</p>
-                `
-            },
-            {
-                heading: 'Presets',
-                body: `
-                    <p>A <strong>preset</strong> is a named fleet configuration — it maps loadouts to specific docks. Think of it as "my PvP setup" vs. "my mining setup."</p>
-                    <p>Click <strong>⚡ Activate</strong> to apply a preset fleet-wide. Only one preset is active at a time. Use <strong>⚙ Edit Slots</strong> to change the loadout→dock assignments.</p>
-                `
-            },
-            {
-                heading: 'Deployment',
-                body: `
-                    <p>Shows the <strong>effective state</strong> — what's actually deployed after applying presets and manual overrides. Includes <strong>conflict detection</strong> when the same officer is assigned to multiple active loadouts.</p>
-                `
-            }
-        ],
-        tips: [
-            'Lock important docks to protect them from preset swaps',
-            'One-click preset activation makes switching fleet strategies fast',
-            'Check the Deployment tab to spot officer conflicts',
-        ],
-        keys: []
-    },
-
-    // ─── Crews ──────────────────────────────────────────────
-    crews: {
-        title: 'Crews — Composition Workshop',
-        intro: 'The comprehensive crew management view. Bridge cores, loadouts, policies, and reservations all in one place.',
-        sections: [
-            {
-                heading: 'Bridge Cores',
-                body: `
-                    <p>Same as Crew Builder, but with <strong>"Used in" cross-references</strong> showing which loadouts reference each core.</p>
-                `
-            },
-            {
-                heading: 'Loadouts',
-                body: `
-                    <p>Full loadout management with inline variant expansion. Includes an <strong>intent picker</strong> with 21 predefined intents organized by category (mining, combat, utility).</p>
-                `
-            },
-            {
-                heading: 'Policies',
-                body: `
-                    <p>Below-deck policy management — same as Crew Builder but within the unified workshop context.</p>
                 `
             },
             {
@@ -357,9 +245,10 @@ export const helpContent = {
             }
         ],
         tips: [
-            'Use Crews for a full overview; use Crew Builder or Drydock for focused tasks',
+            'Name your bridge cores descriptively — "Kirk PvP Trio" is better than "Core 7"',
             'The "Used in" badges on bridge cores help track where trios are deployed',
             'Hard-lock your best officers to avoid accidental reassignment',
+            'Use intents to tag what each loadout is for — Aria searches by intent',
         ],
         keys: []
     },
@@ -367,7 +256,7 @@ export const helpContent = {
     // ─── Plan ───────────────────────────────────────────────
     plan: {
         title: 'Plan — Fleet State Dashboard',
-        intro: 'The single source of truth for dock assignments, conflict detection, and fleet configuration.',
+        intro: 'The single source of truth for dock assignments, conflict detection, fleet presets, and docks management.',
         sections: [
             {
                 heading: 'Effective State',
@@ -378,6 +267,13 @@ export const helpContent = {
                         <li>🟡 <strong>Manual</strong> — manually assigned or overridden</li>
                     </ul>
                     <p><strong>Conflict alerts</strong> appear when the same officer is assigned to multiple active loadouts. Click to investigate.</p>
+                `
+            },
+            {
+                heading: 'Docks',
+                body: `
+                    <p>Docks are numbered berths (1–99) where ships are parked. Each dock has a label, lock state (🔒/🔓), and optional notes.</p>
+                    <p><strong>Locked docks</strong> won't be reassigned when you activate a preset.</p>
                 `
             },
             {
@@ -395,8 +291,9 @@ export const helpContent = {
         ],
         tips: [
             'Start here to get a full picture of your fleet\'s current deployment',
+            'Lock important docks to protect them from preset swaps',
             'Conflict alerts are your early warning system — resolve them before they cost you',
-            'Override a preset dock assignment by using the Override button on any dock',
+            'One-click preset activation makes switching fleet strategies fast',
         ],
         keys: []
     },

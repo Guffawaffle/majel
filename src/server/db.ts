@@ -147,3 +147,46 @@ export async function withTransaction<T>(
     client.release();
   }
 }
+
+// ─── RLS User Scoping (#85) ────────────────────────────────────
+
+/**
+ * Execute a callback inside a transaction with RLS user scope set.
+ * Sets `app.current_user_id` as a LOCAL (transaction-scoped) session variable
+ * so RLS policies can filter by user. Automatically cleared on COMMIT/ROLLBACK.
+ *
+ * Use for all write operations on user-scoped tables.
+ */
+export async function withUserScope<T>(
+  pool: Pool,
+  userId: string,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  return withTransaction(pool, async (client) => {
+    await client.query("SELECT set_config('app.current_user_id', $1, true)", [
+      userId,
+    ]);
+    return fn(client);
+  });
+}
+
+/**
+ * Execute a read query with RLS scope but without transactional overhead.
+ * Saves 2 round-trips (BEGIN/COMMIT) compared to withUserScope.
+ * NOT safe for writes — use withUserScope for mutations.
+ */
+export async function withUserRead<T>(
+  pool: Pool,
+  userId: string,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT set_config('app.current_user_id', $1, false)", [
+      userId,
+    ]);
+    return await fn(client);
+  } finally {
+    client.release();
+  }
+}

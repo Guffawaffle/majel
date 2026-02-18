@@ -16,16 +16,20 @@ import { apiFetch } from './_fetch.js';
  * Send a chat message to the backend
  * @param {string} sessionId - Current session ID
  * @param {string} message - User message text
+ * @param {{ data: string, mimeType: string }} [image] - Optional base64 image attachment (ADR-008)
  * @returns {Promise<Object>} Unwrapped response data ({ answer, ... })
  * @throws {ApiError} On non-2xx responses
  */
-export async function sendChat(sessionId, message) {
+export async function sendChat(sessionId, message, image) {
+    const body = { message };
+    if (image) body.image = image;
+
     return apiFetch("/api/chat", {
         method: "POST",
         headers: {
             "X-Session-Id": sessionId,
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(body),
     });
 }
 

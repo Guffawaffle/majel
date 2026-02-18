@@ -83,6 +83,12 @@ export interface ReferenceShip {
   levels: Record<string, unknown>[] | null;
   /** Stable numeric game ID from CDN */
   gameId: number | null;
+  /** Per-tier component stats from CDN (JSONB) */
+  tiers: Record<string, unknown>[] | null;
+  /** Build prerequisites: ops level + research requirements (JSONB) */
+  buildRequirements: Record<string, unknown>[] | null;
+  /** Number of blueprints required to unlock */
+  blueprintsRequired: number | null;
   source: string;
   sourceUrl: string | null;
   sourcePageId: string | null;
@@ -107,7 +113,7 @@ export type CreateReferenceOfficerInput = Omit<ReferenceOfficer, "createdAt" | "
   traitConfig?: Record<string, unknown> | null;
 };
 
-export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "updatedAt" | "license" | "attribution" | "ability" | "warpRange" | "link" | "hullType" | "buildTimeInSeconds" | "maxTier" | "maxLevel" | "officerBonus" | "crewSlots" | "buildCost" | "levels" | "gameId"> & {
+export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "updatedAt" | "license" | "attribution" | "ability" | "warpRange" | "link" | "hullType" | "buildTimeInSeconds" | "maxTier" | "maxLevel" | "officerBonus" | "crewSlots" | "buildCost" | "levels" | "gameId" | "tiers" | "buildRequirements" | "blueprintsRequired"> & {
   license?: string;
   attribution?: string;
   ability?: Record<string, unknown> | null;
@@ -122,6 +128,9 @@ export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "update
   buildCost?: Record<string, unknown>[] | null;
   levels?: Record<string, unknown>[] | null;
   gameId?: number | null;
+  tiers?: Record<string, unknown>[] | null;
+  buildRequirements?: Record<string, unknown>[] | null;
+  blueprintsRequired?: number | null;
 };
 
 // ─── Store Interface ────────────────────────────────────────
@@ -230,6 +239,9 @@ const SCHEMA_STATEMENTS = [
     build_cost JSONB,
     levels JSONB,
     game_id BIGINT,
+    tiers JSONB,
+    build_requirements JSONB,
+    blueprints_required INTEGER,
     source TEXT NOT NULL,
     source_url TEXT,
     source_page_id TEXT,
@@ -277,6 +289,15 @@ const SCHEMA_STATEMENTS = [
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'game_id') THEN
       ALTER TABLE reference_ships ADD COLUMN game_id BIGINT;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'tiers') THEN
+      ALTER TABLE reference_ships ADD COLUMN tiers JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'build_requirements') THEN
+      ALTER TABLE reference_ships ADD COLUMN build_requirements JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'blueprints_required') THEN
+      ALTER TABLE reference_ships ADD COLUMN blueprints_required INTEGER;
+    END IF;
   END $$`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_name ON reference_ships(name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_class ON reference_ships(ship_class)`,
@@ -298,6 +319,7 @@ const SHIP_COLS = `id, name, ship_class AS "shipClass", grade, rarity, faction, 
   max_tier AS "maxTier", max_level AS "maxLevel",
   officer_bonus AS "officerBonus", crew_slots AS "crewSlots",
   build_cost AS "buildCost", levels, game_id AS "gameId",
+  tiers, build_requirements AS "buildRequirements", blueprints_required AS "blueprintsRequired",
   source, source_url AS "sourceUrl", source_page_id AS "sourcePageId",
   source_revision_id AS "sourceRevisionId", source_revision_timestamp AS "sourceRevisionTimestamp",
   license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -325,14 +347,16 @@ const SQL = {
   insertShip: `INSERT INTO reference_ships (id, name, ship_class, grade, rarity, faction, tier,
     ability, warp_range, link,
     hull_type, build_time_in_seconds, max_tier, max_level, officer_bonus, crew_slots, build_cost, levels, game_id,
+    tiers, build_requirements, blueprints_required,
     source, source_url, source_page_id, source_revision_id, source_revision_timestamp, license, attribution, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)`,
   updateShip: `UPDATE reference_ships SET name = $1, ship_class = $2, grade = $3, rarity = $4, faction = $5, tier = $6,
     ability = $7, warp_range = $8, link = $9,
     hull_type = $10, build_time_in_seconds = $11, max_tier = $12, max_level = $13,
     officer_bonus = $14, crew_slots = $15, build_cost = $16, levels = $17, game_id = $18,
-    source = $19, source_url = $20, source_page_id = $21, source_revision_id = $22,
-    source_revision_timestamp = $23, license = $24, attribution = $25, updated_at = $26 WHERE id = $27`,
+    tiers = $19, build_requirements = $20, blueprints_required = $21,
+    source = $22, source_url = $23, source_page_id = $24, source_revision_id = $25,
+    source_revision_timestamp = $26, license = $27, attribution = $28, updated_at = $29 WHERE id = $30`,
   getShip: `SELECT ${SHIP_COLS} FROM reference_ships WHERE id = $1`,
   findShipByName: `SELECT ${SHIP_COLS} FROM reference_ships WHERE LOWER(name) = LOWER($1)`,
   listShips: `SELECT ${SHIP_COLS} FROM reference_ships ORDER BY name`,
@@ -485,6 +509,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
         input.buildCost ? JSON.stringify(input.buildCost) : null,
         input.levels ? JSON.stringify(input.levels) : null,
         input.gameId ?? null,
+        input.tiers ? JSON.stringify(input.tiers) : null,
+        input.buildRequirements ? JSON.stringify(input.buildRequirements) : null,
+        input.blueprintsRequired ?? null,
         input.source, input.sourceUrl, input.sourcePageId,
         input.sourceRevisionId, input.sourceRevisionTimestamp,
         license, attribution, now, now,
@@ -535,6 +562,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
           input.buildCost ? JSON.stringify(input.buildCost) : null,
           input.levels ? JSON.stringify(input.levels) : null,
           input.gameId ?? null,
+          input.tiers ? JSON.stringify(input.tiers) : null,
+          input.buildRequirements ? JSON.stringify(input.buildRequirements) : null,
+          input.blueprintsRequired ?? null,
           input.source, input.sourceUrl, input.sourcePageId,
           input.sourceRevisionId, input.sourceRevisionTimestamp,
           input.license ?? DEFAULT_LICENSE, input.attribution ?? DEFAULT_ATTRIBUTION,
@@ -626,6 +656,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
               ship.buildCost ? JSON.stringify(ship.buildCost) : null,
               ship.levels ? JSON.stringify(ship.levels) : null,
               ship.gameId ?? null,
+              ship.tiers ? JSON.stringify(ship.tiers) : null,
+              ship.buildRequirements ? JSON.stringify(ship.buildRequirements) : null,
+              ship.blueprintsRequired ?? null,
               ship.source, ship.sourceUrl, ship.sourcePageId,
               ship.sourceRevisionId, ship.sourceRevisionTimestamp,
               ship.license ?? DEFAULT_LICENSE, ship.attribution ?? DEFAULT_ATTRIBUTION,
@@ -647,6 +680,9 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
               ship.buildCost ? JSON.stringify(ship.buildCost) : null,
               ship.levels ? JSON.stringify(ship.levels) : null,
               ship.gameId ?? null,
+              ship.tiers ? JSON.stringify(ship.tiers) : null,
+              ship.buildRequirements ? JSON.stringify(ship.buildRequirements) : null,
+              ship.blueprintsRequired ?? null,
               ship.source, ship.sourceUrl, ship.sourcePageId,
               ship.sourceRevisionId, ship.sourceRevisionTimestamp,
               ship.license ?? DEFAULT_LICENSE, ship.attribution ?? DEFAULT_ATTRIBUTION,
