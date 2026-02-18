@@ -28,7 +28,7 @@ import { registerView } from 'router';
 let officers = [];
 let ships = [];
 let activeTab = 'officers'; // 'officers' | 'ships'
-let viewMode = 'list';   // 'list' | 'cards' (QA-001-8)
+let viewMode = 'cards';  // 'list' | 'cards' — default grid (#87)
 let searchQuery = '';
 let sortField = 'name'; // 'name' | 'level' | 'power' | 'rarity'
 let sortDir = 'asc';    // 'asc' | 'desc'
