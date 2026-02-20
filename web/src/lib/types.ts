@@ -367,6 +367,102 @@ export interface IntentDef {
   category: IntentCategory;
 }
 
+// ─── Admiral Console ────────────────────────────────────────
+
+/** Extended user for the admin user-management table */
+export interface AdminUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: Role;
+  emailVerified: boolean;
+  lockedAt: string | null;
+  createdAt: string;
+}
+
+/** Invite code returned by the admin invites API */
+export interface AdminInvite {
+  code: string;
+  label: string | null;
+  maxUses: number | null;
+  usedCount: number;
+  revokedAt: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+/** Active session returned by the admin sessions API */
+export interface AdminSession {
+  id: string;
+  inviteCode: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+// ─── Diagnostics ────────────────────────────────────────────
+
+export interface DiagnosticHealth {
+  system: {
+    version: string;
+    uptime: string;
+    uptimeSeconds: number;
+    nodeVersion?: string;
+    timestamp: string;
+    startupComplete: boolean;
+  };
+  gemini: { status: string; model?: string; activeSessions?: number };
+  memory: { status: string; frameCount?: number; dbPath?: string };
+  settings: { status: string; userOverrides?: number };
+  sessions: { status: string; count?: number };
+  crewStore: { status: string; [key: string]: unknown };
+  referenceStore: { status: string; [key: string]: unknown };
+  overlayStore: { status: string; [key: string]: unknown };
+}
+
+export interface DiagnosticSummary {
+  reference: {
+    officers: { total: number; byRarity: { rarity: string | null; count: number }[] };
+    ships: { total: number; byClass: { ship_class: string | null; count: number }[]; byFaction: { faction: string | null; count: number }[] };
+  };
+  overlay: {
+    officers: { total: number; byOwnership: { ownership_state: string; count: number }[] };
+    ships: { total: number; byOwnership: { ownership_state: string; count: number }[] };
+  };
+  samples: {
+    officers: Record<string, unknown>[];
+    ships: Record<string, unknown>[];
+  };
+}
+
+export interface DiagnosticSchemaTable {
+  table: string;
+  rowCount: number;
+  columns: {
+    name: string;
+    type: string;
+    nullable: boolean;
+    defaultValue: string | null;
+    primaryKey: boolean;
+  }[];
+  indexes: { name: string; unique: boolean }[];
+}
+
+export interface DiagnosticSchema {
+  database: string;
+  tables: DiagnosticSchemaTable[];
+}
+
+export interface QueryResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  totalBeforeLimit: number;
+  truncated: boolean;
+  limit: number;
+  durationMs: number;
+  sql: string;
+}
+
 // ─── Router ─────────────────────────────────────────────────
 
 /** View definition for the router */
