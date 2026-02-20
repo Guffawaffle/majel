@@ -205,8 +205,8 @@ See [ADR-031](docs/ADR-031-svelte-migration.md) for full decision rationale.
 | #98 | 3 | Chat view migration | ✅ Done |
 | #99 | 4 | Catalog + Fleet views migration | ✅ Done |
 | #100 | 5 | Workshop + Plan views migration (largest payoff) | ✅ Done |
-| #101 | 6 | Admiral + Diagnostics + Settings views | Not started |
-| #102 | 7 | Help panel + shared components | Not started |
+| #101 | 6 | Admiral + Diagnostics views | ✅ Done |
+| #102 | 7 | Help panel + confirm dialog + shared components | ✅ Done |
 | #103 | 8 | Production build integration + legacy cleanup | 🚧 Build wired, cleanup blocked on Phases 4–7 |
 
 Build pipeline + Express serving + Dockerfile already wired (done during Phase 3 wiring). Legacy cleanup deferred until all views migrated.
