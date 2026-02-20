@@ -3,12 +3,9 @@
  *
  * Majel — STFC Fleet Intelligence System
  *
- * Primary source: data/.stfc-snapshot/ (CDN snapshot from data.stfc.space)
+ * Source: data/.stfc-snapshot/ (CDN snapshot from data.stfc.space)
  * CDN data is authoritative: hull types, officer bonuses, build costs, tier/level curves,
  * crew slots, trait configs, ability values. Uses `cdn:ship:<gameId>` and `cdn:officer:<gameId>` IDs.
- *
- * @deprecated Legacy data/raw-*.json functions are retained but no longer used.
- * Boot and catalog sync are CDN-only as of ADR-028 completion.
  */
 
 import { readFile, access } from "node:fs/promises";
@@ -16,6 +13,12 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ReferenceStore, CreateReferenceOfficerInput, CreateReferenceShipInput } from "../stores/reference-store.js";
 import { log } from "../logger.js";
+import {
+  toTitleCase as sharedToTitleCase,
+  formatAbilityDescription,
+  mapCdnShipToReferenceInput,
+  mapCdnOfficerToReferenceInput,
+} from "./cdn-mappers.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,218 +39,18 @@ export async function getCdnVersion(): Promise<string | null> {
   }
 }
 
-// ─── Types ──────────────────────────────────────────────────
-
-interface RawAbility {
-  type: string;
-  modifier: string | null;
-  conditions: string | null;
-  trigger: string | null;
-  target: string | null;
-  operation: string | null;
-  attributes: string | null;
-  description: string | null;
-  descriptionShort: string | null;
-  hasChance: boolean;
-  showPercentage: boolean;
-  chances: number[];
-  values: number[];
-}
-
-interface RawOfficer {
-  name: string | number;
-  officerId: number;
-  rarity: string;
-  synergy: string | null;
-  art: number | null;
-  abilities: Record<string, RawAbility>;
-  tags: Record<string, { rating: string; reason: string | null }>;
-}
-
 // ─── Name Normalization ─────────────────────────────────────
 
-/**
- * Convert ALL CAPS name to Title Case.
- * "KIRK" → "Kirk", "BECKETT MARINER" → "Beckett Mariner", "KHAN" → "Khan"
- * Preserves known abbreviations and numeric names.
- */
-function toTitleCase(name: string): string {
-  if (!name) return name;
-  return name
-    .toLowerCase()
-    .replace(/(?:^|\s)\S/g, (ch) => ch.toUpperCase());
-}
-
-/**
- * Generate a stable ID from the numeric game ID.
- * Format: `raw:officer:<officerId>` (e.g. `raw:officer:988947581`)
- */
-function makeOfficerId(officerId: number): string {
-  return `raw:officer:${officerId}`;
-}
-
-/**
- * Build a plain-text ability description for backward compatibility.
- * Used for the captainManeuver/officerAbility/belowDeckAbility text columns.
- */
-function abilityToText(ability: RawAbility | undefined): string | null {
-  if (!ability) return null;
-  return ability.description ?? ability.descriptionShort ?? null;
-}
-
-// ─── Ingest ─────────────────────────────────────────────────
-
-/**
- * Load the bundled raw-officers.json and bulk upsert into the reference store.
- * * @deprecated Use syncCdnOfficers() instead. Legacy JSON files are no longer authoritative (ADR-028). * @returns Summary with counts and metadata.
- */
-export async function syncGamedataOfficers(
-  store: ReferenceStore,
-): Promise<{ officers: { created: number; updated: number; total: number }; source: string }> {
-  // Resolve path relative to project root (data/raw-officers.json)
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const projectRoot = join(moduleDir, "..", "..", "..");
-  const dataPath = join(projectRoot, "data", "raw-officers.json");
-
-  log.fleet.info({ path: dataPath }, "loading game data officers");
-
-  const raw = await readFile(dataPath, "utf-8");
-  const rawOfficers: RawOfficer[] = JSON.parse(raw);
-
-  const inputs: CreateReferenceOfficerInput[] = rawOfficers
-    .filter((o) => o.name && o.officerId)
-    .map((o) => {
-      const name = typeof o.name === "number" ? String(o.name).padStart(4, "0") : String(o.name);
-      const displayName = toTitleCase(name);
-      const groupName = o.synergy ? toTitleCase(o.synergy) : null;
-
-      return {
-        id: makeOfficerId(o.officerId),
-        name: displayName,
-        rarity: o.rarity?.toLowerCase() ?? null,
-        groupName,
-        captainManeuver: abilityToText(o.abilities?.captainManeuver),
-        officerAbility: abilityToText(o.abilities?.officerAbility),
-        belowDeckAbility: abilityToText(o.abilities?.belowDeckAbility),
-        abilities: o.abilities ?? null,
-        tags: o.tags ?? null,
-        officerGameId: o.officerId,
-        source: "gamedata",
-        sourceUrl: null,
-        sourcePageId: null,
-        sourceRevisionId: null,
-        sourceRevisionTimestamp: null,
-      };
-    });
-
-  log.fleet.info({ count: inputs.length }, "parsed game data officers, starting bulk upsert");
-  const result = await store.bulkUpsertOfficers(inputs);
-
-  log.fleet.info(
-    { created: result.created, updated: result.updated, total: inputs.length },
-    "game data officer sync complete",
-  );
-
-  return {
-    officers: { ...result, total: inputs.length },
-    source: "STFC Cheat Sheet (M86 1.4RC)",
-  };
-}
+export const toTitleCase = sharedToTitleCase;
 
 // ═══════════════════════════════════════════════════════════
-// Ship Ingest (1337wiki ship guide)
-// ═══════════════════════════════════════════════════════════
-
-interface RawShipAbility {
-  name: string;
-  description: string;
-}
-
-interface RawShip {
-  name: string;
-  link: string | null;
-  ability: RawShipAbility;
-  grade: number | null;
-  shipClass: string;
-  faction: string;
-  rarity: string;
-  warpRange: number[] | null;
-}
-
-/**
- * Generate a stable ID from the ship name.
- * Format: `raw:ship:<slug>` (e.g. `raw:ship:uss-enterprise`)
- */
-function makeShipId(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/['']/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return `raw:ship:${slug}`;
-}
-
-/**
- * Load the bundled raw-ships.json and bulk upsert into the reference store.
- *
- * @deprecated Use syncCdnShips() instead. Legacy JSON files are no longer authoritative (ADR-028).
- * @returns Summary with counts and metadata.
- */
-export async function syncGamedataShips(
-  store: ReferenceStore,
-): Promise<{ ships: { created: number; updated: number; total: number }; source: string }> {
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const projectRoot = join(moduleDir, "..", "..", "..");
-  const dataPath = join(projectRoot, "data", "raw-ships.json");
-
-  log.fleet.info({ path: dataPath }, "loading game data ships");
-
-  const raw = await readFile(dataPath, "utf-8");
-  const rawShips: RawShip[] = JSON.parse(raw);
-
-  const inputs: CreateReferenceShipInput[] = rawShips
-    .filter((s) => s.name)
-    .map((s) => ({
-      id: makeShipId(s.name),
-      name: s.name,
-      shipClass: s.shipClass || null,
-      grade: s.grade ?? null,
-      rarity: s.rarity?.toLowerCase() ?? null,
-      faction: s.faction || null,
-      tier: null, // tier is per-player progression, not a static property
-      ability: (s.ability as unknown as Record<string, unknown>) ?? null,
-      warpRange: s.warpRange ?? null,
-      link: s.link ?? null,
-      source: "1337wiki",
-      sourceUrl: s.link ?? "https://star-trek-fleet-command.1337wiki.com/ship-guide/",
-      sourcePageId: null,
-      sourceRevisionId: null,
-      sourceRevisionTimestamp: null,
-    }));
-
-  log.fleet.info({ count: inputs.length }, "parsed game data ships, starting bulk upsert");
-  const result = await store.bulkUpsertShips(inputs);
-
-  log.fleet.info(
-    { created: result.created, updated: result.updated, total: inputs.length },
-    "game data ship sync complete",
-  );
-
-  return {
-    ships: { ...result, total: inputs.length },
-    source: "1337wiki ship guide",
-  };
-}
-
-// ═══════════════════════════════════════════════════════════
-// CDN Ingest (data.stfc.space snapshot — ADR-028 Phase 1)
+// CDN Ingest (data.stfc.space snapshot)
 // ═══════════════════════════════════════════════════════════
 
 // ─── Enum Maps ──────────────────────────────────────────────
 
 import { HULL_TYPE_LABELS, OFFICER_CLASS_LABELS, RARITY_LABELS, FACTION_LABELS } from "./game-enums.js";
 
-// Re-export for backward compat
 const HULL_TYPE_NAMES = HULL_TYPE_LABELS;
 const RARITY_NAMES = RARITY_LABELS;
 const OFFICER_CLASS_NAMES = OFFICER_CLASS_LABELS;
@@ -417,12 +220,6 @@ export async function syncCdnShips(
   const inputs: CreateReferenceShipInput[] = [];
 
   for (const ship of summary) {
-    const name = nameMap.get(ship.loca_id) ?? `Ship ${ship.id}`;
-    const factionId = ship.faction?.id ?? null;
-    const factionName = factionId != null ? (FACTION_NAMES[factionId] ?? null) : null;
-    const hullTypeName = HULL_TYPE_NAMES[ship.hull_type] ?? null;
-    const rarityStr = typeof ship.rarity === "string" ? ship.rarity.toLowerCase() : (RARITY_NAMES[ship.rarity as unknown as number] ?? null);
-
     // Try to load detail file
     let detail: CdnShipDetail | null = null;
     try {
@@ -432,47 +229,16 @@ export async function syncCdnShips(
       // Detail not downloaded — use summary-only
     }
 
-    // Build ability object with translated names
-    let ability: Record<string, unknown> | null = null;
-    if (detail?.ability?.[0]) {
-      const a = detail.ability[0];
-      ability = {
-        name: abilityNameMap.get(ship.loca_id) ?? null,
-        description: abilityDescMap.get(ship.loca_id) ?? null,
-        valueIsPercentage: a.value_is_percentage,
-        values: a.values,
-      };
-    }
-
-    inputs.push({
-      id: `cdn:ship:${ship.id}`,
-      name,
-      shipClass: hullTypeName,
-      grade: ship.grade,
-      rarity: rarityStr,
-      faction: factionName,
-      tier: null,
-      ability,
-      warpRange: null,
-      link: `https://stfc.space/ships/${ship.id}`,
-      hullType: ship.hull_type,
-      buildTimeInSeconds: detail?.build_time_in_seconds ?? null,
-      maxTier: detail?.max_tier ?? ship.max_tier,
-      maxLevel: detail?.max_level ?? null,
-      officerBonus: detail?.officer_bonus ?? null,
-      crewSlots: detail?.crew_slots ?? null,
-      buildCost: detail?.build_cost ?? null,
-      levels: detail?.levels ?? null,
-      tiers: detail?.tiers ?? null,
-      buildRequirements: detail?.build_requirements ?? ship.build_requirements ?? null,
-      blueprintsRequired: detail?.blueprints_required ?? ship.blueprints_required ?? null,
-      gameId: ship.id,
-      source: "cdn:data.stfc.space",
-      sourceUrl: `https://data.stfc.space/ship/${ship.id}.json`,
-      sourcePageId: null,
-      sourceRevisionId: null,
-      sourceRevisionTimestamp: null,
-    });
+    inputs.push(mapCdnShipToReferenceInput({
+      ship,
+      detail,
+      shipNameMap: nameMap,
+      shipAbilityNameMap: abilityNameMap,
+      shipAbilityDescMap: abilityDescMap,
+      hullTypeLabels: HULL_TYPE_NAMES,
+      rarityLabels: RARITY_NAMES,
+      factionLabels: FACTION_NAMES,
+    }));
   }
 
   log.fleet.info({ count: inputs.length }, "parsed CDN ships, starting bulk upsert");
@@ -533,17 +299,6 @@ export async function syncCdnOfficers(
   const inputs: CreateReferenceOfficerInput[] = [];
 
   for (const officer of summary) {
-    const name = nameMap.get(officer.loca_id) ?? `Officer ${officer.id}`;
-    const factionId = officer.faction?.id ?? null;
-    const factionName = factionId != null ? (FACTION_NAMES[factionId] ?? factionNameMap.get(officer.faction!.loca_id) ?? null) : null;
-    const rarityStr = RARITY_NAMES[officer.rarity] ?? String(officer.rarity);
-    const className = OFFICER_CLASS_NAMES[officer.class] ?? null;
-
-    // Get ability text from translations
-    const cmText = officer.captain_ability?.loca_id != null ? abilityTextMap.get(officer.captain_ability.loca_id) : null;
-    const oaText = officer.ability?.loca_id != null ? abilityTextMap.get(officer.ability.loca_id) : null;
-    const bdText = officer.below_decks_ability?.loca_id != null ? abilityTextMap.get(officer.below_decks_ability.loca_id) : null;
-
     // Try to load detail file for trait config
     let detail: CdnOfficerDetail | null = null;
     try {
@@ -553,70 +308,18 @@ export async function syncCdnOfficers(
       // Detail not downloaded — use summary-only
     }
 
-    // Build structured abilities object
-    const abilities: Record<string, unknown> = {};
-    if (officer.captain_ability) {
-      abilities.captainManeuver = {
-        name: cmText?.name ?? null,
-        description: cmText?.description ?? null,
-        shortDescription: cmText?.shortDescription ?? null,
-        valueIsPercentage: officer.captain_ability.value_is_percentage,
-        values: officer.captain_ability.values,
-      };
-    }
-    if (officer.ability) {
-      abilities.officerAbility = {
-        name: oaText?.name ?? null,
-        description: oaText?.description ?? null,
-        shortDescription: oaText?.shortDescription ?? null,
-        valueIsPercentage: officer.ability.value_is_percentage,
-        values: officer.ability.values,
-      };
-    }
-    if (officer.below_decks_ability) {
-      abilities.belowDeckAbility = {
-        name: bdText?.name ?? null,
-        description: bdText?.description ?? null,
-        shortDescription: bdText?.shortDescription ?? null,
-        valueIsPercentage: officer.below_decks_ability.value_is_percentage,
-        values: officer.below_decks_ability.values,
-      };
-    }
-
-    // Build trait config with resolved names
-    let traitConfig: Record<string, unknown> | null = null;
-    if (detail?.trait_config) {
-      traitConfig = {
-        progression: detail.trait_config.progression.map(p => ({
-          requiredRank: p.required_rank,
-          traitId: p.trait_id,
-          traitName: traitNameMap.get(p.trait_id) ?? null,
-        })),
-      };
-    }
-
-    inputs.push({
-      id: `cdn:officer:${officer.id}`,
-      name,
-      rarity: rarityStr,
-      groupName: className,
-      captainManeuver: cmText?.shortDescription ?? cmText?.description ?? null,
-      officerAbility: oaText?.shortDescription ?? oaText?.description ?? null,
-      belowDeckAbility: bdText?.shortDescription ?? bdText?.description ?? null,
-      abilities,
-      tags: null, // CDN doesn't have activity tags (those come from the cheat sheet)
-      officerGameId: officer.id,
-      officerClass: officer.class,
-      faction: factionId != null ? { id: factionId, name: factionName } : null,
-      synergyId: officer.synergy_id,
-      maxRank: officer.max_rank ?? detail?.max_rank ?? null,
-      traitConfig,
-      source: "cdn:data.stfc.space",
-      sourceUrl: `https://data.stfc.space/officer/${officer.id}.json`,
-      sourcePageId: null,
-      sourceRevisionId: null,
-      sourceRevisionTimestamp: null,
-    });
+    inputs.push(mapCdnOfficerToReferenceInput({
+      officer,
+      detail,
+      rarityLabels: RARITY_NAMES,
+      officerClassLabels: OFFICER_CLASS_NAMES,
+      factionLabels: FACTION_NAMES,
+      officerNameMap: nameMap,
+      officerAbilityTextMap: abilityTextMap,
+      factionNameMap,
+      traitNameMap,
+      formatAbilityDescription,
+    }));
   }
 
   log.fleet.info({ count: inputs.length }, "parsed CDN officers, starting bulk upsert");

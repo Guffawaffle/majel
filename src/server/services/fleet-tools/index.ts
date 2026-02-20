@@ -27,6 +27,11 @@ import {
   getLoadoutDetail,
   listPlanItems,
   listIntents,
+  listResearch,
+  listInventory,
+  calculateUpgradePath,
+  estimateAcquisitionTime,
+  calculateTruePower,
   findLoadoutsForIntent,
   suggestCrew,
   analyzeFleet,
@@ -39,12 +44,14 @@ import {
 
 // ─── Mutation tool implementations ──────────────────────────
 import {
+  syncOverlayTool,
   createBridgeCoreTool,
   createLoadoutTool,
   activatePresetTool,
   setReservationTool,
   createVariantTool,
   getEffectiveStateTool,
+  syncResearchTool,
   createTargetTool,
   updateTargetTool,
   completeTargetTool,
@@ -112,6 +119,29 @@ async function dispatchTool(
       return listPlanItems(ctx);
     case "list_intents":
       return listIntents(args.category as string | undefined, ctx);
+    case "list_research":
+      return listResearch(
+        args.tree as string | undefined,
+        args.include_completed as boolean | undefined,
+        ctx,
+      );
+    case "list_inventory":
+      return listInventory(args.category as string | undefined, args.query as string | undefined, ctx);
+    case "calculate_upgrade_path":
+      return calculateUpgradePath(
+        String(args.ship_id ?? ""),
+        args.target_tier == null ? undefined : Number(args.target_tier),
+        ctx,
+      );
+    case "estimate_acquisition_time":
+      return estimateAcquisitionTime(
+        String(args.ship_id ?? ""),
+        args.target_tier == null ? undefined : Number(args.target_tier),
+        args.daily_income as Record<string, unknown> | undefined,
+        ctx,
+      );
+    case "calculate_true_power":
+      return calculateTruePower(String(args.ship_id ?? ""), args.intent_key as string | undefined, ctx);
     case "find_loadouts_for_intent":
       return findLoadoutsForIntent(String(args.intent_key ?? ""), ctx);
     case "suggest_crew":
@@ -149,6 +179,10 @@ async function dispatchTool(
       return createVariantTool(args, ctx);
     case "get_effective_state":
       return getEffectiveStateTool(ctx);
+    case "sync_overlay":
+      return syncOverlayTool(args, ctx);
+    case "sync_research":
+      return syncResearchTool(args, ctx);
     // Overlay mutation tools
     case "set_ship_overlay":
       return setShipOverlayTool(args, ctx);

@@ -16,4 +16,3 @@ Non-store business logic — AI engines, sync, email, auth, briefing generators.
 | `micro-runner.ts` | MicroRunner tool execution engine |
 | `password.ts` | Password validation rules |
 | `plan-briefing.ts` | Fleet plan status briefings |
-| `wiki-ingest.ts` | STFC wiki data import pipeline |

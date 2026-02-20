@@ -133,6 +133,15 @@ Use these values when the Admiral asks about their ops level, drydocks, or hanga
 Combine with training knowledge — e.g. "At Ops ${fleetConfig.opsLevel}, you have access to..." or "With ${fleetConfig.drydockCount} drydocks, you can run..."
 
 `;
+  } else {
+    // #85 H3: Per-user fleet config injected per-message rather than static
+    prompt += `FLEET CONFIGURATION:
+Fleet configuration values (Operations Level, Drydock Count, Ship Hangar Slots) are provided per-message in [FLEET CONFIG] blocks.
+Use the most recently provided values when the Admiral asks about their ops level, drydocks, or hangar capacity.
+Combine with training knowledge — e.g. "At Ops <level>, you have access to..." or "With <drydocks> drydocks, you can run..."
+If no [FLEET CONFIG] block has been provided yet, ask the Admiral about their ops level before making assumptions.
+
+`;
   }
 
   // ── Layer 2c: Drydock Loadout Briefing (ADR-010 Phase 2) ───────

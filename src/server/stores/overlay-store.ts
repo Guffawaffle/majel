@@ -25,7 +25,7 @@
  * User isolation added in #85.
  */
 
-import { initSchema, withUserScope, withUserRead, type Pool, type PoolClient } from "../db.js";
+import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
 import { log } from "../logger.js";
 
 // ─── Types ──────────────────────────────────────────────────

@@ -30,6 +30,7 @@ import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from "n
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
+import os from "node:os";
 
 // ─── Constants ──────────────────────────────────────────────────
 
@@ -602,17 +603,23 @@ async function cmdSsh(): Promise<void> {
     return;
   }
 
-  // Check if cloud-sql-proxy is installed
+  // Resolve cloud-sql-proxy binary (PATH first, then ~/.local/bin fallback)
+  let proxyBin = "cloud-sql-proxy";
   try {
     runCapture("which cloud-sql-proxy");
   } catch {
-    humanError("❌ cloud-sql-proxy not found.");
-    humanError("   Install: https://cloud.google.com/sql/docs/postgres/sql-proxy");
-    humanError("   Or: gcloud components install cloud-sql-proxy");
-    process.exit(1);
+    const localBin = resolve(os.homedir(), ".local", "bin", "cloud-sql-proxy");
+    if (existsSync(localBin)) {
+      proxyBin = localBin;
+    } else {
+      humanError("❌ cloud-sql-proxy not found.");
+      humanError("   Install: https://cloud.google.com/sql/docs/postgres/sql-proxy");
+      humanError("   Or: gcloud components install cloud-sql-proxy");
+      process.exit(1);
+    }
   }
 
-  const child = spawn("cloud-sql-proxy", [
+  const child = spawn(proxyBin, [
     CLOUD_SQL_INSTANCE,
     "--port", "5433",
   ], { stdio: "inherit" });

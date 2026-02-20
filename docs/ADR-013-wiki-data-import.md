@@ -1,8 +1,13 @@
 # ADR-013: Wiki Reference Data Import — Attribution, Consent & Ingest Architecture
 
-**Status:** Accepted  
+**Status:** Superseded by CDN ingest pipeline (see ADR-015)  
 **Date:** 2026-02-09  
 **Authors:** Guff, Opie (Claude), with legal guidance from Lex
+
+> **⚠️ Superseded:** The wiki ingest pipeline described here has been fully removed.
+> Reference data is now sourced from the STFC CDN (data.stfc.space) via `gamedata-ingest.ts`.
+> Legacy `raw:*` IDs have been replaced by `cdn:officer:<gameId>` / `cdn:ship:<gameId>`.
+> This ADR is retained for historical context only.
 
 > **Evolution note:** ADR-015 (Canonical Entity Identity) extends this ADR's provenance tracking into a full namespaced ID system. Wiki-imported entities now get `wiki:officer:<slug>` and `wiki:ship:<slug>` IDs, with provenance metadata (page ID, revision ID, timestamp) stored in `reference_officers` and `reference_ships` tables. The ingest pipeline is now `src/server/wiki-ingest.ts`, exposed as `POST /api/catalog/sync` (one-click UI button) and `scripts/sync-wiki.mjs` (CLI wrapper). The old `scripts/ingest-wiki-officers.mjs` has been removed.
 

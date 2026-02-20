@@ -1,5 +1,6 @@
 # Dependencies & build output
 node_modules/
+web/node_modules/
 dist/
 coverage/
 

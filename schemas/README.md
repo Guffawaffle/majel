@@ -26,6 +26,7 @@ Officer ─────────────────────┘
 | `officer.schema.json` | Officer | Crew member with position/activity affinities |
 | `intent.schema.json` | Intent | Activity type (mining, combat, utility) |
 | `loadout.schema.json` | Loadout | Ship + Intent + Crew — the planning unit |
+| `research-tree.schema.json` | Research Tree Snapshot | Advanced-package research nodes, dependencies, buffs, and user completion state |
 
 ## Key Concepts
 

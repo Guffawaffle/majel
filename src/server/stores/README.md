@@ -15,9 +15,11 @@ Every store exports a `create*Store(pool)` factory function that:
 | `behavior-store.ts` | Behavioral rules | `behavioral_rules` |
 | `crew-store.ts` | Crew composition (ADR-025) | `bridge_cores`, `loadouts`, `plan_items`, `docks` |
 | `invite-store.ts` | Invite codes | `invites` |
+| `inventory-store.ts` | Inventory resources | `inventory_items` |
 | `overlay-store.ts` | User data overlays | `officer_overlays`, `ship_overlays` |
 | `postgres-frame-store.ts` | Lex memory frames | `frames` |
-| `reference-store.ts` | Reference data (wiki) | `ref_officers`, `ref_ships` |
+| `reference-store.ts` | Reference data (CDN) | `reference_officers`, `reference_ships` |
+| `research-store.ts` | Research progression | `research_nodes` |
 | `settings.ts` | Fleet settings | `fleet_settings` |
 | `user-store.ts` | Users + sessions | `users`, `user_sessions` |
 

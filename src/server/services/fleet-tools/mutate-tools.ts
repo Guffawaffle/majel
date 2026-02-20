@@ -20,6 +20,13 @@ import type { TargetStatus, TargetType, UpdateTargetInput } from "../../stores/t
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES } from "../../stores/target-store.js";
 import type { OwnershipState, SetShipOverlayInput, SetOfficerOverlayInput } from "../../stores/overlay-store.js";
 import { VALID_OWNERSHIP_STATES } from "../../stores/overlay-store.js";
+import type { ReceiptSourceType } from "../../stores/receipt-store.js";
+import type {
+  ResearchBuff,
+  ResearchNodeInput,
+  ResearchStateInput,
+  ReplaceResearchSnapshotInput,
+} from "../../stores/research-store.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -45,6 +52,538 @@ function validNotes(args: Record<string, unknown>): string | undefined {
   const raw = str(args, "notes");
   if (!raw) return undefined;
   return raw.slice(0, MAX_NOTES_LEN);
+}
+
+interface SyncOverlayOfficerInput {
+  refId: string;
+  level?: number | null;
+  rank?: string | null;
+  power?: number | null;
+  owned?: boolean;
+  tier?: number | null;
+}
+
+interface SyncOverlayShipInput {
+  refId: string;
+  tier?: number | null;
+  level?: number | null;
+  power?: number | null;
+  owned?: boolean;
+}
+
+interface SyncOverlayDockInput {
+  number?: number;
+  shipId?: string;
+  loadoutId?: number;
+}
+
+interface MajelGameExport {
+  version: string;
+  exportDate?: string;
+  source?: string;
+  officers?: SyncOverlayOfficerInput[];
+  ships?: SyncOverlayShipInput[];
+  docks?: SyncOverlayDockInput[];
+}
+
+function parseMajelGameExport(args: Record<string, unknown>): { data?: MajelGameExport; error?: string } {
+  const directPayload = args.export;
+  const stringPayload = args.payload_json;
+  const manualUpdates = args.manual_updates;
+
+  let rawData: unknown = directPayload;
+  if (!rawData && typeof stringPayload === "string") {
+    try {
+      rawData = JSON.parse(stringPayload);
+    } catch {
+      return { error: "payload_json is not valid JSON." };
+    }
+  }
+
+  if (!rawData && (typeof manualUpdates === "string" || Array.isArray(manualUpdates))) {
+    rawData = { version: "1.0", source: "manual" };
+  }
+
+  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) {
+    return { error: "Provide a MajelGameExport in export (object) or payload_json (string)." };
+  }
+
+  const parsed = rawData as MajelGameExport;
+  if (!parsed.version || typeof parsed.version !== "string") {
+    return { error: "MajelGameExport.version is required and must be a string." };
+  }
+  if (parsed.version !== "1.0") {
+    return { error: `Unsupported MajelGameExport.version '${parsed.version}'. Supported version is '1.0'.` };
+  }
+  if (parsed.officers != null && !Array.isArray(parsed.officers)) {
+    return { error: "MajelGameExport.officers must be an array when provided." };
+  }
+  if (parsed.ships != null && !Array.isArray(parsed.ships)) {
+    return { error: "MajelGameExport.ships must be an array when provided." };
+  }
+  if (parsed.docks != null && !Array.isArray(parsed.docks)) {
+    return { error: "MajelGameExport.docks must be an array when provided." };
+  }
+
+  for (const officer of parsed.officers ?? []) {
+    if (!officer || typeof officer !== "object") {
+      return { error: "Each MajelGameExport.officers entry must be an object." };
+    }
+    if (!officer.refId || typeof officer.refId !== "string") {
+      return { error: "Each officer entry requires refId (string)." };
+    }
+    if (officer.owned != null && typeof officer.owned !== "boolean") {
+      return { error: `Officer ${officer.refId}: owned must be boolean when provided.` };
+    }
+    if (officer.level != null && (!Number.isInteger(officer.level) || officer.level < 0 || officer.level > 100)) {
+      return { error: `Officer ${officer.refId}: level must be an integer between 0 and 100.` };
+    }
+    if (officer.power != null && (!Number.isInteger(officer.power) || officer.power < 0)) {
+      return { error: `Officer ${officer.refId}: power must be a non-negative integer.` };
+    }
+    if (officer.tier != null && (!Number.isInteger(officer.tier) || officer.tier < 0 || officer.tier > 20)) {
+      return { error: `Officer ${officer.refId}: tier must be an integer between 0 and 20.` };
+    }
+    if (officer.rank != null && typeof officer.rank !== "string" && !Number.isInteger(officer.rank)) {
+      return { error: `Officer ${officer.refId}: rank must be string or integer when provided.` };
+    }
+  }
+
+  for (const ship of parsed.ships ?? []) {
+    if (!ship || typeof ship !== "object") {
+      return { error: "Each MajelGameExport.ships entry must be an object." };
+    }
+    if (!ship.refId || typeof ship.refId !== "string") {
+      return { error: "Each ship entry requires refId (string)." };
+    }
+    if (ship.owned != null && typeof ship.owned !== "boolean") {
+      return { error: `Ship ${ship.refId}: owned must be boolean when provided.` };
+    }
+    if (ship.tier != null && (!Number.isInteger(ship.tier) || ship.tier < 0 || ship.tier > 20)) {
+      return { error: `Ship ${ship.refId}: tier must be an integer between 0 and 20.` };
+    }
+    if (ship.level != null && (!Number.isInteger(ship.level) || ship.level < 0 || ship.level > 100)) {
+      return { error: `Ship ${ship.refId}: level must be an integer between 0 and 100.` };
+    }
+    if (ship.power != null && (!Number.isInteger(ship.power) || ship.power < 0)) {
+      return { error: `Ship ${ship.refId}: power must be a non-negative integer.` };
+    }
+  }
+
+  for (const dock of parsed.docks ?? []) {
+    if (!dock || typeof dock !== "object") {
+      return { error: "Each MajelGameExport.docks entry must be an object." };
+    }
+    if (dock.number != null && (!Number.isInteger(dock.number) || dock.number < 1 || dock.number > 20)) {
+      return { error: "Each dock.number must be an integer between 1 and 20 when provided." };
+    }
+    if (dock.shipId != null && typeof dock.shipId !== "string") {
+      return { error: "Each dock.shipId must be a string when provided." };
+    }
+    if (dock.loadoutId != null && (!Number.isInteger(dock.loadoutId) || dock.loadoutId < 1)) {
+      return { error: "Each dock.loadoutId must be a positive integer when provided." };
+    }
+  }
+
+  return { data: parsed };
+}
+
+function normalizeOfficerRefId(refId: string): string {
+  const trimmed = refId.trim();
+  if (/^cdn:officer:\d+$/i.test(trimmed)) return trimmed.toLowerCase();
+  if (/^\d+$/.test(trimmed)) return `cdn:officer:${trimmed}`;
+  return trimmed;
+}
+
+function normalizeShipRefId(refId: string): string {
+  const trimmed = refId.trim();
+  if (/^cdn:ship:\d+$/i.test(trimmed)) return trimmed.toLowerCase();
+  if (/^\d+$/.test(trimmed)) return `cdn:ship:${trimmed}`;
+  return trimmed;
+}
+
+function ownershipFromOwnedFlag(owned: boolean | undefined): OwnershipState | undefined {
+  if (owned == null) return undefined;
+  return owned ? "owned" : "unowned";
+}
+
+function syncOverlaySourceType(source: string | undefined): ReceiptSourceType {
+  if (!source) return "file_import";
+  const normalized = source.trim().toLowerCase();
+  if (normalized === "manual") return "guided_setup";
+  if (normalized === "stfc-space" || normalized === "command-center") return "community_export";
+  return "file_import";
+}
+
+function parseExportDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function manualUpdateTexts(args: Record<string, unknown>): string[] {
+  const raw = args.manual_updates;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter(Boolean);
+}
+
+function normalizeEntityName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/^(the|an|a)\s+/, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function parseExceptionNames(raw: string | undefined): string[] {
+  if (!raw) return [];
+  const normalized = raw
+    .replace(/\band\b/gi, ",")
+    .replace(/&/g, ",")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => entry.replace(/^['"“”‘’]|['"“”‘’]$/g, "").trim())
+    .filter(Boolean);
+  return normalized;
+}
+
+/** Minimum normalized length for substring matching to avoid spurious matches. */
+const MIN_SUBSTR_LEN = 3;
+
+function isExcludedName(name: string, excluded: string[]): boolean {
+  if (excluded.length === 0) return false;
+  const normalizedName = normalizeEntityName(name);
+  if (!normalizedName) return false;
+  return excluded.some((entry) => {
+    const normalizedExcl = normalizeEntityName(entry);
+    if (!normalizedExcl) return false;
+    if (normalizedName === normalizedExcl) return true;
+    // Only allow substring matching when both sides are long enough
+    // to avoid false positives like "D" matching "D'Jaoki".
+    if (normalizedExcl.length >= MIN_SUBSTR_LEN && normalizedName.includes(normalizedExcl)) return true;
+    if (normalizedName.length >= MIN_SUBSTR_LEN && normalizedExcl.includes(normalizedName)) return true;
+    return false;
+  });
+}
+
+/**
+ * Infer officer max level from max rank. STFC officers cap at rank * 10
+ * (e.g., rank 5 → level 50). Used for bulk "all officers are max" updates
+ * when ReferenceOfficer lacks a dedicated maxLevel field.
+ *
+ * If this formula diverges for future officer tiers, add a maxLevel column
+ * to reference_officers and source it directly (like ships use maxLevel).
+ */
+function inferOfficerLevelFromMaxRank(maxRank: number | null): number | null {
+  if (maxRank == null || !Number.isInteger(maxRank) || maxRank < 1) return null;
+  return maxRank * 10;
+}
+
+async function parseManualOverlayUpdates(
+  updates: string[],
+  ctx: ToolContext,
+  warnings: string[],
+): Promise<{ officers: SyncOverlayOfficerInput[]; ships: SyncOverlayShipInput[] }> {
+  const officers: SyncOverlayOfficerInput[] = [];
+  const ships: SyncOverlayShipInput[] = [];
+
+  if (updates.length === 0) {
+    return { officers, ships };
+  }
+  if (!ctx.referenceStore) {
+    warnings.push("manual_updates provided but reference store is unavailable; could not resolve entities.");
+    return { officers, ships };
+  }
+
+  for (const update of updates) {
+    const shipBulkMatch = update.match(
+      /(?:^|\b)all\s+(?:of\s+my\s+|my\s+)?ships(?:\s+except\s+(.+?))?\s+are\s+max\s+(?:tier(?:\s+and\s+level)?|level\s+and\s+tier)(?:\b.*)?$/i,
+    );
+    if (shipBulkMatch) {
+      const excludedNames = parseExceptionNames(shipBulkMatch[1]);
+      const allShips = await ctx.referenceStore.listShips();
+      let includedCount = 0;
+
+      for (const ship of allShips) {
+        if (isExcludedName(ship.name, excludedNames)) continue;
+
+        const next: SyncOverlayShipInput = {
+          refId: ship.id,
+          owned: true,
+        };
+        if (ship.maxTier != null) next.tier = ship.maxTier;
+        if (ship.maxLevel != null) next.level = ship.maxLevel;
+        ships.push(next);
+        includedCount++;
+      }
+
+      if (includedCount === 0) {
+        warnings.push(`Manual update '${update}' did not match any ships after exclusions.`);
+      }
+      continue;
+    }
+
+    const officerBulkMatch = update.match(
+      /(?:^|\b)all\s+(?:of\s+my\s+|my\s+)?officers(?:\s+except\s+(.+?))?\s+are\s+max\s+(?:rank(?:\s+and\s+level)?|level\s+and\s+rank)\.?$/i,
+    );
+    if (officerBulkMatch) {
+      const excludedNames = parseExceptionNames(officerBulkMatch[1]);
+      const allOfficers = await ctx.referenceStore.listOfficers();
+      let includedCount = 0;
+
+      for (const officer of allOfficers) {
+        if (isExcludedName(officer.name, excludedNames)) continue;
+
+        const inferredLevel = inferOfficerLevelFromMaxRank(officer.maxRank);
+        const next: SyncOverlayOfficerInput = {
+          refId: officer.id,
+          owned: true,
+          rank: officer.maxRank == null ? undefined : String(officer.maxRank),
+          level: inferredLevel,
+        };
+
+        if (officer.maxRank == null) {
+          warnings.push(`Officer ${officer.name} missing max rank metadata; set as owned without max rank.`);
+        }
+        officers.push(next);
+        includedCount++;
+      }
+
+      if (includedCount === 0) {
+        warnings.push(`Manual update '${update}' did not match any officers after exclusions.`);
+      }
+      continue;
+    }
+
+    const match = update.match(/(?:i\s+just\s+)?(?:upgraded|set)\s+(?:my\s+)?(.+?)\s+to\s+(tier|level|rank)\s+(\d+)/i);
+    if (!match) {
+      warnings.push(`Could not parse manual update: '${update}'. Use format like 'upgraded Enterprise to tier 7'.`);
+      continue;
+    }
+
+    const name = match[1].trim();
+    const field = match[2].toLowerCase() as "tier" | "level" | "rank";
+    const value = Number(match[3]);
+
+    const [officerMatches, shipMatches] = await Promise.all([
+      ctx.referenceStore.searchOfficers(name),
+      ctx.referenceStore.searchShips(name),
+    ]);
+
+    const officer = officerMatches[0] ?? null;
+    const ship = shipMatches[0] ?? null;
+    if (officer && ship) {
+      warnings.push(`Manual update '${update}' is ambiguous (matches officer and ship).`);
+      continue;
+    }
+    if (!officer && !ship) {
+      warnings.push(`Manual update '${update}' did not match a known officer or ship.`);
+      continue;
+    }
+
+    if (officer) {
+      const next: SyncOverlayOfficerInput = { refId: officer.id, owned: true };
+      if (field === "level") next.level = value;
+      else if (field === "rank") next.rank = String(value);
+      else next.tier = value;
+      officers.push(next);
+      continue;
+    }
+
+    if (ship) {
+      const next: SyncOverlayShipInput = { refId: ship.id, owned: true };
+      if (field === "tier") next.tier = value;
+      else if (field === "level") next.level = value;
+      else {
+        warnings.push(`Manual update '${update}' uses rank for a ship; supported ship fields are tier/level.`);
+        continue;
+      }
+      ships.push(next);
+    }
+  }
+
+  return { officers, ships };
+}
+
+function changedOfficerFields(
+  existing: {
+    ownershipState: OwnershipState;
+    level: number | null;
+    rank: string | null;
+    power: number | null;
+  } | null,
+  patch: SetOfficerOverlayInput,
+): string[] {
+  if (!existing) {
+    return Object.keys(patch).filter((key) => key !== "refId");
+  }
+  const changed: string[] = [];
+  if (patch.ownershipState != null && patch.ownershipState !== existing.ownershipState) changed.push("ownershipState");
+  if (patch.level !== undefined && patch.level !== existing.level) changed.push("level");
+  if (patch.rank !== undefined && patch.rank !== existing.rank) changed.push("rank");
+  if (patch.power !== undefined && patch.power !== existing.power) changed.push("power");
+  return changed;
+}
+
+function changedShipFields(
+  existing: {
+    ownershipState: OwnershipState;
+    tier: number | null;
+    level: number | null;
+    power: number | null;
+  } | null,
+  patch: SetShipOverlayInput,
+): string[] {
+  if (!existing) {
+    return Object.keys(patch).filter((key) => key !== "refId");
+  }
+  const changed: string[] = [];
+  if (patch.ownershipState != null && patch.ownershipState !== existing.ownershipState) changed.push("ownershipState");
+  if (patch.tier !== undefined && patch.tier !== existing.tier) changed.push("tier");
+  if (patch.level !== undefined && patch.level !== existing.level) changed.push("level");
+  if (patch.power !== undefined && patch.power !== existing.power) changed.push("power");
+  return changed;
+}
+
+interface ResearchNodeExport {
+  node_id?: unknown;
+  tree?: unknown;
+  name?: unknown;
+  max_level?: unknown;
+  dependencies?: unknown;
+  buffs?: unknown;
+}
+
+interface ResearchStateExport {
+  node_id?: unknown;
+  level?: unknown;
+  completed?: unknown;
+  updated_at?: unknown;
+}
+
+interface ResearchExport {
+  schema_version?: unknown;
+  captured_at?: unknown;
+  source?: unknown;
+  nodes?: unknown;
+  state?: unknown;
+}
+
+function parseResearchExport(args: Record<string, unknown>): { data?: ReplaceResearchSnapshotInput; error?: string } {
+  const directPayload = args.export;
+  const stringPayload = args.payload_json;
+
+  let rawData: unknown = directPayload;
+  if (!rawData && typeof stringPayload === "string") {
+    try {
+      rawData = JSON.parse(stringPayload);
+    } catch {
+      return { error: "payload_json is not valid JSON." };
+    }
+  }
+
+  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) {
+    return { error: "Provide a research export object in export or payload_json." };
+  }
+
+  const parsed = rawData as ResearchExport;
+  if (parsed.schema_version !== "1.0") {
+    return { error: "Unsupported schema_version. Expected '1.0'." };
+  }
+  if (!Array.isArray(parsed.nodes)) {
+    return { error: "Research export nodes must be an array." };
+  }
+  if (!Array.isArray(parsed.state)) {
+    return { error: "Research export state must be an array." };
+  }
+
+  const nodes: ResearchNodeInput[] = [];
+  const state: ResearchStateInput[] = [];
+
+  for (const nodeEntry of parsed.nodes as ResearchNodeExport[]) {
+    const nodeId = typeof nodeEntry.node_id === "string" ? nodeEntry.node_id.trim() : "";
+    const tree = typeof nodeEntry.tree === "string" ? nodeEntry.tree.trim() : "";
+    const name = typeof nodeEntry.name === "string" ? nodeEntry.name.trim() : "";
+    const maxLevel = Number(nodeEntry.max_level);
+
+    if (!nodeId || !tree || !name || !Number.isInteger(maxLevel) || maxLevel < 1) {
+      return { error: "Each node requires node_id, tree, name, and integer max_level >= 1." };
+    }
+
+    const dependencies = Array.isArray(nodeEntry.dependencies)
+      ? nodeEntry.dependencies.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean)
+      : [];
+
+    const buffsRaw = Array.isArray(nodeEntry.buffs) ? nodeEntry.buffs : [];
+    const buffs: ResearchBuff[] = [];
+    for (const buff of buffsRaw) {
+      if (!buff || typeof buff !== "object") {
+        return { error: `Node ${nodeId} has invalid buff entry.` };
+      }
+      const entry = buff as Record<string, unknown>;
+      const kind = entry.kind;
+      const metric = entry.metric;
+      const value = entry.value;
+      const unit = entry.unit;
+      if (
+        typeof kind !== "string"
+        || !["ship", "officer", "resource", "combat", "other"].includes(kind)
+        || typeof metric !== "string"
+        || !metric.trim()
+        || typeof value !== "number"
+        || typeof unit !== "string"
+        || !["percent", "flat", "multiplier"].includes(unit)
+      ) {
+        return { error: `Node ${nodeId} has invalid buff fields.` };
+      }
+      buffs.push({
+        kind: kind as ResearchBuff["kind"],
+        metric: metric.trim(),
+        value,
+        unit: unit as ResearchBuff["unit"],
+      });
+    }
+
+    nodes.push({
+      nodeId,
+      tree,
+      name,
+      maxLevel,
+      dependencies,
+      buffs,
+    });
+  }
+
+  for (const stateEntry of parsed.state as ResearchStateExport[]) {
+    const nodeId = typeof stateEntry.node_id === "string" ? stateEntry.node_id.trim() : "";
+    const level = Number(stateEntry.level);
+    if (!nodeId || !Number.isInteger(level) || level < 0) {
+      return { error: "Each state entry requires node_id and integer level >= 0." };
+    }
+
+    state.push({
+      nodeId,
+      level,
+      completed: stateEntry.completed === true,
+      updatedAt: typeof stateEntry.updated_at === "string" ? stateEntry.updated_at : null,
+    });
+  }
+
+  return {
+    data: {
+      source: typeof parsed.source === "string" ? parsed.source : null,
+      capturedAt: typeof parsed.captured_at === "string" ? parsed.captured_at : null,
+      nodes,
+      state,
+    },
+  };
 }
 
 // ─── Mutation Tools ─────────────────────────────────────────
@@ -400,6 +939,443 @@ export async function getEffectiveStateTool(ctx: ToolContext): Promise<object> {
         slot: loc.slot,
       })),
     })),
+  };
+}
+
+export async function syncOverlayTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.overlayStore) {
+    return { tool: "sync_overlay", error: "Overlay store not available." };
+  }
+
+  const parsed = parseMajelGameExport(args);
+  if (parsed.error) {
+    return { tool: "sync_overlay", error: parsed.error };
+  }
+
+  const payload = parsed.data as MajelGameExport;
+  const dryRun = args.dry_run !== false;
+  const warnings: string[] = [];
+
+  const exportDate = parseExportDate(payload.exportDate);
+  const importAgeDays = exportDate
+    ? Math.floor((Date.now() - exportDate.getTime()) / (24 * 60 * 60 * 1000))
+    : null;
+  const staleThresholdDays = 7;
+  const isStale = importAgeDays != null && importAgeDays > staleThresholdDays;
+  if (payload.exportDate && !exportDate) {
+    warnings.push("MajelGameExport.exportDate is not a valid timestamp.");
+  }
+  if (isStale && importAgeDays != null) {
+    warnings.push(`Import appears stale (${importAgeDays} days old; threshold is ${staleThresholdDays} days).`);
+  }
+
+  const [officerOverlays, shipOverlays] = await Promise.all([
+    ctx.overlayStore.listOfficerOverlays(),
+    ctx.overlayStore.listShipOverlays(),
+  ]);
+  const officerMap = new Map(officerOverlays.map((row) => [row.refId, row]));
+  const shipMap = new Map(shipOverlays.map((row) => [row.refId, row]));
+
+  const manualUpdates = manualUpdateTexts(args);
+  const manualParsed = await parseManualOverlayUpdates(manualUpdates, ctx, warnings);
+
+  const officers = [...(payload.officers ?? []), ...manualParsed.officers];
+  const ships = [...(payload.ships ?? []), ...manualParsed.ships];
+  const docks = payload.docks ?? [];
+
+  const officerChanges: Array<{ refId: string; changedFields: string[] }> = [];
+  const shipChanges: Array<{ refId: string; changedFields: string[] }> = [];
+  const officerReceiptChanges: Array<{
+    refId: string;
+    changedFields: string[];
+    before: {
+      ownershipState: OwnershipState;
+      level: number | null;
+      rank: string | null;
+      power: number | null;
+    } | null;
+    after: SetOfficerOverlayInput;
+  }> = [];
+  const shipReceiptChanges: Array<{
+    refId: string;
+    changedFields: string[];
+    before: {
+      ownershipState: OwnershipState;
+      tier: number | null;
+      level: number | null;
+      power: number | null;
+    } | null;
+    after: SetShipOverlayInput;
+  }> = [];
+  const dockChanges: Array<{
+    dockNumber: number;
+    fromLoadoutId: number | null;
+    toLoadoutId: number | null;
+    action: "assigned" | "reassigned" | "cleared";
+  }> = [];
+  let skippedUnknownOfficerRefs = 0;
+  let skippedUnknownShipRefs = 0;
+  let skippedDockEntries = 0;
+
+  for (const entry of officers) {
+    if (!entry?.refId || typeof entry.refId !== "string") {
+      warnings.push("Skipped officer entry with missing refId.");
+      continue;
+    }
+    const refId = normalizeOfficerRefId(entry.refId);
+
+    if (ctx.referenceStore) {
+      const exists = await ctx.referenceStore.getOfficer(refId);
+      if (!exists) {
+        skippedUnknownOfficerRefs++;
+        continue;
+      }
+    }
+
+    const patch: SetOfficerOverlayInput = { refId };
+    const ownershipState = ownershipFromOwnedFlag(entry.owned);
+    if (ownershipState) patch.ownershipState = ownershipState;
+    if (entry.level !== undefined) patch.level = entry.level;
+    if (entry.rank !== undefined) patch.rank = entry.rank == null ? null : String(entry.rank);
+    if (entry.power !== undefined) patch.power = entry.power;
+    if (entry.tier !== undefined) {
+      warnings.push(`Officer tier ignored for ${refId}; officer overlay does not track tier.`);
+    }
+
+    const existing = officerMap.get(refId) ?? null;
+    const changedFields = changedOfficerFields(existing, patch);
+    if (changedFields.length === 0) continue;
+    officerChanges.push({ refId, changedFields });
+    officerReceiptChanges.push({ refId, changedFields, before: existing, after: patch });
+
+    if (!dryRun) {
+      await ctx.overlayStore.setOfficerOverlay(patch);
+    }
+  }
+
+  for (const entry of ships) {
+    if (!entry?.refId || typeof entry.refId !== "string") {
+      warnings.push("Skipped ship entry with missing refId.");
+      continue;
+    }
+    const refId = normalizeShipRefId(entry.refId);
+
+    if (ctx.referenceStore) {
+      const exists = await ctx.referenceStore.getShip(refId);
+      if (!exists) {
+        skippedUnknownShipRefs++;
+        continue;
+      }
+    }
+
+    const patch: SetShipOverlayInput = { refId };
+    const ownershipState = ownershipFromOwnedFlag(entry.owned);
+    if (ownershipState) patch.ownershipState = ownershipState;
+    if (entry.tier !== undefined) patch.tier = entry.tier;
+    if (entry.level !== undefined) patch.level = entry.level;
+    if (entry.power !== undefined) patch.power = entry.power;
+
+    const existing = shipMap.get(refId) ?? null;
+    const changedFields = changedShipFields(existing, patch);
+    if (changedFields.length === 0) continue;
+    shipChanges.push({ refId, changedFields });
+    shipReceiptChanges.push({ refId, changedFields, before: existing, after: patch });
+
+    if (!dryRun) {
+      await ctx.overlayStore.setShipOverlay(patch);
+    }
+  }
+
+  if (docks.length > 0) {
+    if (!ctx.crewStore) {
+      warnings.push("Dock entries provided but crew store is unavailable; dock sync skipped.");
+      skippedDockEntries = docks.length;
+    } else {
+      const [activePlanItems, activeLoadouts, allLoadouts] = await Promise.all([
+        ctx.crewStore.listPlanItems({ active: true }),
+        ctx.crewStore.listLoadouts({ active: true }),
+        ctx.crewStore.listLoadouts(),
+      ]);
+
+      const dockItemMap = new Map<number, { id: number; loadoutId: number | null }>();
+      for (const item of activePlanItems) {
+        if (item.dockNumber == null || item.awayOfficers) continue;
+        if (!dockItemMap.has(item.dockNumber)) {
+          dockItemMap.set(item.dockNumber, { id: item.id, loadoutId: item.loadoutId });
+        }
+      }
+
+      const loadoutCandidates = activeLoadouts.length > 0 ? activeLoadouts : allLoadouts;
+      const loadoutByShip = new Map<string, number>();
+      for (const loadout of loadoutCandidates) {
+        if (!loadoutByShip.has(loadout.shipId)) {
+          loadoutByShip.set(loadout.shipId, loadout.id);
+        }
+      }
+
+      for (const entry of docks) {
+        const dockNumber = Number(entry?.number);
+        if (!entry || !Number.isInteger(dockNumber) || dockNumber < 1) {
+          skippedDockEntries++;
+          warnings.push("Skipped dock entry with invalid number (must be integer >= 1).");
+          continue;
+        }
+
+        let desiredLoadoutId: number | null = null;
+        if (entry.loadoutId != null) {
+          const parsedLoadoutId = Number(entry.loadoutId);
+          if (!Number.isInteger(parsedLoadoutId) || parsedLoadoutId < 1) {
+            skippedDockEntries++;
+            warnings.push(`Skipped dock ${dockNumber}: invalid loadoutId.`);
+            continue;
+          }
+          desiredLoadoutId = parsedLoadoutId;
+        } else if (typeof entry.shipId === "string" && entry.shipId.trim()) {
+          const normalizedShipId = normalizeShipRefId(entry.shipId);
+          const matchedLoadoutId = loadoutByShip.get(normalizedShipId) ?? null;
+          if (matchedLoadoutId == null) {
+            skippedDockEntries++;
+            warnings.push(`Skipped dock ${dockNumber}: no loadout found for ship ${normalizedShipId}.`);
+            continue;
+          }
+          desiredLoadoutId = matchedLoadoutId;
+        }
+
+        const existing = dockItemMap.get(dockNumber);
+        const currentLoadoutId = existing?.loadoutId ?? null;
+        if (currentLoadoutId === desiredLoadoutId) continue;
+
+        const action: "assigned" | "reassigned" | "cleared" =
+          currentLoadoutId == null
+            ? "assigned"
+            : desiredLoadoutId == null
+              ? "cleared"
+              : "reassigned";
+
+        dockChanges.push({
+          dockNumber,
+          fromLoadoutId: currentLoadoutId,
+          toLoadoutId: desiredLoadoutId,
+          action,
+        });
+
+        if (!dryRun) {
+          if (existing) {
+            await ctx.crewStore.updatePlanItem(existing.id, {
+              dockNumber,
+              loadoutId: desiredLoadoutId,
+              source: "manual",
+            });
+          } else if (desiredLoadoutId != null) {
+            await ctx.crewStore.createPlanItem({
+              dockNumber,
+              loadoutId: desiredLoadoutId,
+              source: "manual",
+              label: "sync_overlay import",
+            });
+          }
+        }
+      }
+    }
+  }
+
+  let receiptId: number | null = null;
+  if (!dryRun && ctx.receiptStore && (officerReceiptChanges.length > 0 || shipReceiptChanges.length > 0 || dockChanges.length > 0)) {
+    const receipt = await ctx.receiptStore.createReceipt({
+      sourceType: syncOverlaySourceType(payload.source),
+      layer: "ownership",
+      sourceMeta: {
+        tool: "sync_overlay",
+        userId: ctx.userId,
+        source: payload.source ?? null,
+        exportDate: payload.exportDate ?? null,
+      },
+      mapping: {
+        schemaVersion: payload.version,
+      },
+      changeset: {
+        updated: [
+          ...officerReceiptChanges.map((change) => ({
+            entity: "officer",
+            refId: change.refId,
+            changedFields: change.changedFields,
+            after: change.after,
+          })),
+          ...shipReceiptChanges.map((change) => ({
+            entity: "ship",
+            refId: change.refId,
+            changedFields: change.changedFields,
+            after: change.after,
+          })),
+          ...dockChanges.map((change) => ({
+            entity: "dock",
+            dockNumber: change.dockNumber,
+            fromLoadoutId: change.fromLoadoutId,
+            toLoadoutId: change.toLoadoutId,
+            action: change.action,
+          })),
+        ],
+      },
+      inverse: {
+        updated: [
+          ...officerReceiptChanges.map((change) => ({
+            entity: "officer",
+            refId: change.refId,
+            revert: change.before
+              ? {
+                  ownershipState: change.before.ownershipState,
+                  level: change.before.level,
+                  rank: change.before.rank,
+                  power: change.before.power,
+                }
+              : { delete: true },
+          })),
+          ...shipReceiptChanges.map((change) => ({
+            entity: "ship",
+            refId: change.refId,
+            revert: change.before
+              ? {
+                  ownershipState: change.before.ownershipState,
+                  tier: change.before.tier,
+                  level: change.before.level,
+                  power: change.before.power,
+                }
+              : { delete: true },
+          })),
+          ...dockChanges.map((change) => ({
+            entity: "dock",
+            dockNumber: change.dockNumber,
+            revert: { loadoutId: change.fromLoadoutId },
+          })),
+        ],
+      },
+    });
+    receiptId = receipt.id;
+  }
+
+  return {
+    tool: "sync_overlay",
+    dryRun,
+    schema: {
+      version: payload.version,
+      source: payload.source ?? null,
+      exportDate: payload.exportDate ?? null,
+      importAgeDays,
+      staleThresholdDays,
+      stale: isStale,
+      supportedVersion: true,
+    },
+    summary: {
+      officers: {
+        input: officers.length,
+        manualUpdates: manualParsed.officers.length,
+        changed: officerChanges.length,
+        unchanged: Math.max(0, officers.length - officerChanges.length - skippedUnknownOfficerRefs),
+        skippedUnknownRefs: skippedUnknownOfficerRefs,
+        applied: dryRun ? 0 : officerChanges.length,
+      },
+      ships: {
+        input: ships.length,
+        manualUpdates: manualParsed.ships.length,
+        changed: shipChanges.length,
+        unchanged: Math.max(0, ships.length - shipChanges.length - skippedUnknownShipRefs),
+        skippedUnknownRefs: skippedUnknownShipRefs,
+        applied: dryRun ? 0 : shipChanges.length,
+      },
+      docks: {
+        input: docks.length,
+        changed: dockChanges.length,
+        skipped: skippedDockEntries,
+        applied: dryRun ? 0 : dockChanges.length,
+      },
+    },
+    changesPreview: {
+      officers: officerChanges.slice(0, 20),
+      ships: shipChanges.slice(0, 20),
+      docks: dockChanges.slice(0, 20),
+    },
+    receipt: {
+      created: receiptId != null,
+      id: receiptId,
+    },
+    warnings,
+    nextSteps: dryRun
+      ? [
+          "Review changesPreview and summary.",
+          "Re-run sync_overlay with dry_run=false to apply these overlay updates.",
+        ]
+      : [
+          "Overlay updates applied.",
+          ...(receiptId != null ? [`Receipt ${receiptId} created for undo/audit.`] : []),
+          "Use list_targets or suggest_targets to plan next progression steps.",
+        ],
+  };
+}
+
+export async function syncResearchTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.researchStore) {
+    return { tool: "sync_research", error: "Research store not available." };
+  }
+
+  const parsed = parseResearchExport(args);
+  if (parsed.error) {
+    return { tool: "sync_research", error: parsed.error };
+  }
+
+  const payload = parsed.data as ReplaceResearchSnapshotInput;
+  const dryRun = args.dry_run !== false;
+
+  const treeCounts = new Map<string, number>();
+  for (const node of payload.nodes) {
+    treeCounts.set(node.tree, (treeCounts.get(node.tree) ?? 0) + 1);
+  }
+  const stateByNode = new Map(payload.state.map((entry) => [entry.nodeId, entry]));
+  const completed = payload.nodes.filter((node) => stateByNode.get(node.nodeId)?.completed === true).length;
+  const inProgress = payload.nodes.filter((node) => {
+    const level = stateByNode.get(node.nodeId)?.level ?? 0;
+    return level > 0 && stateByNode.get(node.nodeId)?.completed !== true;
+  }).length;
+
+  if (dryRun) {
+    return {
+      tool: "sync_research",
+      dryRun: true,
+      summary: {
+        nodes: payload.nodes.length,
+        trees: treeCounts.size,
+        completed,
+        inProgress,
+      },
+      trees: Array.from(treeCounts.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([tree, count]) => ({ tree, nodes: count })),
+      nextSteps: [
+        "Review summary for sanity.",
+        "Re-run sync_research with dry_run=false to persist this research snapshot.",
+      ],
+    };
+  }
+
+  const result = await ctx.researchStore.replaceSnapshot(payload);
+  return {
+    tool: "sync_research",
+    dryRun: false,
+    summary: {
+      nodes: result.nodes,
+      trees: result.trees,
+      completed,
+      inProgress,
+    },
+    nextSteps: [
+      "Research snapshot applied.",
+      "Use list_research to inspect tree-level progression.",
+    ],
   };
 }
 

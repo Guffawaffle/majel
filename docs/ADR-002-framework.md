@@ -1,8 +1,10 @@
 # ADR-002: Framework Selection for Majel v1.0
 
-**Status:** Proposed  
+**Status:** Superseded by [ADR-031](ADR-031-svelte-migration.md)  
 **Date:** 2026-02-08  
 **Authors:** Opie (Claude), Guff
+
+> **Note (2026-02-19):** This ADR recommended SvelteKit with adapter-node. After implementation analysis, the SvelteKit approach was rejected due to SSR overhead for an auth-gated app, API proxy indirection, and Svelte version instability risk. ADR-031 adopts Svelte 5 + Vite without Kit — keeping the component/reactivity benefits without meta-framework lock-in. Express API stays untouched.
 
 ## Context
 

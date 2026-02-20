@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-18 | Branch: `main`
+> Updated: 2026-02-19 | Branch: `main`
 
 ---
 
@@ -164,43 +164,78 @@ F1–F3 fixed inline. Remaining items below.
 
 ---
 
-## In Progress — Architecture Restructure (#47, ADR-023)
+## Done — Architecture Restructure (#47, ADR-023)
 
-MVC-by-concern restructure of the client. Inserted between Phase 2 (API, done) and Phase 3 (UI).
+MVC-by-concern restructure of the client. **Completed** — all 6 phases delivered.
 
 | Issue | Phase | Title | Status |
 |---|---|---|---|
-| #48 | 0 | Scaffolding — directories + READMEs | Not started |
-| #49 | 1 | API decomposition — split api.js | Not started |
-| #50 | 2 | CSS decomposition — split styles.css | Not started |
-| #51 | 3 | View extraction + router registry | Not started |
-| #52 | 4 | Admiral-dashboard rename | Not started |
-| #53 | 5 | Server grouping (stores/types/services) | Not started |
+| #48 | 0 | Scaffolding — directories + READMEs | ✅ Done |
+| #49 | 1 | API decomposition — split api.js | ✅ Done |
+| #50 | 2 | CSS decomposition — split styles.css | ✅ Done |
+| #51 | 3 | View extraction + router registry | ✅ Done |
+| #52 | 4 | Admiral-dashboard rename | ✅ Done |
+| #53 | 5 | Server grouping (stores/types/services) | ✅ Done |
+
+---
+
+## Done — AX Toolkit Refactor (2026-02-19)
+
+Decomposed monolithic `scripts/ax.ts` (1,252 lines) into modular `scripts/ax/` directory:
+
+- `scripts/ax.ts` → 91-line thin router
+- `scripts/ax/` → 10 module files totaling 1,156 lines
+- All human output removed (JSON-only), `--ax` flag dropped
+- NDJSON append log (`logs/ax-runs.ndjson`) for run history
+- CI verified: 0 lint errors, 0 type errors, 1,344/1,344 tests passed
+
+---
+
+## In Progress — Svelte 5 + Vite Frontend Migration (ADR-031)
+
+**Decision:** Migrate vanilla JS client (8,335 LOC, 28 files) to Svelte 5 + Vite. **No SvelteKit** — avoids meta-framework lock-in, SSR not needed (app behind auth). Express API stays 100% untouched.
+
+See [ADR-031](docs/ADR-031-svelte-migration.md) for full decision rationale.
+
+| Issue | Phase | Title | Status |
+|---|---|---|---|
+| #95 | 0 | Scaffold — `web/` + Vite + Svelte 5 + proxy | ✅ Done |
+| #96 | 1 | Shell — App.svelte + router + sidebar + LCARS theme | ✅ Done |
+| #97 | 2 | API layer — typed fetch wrapper + auth store | ✅ Done |
+| #98 | 3 | Chat view migration | ✅ Done |
+| #99 | 4 | Catalog + Fleet views migration | ✅ Done |
+| #100 | 5 | Crews + Plan views migration (largest payoff) | Not started |
+| #101 | 6 | Admiral + Diagnostics + Settings views | Not started |
+| #102 | 7 | Help panel + shared components | Not started |
+| #103 | 8 | Production build integration + legacy cleanup | 🚧 Build wired, cleanup blocked on Phases 4–7 |
+
+Build pipeline + Express serving + Dockerfile already wired (done during Phase 3 wiring). Legacy cleanup deferred until all views migrated.
+Deferred review items tracked in #104.
 
 Key decisions:
-- `admin` → `admiral-dashboard` (DOM/CSS/routes) to reduce bot scanning noise
-- View registry pattern replaces manual `show*()` coupling in app.js
-- Lazy CSS loading per view (no bundler, browser-native)
-- `api.js` (51 exports) → `api/` directory with 11 domain modules + shared `_fetch.js`
-- File header manifests (`@module`, `@domain`, `@depends`) for agent navigation
-- README breadcrumbs per directory
+- `web/` directory alongside existing `src/` (parallel operation during migration)
+- Vite dev server proxies `/api/*` to Express :3000
+- Production: `vite build` → static files → Express serves from `dist/web/`
+- Svelte 5 runes (`$state()`, `$derived()`, `$effect()`) for reactivity
+- TypeScript throughout client
+- Client-side lightweight router (not file-system routing)
 
-### Loadout Pipeline (updated)
+### Previous decisions (ADR-023) carried forward
 
-```
-ADR-022 ✅ → #42 (store) ✅ → #43 (API) ✅ → #47 (restructure) → #44 (UI) → #41 (ADVANCED) → #45 (solver)
-```
+- View registry pattern (each view self-registers)
+- 7 views (per ADR-030 view consolidation): Chat, Catalog, Fleet, Workshop, Plan, Diagnostics, Admiral
+- API domain modules (auth, chat, catalog, fleet, crews, etc.)
 
 ---
 
 ## Shelved (v1.0+)
 
 See [ADR-006](docs/ADR-006-open-alpha.md) for the full list. Key items:
-- SvelteKit migration (ADR-002)
+- ~~SvelteKit migration (ADR-002)~~ → Superseded by ADR-031 (Svelte 5 + Vite, no Kit)
 - Plugin/extension system
 - Alliance/guild multi-user features
 - Mobile native apps
 
 ---
 
-*Last updated by PM sweep — 2026-02-14*
+*Last updated by PM sweep — 2026-02-19*

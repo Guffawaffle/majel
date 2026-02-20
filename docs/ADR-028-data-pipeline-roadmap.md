@@ -18,6 +18,7 @@
 | Phase 3: Inventory | — | Not started | Resource planning |
 | Phase 4: Events/Away Teams | — | Not started | Dynamic game state |
 | Phase 5: Battle Logs | — | Not started | Combat analysis |
+| Cross-Cutting: Safe Mutation Path | #93 | Planned | Confirmation-gated proposal/apply for agent-driven writes |
 
 ## Context
 
@@ -165,6 +166,19 @@ Aria proposed a tiered data model framed as "Sensor Packages" — users opt into
 
 **Benefit:** Having the capability to calculate with external data means the tool becomes exponentially more powerful the moment that data becomes available — whether from a mod or a future native export.
 
+### Cross-Cutting: Safe Mutation Proposal/Apply
+
+**Goal:** Keep agent-assisted mutations safe and auditable as natural-language coverage expands.
+
+**Approach:**
+- Default mutation tools to a non-mutating **proposal** step that returns a deterministic changeset preview.
+- Require explicit UI confirmation (Accept / Decline) before **apply**.
+- Bind apply to immutable proposal identity (`proposal_id`, optional signed token).
+- Reject expired/tampered/double-applied proposals.
+- Link apply receipts to proposal IDs for traceability.
+
+**Benefit:** Works for both stochastic model parsing and deterministic pipelines without sacrificing user control.
+
 ## Ethical & Legal Constraints
 
 All data access must respect:
@@ -184,6 +198,7 @@ All data access must respect:
 | Mod usage violates Scopely ToS | Majel never requires mod data; Advanced is opt-in with clear user consent |
 | Schema drift between Ripper's versions | Translator configs are versioned; validation catches mismatches |
 | Officer pool conflicts (ship vs Away Team) | Away Team data is optional enhancement; without it, Aria discloses uncertainty |
+| Stochastic AI parsing applies wrong bulk mutation | Confirmation-gated proposal/apply + immutable proposal IDs + receipts |
 
 ## Success Criteria
 
@@ -193,6 +208,7 @@ All data access must respect:
 - Phase 4: Aria proactively mentions active events and avoids suggesting locked officers
 - Phase 5: Admiral can upload a battle log and receive round-by-round failure analysis
 - Translator: At least one external source (Ripper's or Command Center) can be ingested without code changes — config only
+- Safe mutation path: high-impact tool writes require explicit UI accept before apply
 
 ## References
 

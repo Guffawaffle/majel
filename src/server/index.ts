@@ -35,8 +35,8 @@ import { createMemoryService } from "./services/memory.js";
 import { createFrameStoreFactory } from "./stores/postgres-frame-store.js";
 import { createSettingsStore } from "./stores/settings.js";
 import { createSessionStore } from "./sessions.js";
-import { createCrewStore } from "./stores/crew-store.js";
-import { createReceiptStore } from "./stores/receipt-store.js";
+import { createCrewStoreFactory } from "./stores/crew-store.js";
+import { createReceiptStoreFactory } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
 import { createOverlayStoreFactory } from "./stores/overlay-store.js";
@@ -45,13 +45,14 @@ import { createUserStore } from "./stores/user-store.js";
 import { createAuditStore } from "./stores/audit-store.js";
 import { createUserSettingsStore } from "./stores/user-settings-store.js";
 import { createTargetStoreFactory } from "./stores/target-store.js";
+import { createResearchStoreFactory } from "./stores/research-store.js";
+import { createInventoryStoreFactory } from "./stores/inventory-store.js";
 import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
 // Shared types & config (avoids circular deps between index ↔ routes)
 import {
   type AppState,
-  readFleetConfig,
   buildMicroRunnerFromState,
 } from "./app-context.js";
 
@@ -87,11 +88,19 @@ export type { AppState };
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ─── Static file path ───────────────────────────────────────────
-const clientDir = path.resolve(
+// ─── Static file paths ──────────────────────────────────────────
+// Landing page (landing.html/css/js) always lives in the original client dir.
+const landingDir = path.resolve(
   __dirname,
-  // Use bootstrap config for NODE_ENV check
   bootstrapConfigSync().nodeEnv === "production" ? "../../dist/client" : "../client",
+);
+
+// Authenticated SPA served at /app:
+//   Production → Svelte build (dist/web/)
+//   Dev        → vanilla client (src/client/) — developers use Vite at :5173 for Svelte
+const appDir = path.resolve(
+  __dirname,
+  bootstrapConfigSync().nodeEnv === "production" ? "../../dist/web" : "../client",
 );
 
 // ─── Module-level state ─────────────────────────────────────────
@@ -104,7 +113,9 @@ const state: AppState = {
   settingsStore: null,
   sessionStore: null,
   crewStore: null,
+  crewStoreFactory: null,
   receiptStore: null,
+  receiptStoreFactory: null,
   behaviorStore: null,
   referenceStore: null,
   overlayStore: null,
@@ -115,6 +126,10 @@ const state: AppState = {
   targetStoreFactory: null,
   auditStore: null,
   userSettingsStore: null,
+  researchStore: null,
+  researchStoreFactory: null,
+  inventoryStore: null,
+  inventoryStoreFactory: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -157,6 +172,7 @@ export function createApp(appState: AppState): express.Express {
           return (
             url.startsWith("/styles") ||
             url.startsWith("/app.js") ||
+            url.startsWith("/app/assets") ||
             url.startsWith("/favicon")
           );
         },
@@ -209,8 +225,9 @@ export function createApp(appState: AppState): express.Express {
   });
 
   // Static files (for /app/* — the authenticated SPA)
+  // Production: Svelte build from dist/web/. Dev: vanilla client from src/client/.
   // Cache headers: 1 day browser cache, etag for conditional revalidation (ADR-023)
-  app.use("/app", express.static(clientDir, {
+  app.use("/app", express.static(appDir, {
     maxAge: '1d',
     etag: true,
   }));
@@ -223,15 +240,19 @@ export function createApp(appState: AppState): express.Express {
   }));
 
   // ─── Landing page routes (ADR-019 Phase 1) ────────────────
-  const landingFile = path.join(clientDir, "landing.html");
+  const landingFile = path.join(landingDir, "landing.html");
 
   // Landing page static assets (landing.css, landing.js)
-  app.get('/landing.css', (_req, res) => res.sendFile(path.join(clientDir, 'landing.css')));
-  app.get('/landing.js', (_req, res) => res.sendFile(path.join(clientDir, 'landing.js')));
+  app.get('/landing.css', (_req, res) => res.sendFile(path.join(landingDir, 'landing.css')));
+  app.get('/landing.js', (_req, res) => res.sendFile(path.join(landingDir, 'landing.js')));
 
   // Public landing page routes → landing.html
+  // If the user already has a session cookie, skip the landing page entirely (no auth flash).
   for (const route of ["/", "/login", "/signup", "/verify", "/reset-password"]) {
-    app.get(route, (_req, res) => {
+    app.get(route, (req, res) => {
+      if (req.cookies?.majel_session) {
+        return res.redirect(302, "/app/");
+      }
       res.sendFile(landingFile);
     });
   }
@@ -254,7 +275,7 @@ export function createApp(appState: AppState): express.Express {
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
   app.get("/app/{*splat}", (_req, res) => {
-    res.sendFile(path.join(clientDir, "index.html"));
+    res.sendFile(path.join(appDir, "index.html"));
   });
 
   // ─── Error handler (ADR-004 — catch-all → envelope) ──────
@@ -328,19 +349,21 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
   }
 
-  // 2d. Initialize crew store (ADR-025 — unified composition model)
+  // 2d. Initialize crew store (ADR-025 — unified composition model, #94 user-scoped)
   try {
-    state.crewStore = await createCrewStore(adminPool, pool);
-    log.boot.info("crew store online (ADR-025)");
+    state.crewStoreFactory = await createCrewStoreFactory(adminPool, pool);
+    state.crewStore = state.crewStoreFactory.forUser("local");
+    log.boot.info("crew store online (ADR-025, user-scoped)");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "crew store init failed");
   }
 
-  // 2d4. Initialize receipt store (ADR-026)
+  // 2d4. Initialize receipt store (ADR-026, #94 user-scoped)
   try {
-    state.receiptStore = await createReceiptStore(adminPool, pool);
+    state.receiptStoreFactory = await createReceiptStoreFactory(adminPool, pool);
+    state.receiptStore = state.receiptStoreFactory.forUser("local");
     const receiptCounts = await state.receiptStore.counts();
-    log.boot.info({ receipts: receiptCounts.total }, "receipt store online (ADR-026)");
+    log.boot.info({ receipts: receiptCounts.total }, "receipt store online (ADR-026, user-scoped)");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "receipt store init failed");
   }
@@ -359,8 +382,10 @@ async function boot(): Promise<void> {
   // No boot-time sync — DB is the source of truth, not local snapshot files.
   try {
     state.referenceStore = await createReferenceStore(adminPool, pool);
+    // Purge legacy raw:* entries that duplicate CDN data (different IDs, different casing)
+    const purged = await state.referenceStore.purgeLegacyEntries();
     const refCounts = await state.referenceStore.counts();
-    log.boot.info({ officers: refCounts.officers, ships: refCounts.ships }, "reference store online");
+    log.boot.info({ officers: refCounts.officers, ships: refCounts.ships, purgedShips: purged.ships, purgedOfficers: purged.officers }, "reference store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
   }
@@ -426,6 +451,28 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "target store init failed");
   }
 
+  // 2k. Initialize research store (ADR-028 Phase 2)
+  try {
+    const researchFactory = await createResearchStoreFactory(adminPool, pool);
+    state.researchStoreFactory = researchFactory;
+    state.researchStore = researchFactory.forUser("local"); // backward compat
+    const researchCounts = await state.researchStore.counts();
+    log.boot.info({ nodes: researchCounts.nodes, trees: researchCounts.trees }, "research store online (RLS-scoped)");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "research store init failed");
+  }
+
+  // 2l. Initialize inventory store (ADR-028 Phase 3)
+  try {
+    const inventoryFactory = await createInventoryStoreFactory(adminPool, pool);
+    state.inventoryStoreFactory = inventoryFactory;
+    state.inventoryStore = inventoryFactory.forUser("local"); // backward compat
+    const inventoryCounts = await state.inventoryStore.counts();
+    log.boot.info({ items: inventoryCounts.items, categories: inventoryCounts.categories }, "inventory store online (RLS-scoped)");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "inventory store init failed");
+  }
+
   // Resolve config from settings store
   const { geminiApiKey } = state.config;
 
@@ -437,21 +484,24 @@ async function boot(): Promise<void> {
       : undefined;
 
     // Build a ToolContextFactory that creates user-scoped ToolContext per chat() call
-    const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStore || state.targetStoreFactory) ? {
+    const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStoreFactory || state.targetStoreFactory || state.researchStoreFactory || state.inventoryStoreFactory) ? {
       forUser(userId: string) {
         return {
           userId,
           referenceStore: state.referenceStore,
           overlayStore: state.overlayStoreFactory?.forUser(userId) ?? null,
-          crewStore: state.crewStore,      // crew store not user-scoped yet (follow-up)
+          crewStore: state.crewStoreFactory?.forUser(userId) ?? null,
           targetStore: state.targetStoreFactory?.forUser(userId) ?? null,
+          receiptStore: state.receiptStoreFactory?.forUser(userId) ?? null,
+          researchStore: state.researchStoreFactory?.forUser(userId) ?? null,
+          inventoryStore: state.inventoryStoreFactory?.forUser(userId) ?? null,
         };
       },
     } : null;
 
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,
-      await readFleetConfig(state.settingsStore),
+      null, // #85 H3: fleet config now injected per-message via chat route (user-scoped)
       null, // dock briefing removed (ADR-025)
       runner,
       modelName,

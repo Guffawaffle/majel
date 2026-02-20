@@ -10,8 +10,8 @@ import type { MemoryService } from "./services/memory.js";
 import type { FrameStoreFactory } from "./stores/postgres-frame-store.js";
 import type { SettingsStore } from "./stores/settings.js";
 import type { SessionStore } from "./sessions.js";
-import type { CrewStore } from "./stores/crew-store.js";
-import type { ReceiptStore } from "./stores/receipt-store.js";
+import type { CrewStore, CrewStoreFactory } from "./stores/crew-store.js";
+import type { ReceiptStore, ReceiptStoreFactory } from "./stores/receipt-store.js";
 import type { BehaviorStore } from "./stores/behavior-store.js";
 import type { ReferenceStore } from "./stores/reference-store.js";
 import type { OverlayStore, OverlayStoreFactory } from "./stores/overlay-store.js";
@@ -20,6 +20,8 @@ import type { UserStore } from "./stores/user-store.js";
 import type { TargetStore, TargetStoreFactory } from "./stores/target-store.js";
 import type { AuditStore } from "./stores/audit-store.js";
 import type { UserSettingsStore } from "./stores/user-settings-store.js";
+import type { ResearchStore, ResearchStoreFactory } from "./stores/research-store.js";
+import type { InventoryStore, InventoryStoreFactory } from "./stores/inventory-store.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./services/micro-runner.js";
@@ -39,8 +41,12 @@ export interface AppState {
   sessionStore: SessionStore | null;
   /** ADR-025: Unified crew composition store (replaces dock + loadout stores). */
   crewStore: CrewStore | null;
+  /** #94: Factory that creates per-user RLS-scoped CrewStores. */
+  crewStoreFactory: CrewStoreFactory | null;
   /** ADR-026: Import receipt audit trail + undo. */
   receiptStore: ReceiptStore | null;
+  /** #94: Factory that creates per-user RLS-scoped ReceiptStores. */
+  receiptStoreFactory: ReceiptStoreFactory | null;
   behaviorStore: BehaviorStore | null;
   referenceStore: ReferenceStore | null;
   overlayStore: OverlayStore | null;
@@ -55,6 +61,14 @@ export interface AppState {
   auditStore: AuditStore | null;
   /** #86: Per-user settings overrides. */
   userSettingsStore: UserSettingsStore | null;
+  /** ADR-028 Phase 2: Per-user research tree state. */
+  researchStore: ResearchStore | null;
+  /** Factory that creates per-user RLS-scoped ResearchStores. */
+  researchStoreFactory: ResearchStoreFactory | null;
+  /** ADR-028 Phase 3: Per-user inventory state. */
+  inventoryStore: InventoryStore | null;
+  /** Factory that creates per-user RLS-scoped InventoryStores. */
+  inventoryStoreFactory: InventoryStoreFactory | null;
   startupComplete: boolean;
   config: AppConfig;
 }
@@ -69,6 +83,43 @@ export async function readFleetConfig(store: SettingsStore | null): Promise<Flee
     drydockCount: await store.getTyped("fleet.drydockCount") as number,
     shipHangarSlots: await store.getTyped("fleet.shipHangarSlots") as number,
   };
+}
+
+/**
+ * Read fleet config for a specific user (#85 H3).
+ *
+ * Resolution: user settings override → system default → schema default.
+ * This ensures the system prompt and per-message context reflect each user's
+ * actual game state rather than the global system-level defaults.
+ */
+export async function readFleetConfigForUser(
+  userSettingsStore: UserSettingsStore | null,
+  userId: string,
+): Promise<FleetConfig | null> {
+  if (!userSettingsStore) return null;
+  const [opsEntry, dockEntry, hangarEntry] = await Promise.all([
+    userSettingsStore.getForUser(userId, "fleet.opsLevel"),
+    userSettingsStore.getForUser(userId, "fleet.drydockCount"),
+    userSettingsStore.getForUser(userId, "fleet.shipHangarSlots"),
+  ]);
+  return {
+    opsLevel: Number(opsEntry.value),
+    drydockCount: Number(dockEntry.value),
+    shipHangarSlots: Number(hangarEntry.value),
+  };
+}
+
+/**
+ * Format a FleetConfig as a labeled context block for per-message injection (#85 H3).
+ * This block is prepended to the user's message so the model sees the user's
+ * fleet configuration without it being baked into the static system prompt.
+ */
+export function formatFleetConfigBlock(config: FleetConfig): string {
+  return `[FLEET CONFIG]
+Operations Level: ${config.opsLevel}
+Active Drydocks: ${config.drydockCount}
+Ship Hangar Slots: ${config.shipHangarSlots}
+[END FLEET CONFIG]`;
 }
 
 /**

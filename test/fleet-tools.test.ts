@@ -19,6 +19,9 @@ import type { ReferenceStore, ReferenceOfficer, ReferenceShip } from "../src/ser
 import type { OverlayStore, OfficerOverlay, ShipOverlay } from "../src/server/stores/overlay-store.js";
 import type { CrewStore } from "../src/server/stores/crew-store.js";
 import type { TargetStore } from "../src/server/stores/target-store.js";
+import type { ReceiptStore } from "../src/server/stores/receipt-store.js";
+import type { ResearchStore } from "../src/server/stores/research-store.js";
+import type { InventoryStore } from "../src/server/stores/inventory-store.js";
 
 // ─── Test Fixtures ──────────────────────────────────────────
 
@@ -255,6 +258,117 @@ function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStor
   } as unknown as TargetStore;
 }
 
+function createMockReceiptStore(overrides: Partial<ReceiptStore> = {}): ReceiptStore {
+  return {
+    createReceipt: vi.fn().mockResolvedValue({
+      id: 1,
+      sourceType: "guided_setup",
+      sourceMeta: {},
+      mapping: null,
+      layer: "ownership",
+      changeset: {},
+      inverse: {},
+      unresolved: null,
+      createdAt: "2026-01-01T00:00:00Z",
+    }),
+    listReceipts: vi.fn().mockResolvedValue([]),
+    getReceipt: vi.fn().mockResolvedValue(null),
+    undoReceipt: vi.fn().mockResolvedValue({ success: true, message: "ok" }),
+    resolveReceiptItems: vi.fn(),
+    counts: vi.fn().mockResolvedValue({ total: 0 }),
+    close: vi.fn(),
+    ...overrides,
+  } as ReceiptStore;
+}
+
+function createMockResearchStore(overrides: Partial<ResearchStore> = {}): ResearchStore {
+  return {
+    replaceSnapshot: vi.fn().mockResolvedValue({ nodes: 2, trees: 1 }),
+    listNodes: vi.fn().mockResolvedValue([
+      {
+        nodeId: "combat.weapon.damage.t4",
+        tree: "combat",
+        name: "Weapon Damage",
+        maxLevel: 10,
+        dependencies: [],
+        buffs: [{ kind: "combat", metric: "weapon_damage", value: 0.15, unit: "percent" }],
+        level: 4,
+        completed: false,
+        stateUpdatedAt: null,
+        source: "ripper-cc",
+        capturedAt: "2026-02-18T00:00:00Z",
+        updatedAt: "2026-02-18T00:00:00Z",
+      },
+    ]),
+    listByTree: vi.fn().mockResolvedValue([
+      {
+        tree: "combat",
+        nodes: [
+          {
+            nodeId: "combat.weapon.damage.t4",
+            tree: "combat",
+            name: "Weapon Damage",
+            maxLevel: 10,
+            dependencies: [],
+            buffs: [{ kind: "combat", metric: "weapon_damage", value: 0.15, unit: "percent" }],
+            level: 4,
+            completed: false,
+            stateUpdatedAt: null,
+            source: "ripper-cc",
+            capturedAt: "2026-02-18T00:00:00Z",
+            updatedAt: "2026-02-18T00:00:00Z",
+          },
+        ],
+        totals: { nodes: 1, completed: 0, inProgress: 1, avgCompletionPct: 40 },
+      },
+    ]),
+    counts: vi.fn().mockResolvedValue({ nodes: 1, trees: 1, completed: 0 }),
+    close: vi.fn(),
+    ...overrides,
+  } as ResearchStore;
+}
+
+function createMockInventoryStore(overrides: Partial<InventoryStore> = {}): InventoryStore {
+  return {
+    upsertItems: vi.fn().mockResolvedValue({ upserted: 2, categories: 2 }),
+    listItems: vi.fn().mockResolvedValue([
+      {
+        id: 1,
+        category: "ore",
+        name: "3★ Ore",
+        grade: "3-star",
+        quantity: 280,
+        unit: null,
+        source: "manual",
+        capturedAt: "2026-02-18T00:00:00Z",
+        updatedAt: "2026-02-18T00:00:00Z",
+      },
+    ]),
+    listByCategory: vi.fn().mockResolvedValue([
+      {
+        category: "ore",
+        items: [
+          {
+            id: 1,
+            category: "ore",
+            name: "3★ Ore",
+            grade: "3-star",
+            quantity: 280,
+            unit: null,
+            source: "manual",
+            capturedAt: "2026-02-18T00:00:00Z",
+            updatedAt: "2026-02-18T00:00:00Z",
+          },
+        ],
+        totals: { itemCount: 1, totalQuantity: 280 },
+      },
+    ]),
+    counts: vi.fn().mockResolvedValue({ items: 1, categories: 1 }),
+    close: vi.fn(),
+    ...overrides,
+  } as unknown as InventoryStore;
+}
+
 // ─── Tool Declarations ──────────────────────────────────────
 
 describe("FLEET_TOOL_DECLARATIONS", () => {
@@ -291,6 +405,11 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("get_loadout_detail");
     expect(names).toContain("list_plan_items");
     expect(names).toContain("list_intents");
+    expect(names).toContain("list_research");
+    expect(names).toContain("list_inventory");
+    expect(names).toContain("calculate_upgrade_path");
+    expect(names).toContain("estimate_acquisition_time");
+    expect(names).toContain("calculate_true_power");
     expect(names).toContain("find_loadouts_for_intent");
     // Analysis tools
     expect(names).toContain("suggest_crew");
@@ -323,6 +442,8 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
 
   it("includes overlay mutation tools", () => {
     const names = FLEET_TOOL_DECLARATIONS.map((t) => t.name);
+    expect(names).toContain("sync_overlay");
+    expect(names).toContain("sync_research");
     expect(names).toContain("set_ship_overlay");
     expect(names).toContain("set_officer_overlay");
   });
@@ -790,6 +911,219 @@ describe("list_intents", () => {
   });
 });
 
+describe("list_research", () => {
+  it("returns grouped research state from store", async () => {
+    const ctx: ToolContext = {
+      researchStore: createMockResearchStore(),
+    };
+    const result = await executeFleetTool("list_research", {}, ctx) as Record<string, unknown>;
+
+    expect(result.summary).toBeDefined();
+    const summary = result.summary as Record<string, unknown>;
+    expect(summary.totalTrees).toBe(1);
+    const trees = result.trees as Array<Record<string, unknown>>;
+    expect(trees).toHaveLength(1);
+    expect(trees[0].tree).toBe("combat");
+  });
+
+  it("passes filters to store", async () => {
+    const listByTree = vi.fn().mockResolvedValue([]);
+    const ctx: ToolContext = {
+      researchStore: createMockResearchStore({ listByTree }),
+    };
+    await executeFleetTool("list_research", { tree: "combat", include_completed: false }, ctx);
+
+    expect(listByTree).toHaveBeenCalledWith({ tree: "combat", includeCompleted: false });
+  });
+
+  it("returns error when research store unavailable", async () => {
+    const result = await executeFleetTool("list_research", {}, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("list_inventory", () => {
+  it("returns grouped inventory state from store", async () => {
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore(),
+    };
+    const result = await executeFleetTool("list_inventory", {}, ctx) as Record<string, unknown>;
+
+    expect(result.summary).toBeDefined();
+    const summary = result.summary as Record<string, unknown>;
+    expect(summary.totalItems).toBe(1);
+    const categories = result.categories as Array<Record<string, unknown>>;
+    expect(categories).toHaveLength(1);
+    expect(categories[0].category).toBe("ore");
+  });
+
+  it("passes filters to store", async () => {
+    const listByCategory = vi.fn().mockResolvedValue([]);
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore({ listByCategory }),
+    };
+
+    await executeFleetTool("list_inventory", { category: "ore", query: "3★" }, ctx);
+    expect(listByCategory).toHaveBeenCalledWith({ category: "ore", q: "3★" });
+  });
+
+  it("returns error when inventory store unavailable", async () => {
+    const result = await executeFleetTool("list_inventory", {}, {});
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error for invalid category", async () => {
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore(),
+    };
+    const result = await executeFleetTool("list_inventory", { category: "invalid" }, ctx);
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("calculate_upgrade_path", () => {
+  it("computes requirement gaps against inventory", async () => {
+    const shipWithTiers = {
+      ...FIXTURE_SHIP,
+      maxTier: 10,
+      tiers: [
+        {
+          tier: 6,
+          components: [
+            { build_cost: [{ resource_id: 101, amount: 300, name: "3★ Ore" }] },
+            { build_cost: [{ resource_id: 102, amount: 120, name: "3★ Crystal" }] },
+          ],
+        },
+      ],
+    } as ReferenceShip;
+
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(shipWithTiers) }),
+      overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP_OVERLAY, tier: 5 }) }),
+      inventoryStore: createMockInventoryStore({
+        listItems: vi.fn().mockResolvedValue([
+          {
+            id: 1,
+            category: "ore",
+            name: "3★ Ore",
+            grade: "3-star",
+            quantity: 280,
+            unit: null,
+            source: "manual",
+            capturedAt: "2026-02-18T00:00:00Z",
+            updatedAt: "2026-02-18T00:00:00Z",
+          },
+          {
+            id: 2,
+            category: "crystal",
+            name: "3★ Crystal",
+            grade: "3-star",
+            quantity: 150,
+            unit: null,
+            source: "manual",
+            capturedAt: "2026-02-18T00:00:00Z",
+            updatedAt: "2026-02-18T00:00:00Z",
+          },
+        ]),
+      }),
+    };
+
+    const result = await executeFleetTool(
+      "calculate_upgrade_path",
+      { ship_id: "ship-enterprise", target_tier: 6 },
+      ctx,
+    ) as Record<string, unknown>;
+
+    const summary = result.summary as Record<string, unknown>;
+    expect(summary.requirementCount).toBe(2);
+    expect(summary.totalGap).toBe(20);
+
+    const requirements = result.requirements as Array<Record<string, unknown>>;
+    const ore = requirements.find((entry) => entry.name === "3★ Ore") as Record<string, unknown>;
+    expect(ore.gap).toBe(20);
+  });
+
+  it("returns error when inventory store unavailable", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+    };
+    const result = await executeFleetTool("calculate_upgrade_path", { ship_id: "ship-enterprise" }, ctx);
+    expect(result).toHaveProperty("error");
+  });
+
+  it("returns error for invalid target tier", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP_OVERLAY, tier: 8 }) }),
+      inventoryStore: createMockInventoryStore(),
+    };
+    const result = await executeFleetTool("calculate_upgrade_path", { ship_id: "ship-enterprise", target_tier: 7 }, ctx);
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("estimate_acquisition_time", () => {
+  it("estimates days to cover resource gaps", async () => {
+    const shipWithTiers = {
+      ...FIXTURE_SHIP,
+      maxTier: 10,
+      tiers: [
+        {
+          tier: 6,
+          components: [
+            { build_cost: [{ resource_id: 101, amount: 300, name: "3★ Ore" }] },
+          ],
+        },
+      ],
+    } as ReferenceShip;
+
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(shipWithTiers) }),
+      overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP_OVERLAY, tier: 5 }) }),
+      inventoryStore: createMockInventoryStore({
+        listItems: vi.fn().mockResolvedValue([
+          {
+            id: 1,
+            category: "ore",
+            name: "3★ Ore",
+            grade: "3-star",
+            quantity: 50,
+            unit: null,
+            source: "manual",
+            capturedAt: "2026-02-18T00:00:00Z",
+            updatedAt: "2026-02-18T00:00:00Z",
+          },
+        ]),
+      }),
+    };
+
+    const result = await executeFleetTool(
+      "estimate_acquisition_time",
+      { ship_id: "ship-enterprise", target_tier: 6, daily_income: { ore: 25 } },
+      ctx,
+    ) as Record<string, unknown>;
+
+    const summary = result.summary as Record<string, unknown>;
+    expect(summary.feasible).toBe(true);
+    expect(summary.estimatedDays).toBe(10);
+
+    const perResource = result.perResource as Array<Record<string, unknown>>;
+    expect(perResource[0]).toMatchObject({ name: "3★ Ore", gap: 250, dailyRate: 25, days: 10 });
+  });
+
+  it("returns ship-not-found error from upgrade path", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(null) }),
+      overlayStore: createMockOverlayStore(),
+      inventoryStore: createMockInventoryStore(),
+    };
+
+    const result = await executeFleetTool("estimate_acquisition_time", { ship_id: "missing-ship" }, ctx);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("Ship not found");
+  });
+});
+
 describe("find_loadouts_for_intent", () => {
   it("returns loadouts matching an intent", async () => {
     const ctx: ToolContext = {
@@ -818,6 +1152,50 @@ describe("find_loadouts_for_intent", () => {
   });
 });
 
+describe("calculate_true_power", () => {
+  it("calculates effective power using research multipliers", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore(),
+      researchStore: createMockResearchStore(),
+    };
+
+    const result = await executeFleetTool(
+      "calculate_true_power",
+      { ship_id: "ship-enterprise", intent_key: "pvp" },
+      ctx,
+    ) as Record<string, unknown>;
+
+    expect(result.basePower).toBe(950000);
+    expect(result.calculatedPower).toBe(1092500);
+    const researchAdvisory = result.researchAdvisory as Record<string, unknown>;
+    expect(researchAdvisory.priority).toBe("low");
+  });
+
+  it("returns null calculated power when ship overlay power is unavailable", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue(null) }),
+      researchStore: createMockResearchStore(),
+    };
+
+    const result = await executeFleetTool("calculate_true_power", { ship_id: "ship-enterprise" }, ctx) as Record<string, unknown>;
+    expect(result.basePower).toBeNull();
+    expect(result.calculatedPower).toBeNull();
+    expect(result.assumptions).toContain("ship_overlay_power_missing");
+  });
+
+  it("returns error for unknown ship", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(null) }),
+      overlayStore: createMockOverlayStore(),
+    };
+
+    const result = await executeFleetTool("calculate_true_power", { ship_id: "unknown" }, ctx);
+    expect(result).toHaveProperty("error");
+  });
+});
+
 describe("suggest_crew", () => {
   it("gathers ship, intent, owned officers, and existing loadouts", async () => {
     const ctx: ToolContext = {
@@ -828,6 +1206,7 @@ describe("suggest_crew", () => {
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([FIXTURE_LOADOUT_WITH_REFS]),
       }),
+      researchStore: createMockResearchStore(),
     };
     const result = await executeFleetTool(
       "suggest_crew", { ship_id: "ship-enterprise", intent_key: "pvp" }, ctx,
@@ -848,6 +1227,18 @@ describe("suggest_crew", () => {
     const loadouts = result.existingLoadouts as Array<Record<string, unknown>>;
     expect(loadouts).toHaveLength(1);
     expect(loadouts[0].name).toBe("Kirk Crew");
+
+    const researchContext = result.researchContext as Record<string, unknown>;
+    expect(researchContext.priority).toBe("low");
+    expect(researchContext.status).toBe("sparse");
+    expect(researchContext.relevantBuffCount).toBe(1);
+    const citations = researchContext.citations as Array<Record<string, unknown>>;
+    expect(citations).toHaveLength(1);
+    expect(String(citations[0].citation)).toContain("Weapon Damage");
+
+    const recommendationHints = result.recommendationHints as Record<string, unknown>;
+    expect(recommendationHints.prioritizeBaseFit).toBe(true);
+    expect(recommendationHints.useResearchAsTiebreaker).toBe(true);
   });
 
   it("works without intent_key", async () => {
@@ -865,6 +1256,14 @@ describe("suggest_crew", () => {
     ) as Record<string, unknown>;
     expect(result.intent).toBeNull();
     expect(result.totalOwnedOfficers).toBe(0);
+
+    const researchContext = result.researchContext as Record<string, unknown>;
+    expect(researchContext.priority).toBe("none");
+    const citations = researchContext.citations as Array<Record<string, unknown>>;
+    expect(citations).toHaveLength(0);
+
+    const recommendationHints = result.recommendationHints as Record<string, unknown>;
+    expect(recommendationHints.useResearchInCoreScoring).toBe(false);
   });
 
   it("returns error for unknown ship", async () => {
@@ -2089,6 +2488,624 @@ describe("get_effective_state", () => {
 
 // ─── Overlay Mutation Tools ─────────────────────────────────
 
+describe("sync_overlay", () => {
+  it("returns error for unsupported export schema version", async () => {
+    const ctx: ToolContext = {
+      overlayStore: createMockOverlayStore(),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: {
+        version: "2.0",
+      },
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(String(result.error)).toContain("Supported version is '1.0'");
+  });
+
+  it("warns when export date is stale", async () => {
+    const staleDate = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString();
+    const ctx: ToolContext = {
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: {
+        version: "1.0",
+        exportDate: staleDate,
+      },
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    const schema = result.schema as Record<string, unknown>;
+    expect(schema.stale).toBe(true);
+    expect(schema.importAgeDays).toBeGreaterThan(7);
+    const warnings = result.warnings as string[];
+    expect(warnings.some((w) => w.includes("stale"))).toBe(true);
+  });
+
+  it("returns dry-run diff summary without applying", async () => {
+    const ctx: ToolContext = {
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([
+          {
+            refId: "cdn:officer:100",
+            ownershipState: "unowned",
+            target: false,
+            level: 20,
+            rank: "2",
+            power: 1000,
+            targetNote: null,
+            targetPriority: null,
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+      }),
+      referenceStore: createMockReferenceStore({
+        getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
+        getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: {
+        version: "1.0",
+        source: "manual",
+        officers: [{ refId: "cdn:officer:100", level: 50, owned: true }],
+        ships: [{ refId: "cdn:ship:200", tier: 8, owned: true }],
+      },
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(result.dryRun).toBe(true);
+    const summary = result.summary as Record<string, unknown>;
+    const officers = summary.officers as Record<string, unknown>;
+    const ships = summary.ships as Record<string, unknown>;
+    expect(officers.changed).toBe(1);
+    expect(ships.changed).toBe(1);
+    expect(officers.applied).toBe(0);
+    expect(ships.applied).toBe(0);
+  });
+
+  it("applies overlay updates when dry_run=false", async () => {
+    const setOfficerOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:officer:100",
+      ownershipState: "owned",
+      target: false,
+      level: 50,
+      rank: null,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+    const setShipOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:200",
+      ownershipState: "owned",
+      target: false,
+      tier: 8,
+      level: null,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const createReceipt = vi.fn().mockResolvedValue({
+      id: 42,
+      sourceType: "guided_setup",
+      sourceMeta: {},
+      mapping: null,
+      layer: "ownership",
+      changeset: {},
+      inverse: {},
+      unresolved: null,
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+
+    const createPlanItem = vi.fn().mockResolvedValue({
+      id: 55,
+      intentKey: null,
+      label: "sync_overlay import",
+      loadoutId: 20,
+      variantId: null,
+      dockNumber: 2,
+      awayOfficers: null,
+      priority: 0,
+      isActive: true,
+      source: "manual",
+      notes: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+    const updatePlanItem = vi.fn().mockResolvedValue({
+      id: 10,
+      intentKey: null,
+      label: "Current Dock",
+      loadoutId: 20,
+      variantId: null,
+      dockNumber: 1,
+      awayOfficers: null,
+      priority: 0,
+      isActive: true,
+      source: "manual",
+      notes: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setOfficerOverlay,
+        setShipOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
+        getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
+      }),
+      crewStore: createMockCrewStore({
+        listPlanItems: vi.fn().mockResolvedValue([
+          {
+            id: 10,
+            intentKey: null,
+            label: "Current Dock",
+            loadoutId: 10,
+            variantId: null,
+            dockNumber: 1,
+            awayOfficers: null,
+            priority: 0,
+            isActive: true,
+            source: "manual",
+            notes: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ]),
+        listLoadouts: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: 20,
+              shipId: "cdn:ship:200",
+              bridgeCoreId: null,
+              belowDeckPolicyId: null,
+              name: "Ship 200 Loadout",
+              priority: 0,
+              isActive: true,
+              intentKeys: [],
+              tags: [],
+              notes: null,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: 20,
+              shipId: "cdn:ship:200",
+              bridgeCoreId: null,
+              belowDeckPolicyId: null,
+              name: "Ship 200 Loadout",
+              priority: 0,
+              isActive: true,
+              intentKeys: [],
+              tags: [],
+              notes: null,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+        createPlanItem,
+        updatePlanItem,
+      }),
+      receiptStore: createMockReceiptStore({ createReceipt }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      payload_json: JSON.stringify({
+        version: "1.0",
+        officers: [{ refId: "100", owned: true, level: 50 }],
+        ships: [{ refId: "200", owned: true, tier: 8 }],
+        docks: [
+          { number: 1, loadoutId: 20 },
+          { number: 2, shipId: "200" },
+        ],
+      }),
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(result.dryRun).toBe(false);
+    expect(setOfficerOverlay).toHaveBeenCalledTimes(1);
+    expect(setShipOverlay).toHaveBeenCalledTimes(1);
+    const summary = result.summary as Record<string, unknown>;
+    const officers = summary.officers as Record<string, unknown>;
+    const ships = summary.ships as Record<string, unknown>;
+    expect(officers.applied).toBe(1);
+    expect(ships.applied).toBe(1);
+    expect(createReceipt).toHaveBeenCalledTimes(1);
+    const receipt = result.receipt as Record<string, unknown>;
+    expect(receipt.created).toBe(true);
+    expect(receipt.id).toBe(42);
+    expect(updatePlanItem).toHaveBeenCalledTimes(1);
+    expect(createPlanItem).toHaveBeenCalledTimes(1);
+    const preview = result.changesPreview as Record<string, unknown>;
+    const dockPreview = preview.docks as unknown[];
+    expect(dockPreview.length).toBe(2);
+  });
+
+  it("supports manual free-text updates", async () => {
+    const setShipOverlay = vi.fn().mockResolvedValue({
+      refId: "ship-enterprise",
+      ownershipState: "owned",
+      target: false,
+      tier: 7,
+      level: null,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const ctx: ToolContext = {
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setShipOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        searchOfficers: vi.fn().mockResolvedValue([]),
+        searchShips: vi.fn().mockResolvedValue([FIXTURE_SHIP]),
+        getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: { version: "1.0" },
+      manual_updates: ["I upgraded my Enterprise to tier 7"],
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(setShipOverlay).toHaveBeenCalledTimes(1);
+    const summary = result.summary as Record<string, unknown>;
+    const ships = summary.ships as Record<string, unknown>;
+    expect(ships.manualUpdates).toBe(1);
+    expect(ships.applied).toBe(1);
+  });
+
+  it("supports bulk max ship updates with exceptions", async () => {
+    const setShipOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:1",
+      ownershipState: "owned",
+      target: false,
+      tier: 10,
+      level: 45,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const ships = [
+      { ...FIXTURE_SHIP, id: "cdn:ship:1", name: "USS Enterprise", maxTier: 10, maxLevel: 45 },
+      { ...FIXTURE_SHIP, id: "cdn:ship:2", name: "D'Vor", maxTier: 9, maxLevel: 45 },
+      { ...FIXTURE_SHIP, id: "cdn:ship:3", name: "Vi'Dar", maxTier: 8, maxLevel: 45 },
+      { ...FIXTURE_SHIP, id: "cdn:ship:4", name: "Sarcophagus", maxTier: 12, maxLevel: 45 },
+    ];
+
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setShipOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        listShips: vi.fn().mockResolvedValue(ships),
+        getShip: vi.fn().mockImplementation(async (id: string) => ships.find((ship) => ship.id === id) ?? null),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: { version: "1.0" },
+      manual_updates: ["Ok all of my ships except the D'Vor and Vi'Dar are max tier and level available to the ship"],
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(setShipOverlay).toHaveBeenCalledTimes(2);
+    const calledRefIds = setShipOverlay.mock.calls.map((call: unknown[]) => (call[0] as Record<string, unknown>).refId);
+    expect(calledRefIds).toContain("cdn:ship:1");
+    expect(calledRefIds).toContain("cdn:ship:4");
+    expect(calledRefIds).not.toContain("cdn:ship:2");
+    expect(calledRefIds).not.toContain("cdn:ship:3");
+
+    // Verify written values match reference maxTier/maxLevel
+    const enterpriseCall = setShipOverlay.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).refId === "cdn:ship:1");
+    expect(enterpriseCall).toBeDefined();
+    expect((enterpriseCall![0] as Record<string, unknown>).tier).toBe(10);
+    expect((enterpriseCall![0] as Record<string, unknown>).level).toBe(45);
+    expect((enterpriseCall![0] as Record<string, unknown>).ownershipState).toBe("owned");
+
+    const sarcophagusCall = setShipOverlay.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).refId === "cdn:ship:4");
+    expect(sarcophagusCall).toBeDefined();
+    expect((sarcophagusCall![0] as Record<string, unknown>).tier).toBe(12);
+    expect((sarcophagusCall![0] as Record<string, unknown>).level).toBe(45);
+  });
+
+  it("supports bulk max officer updates with exceptions", async () => {
+    const setOfficerOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:officer:1",
+      ownershipState: "owned",
+      target: false,
+      level: 50,
+      rank: "5",
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const officers = [
+      { ...FIXTURE_OFFICER, id: "cdn:officer:1", name: "Kirk", maxRank: 5 },
+      { ...FIXTURE_OFFICER, id: "cdn:officer:2", name: "Spock", maxRank: 5 },
+      { ...FIXTURE_OFFICER, id: "cdn:officer:3", name: "Bones", maxRank: 4 },
+    ];
+
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setOfficerOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        listOfficers: vi.fn().mockResolvedValue(officers),
+        getOfficer: vi.fn().mockImplementation(async (id: string) => officers.find((officer) => officer.id === id) ?? null),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: { version: "1.0" },
+      manual_updates: ["all my officers except Spock are max rank and level"],
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(setOfficerOverlay).toHaveBeenCalledTimes(2);
+    const calledRefIds = setOfficerOverlay.mock.calls.map((call: unknown[]) => (call[0] as Record<string, unknown>).refId);
+    expect(calledRefIds).toContain("cdn:officer:1");
+    expect(calledRefIds).toContain("cdn:officer:3");
+    expect(calledRefIds).not.toContain("cdn:officer:2");
+
+    // Verify rank and level values from inferOfficerLevelFromMaxRank
+    const kirkCall = setOfficerOverlay.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).refId === "cdn:officer:1");
+    expect(kirkCall).toBeDefined();
+    expect((kirkCall![0] as Record<string, unknown>).rank).toBe("5");
+    expect((kirkCall![0] as Record<string, unknown>).level).toBe(50);
+    expect((kirkCall![0] as Record<string, unknown>).ownershipState).toBe("owned");
+
+    const bonesCall = setOfficerOverlay.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).refId === "cdn:officer:3");
+    expect(bonesCall).toBeDefined();
+    expect((bonesCall![0] as Record<string, unknown>).rank).toBe("4");
+    expect((bonesCall![0] as Record<string, unknown>).level).toBe(40);
+  });
+
+  it("supports bulk max ship updates with no exceptions", async () => {
+    const setShipOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:1",
+      ownershipState: "owned",
+      target: false,
+      tier: 10,
+      level: 45,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const ships = [
+      { ...FIXTURE_SHIP, id: "cdn:ship:1", name: "USS Enterprise", maxTier: 10, maxLevel: 45 },
+      { ...FIXTURE_SHIP, id: "cdn:ship:2", name: "D'Vor", maxTier: 9, maxLevel: 40 },
+    ];
+
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setShipOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        listShips: vi.fn().mockResolvedValue(ships),
+        getShip: vi.fn().mockImplementation(async (id: string) => ships.find((s) => s.id === id) ?? null),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: { version: "1.0" },
+      manual_updates: ["all my ships are max tier and level"],
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(setShipOverlay).toHaveBeenCalledTimes(2);
+  });
+
+  it("warns when bulk update excludes all entities", async () => {
+    const setShipOverlay = vi.fn();
+
+    const ships = [
+      { ...FIXTURE_SHIP, id: "cdn:ship:1", name: "Enterprise", maxTier: 10, maxLevel: 45 },
+    ];
+
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setShipOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        listShips: vi.fn().mockResolvedValue(ships),
+        getShip: vi.fn().mockImplementation(async (id: string) => ships.find((s) => s.id === id) ?? null),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: { version: "1.0" },
+      manual_updates: ["all my ships except Enterprise are max tier and level"],
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(setShipOverlay).not.toHaveBeenCalled();
+    const warnings = (result as Record<string, unknown>).warnings as string[] | undefined;
+    expect(warnings).toBeDefined();
+    expect(warnings!.some((w) => w.includes("did not match any ships after exclusions"))).toBe(true);
+  });
+
+  it("handles officers with null maxRank in bulk update", async () => {
+    const setOfficerOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:officer:1",
+      ownershipState: "owned",
+      target: false,
+      level: null,
+      rank: null,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const officers = [
+      { ...FIXTURE_OFFICER, id: "cdn:officer:1", name: "Kirk", maxRank: 5 },
+      { ...FIXTURE_OFFICER, id: "cdn:officer:2", name: "Unknown Cadet", maxRank: null },
+    ];
+
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setOfficerOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        listOfficers: vi.fn().mockResolvedValue(officers),
+        getOfficer: vi.fn().mockImplementation(async (id: string) => officers.find((o) => o.id === id) ?? null),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: { version: "1.0" },
+      manual_updates: ["all my officers are max rank and level"],
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(setOfficerOverlay).toHaveBeenCalledTimes(2);
+
+    // Kirk should have rank/level from maxRank
+    const kirkCall = setOfficerOverlay.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).refId === "cdn:officer:1");
+    expect(kirkCall).toBeDefined();
+    expect((kirkCall![0] as Record<string, unknown>).rank).toBe("5");
+    expect((kirkCall![0] as Record<string, unknown>).level).toBe(50);
+
+    // Unknown Cadet should be owned but without rank/level
+    const cadetCall = setOfficerOverlay.mock.calls.find((c: unknown[]) => (c[0] as Record<string, unknown>).refId === "cdn:officer:2");
+    expect(cadetCall).toBeDefined();
+    expect((cadetCall![0] as Record<string, unknown>).level).toBeNull();
+
+    // Should have a warning about missing max rank
+    const warnings = (result as Record<string, unknown>).warnings as string[] | undefined;
+    expect(warnings).toBeDefined();
+    expect(warnings!.some((w) => w.includes("Unknown Cadet") && w.includes("missing max rank"))).toBe(true);
+  });
+});
+
+describe("sync_research", () => {
+  const RESEARCH_EXPORT = {
+    schema_version: "1.0",
+    captured_at: "2026-02-18T00:00:00Z",
+    source: "ripper-cc",
+    nodes: [
+      {
+        node_id: "combat.weapon.damage.t4",
+        tree: "combat",
+        name: "Weapon Damage",
+        max_level: 10,
+        dependencies: [],
+        buffs: [{ kind: "combat", metric: "weapon_damage", value: 0.15, unit: "percent" }],
+      },
+    ],
+    state: [
+      {
+        node_id: "combat.weapon.damage.t4",
+        level: 4,
+        completed: false,
+        updated_at: "2026-02-18T00:00:00Z",
+      },
+    ],
+  };
+
+  it("returns preview in dry-run mode by default", async () => {
+    const replaceSnapshot = vi.fn();
+    const ctx: ToolContext = {
+      researchStore: createMockResearchStore({ replaceSnapshot }),
+    };
+
+    const result = await executeFleetTool("sync_research", { export: RESEARCH_EXPORT }, ctx) as Record<string, unknown>;
+    expect(result.tool).toBe("sync_research");
+    expect(result.dryRun).toBe(true);
+    expect(replaceSnapshot).not.toHaveBeenCalled();
+    const summary = result.summary as Record<string, unknown>;
+    expect(summary.nodes).toBe(1);
+    expect(summary.trees).toBe(1);
+  });
+
+  it("applies snapshot when dry_run=false", async () => {
+    const replaceSnapshot = vi.fn().mockResolvedValue({ nodes: 1, trees: 1 });
+    const ctx: ToolContext = {
+      researchStore: createMockResearchStore({ replaceSnapshot }),
+    };
+
+    const result = await executeFleetTool("sync_research", {
+      payload_json: JSON.stringify(RESEARCH_EXPORT),
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_research");
+    expect(result.dryRun).toBe(false);
+    expect(replaceSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates schema version", async () => {
+    const ctx: ToolContext = {
+      researchStore: createMockResearchStore(),
+    };
+    const result = await executeFleetTool("sync_research", {
+      export: { schema_version: "2.0", nodes: [], state: [] },
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_research");
+    expect(String(result.error)).toContain("schema_version");
+  });
+
+  it("returns error when research store unavailable", async () => {
+    const result = await executeFleetTool("sync_research", { export: RESEARCH_EXPORT }, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
 describe("set_ship_overlay", () => {
   it("sets ship overlay with all fields", async () => {
     const mockOverlay = {
@@ -2269,5 +3286,348 @@ describe("set_officer_overlay", () => {
       officer_id: "cdn:officer:123",
     }, {});
     expect(result).toHaveProperty("error");
+  });
+});
+
+// ─── User Isolation & Thread Safety ─────────────────────────
+
+describe("user isolation — scoped stores", () => {
+  const USER_A = "user-alpha";
+  const USER_B = "user-bravo";
+
+  it("sync_overlay passes userId through to receipt store metadata", async () => {
+    const createReceipt = vi.fn().mockResolvedValue({
+      id: 42,
+      sourceType: "guided_setup",
+      sourceMeta: {},
+      mapping: null,
+      layer: "ownership",
+      changeset: {},
+      inverse: {},
+      unresolved: null,
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+
+    const setShipOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:1",
+      ownershipState: "owned",
+      target: false,
+      tier: 5,
+      level: 20,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const ctx: ToolContext = {
+      userId: USER_A,
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setShipOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        getShip: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP, id: "cdn:ship:1", name: "Enterprise" }),
+      }),
+      receiptStore: createMockReceiptStore({ createReceipt }),
+    };
+
+    await executeFleetTool("sync_overlay", {
+      export: { version: "1.0", ships: [{ refId: "cdn:ship:1", tier: 5, owned: true }] },
+      dry_run: false,
+    }, ctx);
+
+    expect(createReceipt).toHaveBeenCalledTimes(1);
+    const receiptInput = createReceipt.mock.calls[0][0];
+    expect(receiptInput.sourceMeta.userId).toBe(USER_A);
+  });
+
+  it("two user contexts get independent overlay reads", async () => {
+    // getFleetOverview calls overlayStore.counts() — override that to differ per user
+    const overlayA = createMockOverlayStore({
+      counts: vi.fn().mockResolvedValue({
+        officers: { total: 10, owned: 5, unowned: 3, unknown: 2, targeted: 1 },
+        ships: { total: 0, owned: 0, unowned: 0, unknown: 0, targeted: 0 },
+      }),
+    });
+
+    const overlayB = createMockOverlayStore({
+      counts: vi.fn().mockResolvedValue({
+        officers: { total: 0, owned: 0, unowned: 0, unknown: 0, targeted: 0 },
+        ships: { total: 8, owned: 4, unowned: 2, unknown: 2, targeted: 3 },
+      }),
+    });
+
+    const ctxA: ToolContext = {
+      userId: USER_A,
+      overlayStore: overlayA,
+      referenceStore: createMockReferenceStore(),
+      crewStore: createMockCrewStore(),
+      targetStore: createMockTargetStore(),
+      receiptStore: createMockReceiptStore(),
+      researchStore: createMockResearchStore(),
+      inventoryStore: createMockInventoryStore(),
+    };
+
+    const ctxB: ToolContext = {
+      userId: USER_B,
+      overlayStore: overlayB,
+      referenceStore: createMockReferenceStore(),
+      crewStore: createMockCrewStore(),
+      targetStore: createMockTargetStore(),
+      receiptStore: createMockReceiptStore(),
+      researchStore: createMockResearchStore(),
+      inventoryStore: createMockInventoryStore(),
+    };
+
+    const resultA = await executeFleetTool("get_fleet_overview", {}, ctxA) as Record<string, unknown>;
+    const resultB = await executeFleetTool("get_fleet_overview", {}, ctxB) as Record<string, unknown>;
+
+    // User A has officer overlays, no ship overlays
+    const overlaysA = resultA.overlays as Record<string, unknown>;
+    expect((overlaysA.officers as Record<string, unknown>).total).toBe(10);
+    expect((overlaysA.ships as Record<string, unknown>).total).toBe(0);
+
+    // User B has ship overlays, no officer overlays
+    const overlaysB = resultB.overlays as Record<string, unknown>;
+    expect((overlaysB.officers as Record<string, unknown>).total).toBe(0);
+    expect((overlaysB.ships as Record<string, unknown>).total).toBe(8);
+  });
+
+  it("two user contexts write to independent overlay stores", async () => {
+    const setShipA = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:1", ownershipState: "owned", target: false,
+      tier: 5, level: 20, power: null, targetNote: null, targetPriority: null,
+      updatedAt: "2026-01-01",
+    });
+    const setShipB = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:2", ownershipState: "owned", target: false,
+      tier: 3, level: 10, power: null, targetNote: null, targetPriority: null,
+      updatedAt: "2026-01-01",
+    });
+
+    const ctxA: ToolContext = {
+      userId: USER_A,
+      overlayStore: createMockOverlayStore({ setShipOverlay: setShipA }),
+      referenceStore: createMockReferenceStore(),
+    };
+    const ctxB: ToolContext = {
+      userId: USER_B,
+      overlayStore: createMockOverlayStore({ setShipOverlay: setShipB }),
+      referenceStore: createMockReferenceStore(),
+    };
+
+    await executeFleetTool("set_ship_overlay", {
+      ship_id: "cdn:ship:1", tier: 5,
+    }, ctxA);
+    await executeFleetTool("set_ship_overlay", {
+      ship_id: "cdn:ship:2", tier: 3,
+    }, ctxB);
+
+    // Each store was called independently; no cross-contamination
+    expect(setShipA).toHaveBeenCalledTimes(1);
+    expect(setShipB).toHaveBeenCalledTimes(1);
+    expect((setShipA.mock.calls[0][0] as Record<string, unknown>).refId).toBe("cdn:ship:1");
+    expect((setShipB.mock.calls[0][0] as Record<string, unknown>).refId).toBe("cdn:ship:2");
+  });
+
+  it("two user contexts write to independent target stores", async () => {
+    const createA = vi.fn().mockResolvedValue({
+      id: 1, refId: "officer-kirk", targetType: "officer", status: "active",
+      ownershipGoal: "acquire", priority: 2, reason: "need Kirk",
+      isActive: true, source: "manual", notes: null,
+      createdAt: "2026-01-01", updatedAt: "2026-01-01",
+    });
+    const createB = vi.fn().mockResolvedValue({
+      id: 2, refId: "ship-enterprise", targetType: "ship", status: "active",
+      ownershipGoal: "acquire", priority: 1, reason: "need ship",
+      isActive: true, source: "manual", notes: null,
+      createdAt: "2026-01-01", updatedAt: "2026-01-01",
+    });
+
+    const ctxA: ToolContext = {
+      userId: USER_A,
+      targetStore: createMockTargetStore({
+        create: createA,
+        listByRef: vi.fn().mockResolvedValue([]),
+      }),
+      referenceStore: createMockReferenceStore(),
+    };
+    const ctxB: ToolContext = {
+      userId: USER_B,
+      targetStore: createMockTargetStore({
+        create: createB,
+        listByRef: vi.fn().mockResolvedValue([]),
+      }),
+      referenceStore: createMockReferenceStore(),
+    };
+
+    await executeFleetTool("create_target", {
+      ref_id: "officer-kirk", target_type: "officer",
+      ownership_goal: "acquire", reason: "need Kirk",
+    }, ctxA);
+    await executeFleetTool("create_target", {
+      ref_id: "ship-enterprise", target_type: "ship",
+      ownership_goal: "acquire", reason: "need ship",
+    }, ctxB);
+
+    expect(createA).toHaveBeenCalledTimes(1);
+    expect(createB).toHaveBeenCalledTimes(1);
+    // User A's target store never sees User B's data and vice versa
+    expect(createA.mock.calls[0][0].refId).toBe("officer-kirk");
+    expect(createB.mock.calls[0][0].refId).toBe("ship-enterprise");
+  });
+
+  it("two user contexts read independent research stores", async () => {
+    // listResearch calls researchStore.listByTree() — override that per user
+    const researchA = createMockResearchStore({
+      listByTree: vi.fn().mockResolvedValue([
+        {
+          tree: "combat",
+          nodes: [{ nodeId: "c1", tree: "combat", name: "Weapons", maxLevel: 10, dependencies: [], buffs: [], level: 5, completed: false, stateUpdatedAt: null, source: "manual", capturedAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }],
+          totals: { nodes: 1, completed: 0, inProgress: 1, avgCompletionPct: 50 },
+        },
+      ]),
+      counts: vi.fn().mockResolvedValue({ nodes: 1, trees: 1, completed: 0 }),
+    });
+    const researchB = createMockResearchStore({
+      listByTree: vi.fn().mockResolvedValue([
+        {
+          tree: "galaxy",
+          nodes: [{ nodeId: "g1", tree: "galaxy", name: "Warp Speed", maxLevel: 8, dependencies: [], buffs: [], level: 3, completed: false, stateUpdatedAt: null, source: "manual", capturedAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }],
+          totals: { nodes: 1, completed: 0, inProgress: 1, avgCompletionPct: 37.5 },
+        },
+      ]),
+      counts: vi.fn().mockResolvedValue({ nodes: 1, trees: 1, completed: 0 }),
+    });
+
+    const ctxA: ToolContext = { userId: USER_A, researchStore: researchA };
+    const ctxB: ToolContext = { userId: USER_B, researchStore: researchB };
+
+    const resultA = await executeFleetTool("list_research", {}, ctxA) as Record<string, unknown>;
+    const resultB = await executeFleetTool("list_research", {}, ctxB) as Record<string, unknown>;
+
+    const treesA = (resultA as any).trees;
+    const treesB = (resultB as any).trees;
+    expect(treesA[0].tree).toBe("combat");
+    expect(treesB[0].tree).toBe("galaxy");
+  });
+
+  it("two user contexts read independent inventory stores", async () => {
+    // listInventory calls inventoryStore.listByCategory() — override that per user
+    const inventoryA = createMockInventoryStore({
+      listByCategory: vi.fn().mockResolvedValue([
+        {
+          category: "ore",
+          items: [{ id: 1, category: "ore", name: "3★ Ore", grade: "3-star", quantity: 500, unit: null, source: "manual", capturedAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }],
+          totals: { itemCount: 1, totalQuantity: 500 },
+        },
+      ]),
+      counts: vi.fn().mockResolvedValue({ items: 1, categories: 1 }),
+    });
+    const inventoryB = createMockInventoryStore({
+      listByCategory: vi.fn().mockResolvedValue([
+        {
+          category: "gas",
+          items: [{ id: 2, category: "gas", name: "3★ Gas", grade: "3-star", quantity: 200, unit: null, source: "manual", capturedAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }],
+          totals: { itemCount: 1, totalQuantity: 200 },
+        },
+      ]),
+      counts: vi.fn().mockResolvedValue({ items: 1, categories: 1 }),
+    });
+
+    const ctxA: ToolContext = { userId: USER_A, inventoryStore: inventoryA };
+    const ctxB: ToolContext = { userId: USER_B, inventoryStore: inventoryB };
+
+    const resultA = await executeFleetTool("list_inventory", {}, ctxA) as Record<string, unknown>;
+    const resultB = await executeFleetTool("list_inventory", {}, ctxB) as Record<string, unknown>;
+
+    const categoriesA = (resultA as any).categories;
+    const categoriesB = (resultB as any).categories;
+    expect(categoriesA).toHaveLength(1);
+    expect(categoriesA[0].category).toBe("ore");
+    expect(categoriesB).toHaveLength(1);
+    expect(categoriesB[0].category).toBe("gas");
+  });
+});
+
+describe("user isolation — crew store & receipt store (resolved: #94)", () => {
+  // #94 landed user-scoped CrewStore + ReceiptStore with RLS + factory pattern.
+  // Each user context now gets an independent scoped store via forUser().
+  // These tests verify that separate contexts use separate store instances.
+
+  it("crew store: separate users get independent scoped instances", async () => {
+    const crewStoreA = createMockCrewStore();
+    const crewStoreB = createMockCrewStore();
+
+    const ctxA: ToolContext = { userId: "user-alpha", crewStore: crewStoreA };
+    const ctxB: ToolContext = { userId: "user-bravo", crewStore: crewStoreB };
+
+    await executeFleetTool("list_docks", {}, ctxA);
+    await executeFleetTool("list_docks", {}, ctxB);
+
+    // Each user's store is called independently — isolation enforced by factory + RLS
+    expect(crewStoreA.getEffectiveDockState).toHaveBeenCalledTimes(1);
+    expect(crewStoreB.getEffectiveDockState).toHaveBeenCalledTimes(1);
+  });
+
+  it("receipt store: separate users get independent scoped instances", async () => {
+    const receiptStoreA = createMockReceiptStore();
+    const receiptStoreB = createMockReceiptStore();
+
+    const setShipOverlayA = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:1", ownershipState: "owned", target: false,
+      tier: 5, level: 20, power: null, targetNote: null, targetPriority: null,
+      updatedAt: "2026-01-01",
+    });
+
+    const ctxA: ToolContext = {
+      userId: "user-alpha",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setShipOverlay: setShipOverlayA,
+      }),
+      referenceStore: createMockReferenceStore({
+        getShip: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP, id: "cdn:ship:1" }),
+      }),
+      receiptStore: receiptStoreA,
+    };
+    const ctxB: ToolContext = {
+      userId: "user-bravo",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setShipOverlay: vi.fn().mockResolvedValue({
+          refId: "cdn:ship:2", ownershipState: "owned", target: false,
+          tier: 3, level: 10, power: null, targetNote: null, targetPriority: null,
+          updatedAt: "2026-01-01",
+        }),
+      }),
+      referenceStore: createMockReferenceStore({
+        getShip: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP, id: "cdn:ship:2" }),
+      }),
+      receiptStore: receiptStoreB,
+    };
+
+    await executeFleetTool("sync_overlay", {
+      export: { version: "1.0", ships: [{ refId: "cdn:ship:1", tier: 5, owned: true }] },
+      dry_run: false,
+    }, ctxA);
+    await executeFleetTool("sync_overlay", {
+      export: { version: "1.0", ships: [{ refId: "cdn:ship:2", tier: 3, owned: true }] },
+      dry_run: false,
+    }, ctxB);
+
+    // Each user's receipt store receives exactly one receipt — isolation enforced
+    expect(receiptStoreA.createReceipt).toHaveBeenCalledTimes(1);
+    expect(receiptStoreB.createReceipt).toHaveBeenCalledTimes(1);
+
+    // userId embedded in receipt metadata for traceability
+    const callA = (receiptStoreA.createReceipt as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const callB = (receiptStoreB.createReceipt as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callA.sourceMeta.userId).toBe("user-alpha");
+    expect(callB.sourceMeta.userId).toBe("user-bravo");
   });
 });

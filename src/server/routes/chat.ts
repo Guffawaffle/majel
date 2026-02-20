@@ -4,6 +4,7 @@
 
 import express, { type Router } from "express";
 import type { AppState } from "../app-context.js";
+import { readFleetConfigForUser, formatFleetConfigBlock } from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
@@ -67,7 +68,23 @@ export function createChatRoutes(appState: AppState): Router {
 
     try {
       const userId = res.locals.userId as string | undefined;
-      const answer = await appState.geminiEngine.chat(message, sessionId, imagePart, userId);
+
+      // #85 H3: Inject per-user fleet config as a context block prepended to the message.
+      // This replaces the static fleet config that was baked into the system prompt at boot.
+      let chatMessage = message;
+      if (userId && appState.userSettingsStore) {
+        try {
+          const fleetConfig = await readFleetConfigForUser(appState.userSettingsStore, userId);
+          if (fleetConfig) {
+            chatMessage = `${formatFleetConfigBlock(fleetConfig)}\n\n${message}`;
+          }
+        } catch (err) {
+          // Non-fatal: proceed without fleet config rather than blocking the chat
+          log.settings.warn({ err: err instanceof Error ? err.message : String(err), userId }, "failed to read per-user fleet config");
+        }
+      }
+
+      const answer = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId);
 
       // Persist to Lex memory — user-scoped via RLS (ADR-021 D4)
       // Falls back to appState.memoryService if middleware didn't attach
@@ -115,7 +132,10 @@ export function createChatRoutes(appState: AppState): Router {
       if (sessionId.length > 200) {
         return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid session ID", 400);
       }
-      result.session = appState.geminiEngine?.getHistory(sessionId) || [];
+      // #85 H2: Namespace session key by userId (engine stores under userId:sessionId)
+      const userId = res.locals.userId as string | undefined;
+      const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
+      result.session = appState.geminiEngine?.getHistory(sessionKey) || [];
     }
 
     const memory = res.locals.memory ?? appState.memoryService;

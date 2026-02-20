@@ -163,14 +163,19 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("Operations Level: 29");
     });
 
-    it("omits fleet config section when null", () => {
+    it("shows per-message injection instructions when null", () => {
       const prompt = buildSystemPrompt(null);
-      expect(prompt).not.toContain("FLEET CONFIGURATION");
+      expect(prompt).toContain("FLEET CONFIGURATION");
+      expect(prompt).toContain("per-message");
+      expect(prompt).toContain("[FLEET CONFIG]");
+      expect(prompt).not.toContain("Operations Level: ");
     });
 
-    it("omits fleet config section when undefined", () => {
+    it("shows per-message injection instructions when undefined", () => {
       const prompt = buildSystemPrompt();
-      expect(prompt).not.toContain("FLEET CONFIGURATION");
+      expect(prompt).toContain("FLEET CONFIGURATION");
+      expect(prompt).toContain("per-message");
+      expect(prompt).not.toContain("Operations Level: ");
     });
   });
 
@@ -402,6 +407,33 @@ describe("createGeminiEngine", () => {
   it("getHistory returns empty array for unknown sessionId", () => {
     const engine = createGeminiEngine("fake-key");
     expect(engine.getHistory("nonexistent")).toEqual([]);
+  });
+
+  // #85 H1: Verify session key namespacing by userId
+  it("namespaces session keys by userId to prevent cross-user leakage", async () => {
+    const engine = createGeminiEngine("fake-key");
+    await engine.chat("User A message", "shared-session-id", undefined, "user-a");
+    await engine.chat("User B message", "shared-session-id", undefined, "user-b");
+
+    // Should be stored under different keys: "user-a:shared-session-id" and "user-b:shared-session-id"
+    expect(engine.getSessionCount()).toBe(2);
+
+    const historyA = engine.getHistory("user-a:shared-session-id");
+    const historyB = engine.getHistory("user-b:shared-session-id");
+    expect(historyA).toHaveLength(2);
+    expect(historyB).toHaveLength(2);
+    expect(historyA[0].text).toBe("User A message");
+    expect(historyB[0].text).toBe("User B message");
+
+    // Raw session key should not exist
+    expect(engine.getHistory("shared-session-id")).toEqual([]);
+  });
+
+  it("falls back to raw session key when userId is undefined", async () => {
+    const engine = createGeminiEngine("fake-key");
+    await engine.chat("Anonymous message", "anon-session");
+
+    expect(engine.getHistory("anon-session")).toHaveLength(2);
   });
 
   it("rebuilds SDK Chat when history exceeds turn limit", async () => {
