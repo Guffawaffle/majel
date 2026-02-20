@@ -4,6 +4,13 @@
 <script lang="ts">
   import { getCurrentViewDef } from "../lib/router.svelte.js";
 
+  interface Props {
+    helpOpen?: boolean;
+    ontogglehelp?: () => void;
+  }
+
+  const { helpOpen = false, ontogglehelp }: Props = $props();
+
   let view = $derived(getCurrentViewDef());
 </script>
 
@@ -13,7 +20,7 @@
     {view.title}
   </h1>
   <span class="subtitle">{view.subtitle}</span>
-  <button class="help-btn" title="Help">?</button>
+  <button class="help-btn" class:active={helpOpen} title="Help (?)" onclick={ontogglehelp}>?</button>
 </div>
 
 <style>
@@ -54,7 +61,8 @@
     transition: all var(--transition);
     font-family: inherit;
   }
-  .title-bar .help-btn:hover {
+  .title-bar .help-btn:hover,
+  .title-bar .help-btn.active {
     color: var(--accent-blue);
     border-color: var(--accent-blue-dim);
   }
