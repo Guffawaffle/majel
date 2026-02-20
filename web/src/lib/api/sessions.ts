@@ -3,7 +3,7 @@
  */
 
 import type { ChatSession, SessionSummary } from "../types.js";
-import { apiFetch, pathEncode, qs } from "./fetch.js";
+import { apiFetch, apiDelete, pathEncode, qs } from "./fetch.js";
 
 /**
  * Fetch recent sessions (most recent first).
@@ -38,7 +38,7 @@ export async function restoreSession(id: string): Promise<ChatSession | null> {
  */
 export async function deleteSession(id: string): Promise<boolean> {
   try {
-    await apiFetch(`/api/sessions/${pathEncode(id)}`, { method: "DELETE" });
+    await apiDelete(`/api/sessions/${pathEncode(id)}`);
     return true;
   } catch {
     return false;

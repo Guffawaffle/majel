@@ -4,6 +4,7 @@
    * intent checkbox grid, and expandable variant sections.
    * Most complex tab in the Workshop.
    */
+  import "../../styles/workshop-shared.css";
   import {
     createCrewLoadout,
     updateCrewLoadout,
@@ -14,6 +15,7 @@
     deleteVariant,
   } from "../../lib/api/crews.js";
   import type { LoadoutInput } from "../../lib/api/crews.js";
+  import { confirm } from "../../components/ConfirmDialog.svelte";
   import type {
     Loadout,
     BridgeCoreWithMembers,
@@ -207,7 +209,7 @@
   }
 
   async function handleDelete(lo: Loadout) {
-    if (!confirm(`Delete loadout "${lo.name}"?\n\nThis will also delete all variants.`)) return;
+    if (!(await confirm({ title: `Delete loadout "${lo.name}"?`, subtitle: "This will also delete all variants.", severity: "warning", approveLabel: "Delete" }))) return;
     try {
       await deleteCrewLoadout(String(lo.id));
       delete variantCache[lo.id];
@@ -305,7 +307,7 @@
   }
 
   async function handleDeleteVariant(v: LoadoutVariant) {
-    if (!confirm(`Delete variant "${v.name}"?`)) return;
+    if (!(await confirm({ title: `Delete variant "${v.name}"?`, severity: "warning", approveLabel: "Delete" }))) return;
     if (expandedId == null) return;
     try {
       await deleteVariant(String(v.id));
@@ -669,73 +671,6 @@
   }
   .lo-dir-btn { padding: 5px 10px; }
 
-  /* ── Shared workshops ── (reused from CoresTab) */
-  .ws-btn {
-    padding: 6px 14px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .ws-btn:hover { background: var(--bg-tertiary); }
-  .ws-btn-create { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
-  .ws-btn-save { background: var(--accent-gold-dim); color: var(--bg-primary); font-weight: 600; }
-  .ws-btn-cancel { opacity: 0.7; }
-
-  .ws-form {
-    background: var(--bg-secondary);
-    border: 1px solid var(--accent-gold-dim);
-    border-radius: 6px;
-    padding: 16px;
-    margin-bottom: 12px;
-  }
-  .ws-form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .ws-wide { grid-column: 1 / -1; }
-  .ws-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .ws-field span {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
-  .ws-field input[type="text"],
-  .ws-field input[type="number"],
-  .ws-field select,
-  .ws-field textarea {
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.88rem;
-  }
-  .ws-field-checkbox {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-  }
-  .ws-field-checkbox input { width: auto; }
-
-  .ws-form-error {
-    color: var(--accent-red, #e55);
-    font-size: 0.82rem;
-    margin: 8px 0 0;
-  }
-  .ws-form-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
-
   /* ── Intent Grid ── */
   .ws-intent-fieldset {
     border: 1px solid var(--border);
@@ -762,54 +697,14 @@
   }
   .ws-intent-option input { width: auto; margin: 0; }
 
-  /* ── Cards ── */
-  .ws-list { display: flex; flex-direction: column; gap: 8px; }
-  .ws-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 14px 16px;
-  }
+  /* ── Cards (file-specific) ── */
   .ws-card-active { border-left: 3px solid var(--accent-green, #5a5); }
-  .ws-card-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .ws-card-name { font-weight: 600; flex: 1; }
-  .ws-card-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
-  .ws-card:hover .ws-card-actions { opacity: 1; }
-  .ws-action {
-    padding: 2px 8px;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .ws-action:hover { color: var(--text-primary); background: var(--bg-tertiary); }
-  .ws-action-danger:hover { color: var(--accent-red, #e55); }
 
-  /* ── Badges ── */
-  .ws-badge {
-    display: inline-block;
-    padding: 1px 7px;
-    border-radius: 3px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
+  /* ── Badges (file-specific) ── */
   .ws-badge-active { background: var(--accent-green, #5a5); color: #000; }
   .ws-badge-priority { background: var(--accent-gold-dim); color: var(--bg-primary); }
 
-  /* ── Card body ── */
-  .ws-card-body {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 8px;
-  }
+  /* ── Card body (file-specific) ── */
   .ws-row {
     display: flex;
     align-items: baseline;
@@ -838,20 +733,6 @@
   }
   .ws-intent-chip { background: var(--bg-tertiary); color: var(--text-primary); }
   .ws-tag-chip { background: var(--bg-tertiary); color: var(--text-muted); border: 1px solid var(--border); }
-
-  .ws-card-notes {
-    font-style: italic;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    margin: 4px 0 0;
-  }
-
-  .ws-empty {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 24px 0;
-    font-size: 0.88rem;
-  }
 
   /* ── Variant section ── */
   .var-section {
@@ -902,9 +783,7 @@
   }
 
   @media (max-width: 768px) {
-    .ws-form-grid { grid-template-columns: 1fr; }
     .lo-toolbar { flex-direction: column; align-items: stretch; }
     .lo-search { min-width: 0; }
-    .ws-card-actions { opacity: 1; }
   }
 </style>

@@ -3,10 +3,12 @@
    * ReservationsTab — Officer reservation ledger with inline toggle.
    * Rendered inside WorkshopView when the "Reservations" tab is active.
    */
+  import "../../styles/workshop-shared.css";
   import {
     setReservation,
     deleteReservation,
   } from "../../lib/api/crews.js";
+  import { confirm } from "../../components/ConfirmDialog.svelte";
   import type {
     OfficerReservation,
     CatalogOfficer,
@@ -99,7 +101,7 @@
   }
 
   async function handleDelete(res: OfficerReservation) {
-    if (!confirm(`Remove reservation for ${officerName(res.officerId)}?`)) return;
+    if (!(await confirm({ title: `Remove reservation for ${officerName(res.officerId)}?` }))) return;
     try {
       await deleteReservation(res.officerId);
       await onRefresh();
@@ -225,99 +227,15 @@
 </section>
 
 <style>
-  /* ── Toolbar ── */
-  .ws-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-  .ws-toolbar h3 {
-    flex: 1;
-    margin: 0;
-    font-size: 1.05rem;
-    color: var(--text-primary);
-  }
-
-  /* ── Buttons ── */
-  .ws-btn {
-    padding: 6px 14px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .ws-btn:hover { background: var(--bg-tertiary); }
-  .ws-btn-create { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
-  .ws-btn-save { background: var(--accent-gold-dim); color: var(--bg-primary); font-weight: 600; }
-  .ws-btn-cancel { opacity: 0.7; }
-
-  /* ── Form ── */
-  .ws-form {
-    background: var(--bg-secondary);
-    border: 1px solid var(--accent-gold-dim);
-    border-radius: 6px;
-    padding: 16px;
-    margin-bottom: 12px;
-  }
-  .ws-form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .ws-wide { grid-column: 1 / -1; }
-  .ws-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .ws-field span {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
-  .ws-field input[type="text"],
-  .ws-field select,
-  .ws-field textarea {
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.88rem;
-  }
-  .ws-field-checkbox {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-  }
-  .ws-field-checkbox input { width: auto; }
+  /* ── Form (file-specific) ── */
   .ws-form-static {
     font-size: 0.88rem;
     color: var(--text-primary);
     padding: 6px 0;
   }
-  .ws-form-error {
-    color: var(--accent-red, #e55);
-    font-size: 0.82rem;
-    margin: 8px 0 0;
-  }
-  .ws-form-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
 
-  /* ── List ── */
+  /* ── List (file-specific gap) ── */
   .ws-list { display: flex; flex-direction: column; gap: 6px; }
-  .ws-empty {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 24px 0;
-    font-size: 0.88rem;
-  }
 
   /* ── Reservation rows ── */
   .res-row {
@@ -357,20 +275,7 @@
   }
   .res-row:hover .res-actions { opacity: 1; }
 
-  .ws-action {
-    padding: 2px 8px;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .ws-action:hover { color: var(--text-primary); background: var(--bg-tertiary); }
-  .ws-action-danger:hover { color: var(--accent-red, #e55); }
-
   @media (max-width: 768px) {
-    .ws-form-grid { grid-template-columns: 1fr; }
     .res-row { flex-direction: column; align-items: flex-start; gap: 8px; }
     .res-actions { opacity: 1; }
   }

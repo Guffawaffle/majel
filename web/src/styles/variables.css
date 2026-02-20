@@ -14,7 +14,7 @@
   /* Text */
   --text-primary:    #e2e8f0;
   --text-secondary:  #94a3b8;
-  --text-muted:      #64748b;
+  --text-muted:      #8494a7;
 
   /* Accent colors */
   --accent-gold:     #f0a030;
@@ -31,7 +31,12 @@
   --border-light:    #334155;
   --radius:          8px;
   --radius-sm:       6px;
+  --radius-md:       10px;
   --sidebar-width:   240px;
   --max-content:     720px;
   --transition:      0.15s ease;
+
+  /* Semantic */
+  --accent-danger:   var(--accent-red);
+  --focus-ring:      0 0 0 2px var(--accent-blue);
 }

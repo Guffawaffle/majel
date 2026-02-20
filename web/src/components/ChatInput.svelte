@@ -10,6 +10,7 @@
     clearPendingImage,
     send,
   } from "../lib/chat.svelte.js";
+  import { confirm } from "./ConfirmDialog.svelte";
   import { refreshSessions } from "../lib/sessions.svelte.js";
   import { hasRole } from "../lib/auth.svelte.js";
   import { fetchModels, selectModel } from "../lib/api/models.js";
@@ -96,7 +97,7 @@
       closePicker();
       return;
     }
-    if (!confirm("Switching models will clear existing sessions. Continue?")) return;
+    if (!(await confirm({ title: "Switching models will clear existing sessions. Continue?", severity: "warning" }))) return;
     try {
       const result = await selectModel(modelId);
       addSystemMessage(`Model switched to ${result.modelDef.name}. ${result.sessionsCleared} session(s) cleared.`);

@@ -91,7 +91,7 @@
       </div>
     {:else}
       <!-- Messages -->
-      <div class="messages">
+      <div class="messages" aria-live="polite" aria-relevant="additions">
         {#each getMessages() as msg (msg.id)}
           <ChatMessageComponent message={msg} />
         {/each}

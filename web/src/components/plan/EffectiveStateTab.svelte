@@ -3,6 +3,7 @@
    * EffectiveStateTab — Dock grid, conflicts, away teams, and override modal.
    * Most complex Plan tab.
    */
+  import "../../styles/plan-shared.css";
   import { createCrewPlanItem } from "../../lib/api/crews.js";
   import type {
     EffectiveDockState,
@@ -279,12 +280,6 @@
   }
 
   /* ── Toolbar ── */
-  .pl-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
   .pl-toolbar h3 { margin: 0; font-size: 1.05rem; color: var(--text-primary); }
   .pl-away-toolbar { margin-top: 20px; }
 
@@ -401,35 +396,6 @@
     height: fit-content;
   }
   .pl-overlay-form h3 { margin: 0 0 14px; color: var(--accent-gold); }
-  .pl-form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .pl-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .pl-field span {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
-  .pl-field input,
-  .pl-field select {
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.88rem;
-  }
-  .pl-form-error {
-    color: var(--accent-red, #e55);
-    font-size: 0.82rem;
-    margin: 8px 0 0;
-  }
   .pl-form-actions {
     display: flex;
     gap: 8px;
@@ -444,20 +410,9 @@
     font-size: 0.85rem;
     cursor: pointer;
   }
-  .pl-btn:hover { background: var(--bg-tertiary); }
-  .pl-btn-save { background: var(--accent-gold-dim); color: var(--bg-primary); font-weight: 600; }
-  .pl-btn-cancel { opacity: 0.7; }
-
-  .pl-empty {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 24px 0;
-    font-size: 0.88rem;
-  }
 
   @media (max-width: 768px) {
     .pl-dock-grid { grid-template-columns: 1fr; }
     .pl-away-list { grid-template-columns: 1fr; }
-    .pl-form-grid { grid-template-columns: 1fr; }
   }
 </style>

@@ -3,7 +3,7 @@
    * Catalog View — browse all officers/ships with filtering, search, and overlay toggles.
    * Ported from src/client/views/catalog/catalog.js (~736 LOC).
    */
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import Badge from "../components/Badge.svelte";
   import {
     fetchCatalogOfficers,
@@ -276,6 +276,7 @@
   // ── Init ──
 
   onMount(() => { refresh(); });
+  onDestroy(() => { clearTimeout(searchTimer); });
 </script>
 
 <div class="catalog-area">

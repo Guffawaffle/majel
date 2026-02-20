@@ -8,8 +8,9 @@
   import TitleBar from "./components/TitleBar.svelte";
   import HelpPanel from "./components/HelpPanel.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
-  import { getCurrentView } from "./lib/router.svelte.js";
-  import { fetchMe, isLoading, getError } from "./lib/auth.svelte.js";
+  import { getCurrentView, views } from "./lib/router.svelte.js";
+  import { fetchMe, isLoading, getError, hasRole } from "./lib/auth.svelte.js";
+  import type { Role } from "./lib/types.js";
 
   import ChatView from "./views/ChatView.svelte";
   import CatalogView from "./views/CatalogView.svelte";
@@ -54,7 +55,7 @@
     <span class="loading-text">Authenticating…</span>
   </div>
 {:else if getError()}
-  <div class="app-loading">
+  <div class="app-loading" aria-live="assertive" role="alert">
     <span class="loading-logo">⟐ ARIADNE</span>
     <span class="loading-error">{getError()}</span>
   </div>
@@ -74,8 +75,15 @@
 
       <div class="app-content">
         {#each Object.entries(viewComponents) as [name, Component]}
+          {@const gate = views.find(v => v.name === name)?.gate}
           {#if getCurrentView() === name}
-            <Component />
+            {#if !gate || hasRole(gate as Role)}
+              <Component />
+            {:else}
+              <div class="gate-denied">
+                <p>🔒 You don't have permission to view this page.</p>
+              </div>
+            {/if}
           {/if}
         {/each}
       </div>
@@ -135,6 +143,15 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 90;
+  }
+
+  .gate-denied {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 16px;
   }
 </style>
 
