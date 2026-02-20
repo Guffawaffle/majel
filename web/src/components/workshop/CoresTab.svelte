@@ -3,12 +3,14 @@
    * CoresTab — Bridge Core CRUD with 3-slot officer pickers.
    * Rendered inside WorkshopView when the "Cores" tab is active.
    */
+  import "../../styles/workshop-shared.css";
   import {
     createBridgeCore,
     updateBridgeCore,
     deleteBridgeCore,
     setBridgeCoreMembers,
   } from "../../lib/api/crews.js";
+  import { confirm } from "../../components/ConfirmDialog.svelte";
   import type {
     BridgeCoreWithMembers,
     Loadout,
@@ -115,7 +117,7 @@
     const extra = usedIn.length
       ? `\n\nWarning: used by loadouts: ${usedIn.map((l) => l.name).join(", ")}`
       : "";
-    if (!confirm(`Delete bridge core "${core.name}"?${extra}`)) return;
+    if (!(await confirm({ title: `Delete bridge core "${core.name}"?`, subtitle: extra || undefined, severity: "warning", approveLabel: "Delete" }))) return;
     try {
       await deleteBridgeCore(String(core.id));
       await onRefresh();
@@ -252,116 +254,9 @@
 </section>
 
 <style>
-  /* ── Toolbar ── */
-  .ws-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-  .ws-toolbar h3 {
-    flex: 1;
-    margin: 0;
-    font-size: 1.05rem;
-    color: var(--text-primary);
-  }
-
-  /* ── Buttons ── */
-  .ws-btn {
-    padding: 6px 14px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .ws-btn:hover { background: var(--bg-tertiary); }
-  .ws-btn-create { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
-  .ws-btn-save { background: var(--accent-gold-dim); color: var(--bg-primary); font-weight: 600; }
-  .ws-btn-cancel { opacity: 0.7; }
-
-  /* ── Form ── */
-  .ws-form {
-    background: var(--bg-secondary);
-    border: 1px solid var(--accent-gold-dim);
-    border-radius: 6px;
-    padding: 16px;
-    margin-bottom: 12px;
-  }
-  .ws-form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .ws-wide { grid-column: 1 / -1; }
-  .ws-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .ws-field span {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
-  .ws-field input,
-  .ws-field select,
-  .ws-field textarea {
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.88rem;
-  }
-  .ws-form-error {
-    color: var(--accent-red, #e55);
-    font-size: 0.82rem;
-    margin: 8px 0 0;
-  }
-  .ws-form-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
-
-  /* ── Cards ── */
-  .ws-list { display: flex; flex-direction: column; gap: 8px; }
-  .ws-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 14px 16px;
-  }
-  .ws-card-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .ws-card-name { font-weight: 600; flex: 1; }
+  /* ── Card details (file-specific) ── */
   .ws-card-count { font-size: 0.78rem; color: var(--text-muted); }
-  .ws-card-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
-  .ws-card:hover .ws-card-actions { opacity: 1; }
-  .ws-action {
-    padding: 2px 8px;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .ws-action:hover { color: var(--text-primary); background: var(--bg-tertiary); }
-  .ws-action-danger:hover { color: var(--accent-red, #e55); }
 
-  /* ── Card body ── */
-  .ws-card-body {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 8px;
-  }
   .ws-slot {
     display: flex;
     align-items: baseline;
@@ -374,44 +269,4 @@
     min-width: 72px;
   }
   .ws-slot-value { font-size: 0.88rem; }
-
-  /* ── Cross-refs ── */
-  .ws-xref {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 4px;
-    font-size: 0.82rem;
-  }
-  .ws-xref-label { color: var(--text-muted); }
-  .ws-chip {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background: var(--bg-tertiary);
-    font-size: 0.78rem;
-    color: var(--text-primary);
-  }
-
-  /* ── Notes ── */
-  .ws-card-notes {
-    font-style: italic;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    margin: 4px 0 0;
-  }
-
-  /* ── Empty ── */
-  .ws-empty {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 24px 0;
-    font-size: 0.88rem;
-  }
-
-  @media (max-width: 768px) {
-    .ws-form-grid { grid-template-columns: 1fr; }
-    .ws-card-actions { opacity: 1; }
-  }
 </style>

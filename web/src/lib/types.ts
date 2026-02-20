@@ -478,3 +478,84 @@ export interface ViewDef {
   /** Role required to access (undefined = no gate) */
   gate?: "admiral";
 }
+
+// ─── Import Receipts ────────────────────────────────────────
+
+/** Server-side import receipt shape. */
+export interface ImportReceipt {
+  id: number;
+  sourceType: string;
+  sourceMeta: Record<string, unknown>;
+  mapping: Record<string, unknown>;
+  layer: string;
+  changeset: { added?: unknown[]; updated?: unknown[]; removed?: unknown[] };
+  inverse: { added?: unknown[]; updated?: unknown[]; removed?: unknown[] };
+  unresolved: unknown[];
+  createdAt: string;
+}
+
+/** Response from the undo-receipt endpoint. */
+export interface UndoReceiptResult {
+  success: boolean;
+  message: string;
+  inverse?: ImportReceipt["inverse"];
+}
+
+// ─── Chat History / Recall ──────────────────────────────────
+
+/** A single Lex history entry. */
+export interface LexHistoryEntry {
+  id: string;
+  timestamp: string;
+  summary: string;
+}
+
+/** Response from the history endpoint. */
+export interface HistoryResponse {
+  session?: { role: string; text: string }[];
+  lex?: LexHistoryEntry[];
+}
+
+/** A single Lex recall result. */
+export interface RecallEntry {
+  id: string;
+  timestamp: string;
+  summary: string;
+  reference: string;
+  keywords: string[];
+}
+
+/** Response from the recall search endpoint. */
+export interface RecallResponse {
+  query: string;
+  results: RecallEntry[];
+}
+
+// ─── Catalog Overlay Responses ──────────────────────────────
+
+/** Response from single overlay PATCH. Server echoes the merged overlay. */
+export interface OfficerOverlayResponse {
+  ownershipState: OwnershipState;
+  target: boolean;
+  userLevel: number | null;
+  userRank: string | null;
+  userPower: number | null;
+  targetNote: string | null;
+  targetPriority: number | null;
+}
+
+export interface ShipOverlayResponse {
+  ownershipState: OwnershipState;
+  target: boolean;
+  userTier: number | null;
+  userLevel: number | null;
+  userPower: number | null;
+  targetNote: string | null;
+  targetPriority: number | null;
+}
+
+/** Response from bulk overlay endpoints. */
+export interface BulkOverlayResponse {
+  updated: number;
+  refIds: number;
+}

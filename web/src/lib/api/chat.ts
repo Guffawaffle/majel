@@ -2,7 +2,7 @@
  * Chat API — send messages, load history, search recall.
  */
 
-import type { ChatImage, ChatResponse } from "../types.js";
+import type { ChatImage, ChatResponse, HistoryResponse, RecallResponse } from "../types.js";
 import { apiFetch, qs } from "./fetch.js";
 
 /**
@@ -25,9 +25,9 @@ export async function sendChat(
  * Load recent Lex history entries for the chat sidebar.
  * Returns an empty object on failure.
  */
-export async function loadHistory(): Promise<Record<string, unknown>> {
+export async function loadHistory(): Promise<HistoryResponse> {
   try {
-    return await apiFetch<Record<string, unknown>>(
+    return await apiFetch<HistoryResponse>(
       `/api/history${qs({ source: "lex", limit: 20 })}`,
     );
   } catch {
@@ -39,12 +39,12 @@ export async function loadHistory(): Promise<Record<string, unknown>> {
  * Search Lex recall store.
  * Returns an empty object on failure.
  */
-export async function searchRecall(query: string): Promise<Record<string, unknown>> {
+export async function searchRecall(query: string): Promise<RecallResponse> {
   try {
-    return await apiFetch<Record<string, unknown>>(
+    return await apiFetch<RecallResponse>(
       `/api/recall${qs({ q: query })}`,
     );
   } catch {
-    return {};
+    return { query, results: [] };
   }
 }

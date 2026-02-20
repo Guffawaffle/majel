@@ -3,12 +3,14 @@
    * PresetsTab — Fleet preset CRUD with activate/re-activate.
    * Rendered inside PlanView when the "Fleet Presets" tab is active.
    */
+  import "../../styles/plan-shared.css";
   import {
     createFleetPreset,
     updateFleetPreset,
     deleteFleetPreset,
     activateFleetPreset,
   } from "../../lib/api/crews.js";
+  import { confirm } from "../../components/ConfirmDialog.svelte";
   import type { FleetPresetWithSlots, Loadout } from "../../lib/types.js";
 
   // ── Props ──
@@ -75,7 +77,7 @@
 
   async function handleDelete(preset: FleetPresetWithSlots) {
     const severity = preset.isActive ? "Warning: this preset is currently active." : "";
-    if (!confirm(`Delete preset "${preset.name}"?${severity ? "\n\n" + severity : ""}`)) return;
+    if (!(await confirm({ title: `Delete preset "${preset.name}"?`, subtitle: severity || undefined, severity: "warning", approveLabel: "Delete" }))) return;
     try {
       await deleteFleetPreset(String(preset.id));
       await onRefresh();
@@ -87,7 +89,7 @@
   async function handleActivate(preset: FleetPresetWithSlots) {
     if (preset.isActive) {
       // Re-activate — warn about manual overrides
-      if (!confirm(`Re-activate "${preset.name}"?\n\nThis will clear manual overrides and re-expand preset slots.`)) return;
+      if (!(await confirm({ title: `Re-activate "${preset.name}"?`, subtitle: "This will clear manual overrides and re-expand preset slots." }))) return;
     }
     try {
       await activateFleetPreset(String(preset.id));
@@ -194,78 +196,6 @@
 {/snippet}
 
 <style>
-  .pl-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-  .pl-toolbar h3 { flex: 1; margin: 0; font-size: 1.05rem; color: var(--text-primary); }
-
-  .pl-btn {
-    padding: 6px 14px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .pl-btn:hover { background: var(--bg-tertiary); }
-  .pl-btn-create { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
-  .pl-btn-save { background: var(--accent-gold-dim); color: var(--bg-primary); font-weight: 600; }
-  .pl-btn-cancel { opacity: 0.7; }
-
-  .pl-form {
-    background: var(--bg-secondary);
-    border: 1px solid var(--accent-gold-dim);
-    border-radius: 6px;
-    padding: 16px;
-    margin-bottom: 12px;
-  }
-  .pl-form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .pl-wide { grid-column: 1 / -1; }
-  .pl-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .pl-field span {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
-  .pl-field input,
-  .pl-field textarea {
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.88rem;
-  }
-  .pl-form-error {
-    color: var(--accent-red, #e55);
-    font-size: 0.82rem;
-    margin: 8px 0 0;
-  }
-  .pl-form-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
-
-  .pl-list { display: flex; flex-direction: column; gap: 8px; }
-  .pl-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 14px 16px;
-  }
   .pl-card-active { border-left: 3px solid var(--accent-green, #5a5); }
   .pl-card-header {
     display: flex;
@@ -273,38 +203,11 @@
     gap: 8px;
     flex-wrap: wrap;
   }
-  .pl-card-name { font-weight: 600; flex: 1; }
-  .pl-card-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
-  .pl-card:hover .pl-card-actions { opacity: 1; }
-  .pl-action {
-    padding: 2px 8px;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .pl-action:hover { color: var(--text-primary); background: var(--bg-tertiary); }
   .pl-action-primary { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
   .pl-action-warning { color: var(--accent-orange, #f90); border-color: var(--accent-orange, #f90); }
-  .pl-action-danger:hover { color: var(--accent-red, #e55); }
 
-  .pl-badge {
-    display: inline-block;
-    padding: 1px 7px;
-    border-radius: 3px;
-    font-size: 0.72rem;
-    font-weight: 600;
-  }
   .pl-badge-active { background: var(--accent-green, #5a5); color: #000; }
 
-  .pl-card-body {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 8px;
-  }
   .pl-detail { font-size: 0.85rem; color: var(--text-muted); }
   .pl-preset-slots {
     display: flex;
@@ -318,21 +221,5 @@
     border-radius: 8px;
     background: var(--bg-tertiary);
     font-size: 0.78rem;
-  }
-  .pl-card-notes {
-    font-style: italic;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    margin: 4px 0 0;
-  }
-  .pl-empty {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 24px 0;
-    font-size: 0.88rem;
-  }
-
-  @media (max-width: 768px) {
-    .pl-card-actions { opacity: 1; }
   }
 </style>

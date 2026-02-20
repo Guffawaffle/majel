@@ -3,7 +3,9 @@
    * DocksTab — Ship dock metadata CRUD.
    * Rendered inside PlanView when the "Docks" tab is active.
    */
+  import "../../styles/plan-shared.css";
   import { upsertCrewDock, deleteCrewDock } from "../../lib/api/crews.js";
+  import { confirm } from "../../components/ConfirmDialog.svelte";
   import type { Dock } from "../../lib/types.js";
 
   // ── Props ──
@@ -77,7 +79,7 @@
   }
 
   async function handleDelete(dock: Dock) {
-    if (!confirm(`Delete Dock ${dock.dockNumber}?`)) return;
+    if (!(await confirm({ title: `Delete Dock ${dock.dockNumber}?`, severity: "warning", approveLabel: "Delete" }))) return;
     try {
       await deleteCrewDock(dock.dockNumber);
       await onRefresh();
@@ -166,79 +168,6 @@
 {/snippet}
 
 <style>
-  .pl-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-  .pl-toolbar h3 { flex: 1; margin: 0; font-size: 1.05rem; color: var(--text-primary); }
-
-  .pl-btn {
-    padding: 6px 14px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .pl-btn:hover { background: var(--bg-tertiary); }
-  .pl-btn-create { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
-  .pl-btn-save { background: var(--accent-gold-dim); color: var(--bg-primary); font-weight: 600; }
-  .pl-btn-cancel { opacity: 0.7; }
-
-  .pl-form {
-    background: var(--bg-secondary);
-    border: 1px solid var(--accent-gold-dim);
-    border-radius: 6px;
-    padding: 16px;
-    margin-bottom: 12px;
-  }
-  .pl-form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .pl-wide { grid-column: 1 / -1; }
-  .pl-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .pl-field span {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
-  .pl-field input[type="text"],
-  .pl-field input[type="number"],
-  .pl-field textarea {
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.88rem;
-  }
-  .pl-field-checkbox {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-  }
-  .pl-field-checkbox input { width: auto; }
-  .pl-form-error {
-    color: var(--accent-red, #e55);
-    font-size: 0.82rem;
-    margin: 8px 0 0;
-  }
-  .pl-form-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
-
-  .pl-list { display: flex; flex-direction: column; gap: 8px; }
   .pl-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -257,36 +186,11 @@
     padding: 2px 8px;
     border-radius: 4px;
   }
-  .pl-card-name { flex: 1; font-weight: 600; }
   .pl-dock-lock { font-size: 0.88rem; }
-  .pl-card-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
-  .pl-card:hover .pl-card-actions { opacity: 1; }
-  .pl-action {
-    padding: 2px 8px;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .pl-action:hover { color: var(--text-primary); background: var(--bg-tertiary); }
-  .pl-action-danger:hover { color: var(--accent-red, #e55); }
   .pl-card-notes {
     font-style: italic;
     color: var(--text-muted);
     font-size: 0.82rem;
     margin: 6px 0 0;
-  }
-  .pl-empty {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 24px 0;
-    font-size: 0.88rem;
-  }
-
-  @media (max-width: 768px) {
-    .pl-form-grid { grid-template-columns: 1fr; }
-    .pl-card-actions { opacity: 1; }
   }
 </style>

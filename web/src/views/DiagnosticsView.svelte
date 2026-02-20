@@ -136,10 +136,10 @@
 <section class="diagnostics">
   <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
   <nav class="diag-tabs" role="tablist">
-    <button class="diag-tab" class:active={activeTab === "health"} onclick={() => switchTab("health")}>💓 System Health</button>
-    <button class="diag-tab" class:active={activeTab === "summary"} onclick={() => switchTab("summary")}>📊 Data Summary</button>
-    <button class="diag-tab" class:active={activeTab === "query"} onclick={() => switchTab("query")}>🔍 Query Console</button>
-    <button class="diag-tab" class:active={activeTab === "schema"} onclick={() => switchTab("schema")}>🗂️ Schema Browser</button>
+    <button class="diag-tab" class:active={activeTab === "health"} onclick={() => switchTab("health")} role="tab" aria-selected={activeTab === "health"}>💓 System Health</button>
+    <button class="diag-tab" class:active={activeTab === "summary"} onclick={() => switchTab("summary")} role="tab" aria-selected={activeTab === "summary"}>📊 Data Summary</button>
+    <button class="diag-tab" class:active={activeTab === "query"} onclick={() => switchTab("query")} role="tab" aria-selected={activeTab === "query"}>🔍 Query Console</button>
+    <button class="diag-tab" class:active={activeTab === "schema"} onclick={() => switchTab("schema")} role="tab" aria-selected={activeTab === "schema"}>🗂️ Schema Browser</button>
   </nav>
 
   {#if error}

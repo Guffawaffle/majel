@@ -18,6 +18,7 @@
   } from "../lib/api/admiral.js";
   import type { InviteOpts } from "../lib/api/admiral.js";
   import type { AdminUser, AdminInvite, AdminSession, Role } from "../lib/types.js";
+  import { confirm } from "../components/ConfirmDialog.svelte";
   import { getUser } from "../lib/auth.svelte.js";
 
   // ── State ──
@@ -86,7 +87,7 @@
   // ── Actions: Users ──
 
   async function handleRoleChange(email: string, newRole: Role) {
-    if (!confirm(`Change ${email} to ${newRole}?`)) return;
+    if (!(await confirm({ title: `Change ${email} to ${newRole}?` }))) return;
     try {
       await adminSetRole(email, newRole);
       await refresh();
@@ -95,7 +96,7 @@
 
   async function handleLock(email: string, isLocked: boolean) {
     const action = isLocked ? "unlock" : "lock";
-    if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${email}?`)) return;
+    if (!(await confirm({ title: `${action.charAt(0).toUpperCase() + action.slice(1)} ${email}?` }))) return;
     try {
       await adminSetLock(email, !isLocked);
       await refresh();
@@ -103,7 +104,7 @@
   }
 
   async function handleDeleteUser(email: string) {
-    if (!confirm(`⚠️ Permanently delete user ${email}? This cannot be undone.`)) return;
+    if (!(await confirm({ title: `Permanently delete user ${email}?`, subtitle: "This cannot be undone.", severity: "danger", approveLabel: "Delete" }))) return;
     try {
       await adminDeleteUser(email);
       await refresh();
@@ -124,7 +125,7 @@
   }
 
   async function handleRevoke(code: string) {
-    if (!confirm(`Revoke invite ${code.slice(0, 6)}…?`)) return;
+    if (!(await confirm({ title: `Revoke invite ${code.slice(0, 6)}…?`, severity: "warning" }))) return;
     try {
       await adminRevokeInvite(code);
       await refresh();
@@ -134,7 +135,7 @@
   // ── Actions: Sessions ──
 
   async function handleKillSession(id: string) {
-    if (!confirm(`Kill session ${id.slice(0, 12)}…?`)) return;
+    if (!(await confirm({ title: `Kill session ${id.slice(0, 12)}…?`, severity: "warning" }))) return;
     try {
       await adminDeleteSession(id);
       await refresh();
@@ -142,7 +143,7 @@
   }
 
   async function handleKillAll() {
-    if (!confirm("⚠️ Kill ALL sessions? This will log out every user.")) return;
+    if (!(await confirm({ title: "Kill ALL sessions?", subtitle: "This will log out every user.", severity: "danger", approveLabel: "Kill All" }))) return;
     try {
       await adminDeleteAllSessions();
       await refresh();
@@ -153,9 +154,9 @@
 <section class="admiral">
   <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
   <nav class="adm-tabs" role="tablist">
-    <button class="adm-tab" class:active={activeTab === "users"} onclick={() => (activeTab = "users")}>👥 Users</button>
-    <button class="adm-tab" class:active={activeTab === "invites"} onclick={() => (activeTab = "invites")}>🎫 Invites</button>
-    <button class="adm-tab" class:active={activeTab === "sessions"} onclick={() => (activeTab = "sessions")}>🔑 Sessions</button>
+    <button class="adm-tab" class:active={activeTab === "users"} onclick={() => (activeTab = "users")} role="tab" aria-selected={activeTab === "users"}>👥 Users</button>
+    <button class="adm-tab" class:active={activeTab === "invites"} onclick={() => (activeTab = "invites")} role="tab" aria-selected={activeTab === "invites"}>🎫 Invites</button>
+    <button class="adm-tab" class:active={activeTab === "sessions"} onclick={() => (activeTab = "sessions")} role="tab" aria-selected={activeTab === "sessions"}>🔑 Sessions</button>
   </nav>
 
   {#if error}

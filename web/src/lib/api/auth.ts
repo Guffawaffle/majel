@@ -5,15 +5,20 @@
  */
 
 import type { User } from "../types.js";
-import { apiFetch } from "./fetch.js";
+import { apiFetch, ApiError } from "./fetch.js";
 
 /** Fetch the current authenticated user, or null if not logged in. */
 export async function getMe(): Promise<User | null> {
   try {
     const data = await apiFetch<{ user: User }>("/api/auth/me");
     return data.user ?? null;
-  } catch {
-    return null;
+  } catch (err) {
+    // 401 = not logged in → return null so the caller shows the login page.
+    // Any other error (network failure, 500, etc.) should propagate so the
+    // caller can display an inline error instead of silently treating it as
+    // "no user".
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
   }
 }
 

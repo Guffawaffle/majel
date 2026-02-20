@@ -8,6 +8,9 @@ import type {
   CatalogCounts,
   OfficerOverlayPatch,
   ShipOverlayPatch,
+  OfficerOverlayResponse,
+  ShipOverlayResponse,
+  BulkOverlayResponse,
   OwnershipState,
 } from "../types.js";
 import { apiFetch, apiPatch, apiPost, pathEncode, qs } from "./fetch.js";
@@ -55,27 +58,27 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
 // ─── Overlays ───────────────────────────────────────────────
 
 /** Set a single officer's overlay. Throws on failure. */
-export async function setOfficerOverlay(id: string, overlay: OfficerOverlayPatch): Promise<unknown> {
-  return apiPatch(`/api/catalog/officers/${pathEncode(id)}/overlay`, overlay);
+export async function setOfficerOverlay(id: string, overlay: OfficerOverlayPatch): Promise<OfficerOverlayResponse> {
+  return apiPatch<OfficerOverlayResponse>(`/api/catalog/officers/${pathEncode(id)}/overlay`, overlay);
 }
 
 /** Set a single ship's overlay. Throws on failure. */
-export async function setShipOverlay(id: string, overlay: ShipOverlayPatch): Promise<unknown> {
-  return apiPatch(`/api/catalog/ships/${pathEncode(id)}/overlay`, overlay);
+export async function setShipOverlay(id: string, overlay: ShipOverlayPatch): Promise<ShipOverlayResponse> {
+  return apiPatch<ShipOverlayResponse>(`/api/catalog/ships/${pathEncode(id)}/overlay`, overlay);
 }
 
 /** Bulk-set officer overlays. */
 export async function bulkSetOfficerOverlay(
   refIds: string[],
   overlay: { ownershipState?: OwnershipState; target?: boolean },
-): Promise<unknown> {
-  return apiPost("/api/catalog/officers/bulk-overlay", { refIds, ...overlay });
+): Promise<BulkOverlayResponse> {
+  return apiPost<BulkOverlayResponse>("/api/catalog/officers/bulk-overlay", { refIds, ...overlay });
 }
 
 /** Bulk-set ship overlays. */
 export async function bulkSetShipOverlay(
   refIds: string[],
   overlay: { ownershipState?: OwnershipState; target?: boolean },
-): Promise<unknown> {
-  return apiPost("/api/catalog/ships/bulk-overlay", { refIds, ...overlay });
+): Promise<BulkOverlayResponse> {
+  return apiPost<BulkOverlayResponse>("/api/catalog/ships/bulk-overlay", { refIds, ...overlay });
 }
