@@ -6,6 +6,8 @@
   import { onMount } from "svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import TitleBar from "./components/TitleBar.svelte";
+  import HelpPanel from "./components/HelpPanel.svelte";
+  import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { getCurrentView } from "./lib/router.svelte.js";
   import { fetchMe, isLoading, getError } from "./lib/auth.svelte.js";
 
@@ -29,6 +31,17 @@
   };
 
   let sidebarOpen = $state(false);
+  let helpOpen = $state(false);
+
+  function toggleHelp() { helpOpen = !helpOpen; }
+
+  /** Global ? keyboard shortcut (only when not typing in an input). */
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    if (e.key === "?" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement)) {
+      e.preventDefault();
+      toggleHelp();
+    }
+  }
 
   onMount(() => {
     fetchMe();
@@ -46,7 +59,8 @@
     <span class="loading-error">{getError()}</span>
   </div>
 {:else}
-  <div class="app-shell">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="app-shell" onkeydown={handleGlobalKeydown}>
     <Sidebar open={sidebarOpen} onclose={() => (sidebarOpen = false)} />
 
     <div class="app-main">
@@ -56,7 +70,7 @@
         <span class="title">ARIADNE</span>
       </div>
 
-      <TitleBar />
+      <TitleBar helpOpen={helpOpen} ontogglehelp={toggleHelp} />
 
       <div class="app-content">
         {#each Object.entries(viewComponents) as [name, Component]}
@@ -73,6 +87,9 @@
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div class="sidebar-overlay" onclick={() => (sidebarOpen = false)}></div>
     {/if}
+
+    <HelpPanel open={helpOpen} onclose={() => (helpOpen = false)} />
+    <ConfirmDialog />
   </div>
 {/if}
 
