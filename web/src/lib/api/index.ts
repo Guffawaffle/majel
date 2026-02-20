@@ -89,3 +89,9 @@ export {
   adminDeleteAllSessions,
 } from "./admiral.js";
 export { fetchReceipts, fetchReceipt, undoReceipt, resolveReceiptItems } from "./receipts.js";
+export {
+  fetchDiagnosticHealth,
+  fetchDiagnosticSummary,
+  fetchDiagnosticSchema,
+  executeDiagnosticQuery,
+} from "./diagnostic.js";
