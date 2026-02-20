@@ -201,6 +201,11 @@ export interface ShipOverlayPatch {
 
 // ─── Crews / Fleet Cross-Refs ───────────────────────────────
 
+export type BridgeSlot = "captain" | "bridge_1" | "bridge_2";
+export type BelowDeckMode = "stats_then_bda" | "pinned_only" | "stat_fill_only";
+export type PlanSource = "manual" | "preset";
+export type IntentCategory = "mining" | "combat" | "utility" | "custom";
+
 export interface OfficerReservation {
   officerId: string;
   reservedFor: string;
@@ -212,7 +217,7 @@ export interface OfficerReservation {
 export interface OfficerConflict {
   officerId: string;
   locations: Array<{
-    type: string;
+    type: "bridge" | "plan_item" | "preset_slot";
     entityId: number;
     entityName: string;
     slot?: string;
@@ -242,12 +247,14 @@ export interface Loadout {
   intentKeys: string[];
   tags: string[];
   notes: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BelowDeckPolicy {
   id: number;
   name: string;
-  mode: "stats_then_bda" | "pinned_only" | "stat_fill_only";
+  mode: BelowDeckMode;
   spec: { pinned?: string[]; prefer_modifiers?: string[]; avoid_reserved?: boolean; max_slots?: number };
   notes: string | null;
 }
@@ -259,18 +266,105 @@ export interface Dock {
   notes: string | null;
 }
 
+export interface VariantPatch {
+  bridge?: Partial<Record<BridgeSlot, string>>;
+  below_deck_policy_id?: number;
+  below_deck_patch?: { pinned_add?: string[]; pinned_remove?: string[] };
+  intent_keys?: string[];
+}
+
+export interface LoadoutVariant {
+  id: number;
+  baseLoadoutId: number;
+  name: string;
+  patch: VariantPatch;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface ResolvedLoadout {
+  loadoutId: number;
+  shipId: string;
+  name: string;
+  bridge: Record<BridgeSlot, string | null>;
+  belowDeckPolicy: BelowDeckPolicy | null;
+  intentKeys: string[];
+  tags: string[];
+  notes: string | null;
+}
+
+export interface EffectiveAwayTeam {
+  label: string | null;
+  officers: string[];
+  source: PlanSource;
+}
+
 export interface EffectiveDockEntry {
   dockNumber: number;
-  loadout: unknown | null;
-  variantPatch: unknown | null;
+  loadout: ResolvedLoadout | null;
+  variantPatch: VariantPatch | null;
   intentKeys: string[];
-  source: "manual" | "preset";
+  source: PlanSource;
 }
 
 export interface EffectiveDockState {
   docks: EffectiveDockEntry[];
-  awayTeams: unknown[];
+  awayTeams: EffectiveAwayTeam[];
   conflicts: OfficerConflict[];
+}
+
+// ─── Fleet Presets ──────────────────────────────────────────
+
+export interface FleetPreset {
+  id: number;
+  name: string;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FleetPresetSlot {
+  id: number;
+  presetId: number;
+  dockNumber: number | null;
+  loadoutId: number | null;
+  variantId: number | null;
+  awayOfficers: string[] | null;
+  label: string | null;
+  priority: number;
+  notes: string | null;
+}
+
+export interface FleetPresetWithSlots extends FleetPreset {
+  slots: FleetPresetSlot[];
+}
+
+// ─── Plan Items ─────────────────────────────────────────────
+
+export interface PlanItem {
+  id: number;
+  intentKey: string | null;
+  label: string | null;
+  loadoutId: number | null;
+  variantId: number | null;
+  dockNumber: number | null;
+  awayOfficers: string[] | null;
+  priority: number;
+  isActive: boolean;
+  source: PlanSource;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Intent Catalog ─────────────────────────────────────────
+
+export interface IntentDef {
+  key: string;
+  label: string;
+  icon: string;
+  category: IntentCategory;
 }
 
 // ─── Router ─────────────────────────────────────────────────
