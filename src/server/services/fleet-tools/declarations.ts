@@ -13,6 +13,9 @@ import type { ReferenceStore } from "../../stores/reference-store.js";
 import type { OverlayStore } from "../../stores/overlay-store.js";
 import type { CrewStore } from "../../stores/crew-store.js";
 import type { TargetStore } from "../../stores/target-store.js";
+import type { ReceiptStore } from "../../stores/receipt-store.js";
+import type { ResearchStore } from "../../stores/research-store.js";
+import type { InventoryStore } from "../../stores/inventory-store.js";
 
 // ─── Tool Context ───────────────────────────────────────────
 
@@ -30,6 +33,9 @@ export interface ToolContext {
   overlayStore?: OverlayStore | null;
   crewStore?: CrewStore | null;
   targetStore?: TargetStore | null;
+  receiptStore?: ReceiptStore | null;
+  researchStore?: ResearchStore | null;
+  inventoryStore?: InventoryStore | null;
 }
 
 /**
@@ -212,6 +218,112 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "list_research",
+    description:
+      "List Admiral research progression grouped by tree (Combat, Galaxy, Station, etc.), " +
+      "including node levels, completion status, and aggregate completion percentages. " +
+      "Call this when recommendations should account for research buffs.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        tree: {
+          type: Type.STRING,
+          description: "Optional exact tree filter (case-insensitive), e.g. 'combat'.",
+        },
+        include_completed: {
+          type: Type.BOOLEAN,
+          description: "When false, only returns non-completed nodes. Default: true.",
+        },
+      },
+    },
+  },
+  {
+    name: "list_inventory",
+    description:
+      "List Admiral inventory resources grouped by category (ore, gas, crystal, parts, currency, blueprints). " +
+      "Call this when planning upgrades or checking available materials before recommending spend.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        category: {
+          type: Type.STRING,
+          enum: ["ore", "gas", "crystal", "parts", "currency", "blueprint", "other"],
+          description: "Optional category filter.",
+        },
+        query: {
+          type: Type.STRING,
+          description: "Optional name filter (partial match), e.g. 'ore' or 'latinum'.",
+        },
+      },
+    },
+  },
+  {
+    name: "calculate_upgrade_path",
+    description:
+      "Estimate resource requirements to upgrade a ship from current tier to a target tier, " +
+      "and compare against Admiral inventory to show gaps. " +
+      "Call this before recommending an upgrade so advice is grounded in available materials.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ship_id: {
+          type: Type.STRING,
+          description: "Ship reference ID to analyze.",
+        },
+        target_tier: {
+          type: Type.INTEGER,
+          description: "Desired tier (defaults to current tier + 1).",
+        },
+      },
+      required: ["ship_id"],
+    },
+  },
+  {
+    name: "estimate_acquisition_time",
+    description:
+      "Estimate time-to-upgrade based on current resource gaps and expected daily acquisition rates. " +
+      "Use this after calculate_upgrade_path to project how many days remain to reach the target tier.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ship_id: {
+          type: Type.STRING,
+          description: "Ship reference ID to analyze.",
+        },
+        target_tier: {
+          type: Type.INTEGER,
+          description: "Desired tier (defaults to current tier + 1).",
+        },
+        daily_income: {
+          type: Type.OBJECT,
+          description: "Optional per-resource daily income overrides, e.g. { '3★ Ore': 120, '3★ Crystal': 80 }.",
+        },
+      },
+      required: ["ship_id"],
+    },
+  },
+  {
+    name: "calculate_true_power",
+    description:
+      "Estimate effective ship power using Admiral overlay power plus active research buffs. " +
+      "Returns confidence and data coverage so research remains advisory when sparse or stale. " +
+      "Call this when the Admiral asks for true/effective power for a specific ship.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ship_id: {
+          type: Type.STRING,
+          description: "Ship reference ID to calculate true power for.",
+        },
+        intent_key: {
+          type: Type.STRING,
+          description: "Optional activity intent key to focus relevant research buffs (e.g. 'pvp', 'mining-lat').",
+        },
+      },
+      required: ["ship_id"],
+    },
+  },
+  {
     name: "find_loadouts_for_intent",
     description:
       "Find all loadouts tagged for a specific activity intent (e.g. 'pvp', 'mining-lat', 'grinding'). " +
@@ -370,7 +482,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
         ref_id: {
           type: Type.STRING,
-          description: "Reference ID for the target entity (e.g. 'wiki:officer:james-t-kirk', 'cdn:ship:1234'). Required for officer/ship targets.",
+          description: "Reference ID for the target entity (e.g. 'cdn:officer:1234', 'cdn:ship:5678'). Required for officer/ship targets.",
         },
         loadout_id: {
           type: Type.INTEGER,
@@ -626,6 +738,60 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "away teams, officer conflicts, and source attribution (preset vs manual). " +
       "Call this when the Admiral asks about the current fleet state, what's running, or dock assignments.",
     // No parameters
+  },
+  {
+    name: "sync_overlay",
+    description:
+      "Sync Admiral game-state overlays from a MajelGameExport payload. " +
+      "Validates payload shape, normalizes IDs, computes a changeset diff against current overlays, " +
+      "and optionally applies updates. " +
+      "Default is dry-run preview only. Use dry_run=false to commit.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        export: {
+          type: Type.OBJECT,
+          description: "MajelGameExport object payload (preferred).",
+        },
+        payload_json: {
+          type: Type.STRING,
+          description: "MajelGameExport JSON string payload (alternative to export object).",
+        },
+        manual_updates: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Optional natural-language updates (e.g. ['I upgraded my Enterprise to tier 7']). Parsed and merged into the sync payload.",
+        },
+        dry_run: {
+          type: Type.BOOLEAN,
+          description: "When true (default), preview diff only. When false, apply overlay updates.",
+        },
+      },
+    },
+  },
+  {
+    name: "sync_research",
+    description:
+      "Sync Admiral research tree data from a structured payload (schema_version 1.0). " +
+      "Computes a summary preview and optionally persists the snapshot. " +
+      "Default is dry-run; set dry_run=false to apply.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        export: {
+          type: Type.OBJECT,
+          description: "Research tree snapshot object with schema_version, nodes, and state arrays.",
+        },
+        payload_json: {
+          type: Type.STRING,
+          description: "Research tree snapshot JSON string (alternative to export object).",
+        },
+        dry_run: {
+          type: Type.BOOLEAN,
+          description: "When true (default), preview only. When false, writes snapshot to research store.",
+        },
+      },
+    },
   },
   {
     name: "set_ship_overlay",

@@ -4,7 +4,7 @@
 **Date:** 2026-02-15  
 **Authors:** Guff, Opie (Claude), with review from Lex  
 **Supersedes:** None (pairs with ADR-025; ingestion not part of ADR-025 scope)  
-**Amended by:** ADR-026a (Guided Setup, Aria Gating, Layer Boundary, Resolve Persistence)  
+**Amended by:** ADR-026a (Guided Setup, Aria Gating, Layer Boundary, Resolve Persistence), ADR-026b (Safe Mutation Proposal/Apply)  
 **References:** ADR-025 (Crew Composition), ADR-012 (Reference Data), ADR-013 (Wiki Import, superseded flow), ADR-015 (Canonical Identity)
 
 ---

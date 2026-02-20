@@ -2,7 +2,7 @@
 
 *Named in honor of Majel Barrett-Roddenberry (1932–2008), the voice of Starfleet computers across four decades of Star Trek.*
 
-A fleet management and AI advisor for **Star Trek Fleet Command**, powered by **Gemini** and **[Lex](https://github.com/Guffawaffle/lex)** episodic memory. The in-character assistant, **Ariadne** ("Aria"), combines wiki-sourced reference data, your personal fleet overlays, and full game/lore knowledge into a conversational interface that actually knows your fleet.
+A fleet management and AI advisor for **Star Trek Fleet Command**, powered by **Gemini** and **[Lex](https://github.com/Guffawaffle/lex)** episodic memory. The in-character assistant, **Ariadne** ("Aria"), combines CDN-sourced reference data, your personal fleet overlays, and full game/lore knowledge into a conversational interface that actually knows your fleet.
 
 > **Status:** v0.4.0 alpha — functional, cloud-deployed, actively developed.
 >
@@ -39,14 +39,14 @@ Majel is a **five-view single-page application** with an LCARS-inspired UI:
 | View | Purpose |
 |------|---------|
 | **Chat** | Conversational AI advisor with persistent memory. Ask about officers, crews, strategy, lore — anything. |
-| **Catalog** | Browse 174 officers and 54 ships imported from the STFC Fandom wiki. Overlay your own levels, tiers, and notes. |
+| **Catalog** | Browse 530+ ships and 278+ officers from the STFC CDN data pipeline. Overlay your own levels, tiers, and notes. |
 | **Fleet** | Inline-editable fleet roster. Track power, rank, tier, level, and priority for every officer and ship you own. |
 | **Drydock** | Build and manage ship loadouts. Assign officers to bridge seats, save presets, tag and search configurations. |
 | **Diagnostics** | Natural-language query tool backed by AI. Ask questions about your data and get answers with SQL transparency. |
 
 ### Key Features
 
-- **Wiki-sourced reference data** — officer and ship catalogs imported from the STFC Fandom wiki, with canonical entity IDs (`wiki:officer:<pageId>`)
+- **CDN-sourced reference data** — officer and ship catalogs synced from data.stfc.space, with canonical entity IDs (`cdn:officer:<gameId>`, `cdn:ship:<gameId>`)
 - **Personal overlays** — your levels, tiers, notes, and target priorities stored separately from reference data. Never lost on re-sync.
 - **Brute-force context injection** — reference data is injected directly into Gemini's system prompt. No RAG, no vector DB, no retrieval errors.
 - **MicroRunner pipeline** — classifies each message, gates context injection by task type, and validates responses against the authority ladder
@@ -97,7 +97,7 @@ Majel is a **five-view single-page application** with an LCARS-inspired UI:
 
 Majel uses a **reference + overlay** architecture (ADR-016):
 
-- **Reference store** — immutable wiki-sourced data (stats, abilities, faction, rarity). Bulk-synced from the STFC Fandom wiki.
+- **Reference store** — immutable CDN-sourced data (stats, abilities, faction, rarity). Bulk-synced from data.stfc.space.
 - **Overlay store** — your personal data (level, tier, rank, power, notes, targets). Survives re-syncs. Stored as sparse deltas.
 - **Dock store** — ship loadouts with officer assignments, presets, and tags.
 
@@ -173,11 +173,10 @@ majel/
 │   │   ├── user-store.ts        # User accounts + sessions
 │   │   ├── memory.ts            # Lex memory integration
 │   │   ├── memory-middleware.ts  # Per-user scoped memory (RLS)
-│   │   ├── reference-store.ts   # Wiki-sourced officer/ship data (read-only)
+│   │   ├── reference-store.ts   # CDN-sourced officer/ship data (read-only)
 │   │   ├── overlay-store.ts     # User overlays (level, tier, notes)
 │   │   ├── crew-store.ts         # Crew composition store (ADR-025)
 │   │   ├── crew-types.ts        # Crew composition types (ADR-025)
-│   │   ├── wiki-ingest.ts       # STFC Fandom wiki scraper/importer
 │   │   ├── sessions.ts          # Multi-session management
 │   │   ├── settings.ts          # User preferences store
 │   │   ├── logger.ts            # Pino structured logging

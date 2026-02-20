@@ -4,12 +4,9 @@
 
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
-import { readFleetConfig, buildMicroRunnerFromState } from "../app-context.js";
-import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { getCategories } from "../stores/settings.js";
-import { createGeminiEngine } from "../services/gemini/index.js";
 import { resolveConfig } from "../config.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 
@@ -67,14 +64,12 @@ export function createSettingsRoutes(appState: AppState): Router {
     }
 
     const results: Array<{ key: string; status: string; error?: string }> = [];
-    let fleetConfigChanged = false;
     let configChanged = false;
     
     for (const [key, value] of Object.entries(updates)) {
       try {
         await appState.settingsStore.set(key, String(value));
         results.push({ key, status: "updated" });
-        if (key.startsWith("fleet.")) fleetConfigChanged = true;
         configChanged = true;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -87,36 +82,9 @@ export function createSettingsRoutes(appState: AppState): Router {
       appState.config = await resolveConfig(appState.settingsStore);
     }
 
-    // Rebuild Gemini engine with updated fleet config so the model sees the new values
-    if (fleetConfigChanged && appState.config.geminiApiKey && appState.geminiEngine) {
-      // Close the old engine first — prevents leaked interval timers and orphaned session Maps
-      appState.geminiEngine.close();
-
-      const runner = await buildMicroRunnerFromState(appState);
-      const modelName = appState.settingsStore
-        ? await appState.settingsStore.get("model.name")
-        : undefined;
-      appState.geminiEngine = createGeminiEngine(
-        appState.config.geminiApiKey,
-        await readFleetConfig(appState.settingsStore),
-        null, // dock briefing removed (ADR-025)
-        runner,
-        modelName,
-        // #85: Build ToolContextFactory for per-user scoping
-        (appState.referenceStore || appState.overlayStoreFactory || appState.crewStore || appState.targetStoreFactory) ? {
-          forUser(userId: string) {
-            return {
-              userId,
-              referenceStore: appState.referenceStore,
-              overlayStore: appState.overlayStoreFactory?.forUser(userId) ?? appState.overlayStore,
-              crewStore: appState.crewStore,
-              targetStore: appState.targetStoreFactory?.forUser(userId) ?? appState.targetStore,
-            };
-          },
-        } : null,
-      );
-      log.boot.info({ model: appState.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine refreshed with updated fleet config");
-    }
+    // #85 H3: Fleet config changes no longer require engine rebuild.
+    // Per-user fleet config is now injected per-message in the chat route,
+    // so changes take effect immediately on the next chat request.
 
     sendOk(res, { results });
   });

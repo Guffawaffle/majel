@@ -1,0 +1,37 @@
+/* ═══════════════════════════════════════════════════════════
+   Variables — CSS Custom Properties
+   Ported from src/client/styles/variables.css (vanilla client)
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* Backgrounds */
+  --bg-primary:      #0a0e1a;
+  --bg-secondary:    #111827;
+  --bg-tertiary:     #1a2236;
+  --bg-hover:        #1e293b;
+  --bg-user-msg:     #1a2a4a;
+
+  /* Text */
+  --text-primary:    #e2e8f0;
+  --text-secondary:  #94a3b8;
+  --text-muted:      #64748b;
+
+  /* Accent colors */
+  --accent-gold:     #f0a030;
+  --accent-gold-dim: #b07820;
+  --accent-blue:     #60a0ff;
+  --accent-blue-dim: #3070cc;
+  --accent-green:    #34d399;
+  --accent-red:      #f87171;
+  --accent-orange:   #fb923c;
+  --accent-purple:   #a78bfa;
+
+  /* Structure */
+  --border:          #1e293b;
+  --border-light:    #334155;
+  --radius:          8px;
+  --radius-sm:       6px;
+  --sidebar-width:   240px;
+  --max-content:     720px;
+  --transition:      0.15s ease;
+}

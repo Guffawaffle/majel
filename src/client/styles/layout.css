@@ -100,7 +100,7 @@
   flex: 1;
 }
 
-.sidebar-spacer { flex: 1; }
+.sidebar-spacer { flex: 0; }
 
 .sidebar-footer {
   padding-top: 12px;

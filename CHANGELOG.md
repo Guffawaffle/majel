@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### AX Toolkit Modular Refactor
+- **`scripts/ax/` decomposition** — monolithic `ax.ts` (1,252 lines) split into 10 typed modules + thin router
+  - `types.ts` (75 lines) — `AxResult`, `AxCommand`, domain types (`TestFailure`, `TypecheckError`, `LintError`, etc.)
+  - `runner.ts` (114 lines) — `runCapture()`, `makeResult()`, `emitResult()`, arg helpers
+  - `test.ts` (169), `typecheck.ts` (46), `lint.ts` (94), `status.ts` (71), `coverage.ts` (75), `diff.ts` (86), `ci.ts` (88), `affected.ts` (247)
+  - `ax.ts` router reduced to 91 lines — static `COMMANDS` table dispatching to modules
+- **`--ax` flag removed** — all `ax:*` scripts now emit JSON-only by default
+- **NDJSON run history** — `logs/ax-runs.ndjson` append log for all ax invocations
+- **CI composition** — `ci.ts` composes `lint.run()`, `typecheck.run()`, `test.run()` — zero duplication
+
 #### CDN Data Pipeline (#83, ADR-028)
 - **`data.stfc.space` snapshot ingest** — public S3/CloudFront CDN serving complete STFC game data as static JSON
   - Snapshot script (`scripts/stfc-snapshot.mjs`) fetches all 7 entity types + 15 translation packs (73MB)
@@ -80,9 +90,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ADR-028 status** — "Proposed" → "Accepted" with CDN pipeline as foundational work
 
 ### Fixed
+- **Session list CSS** — `.sidebar-spacer { flex: 1 }` → `flex: 0` — was competing with `.session-section { flex: 1 }`, crowding the session list
+- **Auth flash on landing** — server-side cookie check redirects authenticated users directly to `/app` (302), eliminating flash of login page
 - **Fleet view** — undefined `loadoutArr` + wrong policy unwrap key
 - **Crews view** — 10 bug fixes from deep review
 - **System prompt** — rebuilt to teach Aria to use her tools effectively
+
+### Architecture
+- **ADR-031: Svelte 5 + Vite migration decided** — vanilla JS client (8,335 LOC) migrating to Svelte 5 + Vite (no SvelteKit). Express API untouched. See [ADR-031](docs/ADR-031-svelte-migration.md).
+- **ADR-002 superseded** — original SvelteKit recommendation replaced by ADR-031 (Svelte + Vite without Kit)
+- **ADR-030: View Consolidation proposed** — retire Crew Builder, Drydock, Fleet Ops; consolidate to 7 views
 
 ### Security
 - **Injection defense** — parameterized queries, rate limits, guided actions for fleet mutations

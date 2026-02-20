@@ -25,6 +25,20 @@ import { existsSync } from "node:fs";
 import { readFile, access } from "node:fs/promises";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  CdnIngestPipeline,
+  ShipCdnIngestor,
+  OfficerCdnIngestor,
+} from "./lib/cdn-ingest-pipeline.ts";
+import { ShipCdnUpsertService, type CdnShipSummary } from "./lib/ship-cdn-upsert-service.ts";
+import { OfficerCdnUpsertService, type CdnOfficerSummary } from "./lib/officer-cdn-upsert-service.ts";
+import {
+  HULL_TYPE_LABELS,
+  OFFICER_CLASS_LABELS,
+  RARITY_LABELS,
+  FACTION_LABELS,
+} from "../src/server/services/game-enums.js";
+import { formatAbilityDescription } from "../src/server/services/cdn-mappers.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -48,106 +62,10 @@ function getDbConfig(): { connectionString?: string; host?: string; port?: numbe
   };
 }
 
-// ─── Enum Maps (from game-enums.ts) ─────────────────────────
-
-const HULL_TYPE_LABELS: Record<number, string> = {
-  0: "Unknown", 1: "Mining", 2: "Explorer", 3: "Interceptor",
-  4: "Survey", 5: "Battleship", 6: "Armada", 7: "Faction Armada",
-};
-
-const RARITY_LABELS: Record<number, string> = {
-  1: "common", 2: "uncommon", 3: "rare", 4: "epic", 5: "legendary",
-};
-
-const OFFICER_CLASS_LABELS: Record<number, string> = {
-  1: "Command", 2: "Science", 3: "Engineering",
-};
-
-const FACTION_LABELS: Record<number, string> = {
-  2064723306: "Federation", 2103576126: "Romulan", 862505714: "Klingon",
-  1068994017: "Augment", 1947299029: "Rogue", 1: "Independent", 0: "Neutral",
-};
-
 // ─── Helpers ────────────────────────────────────────────────
 
 function stripColorTags(text: string): string {
   return text.replace(/<\/?color[^>]*>/gi, "").trim();
-}
-
-/**
- * Sanitize HTML to allow only safe formatting tags (<i>, <b>, <em>, <strong>).
- * All other tags are stripped.
- */
-function sanitizeHtml(text: string): string {
-  // Whitelist of allowed tags (case-insensitive)
-  const allowedTags = new Set(["i", "b", "em", "strong"]);
-  
-  // Replace tags: keep allowed ones, strip others
-  return text.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (match, tagName) => {
-    return allowedTags.has(tagName.toLowerCase()) ? match : "";
-  }).trim();
-}
-
-interface AbilityValue {
-  value: number;
-  chance: number;
-}
-
-/**
- * Format ability description by replacing C# format placeholders with actual values.
- * 
- * Placeholder format: {N:format} or {N}
- * - N = index into values array
- * - format = C# format specifier (#,#% or 0.#% = percentage)
- * 
- * Each placeholder is replaced independently with its indexed value.
- * Uses `chance` field when it's != 1, otherwise uses `value` field.
- * Detects percentages from format specifier (contains %) or if value is decimal < 1.
- */
-function formatAbilityDescription(
-  description: string | null | undefined,
-  values: AbilityValue[] | null | undefined,
-  isPercentage: boolean
-): string | null {
-  if (!description) return null;
-
-  let formatted = description;
-
-  // Replace each placeholder {N:format} or {N} with indexed value
-  if (values && values.length > 0) {
-    // Match {0:0.#%}, {1:#,#%}, {2}, etc.
-    formatted = formatted.replace(/\{(\d+)(?::([^}]+))?\}/g, (match, indexStr, format) => {
-      const index = parseInt(indexStr, 10);
-      if (index >= values.length) return match; // Keep original if out of bounds
-      
-      const entry = values[index];
-      // Use chance if it's not 1 (indicates a probability), otherwise use value
-      const rawValue = entry.chance !== 1 ? entry.chance : entry.value;
-      
-      // Check if should format as percentage:
-      // 1. Format specifier contains %
-      // 2. isPercentage flag is true  
-      // 3. Value is decimal < 1 (heuristic for percentages)
-      const formatAsPercent = (format && format.includes('%')) || isPercentage || (rawValue > 0 && rawValue < 1);
-      
-      if (formatAsPercent) {
-        const pct = rawValue * 100;
-        // Format nicely: 5%, 7.5%, 10%
-        return pct % 1 === 0 ? `${pct}%` : `${pct.toFixed(1)}%`;
-      }
-      
-      // Non-percentage: format as number
-      return rawValue % 1 === 0 ? String(rawValue) : rawValue.toFixed(2);
-    });
-  }
-
-  // Sanitize HTML (keep <i>, <b>, strip everything else like <color>)
-  formatted = sanitizeHtml(formatted);
-
-  // Clean up any double spaces
-  formatted = formatted.replace(/\s+/g, " ").trim();
-
-  return formatted;
 }
 
 interface TranslationEntry {
@@ -243,6 +161,15 @@ async function main(): Promise<void> {
   `);
   console.log(`📊 Current DB state: ${countRows[0].officers} officers, ${countRows[0].ships} ships`);
 
+  // Purge legacy raw/wiki entries and related data
+  console.log("\n🧹 Purging legacy raw/wiki entries...");
+  await pool.query(`DELETE FROM ship_overlay WHERE ref_id LIKE 'raw:ship:%' OR ref_id LIKE 'wiki:ship:%'`);
+  await pool.query(`DELETE FROM officer_overlay WHERE ref_id LIKE 'raw:officer:%' OR ref_id LIKE 'wiki:officer:%'`);
+  await pool.query(`DELETE FROM targets WHERE ref_id LIKE 'raw:ship:%' OR ref_id LIKE 'wiki:ship:%' OR ref_id LIKE 'raw:officer:%' OR ref_id LIKE 'wiki:officer:%'`);
+  const { rowCount: purgedShips } = await pool.query(`DELETE FROM reference_ships WHERE id LIKE 'raw:ship:%' OR id LIKE 'wiki:ship:%'`);
+  const { rowCount: purgedOfficers } = await pool.query(`DELETE FROM reference_officers WHERE id LIKE 'raw:officer:%' OR id LIKE 'wiki:officer:%'`);
+  console.log(`   ✅ Purged ${purgedShips ?? 0} legacy ships, ${purgedOfficers ?? 0} legacy officers`);
+
   // Load translations
   console.log("📖 Loading translations...");
   const shipTranslations = await loadTranslationPack("ships");
@@ -261,248 +188,45 @@ async function main(): Promise<void> {
   const traitTrans = await loadTranslationPack("traits");
   const traitNameMap = buildNameMap(traitTrans, "trait_name");
 
-  // ─── Sync Ships ───────────────────────────────────────────
-  console.log("\n🚀 Syncing ships...");
-  const shipSummaryPath = join(SNAPSHOT_DIR, "ship", "summary.json");
-  if (!existsSync(shipSummaryPath)) {
-    console.warn("⚠️  Ship summary not found, skipping ships");
-  } else {
-    const shipSummary = JSON.parse(await readFile(shipSummaryPath, "utf-8"));
-    let shipCreated = 0, shipUpdated = 0;
+  const shipUpsertService = new ShipCdnUpsertService({
+    pool,
+    snapshotDir: SNAPSHOT_DIR,
+    hullTypeLabels: HULL_TYPE_LABELS,
+    rarityLabels: RARITY_LABELS,
+    factionLabels: FACTION_LABELS,
+    shipNameMap,
+    shipAbilityNameMap,
+    shipAbilityDescMap,
+  });
 
-    for (const ship of shipSummary) {
-      const id = `cdn:ship:${ship.id}`;
-      const name = shipNameMap.get(ship.loca_id) ?? `Ship ${ship.id}`;
-      const factionId = ship.faction?.id ?? null;
-      const factionName = factionId != null && factionId !== -1 ? (FACTION_LABELS[factionId] ?? null) : null;
-      const hullTypeName = HULL_TYPE_LABELS[ship.hull_type] ?? null;
-      const rarityStr = typeof ship.rarity === "string" ? ship.rarity.toLowerCase() : (RARITY_LABELS[ship.rarity] ?? null);
+  const officerUpsertService = new OfficerCdnUpsertService({
+    pool,
+    snapshotDir: SNAPSHOT_DIR,
+    rarityLabels: RARITY_LABELS,
+    officerClassLabels: OFFICER_CLASS_LABELS,
+    factionLabels: FACTION_LABELS,
+    officerNameMap,
+    officerAbilityTextMap,
+    factionNameMap,
+    traitNameMap,
+    formatAbilityDescription,
+  });
 
-      // Try to load detail
-      let detail = null;
-      try {
-        const detailPath = join(SNAPSHOT_DIR, "ship", `${ship.id}.json`);
-        if (existsSync(detailPath)) {
-          detail = JSON.parse(await readFile(detailPath, "utf-8"));
-        }
-      } catch { /* ignore */ }
-
-      // Build ability
-      let ability = null;
-      if (detail?.ability?.[0]) {
-        const a = detail.ability[0];
-        ability = {
-          name: shipAbilityNameMap.get(ship.loca_id) ?? null,
-          description: shipAbilityDescMap.get(ship.loca_id) ?? null,
-          valueIsPercentage: a.value_is_percentage,
-          values: a.values,
-        };
-      }
-
-      const result = await pool.query(`
-        INSERT INTO reference_ships (id, name, ship_class, grade, rarity, faction, ability, 
-          hull_type, build_time_in_seconds, max_tier, max_level, officer_bonus, crew_slots,
-          build_cost, levels, tiers, build_requirements, blueprints_required, game_id,
-          link, source, source_url, license)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          ship_class = EXCLUDED.ship_class,
-          grade = EXCLUDED.grade,
-          rarity = EXCLUDED.rarity,
-          faction = EXCLUDED.faction,
-          ability = EXCLUDED.ability,
-          hull_type = EXCLUDED.hull_type,
-          build_time_in_seconds = EXCLUDED.build_time_in_seconds,
-          max_tier = EXCLUDED.max_tier,
-          max_level = EXCLUDED.max_level,
-          officer_bonus = EXCLUDED.officer_bonus,
-          crew_slots = EXCLUDED.crew_slots,
-          build_cost = EXCLUDED.build_cost,
-          levels = EXCLUDED.levels,
-          tiers = EXCLUDED.tiers,
-          build_requirements = EXCLUDED.build_requirements,
-          blueprints_required = EXCLUDED.blueprints_required,
-          game_id = EXCLUDED.game_id
-        RETURNING (xmax = 0) as inserted
-      `, [
-        id,
-        name,
-        hullTypeName,
-        ship.grade,
-        rarityStr,
-        factionName,
-        ability ? JSON.stringify(ability) : null,
-        ship.hull_type,
-        detail?.build_time_in_seconds ?? null,
-        detail?.max_tier ?? ship.max_tier,
-        detail?.max_level ?? null,
-        detail?.officer_bonus ? JSON.stringify(detail.officer_bonus) : null,
-        detail?.crew_slots ? JSON.stringify(detail.crew_slots) : null,
-        detail?.build_cost ? JSON.stringify(detail.build_cost) : null,
-        detail?.levels ? JSON.stringify(detail.levels) : null,
-        detail?.tiers ? JSON.stringify(detail.tiers) : null,
-        detail?.build_requirements ?? ship.build_requirements ? JSON.stringify(detail?.build_requirements ?? ship.build_requirements) : null,
-        detail?.blueprints_required ?? ship.blueprints_required ?? null,
-        ship.id,
-        `https://stfc.space/ships/${ship.id}`,
-        "cdn:data.stfc.space",
-        `https://data.stfc.space/ship/${ship.id}.json`,
-        "CC-BY-NC 4.0",
-      ]);
-
-      if (result.rows[0]?.inserted) shipCreated++;
-      else shipUpdated++;
-    }
-
-    console.log(`   ✅ Ships: ${shipCreated} created, ${shipUpdated} updated (${shipSummary.length} total)`);
-  }
-
-  // ─── Sync Officers ────────────────────────────────────────
-  console.log("\n👤 Syncing officers...");
-  const officerSummaryPath = join(SNAPSHOT_DIR, "officer", "summary.json");
-  if (!existsSync(officerSummaryPath)) {
-    console.warn("⚠️  Officer summary not found, skipping officers");
-  } else {
-    const officerSummary = JSON.parse(await readFile(officerSummaryPath, "utf-8"));
-    let officerCreated = 0, officerUpdated = 0;
-
-    for (const officer of officerSummary) {
-      const id = `cdn:officer:${officer.id}`;
-      const name = officerNameMap.get(officer.loca_id) ?? `Officer ${officer.id}`;
-      const factionId = officer.faction?.id ?? null;
-      const factionName = factionId != null ? (FACTION_LABELS[factionId] ?? factionNameMap.get(officer.faction?.loca_id) ?? null) : null;
-      const rarityStr = RARITY_LABELS[officer.rarity] ?? String(officer.rarity);
-      const className = OFFICER_CLASS_LABELS[officer.class] ?? null;
-
-      // Get ability text
-      const cmText = officer.captain_ability?.loca_id != null ? officerAbilityTextMap.get(officer.captain_ability.loca_id) : null;
-      const oaText = officer.ability?.loca_id != null ? officerAbilityTextMap.get(officer.ability.loca_id) : null;
-      const bdText = officer.below_decks_ability?.loca_id != null ? officerAbilityTextMap.get(officer.below_decks_ability.loca_id) : null;
-
-      // Try to load detail (has full ability values array)
-      let detail = null;
-      try {
-        const detailPath = join(SNAPSHOT_DIR, "officer", `${officer.id}.json`);
-        if (existsSync(detailPath)) {
-          detail = JSON.parse(await readFile(detailPath, "utf-8"));
-        }
-      } catch { /* ignore */ }
-
-      // Get ability values from detail (preferred) or summary
-      const cmValues = detail?.captain_ability?.values ?? officer.captain_ability?.values ?? null;
-      const oaValues = detail?.ability?.values ?? officer.ability?.values ?? null;
-      const bdValues = detail?.below_decks_ability?.values ?? officer.below_decks_ability?.values ?? null;
-
-      // Format ability descriptions with actual value ranges
-      const cmDesc = formatAbilityDescription(
-        cmText?.shortDescription ?? cmText?.description,
-        cmValues,
-        officer.captain_ability?.value_is_percentage ?? false
-      );
-      const oaDesc = formatAbilityDescription(
-        oaText?.shortDescription ?? oaText?.description,
-        oaValues,
-        officer.ability?.value_is_percentage ?? false
-      );
-      const bdDesc = formatAbilityDescription(
-        bdText?.shortDescription ?? bdText?.description,
-        bdValues,
-        officer.below_decks_ability?.value_is_percentage ?? false
-      );
-
-      // Build abilities (with formatted descriptions)
-      const abilities: Record<string, unknown> = {};
-      if (officer.captain_ability) {
-        abilities.captainManeuver = {
-          name: cmText?.name ?? null,
-          description: formatAbilityDescription(cmText?.description, cmValues, officer.captain_ability.value_is_percentage ?? false),
-          shortDescription: cmDesc,
-          valueIsPercentage: officer.captain_ability.value_is_percentage,
-          values: cmValues,
-        };
-      }
-      if (officer.ability) {
-        abilities.officerAbility = {
-          name: oaText?.name ?? null,
-          description: formatAbilityDescription(oaText?.description, oaValues, officer.ability.value_is_percentage ?? false),
-          shortDescription: oaDesc,
-          valueIsPercentage: officer.ability.value_is_percentage,
-          values: oaValues,
-        };
-      }
-      if (officer.below_decks_ability) {
-        abilities.belowDeckAbility = {
-          name: bdText?.name ?? null,
-          description: formatAbilityDescription(bdText?.description, bdValues, officer.below_decks_ability.value_is_percentage ?? false),
-          shortDescription: bdDesc,
-          valueIsPercentage: officer.below_decks_ability.value_is_percentage,
-          values: bdValues,
-        };
-      }
-
-      // Trait config
-      let traitConfig = null;
-      if (detail?.trait_config) {
-        traitConfig = {
-          progression: detail.trait_config.progression.map((p: { required_rank: number; trait_id: number }) => ({
-            requiredRank: p.required_rank,
-            traitId: p.trait_id,
-            traitName: traitNameMap.get(p.trait_id) ?? null,
-          })),
-        };
-      }
-
-      // Faction JSON
-      const factionJson = factionId != null ? { id: factionId, name: factionName } : null;
-
-      const result = await pool.query(`
-        INSERT INTO reference_officers (id, name, rarity, group_name, captain_maneuver, officer_ability,
-          below_deck_ability, abilities, tags, officer_game_id, officer_class, faction, synergy_id,
-          max_rank, trait_config, source, source_url, license)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          rarity = EXCLUDED.rarity,
-          group_name = EXCLUDED.group_name,
-          captain_maneuver = EXCLUDED.captain_maneuver,
-          officer_ability = EXCLUDED.officer_ability,
-          below_deck_ability = EXCLUDED.below_deck_ability,
-          abilities = EXCLUDED.abilities,
-          officer_game_id = EXCLUDED.officer_game_id,
-          officer_class = EXCLUDED.officer_class,
-          faction = EXCLUDED.faction,
-          synergy_id = EXCLUDED.synergy_id,
-          max_rank = EXCLUDED.max_rank,
-          trait_config = EXCLUDED.trait_config
-        RETURNING (xmax = 0) as inserted
-      `, [
-        id,
-        name,
-        rarityStr,
-        className,
-        cmDesc,
-        oaDesc,
-        bdDesc,
-        Object.keys(abilities).length > 0 ? JSON.stringify(abilities) : null,
-        null, // tags — CDN doesn't have activity tags
-        officer.id,
-        officer.class,
-        factionJson ? JSON.stringify(factionJson) : null,
-        officer.synergy_id,
-        officer.max_rank ?? detail?.max_rank ?? null,
-        traitConfig ? JSON.stringify(traitConfig) : null,
-        "cdn:data.stfc.space",
-        `https://data.stfc.space/officer/${officer.id}.json`,
-        "CC-BY-NC 4.0",
-      ]);
-
-      if (result.rows[0]?.inserted) officerCreated++;
-      else officerUpdated++;
-    }
-
-    console.log(`   ✅ Officers: ${officerCreated} created, ${officerUpdated} updated (${officerSummary.length} total)`);
-  }
+  // ─── Sync via class-based ingest pipeline ────────────────
+  console.log("\n🔄 Running CDN ingest pipeline...");
+  const pipeline = new CdnIngestPipeline([
+    new ShipCdnIngestor<CdnShipSummary>({
+      pool,
+      snapshotDir: SNAPSHOT_DIR,
+      upsertOne: (ship) => shipUpsertService.upsertOne(ship),
+    }),
+    new OfficerCdnIngestor<CdnOfficerSummary>({
+      pool,
+      snapshotDir: SNAPSHOT_DIR,
+      upsertOne: (officer) => officerUpsertService.upsertOne(officer),
+    }),
+  ]);
+  await pipeline.run();
 
   // Final counts
   const { rows: finalRows } = await pool.query(`

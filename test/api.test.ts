@@ -48,9 +48,12 @@ function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
     if (!sessions.has(sid)) sessions.set(sid, []);
     return sessions.get(sid)!;
   };
+  // #85 H1: Namespace session keys by userId, matching the real engine
+  const resolveKey = (sessionId: string, userId?: string) => userId ? `${userId}:${sessionId}` : sessionId;
   return {
-    chat: vi.fn().mockImplementation(async (msg: string, sessionId = "default") => {
-      const history = getSessionHistory(sessionId);
+    chat: vi.fn().mockImplementation(async (msg: string, sessionId = "default", _image?: unknown, userId?: string) => {
+      const key = resolveKey(sessionId, userId);
+      const history = getSessionHistory(key);
       history.push({ role: "user", text: msg });
       history.push({ role: "model", text: response });
       return response;
@@ -245,8 +248,9 @@ describe("POST /api/chat", () => {
       .send({ message: "Beta" });
 
     // Each session should have its own history
-    const hist1 = engine.getHistory("session-1");
-    const hist2 = engine.getHistory("session-2");
+    // #85: Keys are now namespaced by userId — dev mode uses "local"
+    const hist1 = engine.getHistory("local:session-1");
+    const hist2 = engine.getHistory("local:session-2");
     expect(hist1).toHaveLength(2); // user + model
     expect(hist2).toHaveLength(2);
     expect(hist1[0].text).toBe("Alpha");
@@ -269,7 +273,8 @@ describe("GET /api/history", () => {
 
   it("returns session history from engine", async () => {
     const engine = makeMockEngine();
-    await engine.chat("Hello");
+    // #85: Pass userId="local" to match dev-mode auth (namespaced key: "local:default")
+    await engine.chat("Hello", "default", undefined, "local");
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 
@@ -327,8 +332,9 @@ describe("GET /api/history", () => {
 
   it("returns session history for a specific sessionId", async () => {
     const engine = makeMockEngine();
-    await engine.chat("Tab A message", "tab-a");
-    await engine.chat("Tab B message", "tab-b");
+    // #85: Pass userId="local" so history is stored under namespaced keys
+    await engine.chat("Tab A message", "tab-a", undefined, "local");
+    await engine.chat("Tab B message", "tab-b", undefined, "local");
     const state = makeState({ geminiEngine: engine });
     const app = createApp(state);
 

@@ -23,7 +23,7 @@ let overlayStore: OverlayStore;
 
 async function seedData(store: ReferenceStore) {
   await store.upsertOfficer({
-    id: "raw:officer:100",
+    id: "cdn:officer:100",
     name: "Kirk",
     rarity: "epic",
     groupName: "Command",
@@ -37,7 +37,7 @@ async function seedData(store: ReferenceStore) {
     sourceRevisionTimestamp: null,
   });
   await store.upsertOfficer({
-    id: "raw:officer:101",
+    id: "cdn:officer:101",
     name: "Spock",
     rarity: "epic",
     groupName: "Science",
@@ -51,7 +51,7 @@ async function seedData(store: ReferenceStore) {
     sourceRevisionTimestamp: null,
   });
   await store.upsertShip({
-    id: "raw:ship:200",
+    id: "cdn:ship:200",
     name: "USS Enterprise",
     shipClass: "Explorer",
     grade: 3,
@@ -193,7 +193,7 @@ describe("GET /api/diagnostic/query", () => {
     // Seed many officers
     for (let i = 0; i < 15; i++) {
       await refStore.upsertOfficer({
-        id: `raw:officer:${1000 + i}`,
+        id: `cdn:officer:${1000 + i}`,
         name: `Officer ${i}`,
         rarity: "common",
         groupName: null,
@@ -261,8 +261,8 @@ describe("GET /api/diagnostic/summary", () => {
 
   it("includes overlay breakdown", async () => {
     await seedData(refStore);
-    await overlayStore.setOfficerOverlay({ refId: "raw:officer:100", ownershipState: "owned" });
-    await overlayStore.setOfficerOverlay({ refId: "raw:officer:101", ownershipState: "unowned" });
+    await overlayStore.setOfficerOverlay({ refId: "cdn:officer:100", ownershipState: "owned" });
+    await overlayStore.setOfficerOverlay({ refId: "cdn:officer:101", ownershipState: "unowned" });
     const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
     const res = await testRequest(app).get("/api/diagnostic/summary");
 

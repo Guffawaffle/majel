@@ -154,6 +154,9 @@ export interface ReferenceStore {
   bulkUpsertOfficers(officers: CreateReferenceOfficerInput[]): Promise<{ created: number; updated: number }>;
   bulkUpsertShips(ships: CreateReferenceShipInput[]): Promise<{ created: number; updated: number }>;
 
+  /** Delete legacy `raw:*` / `wiki:*` ship and officer entries superseded by CDN data. */
+  purgeLegacyEntries(): Promise<{ ships: number; officers: number }>;
+
   counts(): Promise<{ officers: number; ships: number }>;
   close(): void;
 }
@@ -693,6 +696,26 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
       });
       log.fleet.info({ created, updated, total: ships.length }, "bulk upsert reference ships");
       return { created, updated };
+    },
+
+    async purgeLegacyEntries() {
+      // Cascade-clean related tables that lack FK constraints first
+      await pool.query(`DELETE FROM ship_overlay WHERE ref_id LIKE 'raw:ship:%' OR ref_id LIKE 'wiki:ship:%'`);
+      await pool.query(`DELETE FROM officer_overlay WHERE ref_id LIKE 'raw:officer:%' OR ref_id LIKE 'wiki:officer:%'`);
+      await pool.query(`DELETE FROM targets WHERE ref_id LIKE 'raw:ship:%' OR ref_id LIKE 'wiki:ship:%' OR ref_id LIKE 'raw:officer:%' OR ref_id LIKE 'wiki:officer:%'`);
+      // bridge_core_members and loadouts have ON DELETE CASCADE — auto-cleaned
+      const shipResult = await pool.query(
+        `DELETE FROM reference_ships WHERE id LIKE 'raw:ship:%' OR id LIKE 'wiki:ship:%'`,
+      );
+      const officerResult = await pool.query(
+        `DELETE FROM reference_officers WHERE id LIKE 'raw:officer:%' OR id LIKE 'wiki:officer:%'`,
+      );
+      const shipCount = shipResult.rowCount ?? 0;
+      const officerCount = officerResult.rowCount ?? 0;
+      if (shipCount > 0 || officerCount > 0) {
+        log.fleet.info({ ships: shipCount, officers: officerCount }, "purged legacy raw/wiki reference entries and related data");
+      }
+      return { ships: shipCount, officers: officerCount };
     },
 
     // ── Diagnostics ─────────────────────────────────────────

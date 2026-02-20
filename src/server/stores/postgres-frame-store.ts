@@ -15,7 +15,6 @@
 
 import {
   initSchema,
-  withTransaction,
   withUserScope,
   withUserRead,
   type Pool,

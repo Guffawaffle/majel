@@ -4,6 +4,7 @@
 **Date:** 2026-02-15  
 **Authors:** Guff, Opie (Claude), with review from Lex  
 **Amends:** ADR-026 (Startup + Import UX Contract)  
+**Extended by:** ADR-026b (Safe Mutation Proposal/Apply)  
 **References:** ADR-025 (Crew Composition), ADR-026 (Startup + Import UX)
 
 ---
@@ -105,6 +106,27 @@ ADR-026 D2 mentions a resolve queue in the pipeline. This locks down persistence
 
 **No forced resolution:** The user can commit an import with unresolved items. The committed portion applies; unresolved items are skipped and recorded. This prevents "all-or-nothing" frustration on messy spreadsheets.
 
+### A5 — Confirmation-gated safe mutation path for agent-driven writes
+
+As setup/import natural language support grows, stochastic model output must not directly commit high-impact writes without explicit user confirmation.
+
+**Contract:** mutation tools that can affect many rows (starting with `sync_overlay`) use a two-step flow:
+
+1. **Plan** (non-mutating): returns `proposal_id` + deterministic `changes_preview` + risk metadata.
+2. **Apply** (mutating): requires explicit user accept from UI (`proposal_id`, optional signed confirmation token), then commits transaction + receipt.
+
+**UI requirement:** show a confirmation modal/dialog: **"The following changes will be made"** with Accept / Decline.
+
+**Safety requirements:**
+- Apply must reject unknown/expired/tampered proposal IDs.
+- Apply must be idempotent (double-apply prevented).
+- Decline records outcome and performs no write.
+- Receipts/audit entries must link applied changes to `proposal_id`.
+
+This keeps AI assistance optional and safe: models may propose, users decide to apply.
+
+**Model compatibility note:** this contract is model-agnostic and works with fast/chat-oriented models (e.g., Gemini 2.5 Flash class) because safety is enforced by backend state + UI confirmation, not by model determinism alone.
+
 ---
 
 ## Updated Entry Path Table (D3 + A1)
@@ -126,6 +148,7 @@ ADR-026 D2 mentions a resolve queue in the pipeline. This locks down persistence
 | #67 (Start/Sync Hub) | Add Guided Setup as 5th path in hub layout |
 | #68 (File Import Pipeline) | A3: import writes to overlay only, unknown → resolve queue. A4: resolve queue persisted in receipt |
 | #66 (Auto-seed + Receipts) | A4: receipt `unresolved` field used for resolve persistence |
+| #93 (Safe mutation proposal/apply) | A5: confirmation-gated plan/apply flow for agent-driven writes |
 | New issue | Guided Setup Templates (A1) — curated activity templates |
 | New issue | Aria Gating UX Contract (A2) — manual fallback adjacent, no paywall on setup |
 

@@ -18,7 +18,7 @@
  * - crew: assemble a specific loadout (links to loadout_id)
  */
 
-import { initSchema, withUserScope, withUserRead, type Pool, type PoolClient } from "../db.js";
+import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
 import { log } from "../logger.js";
 
 // ─── Types ──────────────────────────────────────────────────

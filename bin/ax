@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# ax — Majel Agent-Experience Toolkit (PATH shim)
+# Delegates to scripts/ax.ts in the nearest Majel repo root.
+exec npx tsx "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/scripts/ax.ts" "$@"

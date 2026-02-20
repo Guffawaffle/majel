@@ -14,9 +14,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --loglevel=error
 
-# Copy source and build
+# Install Svelte client deps (separate layer cache)
+COPY web/package.json web/package-lock.json web/
+RUN cd web && npm ci --loglevel=error
+
+# Copy source and build everything (server + vanilla landing + Svelte client)
 COPY tsconfig.json ./
 COPY src/ src/
+COPY web/ web/
 RUN npm run build
 
 # ── Stage 2: Production deps (with native build tools for argon2) ──
@@ -41,7 +46,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 
-# Copy built output from builder
+# Copy built output from builder (server + both clients)
 COPY --from=builder /app/dist ./dist
 
 # Copy non-compiled assets needed at runtime

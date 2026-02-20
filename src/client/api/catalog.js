@@ -137,17 +137,3 @@ export async function bulkSetShipOverlay(refIds, overlay) {
     });
 }
 
-// ─── Wiki Sync ──────────────────────────────────────────────
-
-/**
- * Sync reference data from the STFC Fandom Wiki.
- * User-initiated: fetches Officers + Ships via Special:Export.
- * @param {Object} options - { officers?: boolean, ships?: boolean }
- * @returns {Promise<Object>} Sync results
- */
-export async function syncWikiData(options = {}) {
-    return apiFetch("/api/catalog/sync", {
-        method: "POST",
-        body: JSON.stringify({ consent: true, ...options }),
-    });
-}

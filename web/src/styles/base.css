@@ -1,0 +1,55 @@
+/* ═══════════════════════════════════════════════════════════
+   Base — Reset, typography, scrollbar, shared UI
+   Ported from src/client/styles/base.css (vanilla client)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Reset ── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Root Typography ── */
+
+html, body {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ── */
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Dialog base ── */
+
+dialog {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  max-width: 560px;
+  width: 90%;
+  overflow: hidden;
+}
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+/* ── Utility ── */
+
+.hidden { display: none !important; }
+.hint { font-size: 13px; color: var(--text-muted); margin-top: 4px; }

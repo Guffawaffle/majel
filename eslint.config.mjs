@@ -18,6 +18,7 @@ export default tseslint.config(
             'coverage/',
             'legacy/',
             'data/',
+            'web/',
             '**/*.d.ts',
         ],
     },
