@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] — 2026-02-21
+
+### Added
+
+#### Start/Sync Guided Setup (ADR-026a A1)
+- New Start/Sync hub view with first-run flow and guided ownership setup (`web/src/views/StartSyncView.svelte`)
+- Guided setup templates + matcher engine for recommended officers/ships (`web/src/lib/guided-setup-templates.ts`)
+- One-shot cross-view launch intents for Catalog/Workshop handoff (`web/src/lib/view-intent.svelte.ts`)
+
+#### API Mutation Locking + Local-First Consistency
+- Per-entity mutation lock orchestration to prevent concurrent write races (`web/src/lib/api/mutation.ts`)
+- New mutation locking coverage tests (`web/src/lib/api/mutation.test.ts`, `web/src/lib/api/mutation-locking.test.ts`)
+- Cache epoch invalidation primitive for precise stale-read prevention (`web/src/lib/cache/cache-epochs.ts`)
+
+#### Data Interaction Coverage Expansion
+- New auth-boundary matrix suite for data routes (`test/data-route-auth-boundaries.test.ts`)
+- Shared route case helpers for reusable error/authorization assertions (`test/helpers/data-route-base.ts`, `test/helpers/route-cases.ts`)
+- New inventory and research store integration tests (`test/inventory-store.test.ts`, `test/research-store.test.ts`)
+- New import data and composition inference test coverage (`test/import-routes-data.test.ts`, `test/import-composition-inference.test.ts`)
+
+### Changed
+
+#### Backend Data Routes and Stores
+- Import routes hardened for data safety and composition inference workflows (`src/server/routes/imports.ts`)
+- Receipt route behaviors tightened for resolve/undo and validation edge cases (`src/server/routes/receipts.ts`)
+- Admiral/catalog route updates for improved diagnostics and consistency (`src/server/routes/admiral.ts`, `src/server/routes/catalog.ts`)
+- Inventory/research/proposal store logic refined for upsert, filtering, and envelope consistency (`src/server/stores/inventory-store.ts`, `src/server/stores/research-store.ts`, `src/server/stores/proposal-store.ts`)
+
+#### Web Client Flow Reliability
+- Imports workshop flow expanded for unresolved-item handling and guided progression (`web/src/components/workshop/ImportsTab.svelte`)
+- Plan/fleet/catalog/workshop/admiral views updated for cache-aware data flow and navigation continuity
+- API modules migrated to locked mutation/invalidation patterns across chat, catalog, crews, imports, receipts, sessions, settings, and user-settings
+
+### Fixed
+
+- Dock/user data reliability hardening across scoped data paths and client mutation sequencing
+- Cache race and stale-view scenarios reduced via lock-key serialization + targeted invalidation
+- Auth envelope and rank-boundary behavior normalized across data-related endpoints
+
 ## [0.5.1] — 2026-02-21
 
 ### Added
