@@ -54,6 +54,7 @@ Key fields:
 | `auth.password.reset_request` | Password | Password reset requested |
 | `auth.password.reset_complete` | Password | Password reset completed |
 | `admin.role_change` | Admin | User role modified |
+| `admin.bootstrap` | Admin | Bearer token used in bootstrap mode |
 | `admin.lock_user` | Admin | User account locked |
 | `admin.unlock_user` | Admin | User account unlocked |
 | `admin.delete_user` | Admin | User account deleted |
@@ -164,6 +165,80 @@ resource.labels.service_name="majel"
 severity="ERROR"
 jsonPayload.subsystem="auth"
 "audit log write failed"
+```
+
+### 9. Password reset abuse (W18)
+
+Detects bulk password reset requests (potential enumeration or abuse):
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.event="auth.password.reset_request"
+```
+
+Group by IP to find bulk senders. >10 requests per hour from one IP is suspicious.
+
+### 10. Signup spikes (W18)
+
+Monitor for registration spam or coordinated account creation:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.event="auth.signup"
+```
+
+Set time range to "Last 1 hour" and group by `jsonPayload.ip`.
+
+### 11. 5xx server errors (W18)
+
+Track internal server errors across all subsystems:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+severity="ERROR"
+httpRequest.status>=500
+```
+
+Or via application-level errors:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+severity=("ERROR" OR "CRITICAL")
+```
+
+### 12. Boot events and startup failures (W18)
+
+Track server startup and any fatal boot errors:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="boot"
+```
+
+Filter to only failures:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="boot"
+severity=("ERROR" OR "CRITICAL")
+```
+
+### 13. IP allowlist blocks (W18)
+
+Monitor requests blocked by the IP allowlist:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+severity="WARNING"
+jsonPayload.subsystem="http"
+"Blocked by IP allowlist"
 ```
 
 ---

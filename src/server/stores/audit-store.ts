@@ -46,6 +46,9 @@ export const AUDIT_EVENTS = [
   "admin.unlock_user",
   "admin.delete_user",
 
+  // Bootstrap
+  "admin.bootstrap",
+
   // Legacy
   "auth.invite.redeem",
 ] as const;
@@ -71,21 +74,48 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_audit_target ON auth_audit_log (target_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_event_type ON auth_audit_log (event_type, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_created_at ON auth_audit_log (created_at DESC)`,
+
+  // W4 fix: append-only enforcement — prevent UPDATE/DELETE at the DB level.
+  // REVOKE is idempotent; the trigger provides defense-in-depth.
+  `DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'majel_app') THEN
+      REVOKE UPDATE, DELETE ON auth_audit_log FROM majel_app;
+    END IF;
+  END $$`,
+
+  `CREATE OR REPLACE FUNCTION prevent_audit_mutation() RETURNS TRIGGER AS $$
+  BEGIN
+    RAISE EXCEPTION 'auth_audit_log is append-only — UPDATE/DELETE not permitted';
+  END;
+  $$ LANGUAGE plpgsql`,
+
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_trigger WHERE tgname = 'trg_audit_append_only'
+    ) THEN
+      CREATE TRIGGER trg_audit_append_only
+        BEFORE UPDATE OR DELETE ON auth_audit_log
+        FOR EACH ROW EXECUTE FUNCTION prevent_audit_mutation();
+    END IF;
+  END $$`,
 ];
 
 // ─── SQL ────────────────────────────────────────────────────────
+
+// W3 fix: explicit column list instead of SELECT * (fragile if schema evolves)
+const COLUMNS = `id, event_type, actor_id, target_id, ip_address, user_agent, detail, created_at`;
 
 const SQL = {
   insert: `INSERT INTO auth_audit_log (event_type, actor_id, target_id, ip_address, user_agent, detail)
     VALUES ($1, $2, $3, $4, $5, $6)`,
 
-  queryByActor: `SELECT * FROM auth_audit_log WHERE actor_id = $1 ORDER BY created_at DESC LIMIT $2`,
+  queryByActor: `SELECT ${COLUMNS} FROM auth_audit_log WHERE actor_id = $1 ORDER BY created_at DESC LIMIT $2`,
 
-  queryByTarget: `SELECT * FROM auth_audit_log WHERE target_id = $1 ORDER BY created_at DESC LIMIT $2`,
+  queryByTarget: `SELECT ${COLUMNS} FROM auth_audit_log WHERE target_id = $1 ORDER BY created_at DESC LIMIT $2`,
 
-  queryByEvent: `SELECT * FROM auth_audit_log WHERE event_type = $1 ORDER BY created_at DESC LIMIT $2`,
+  queryByEvent: `SELECT ${COLUMNS} FROM auth_audit_log WHERE event_type = $1 ORDER BY created_at DESC LIMIT $2`,
 
-  queryRecent: `SELECT * FROM auth_audit_log ORDER BY created_at DESC LIMIT $1`,
+  queryRecent: `SELECT ${COLUMNS} FROM auth_audit_log ORDER BY created_at DESC LIMIT $1`,
 
   countByEvent: `SELECT event_type, COUNT(*) as count FROM auth_audit_log GROUP BY event_type ORDER BY count DESC`,
 };

@@ -17,20 +17,55 @@ import type { Request, Response, NextFunction } from "express";
 import { sendFail, ErrorCode } from "./envelope.js";
 import { log } from "./logger.js";
 
+// W15 fix: Validate IP address syntax (IPv4 or IPv6)
+const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
+const IPV6_RE = /^[0-9a-fA-F:]+$/;
+const IPV4_MAPPED_V6_RE = /^::ffff:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
+function isValidIp(ip: string): boolean {
+  if (IPV4_RE.test(ip)) {
+    return ip.split(".").every((octet) => {
+      const n = Number(octet);
+      return n >= 0 && n <= 255;
+    });
+  }
+  if (IPV4_MAPPED_V6_RE.test(ip)) return true;
+  return IPV6_RE.test(ip) && ip.includes(":");
+}
+
+/**
+ * Parse and validate IP addresses from the allowlist.
+ * W15 fix: logs and rejects invalid entries instead of silently ignoring them.
+ */
+export function parseAllowedIps(raw: string[]): string[] {
+  const valid: string[] = [];
+  for (const ip of raw) {
+    const trimmed = ip.trim();
+    if (!trimmed) continue;
+    if (isValidIp(trimmed)) {
+      valid.push(trimmed);
+    } else {
+      log.http.warn({ ip: trimmed }, "Invalid IP in allowlist — skipped");
+    }
+  }
+  return valid;
+}
+
 /**
  * Create an IP allowlist middleware from a resolved list.
  * Returns a passthrough when the list is empty.
  */
 export function createIpAllowlist(allowedIps: string[]) {
+  const validated = parseAllowedIps(allowedIps);
   // No restriction — passthrough
-  if (allowedIps.length === 0) {
+  if (validated.length === 0) {
     return (_req: Request, _res: Response, next: NextFunction) => next();
   }
 
   // Build a Set for O(1) lookup
-  const allowSet = new Set(allowedIps);
+  const allowSet = new Set(validated);
 
-  log.http.info({ allowedIps }, "IP allowlist active — %d address(es)", allowedIps.length);
+  log.http.info({ allowedIps: validated }, "IP allowlist active — %d address(es)", validated.length);
 
   return (req: Request, res: Response, next: NextFunction) => {
     const clientIp = req.ip || "";

@@ -128,11 +128,20 @@ export function createAuthRoutes(appState: AppState): Router {
 
     const verified = await appState.userStore.verifyEmail(token);
     if (!verified) {
+      // W6 fix: audit verify-email failure
+      appState.auditStore?.logEvent({
+        event: "auth.verify_email",
+        detail: { success: false, reason: "Invalid or expired verification token" },
+        ...auditMeta(req),
+      });
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid or expired verification token", 400);
     }
 
+    // W5 fix: audit verify-email success
     appState.auditStore?.logEvent({
-      event: "auth.verify_email", ...auditMeta(req),
+      event: "auth.verify_email",
+      detail: { success: true },
+      ...auditMeta(req),
     });
 
     sendOk(res, { verified: true, message: "Email verified. You can now sign in." });
@@ -354,16 +363,31 @@ export function createAuthRoutes(appState: AppState): Router {
     try {
       const reset = await appState.userStore.resetPassword(token, newPassword);
       if (!reset) {
+        // W7 fix: audit reset-password failure (invalid token)
+        appState.auditStore?.logEvent({
+          event: "auth.password.reset_complete",
+          detail: { success: false, reason: "Invalid or expired reset token" },
+          ...auditMeta(req),
+        });
         return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid or expired reset token", 400);
       }
 
+      // W5 fix: audit reset-password success
       appState.auditStore?.logEvent({
-        event: "auth.password.reset_complete", ...auditMeta(req),
+        event: "auth.password.reset_complete",
+        detail: { success: true },
+        ...auditMeta(req),
       });
 
       sendOk(res, { message: "Password has been reset. Please sign in with your new password." });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Password reset failed";
+      // W7 fix: audit reset-password exception
+      appState.auditStore?.logEvent({
+        event: "auth.password.reset_complete",
+        detail: { success: false, reason: message },
+        ...auditMeta(req),
+      });
       sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
     }
   });
@@ -486,11 +510,12 @@ export function createAuthRoutes(appState: AppState): Router {
         // Check if we're still in bootstrap mode
         const hasAdmiral = appState.userStore ? await appState.userStore.hasAdmiral() : false;
         if (!hasAdmiral) {
+          // W8 fix: use dedicated bootstrap event (was admin.role_change)
+          // W9 fix: use auditMeta(req) for consistency
           appState.auditStore?.logEvent({
-            event: "admin.role_change",
-            detail: { bootstrap: true, note: "Bearer token used in bootstrap mode" },
-            ip: req.ip || req.socket.remoteAddress || null,
-            userAgent: req.headers["user-agent"] || null,
+            event: "admin.bootstrap",
+            detail: { note: "Bearer token used in bootstrap mode" },
+            ...auditMeta(req),
           });
           return next();
         }
@@ -556,11 +581,20 @@ export function createAuthRoutes(appState: AppState): Router {
 
   // ── GET /api/auth/admiral/users ─────────────────────
   // Admin-only: list all users
-  router.get("/api/auth/admiral/users", async (_req, res) => {
+  // W10 fix: audit admin list-users access
+  router.get("/api/auth/admiral/users", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
     const users = await appState.userStore.listUsers();
+
+    appState.auditStore?.logEvent({
+      event: "admin.role_change",
+      actorId: res.locals.userId ?? null,
+      detail: { action: "list_users", count: users.length },
+      ...auditMeta(req),
+    });
+
     sendOk(res, { users, count: users.length });
   });
 

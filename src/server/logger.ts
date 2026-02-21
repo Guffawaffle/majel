@@ -111,14 +111,17 @@ export const rootLogger: Logger = pino({
         }
       : {}),
   },
-  // Redact sensitive fields from all log output
+  // Redact sensitive fields from all log output.
+  // W12 fix: deeper paths — covers req.headers.authorization, nested token fields, etc.
   redact: {
     paths: [
-      "token", "*.token",
-      "password", "*.password",
-      "sessionToken", "*.sessionToken",
-      "secret", "*.secret",
-      "authorization", "*.authorization",
+      "token", "*.token", "**.token",
+      "password", "*.password", "**.password",
+      "sessionToken", "*.sessionToken", "**.sessionToken",
+      "secret", "*.secret", "**.secret",
+      "authorization", "*.authorization", "**.authorization",
+      "req.headers.authorization",
+      "req.headers.cookie",
     ],
     censor: "[REDACTED]",
   },
