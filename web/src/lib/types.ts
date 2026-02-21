@@ -463,6 +463,22 @@ export interface QueryResult {
   sql: string;
 }
 
+// ─── Timers ─────────────────────────────────────────────────
+
+export type TimerState = "running" | "paused" | "stopped" | "completed";
+
+export interface Timer {
+  id: string;
+  label: string;
+  durationMs: number;
+  remainingMs: number;
+  state: TimerState;
+  repeating: boolean;
+  soundId: number;
+  createdAt: number;
+  completedCount: number;
+}
+
 // ─── Router ─────────────────────────────────────────────────
 
 /** View definition for the router */
