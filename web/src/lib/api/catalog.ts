@@ -14,6 +14,8 @@ import type {
   OwnershipState,
 } from "../types.js";
 import { apiFetch, apiPatch, apiPost, pathEncode, qs } from "./fetch.js";
+import { cachedFetch, invalidateForMutation } from "../cache/cached-fetch.js";
+import { cacheKey, TTL } from "../cache/cache-keys.js";
 
 // ─── Filter shapes ──────────────────────────────────────────
 
@@ -38,47 +40,73 @@ export interface ShipFilters {
 
 // ─── Read ───────────────────────────────────────────────────
 
-/** Fetch merged officers with optional filters. */
+/** Fetch merged officers with optional filters (SWR-cached). */
 export async function fetchCatalogOfficers(filters?: OfficerFilters): Promise<CatalogOfficer[]> {
-  const data = await apiFetch<{ officers: CatalogOfficer[] }>(`/api/catalog/officers/merged${qs({ ...filters })}`);
-  return data.officers;
+  const endpoint = `/api/catalog/officers/merged${qs({ ...filters })}`;
+  const key = cacheKey("/api/catalog/officers/merged", filters as Record<string, unknown>);
+  const { data } = await cachedFetch(
+    key,
+    () => apiFetch<{ officers: CatalogOfficer[] }>(endpoint).then((d) => d.officers),
+    TTL.OVERLAY,
+  );
+  return data;
 }
 
-/** Fetch merged ships with optional filters. */
+/** Fetch merged ships with optional filters (SWR-cached). */
 export async function fetchCatalogShips(filters?: ShipFilters): Promise<CatalogShip[]> {
-  const data = await apiFetch<{ ships: CatalogShip[] }>(`/api/catalog/ships/merged${qs({ ...filters })}`);
-  return data.ships;
+  const endpoint = `/api/catalog/ships/merged${qs({ ...filters })}`;
+  const key = cacheKey("/api/catalog/ships/merged", filters as Record<string, unknown>);
+  const { data } = await cachedFetch(
+    key,
+    () => apiFetch<{ ships: CatalogShip[] }>(endpoint).then((d) => d.ships),
+    TTL.OVERLAY,
+  );
+  return data;
 }
 
-/** Fetch catalog counts (reference + overlay tallies). */
+/** Fetch catalog counts (SWR-cached). */
 export async function fetchCatalogCounts(): Promise<CatalogCounts> {
-  return apiFetch<CatalogCounts>("/api/catalog/counts");
+  const key = cacheKey("/api/catalog/counts");
+  const { data } = await cachedFetch(
+    key,
+    () => apiFetch<CatalogCounts>("/api/catalog/counts"),
+    TTL.OVERLAY,
+  );
+  return data;
 }
 
 // ─── Overlays ───────────────────────────────────────────────
 
-/** Set a single officer's overlay. Throws on failure. */
+/** Set a single officer's overlay. Throws on failure. Invalidates related cache. */
 export async function setOfficerOverlay(id: string, overlay: OfficerOverlayPatch): Promise<OfficerOverlayResponse> {
-  return apiPatch<OfficerOverlayResponse>(`/api/catalog/officers/${pathEncode(id)}/overlay`, overlay);
+  const result = await apiPatch<OfficerOverlayResponse>(`/api/catalog/officers/${pathEncode(id)}/overlay`, overlay);
+  await invalidateForMutation("officer-overlay");
+  return result;
 }
 
-/** Set a single ship's overlay. Throws on failure. */
+/** Set a single ship's overlay. Throws on failure. Invalidates related cache. */
 export async function setShipOverlay(id: string, overlay: ShipOverlayPatch): Promise<ShipOverlayResponse> {
-  return apiPatch<ShipOverlayResponse>(`/api/catalog/ships/${pathEncode(id)}/overlay`, overlay);
+  const result = await apiPatch<ShipOverlayResponse>(`/api/catalog/ships/${pathEncode(id)}/overlay`, overlay);
+  await invalidateForMutation("ship-overlay");
+  return result;
 }
 
-/** Bulk-set officer overlays. */
+/** Bulk-set officer overlays. Invalidates related cache. */
 export async function bulkSetOfficerOverlay(
   refIds: string[],
   overlay: { ownershipState?: OwnershipState; target?: boolean },
 ): Promise<BulkOverlayResponse> {
-  return apiPost<BulkOverlayResponse>("/api/catalog/officers/bulk-overlay", { refIds, ...overlay });
+  const result = await apiPost<BulkOverlayResponse>("/api/catalog/officers/bulk-overlay", { refIds, ...overlay });
+  await invalidateForMutation("bulk-officer-overlay");
+  return result;
 }
 
-/** Bulk-set ship overlays. */
+/** Bulk-set ship overlays. Invalidates related cache. */
 export async function bulkSetShipOverlay(
   refIds: string[],
   overlay: { ownershipState?: OwnershipState; target?: boolean },
 ): Promise<BulkOverlayResponse> {
-  return apiPost<BulkOverlayResponse>("/api/catalog/ships/bulk-overlay", { refIds, ...overlay });
+  const result = await apiPost<BulkOverlayResponse>("/api/catalog/ships/bulk-overlay", { refIds, ...overlay });
+  await invalidateForMutation("bulk-ship-overlay");
+  return result;
 }
