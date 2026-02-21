@@ -132,10 +132,11 @@ Memory is workspace-isolated — Majel's DB lives at `.smartergpt/lex/` and neve
 ## Scripts
 
 ```bash
-npm run dev          # Development server with hot reload (tsx watch)
+npm run dev:full     # Start PostgreSQL + API server + Vite dev server (all-in-one)
+npm run dev          # API server only with hot reload (tsx watch)
 npm run build        # Compile TypeScript + copy static assets
 npm start            # Production server (from dist/)
-npm test             # Run test suite (1,348 server + 54 frontend tests via Vitest)
+npm test             # Run test suite (1,361 server + 174 frontend tests via Vitest)
 npm run typecheck    # Type-check without emitting
 npm run local-ci     # Full CI pipeline: typecheck + coverage + build
 npm run health       # Curl the health endpoint

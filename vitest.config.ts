@@ -16,7 +16,6 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/server/**/*.ts"],
-      exclude: ["src/client/**"],
       reporter: ["text", "text-summary", "lcov"],
       thresholds: {
         // boot() and shutdown() are integration-level (real ports, process.exit)
