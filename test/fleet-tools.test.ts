@@ -453,6 +453,15 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("update_inventory");
   });
 
+  it("includes web_lookup tool with required domain/query params", () => {
+    const names = FLEET_TOOL_DECLARATIONS.map((t) => t.name);
+    expect(names).toContain("web_lookup");
+
+    const lookup = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "web_lookup");
+    expect(lookup?.parameters?.required).toContain("domain");
+    expect(lookup?.parameters?.required).toContain("query");
+  });
+
   it("search tools have required query parameter", () => {
     const searchOfficers = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "search_officers");
     expect(searchOfficers?.parameters?.required).toContain("query");
@@ -496,6 +505,74 @@ describe("executeFleetTool", () => {
     const result = await executeFleetTool("get_fleet_overview", {}, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("DB connection lost");
+  });
+});
+
+describe("web_lookup", () => {
+  it("rejects non-allowlisted domains", async () => {
+    const result = await executeFleetTool("web_lookup", {
+      domain: "example.com",
+      query: "Spock",
+    }, {});
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("not allowlisted");
+  });
+
+  it("returns robots policy error when domain disallows all", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue("User-agent: *\nDisallow: /\n") });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await executeFleetTool("web_lookup", {
+      domain: "stfc.space",
+      query: "Enterprise",
+    }, {});
+
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("robots.txt policy blocks");
+    vi.unstubAllGlobals();
+  });
+
+  it("returns structured fandom result and serves subsequent requests from cache", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue("User-agent: *\nDisallow:\n") })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          query: {
+            pages: {
+              "1": {
+                pageid: 1,
+                title: "Spock",
+                extract: "Spock is a Starfleet officer.",
+              },
+            },
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = await executeFleetTool("web_lookup", {
+      domain: "stfc.fandom.com",
+      query: "Spock",
+      entity_type: "officer",
+    }, {}) as Record<string, unknown>;
+
+    expect(first.error).toBeUndefined();
+    expect(first.tool).toBe("web_lookup");
+    expect((first.cache as Record<string, unknown>).hit).toBe(false);
+    expect((first.result as Record<string, unknown>).title).toBe("Spock");
+
+    const second = await executeFleetTool("web_lookup", {
+      domain: "stfc.fandom.com",
+      query: "Spock",
+      entity_type: "officer",
+    }, {}) as Record<string, unknown>;
+
+    expect(second.error).toBeUndefined();
+    expect((second.cache as Record<string, unknown>).hit).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
   });
 });
 

@@ -258,6 +258,33 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "web_lookup",
+    description:
+      "Lookup structured public STFC reference context from allowlisted community domains only. " +
+      "Respects robots.txt, rate limits requests per domain, and returns deterministic structured summaries (never raw HTML). " +
+      "Use this when the Admiral asks for external community context not present in local reference data.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        domain: {
+          type: Type.STRING,
+          enum: ["stfc.space", "memory-alpha.fandom.com", "stfc.fandom.com"],
+          description: "Allowlisted domain to query.",
+        },
+        query: {
+          type: Type.STRING,
+          description: "Search query or article title, e.g. 'USS Enterprise' or 'Spock'.",
+        },
+        entity_type: {
+          type: Type.STRING,
+          enum: ["officer", "ship", "event", "auto"],
+          description: "Optional semantic hint for parsing strategy.",
+        },
+      },
+      required: ["domain", "query"],
+    },
+  },
+  {
     name: "calculate_upgrade_path",
     description:
       "Estimate resource requirements to upgrade a ship from current tier to a target tier, " +

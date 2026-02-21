@@ -18,6 +18,15 @@ import type { InventoryCategory } from "../../stores/inventory-store.js";
 /** Maximum results for search tools to avoid overwhelming the model context. */
 const SEARCH_LIMIT = 20;
 const RESEARCH_STALE_DAYS = 7;
+const WEB_LOOKUP_ALLOWLIST = new Set(["stfc.space", "memory-alpha.fandom.com", "stfc.fandom.com"]);
+const WEB_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
+const ROBOTS_CACHE_TTL_MS = 60 * 60 * 1000;
+const WEB_LOOKUP_RATE_LIMIT_MAX = 5;
+const WEB_LOOKUP_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+const webLookupCache = new Map<string, { expiresAt: number; payload: object }>();
+const webLookupRateLimit = new Map<string, number[]>();
+const robotsCache = new Map<string, { checkedAt: number; disallowAll: boolean }>();
 
 type ResearchPriority = "none" | "low" | "medium";
 
@@ -257,6 +266,218 @@ function extractBuildCostEntries(raw: unknown): UpgradeRequirement[] {
   }
 
   return requirements;
+}
+
+function normalizeLookupDomain(input: string): string {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed) return "";
+  const withoutProtocol = trimmed.replace(/^https?:\/\//, "");
+  const domain = withoutProtocol.split("/")[0] ?? "";
+  return domain.trim();
+}
+
+function normalizeLookupEntityType(entityType: string | undefined): "officer" | "ship" | "event" | "auto" {
+  const normalized = (entityType ?? "auto").trim().toLowerCase();
+  if (normalized === "officer" || normalized === "ship" || normalized === "event" || normalized === "auto") {
+    return normalized;
+  }
+  return "auto";
+}
+
+function toPlainText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function checkWebLookupRateLimit(domain: string): { allowed: boolean; retryAfterMs?: number } {
+  const now = Date.now();
+  const events = (webLookupRateLimit.get(domain) ?? []).filter((ts) => now - ts < WEB_LOOKUP_RATE_LIMIT_WINDOW_MS);
+  if (events.length >= WEB_LOOKUP_RATE_LIMIT_MAX) {
+    const oldestInWindow = events[0] ?? now;
+    return {
+      allowed: false,
+      retryAfterMs: Math.max(0, WEB_LOOKUP_RATE_LIMIT_WINDOW_MS - (now - oldestInWindow)),
+    };
+  }
+  events.push(now);
+  webLookupRateLimit.set(domain, events);
+  return { allowed: true };
+}
+
+async function checkRobotsAllowed(domain: string): Promise<{ allowed: boolean; source: "cache" | "network"; reason?: string }> {
+  const now = Date.now();
+  const cached = robotsCache.get(domain);
+  if (cached && now - cached.checkedAt < ROBOTS_CACHE_TTL_MS) {
+    return {
+      allowed: !cached.disallowAll,
+      source: "cache",
+      ...(cached.disallowAll ? { reason: "robots_disallow_all" } : {}),
+    };
+  }
+
+  try {
+    const response = await fetch(`https://${domain}/robots.txt`);
+    if (!response.ok) {
+      return { allowed: false, source: "network", reason: `robots_fetch_failed_${response.status}` };
+    }
+    const content = (await response.text()).toLowerCase();
+    const disallowAll = /user-agent:\s*\*[\s\S]*?disallow:\s*\//m.test(content);
+    robotsCache.set(domain, { checkedAt: now, disallowAll });
+    return {
+      allowed: !disallowAll,
+      source: "network",
+      ...(disallowAll ? { reason: "robots_disallow_all" } : {}),
+    };
+  } catch {
+    return { allowed: false, source: "network", reason: "robots_unreachable" };
+  }
+}
+
+async function lookupFandom(
+  domain: string,
+  query: string,
+  entityType: "officer" | "ship" | "event" | "auto",
+): Promise<object> {
+  const url = new URL(`https://${domain}/api.php`);
+  url.searchParams.set("action", "query");
+  url.searchParams.set("prop", "extracts");
+  url.searchParams.set("explaintext", "1");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("redirects", "1");
+  url.searchParams.set("titles", query);
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    return { error: `Lookup failed (${response.status}) for ${domain}` };
+  }
+
+  const payload = await response.json() as {
+    query?: { pages?: Record<string, { pageid?: number; title?: string; extract?: string }> };
+  };
+  const pages = Object.values(payload.query?.pages ?? {});
+  const first = pages.find((page) => (page.extract ?? "").trim().length > 0) ?? pages[0];
+  if (!first) {
+    return { error: `No results found for '${query}' on ${domain}` };
+  }
+
+  const summary = (first.extract ?? "").trim().slice(0, 800);
+  return {
+    source: domain,
+    query,
+    entityType,
+    result: {
+      title: first.title ?? query,
+      pageId: first.pageid ?? null,
+      summary,
+      url: `https://${domain}/wiki/${encodeURIComponent((first.title ?? query).replace(/\s+/g, "_"))}`,
+    },
+  };
+}
+
+async function lookupStfcSpace(
+  domain: string,
+  query: string,
+  entityType: "officer" | "ship" | "event" | "auto",
+): Promise<object> {
+  const response = await fetch(`https://${domain}/search?q=${encodeURIComponent(query)}`);
+  if (!response.ok) {
+    return { error: `Lookup failed (${response.status}) for ${domain}` };
+  }
+
+  const html = await response.text();
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const headingMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const snippetMatch = html.match(/<p[^>]*>([\s\S]{40,600}?)<\/p>/i);
+
+  const title = toPlainText(titleMatch?.[1] ?? query).slice(0, 160);
+  const heading = toPlainText(headingMatch?.[1] ?? "").slice(0, 160);
+  const snippet = toPlainText(snippetMatch?.[1] ?? "").slice(0, 800);
+
+  return {
+    source: domain,
+    query,
+    entityType,
+    result: {
+      title,
+      heading: heading || null,
+      summary: snippet,
+      url: `https://${domain}/search?q=${encodeURIComponent(query)}`,
+    },
+  };
+}
+
+export async function webLookup(
+  domainInput: string,
+  queryInput: string,
+  entityTypeInput: string | undefined,
+): Promise<object> {
+  const domain = normalizeLookupDomain(domainInput);
+  const query = queryInput.trim();
+  const entityType = normalizeLookupEntityType(entityTypeInput);
+
+  if (!domain) {
+    return { error: "domain is required." };
+  }
+  if (!WEB_LOOKUP_ALLOWLIST.has(domain)) {
+    return { error: `Domain '${domain}' is not allowlisted.` };
+  }
+  if (!query) {
+    return { error: "query is required." };
+  }
+
+  const cacheKey = `${domain}|${entityType}|${query.toLowerCase()}`;
+  const cached = webLookupCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return {
+      tool: "web_lookup",
+      cache: { hit: true, ttlMs: cached.expiresAt - Date.now() },
+      ...cached.payload,
+    };
+  }
+
+  const rate = checkWebLookupRateLimit(domain);
+  if (!rate.allowed) {
+    return {
+      error: `Rate limit exceeded for ${domain}.`,
+      retryAfterMs: rate.retryAfterMs ?? 0,
+    };
+  }
+
+  const robots = await checkRobotsAllowed(domain);
+  if (!robots.allowed) {
+    return {
+      error: `robots.txt policy blocks lookup for ${domain}.`,
+      robots,
+    };
+  }
+
+  const payload = domain.endsWith("fandom.com")
+    ? await lookupFandom(domain, query, entityType)
+    : await lookupStfcSpace(domain, query, entityType);
+
+  const result = {
+    tool: "web_lookup",
+    cache: { hit: false, ttlMs: WEB_LOOKUP_CACHE_TTL_MS },
+    robots,
+    ...payload,
+  };
+
+  if (!("error" in result)) {
+    webLookupCache.set(cacheKey, {
+      expiresAt: Date.now() + WEB_LOOKUP_CACHE_TTL_MS,
+      payload,
+    });
+  }
+
+  return result;
 }
 
 function aggregateRequirements(entries: UpgradeRequirement[]): UpgradeRequirement[] {

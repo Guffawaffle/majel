@@ -29,6 +29,7 @@ import {
   listIntents,
   listResearch,
   listInventory,
+  webLookup,
   calculateUpgradePath,
   estimateAcquisitionTime,
   calculateTruePower,
@@ -128,6 +129,12 @@ async function dispatchTool(
       );
     case "list_inventory":
       return listInventory(args.category as string | undefined, args.query as string | undefined, ctx);
+    case "web_lookup":
+      return webLookup(
+        String(args.domain ?? ""),
+        String(args.query ?? ""),
+        args.entity_type as string | undefined,
+      );
     case "calculate_upgrade_path":
       return calculateUpgradePath(
         String(args.ship_id ?? ""),
