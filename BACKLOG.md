@@ -207,12 +207,12 @@ Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, rep
 
 - [x] Cloud CLI: merge `COMMAND_ARGS` into `CommandDef` interface (F5)
 - [x] Cloud CLI: `shellSplit` should handle double quotes or warn (F6)
-- [ ] API: auto-generate discovery from Express router introspection (F4 long-term fix)
-- [ ] API: define `HealthResponse` type to guard contract (E4)
+- [x] API: auto-generate discovery from Express router introspection (F4 long-term fix) *(fixed 2026-02-21: `collectApiRoutes()` + discovery generation in `src/server/routes/core.ts`)*
+- [x] API: define `HealthResponse` type to guard contract (E4) *(fixed 2026-02-21: explicit `HealthResponse` contract in `src/server/routes/core.ts`)*
 - [x] API: type `res.locals` via Express module augmentation (E5)
 - [x] API: `ErrorCode` namespace convention for module-specific codes (E2)
 - [x] Shared AX types between CLI and API (E3)
-- [ ] Integration test: discovery endpoints match actual Express routes
+- [x] Integration test: discovery endpoints match actual Express routes *(fixed 2026-02-21: `test/api.test.ts` route parity assertion using introspection)*
 
 ---
 

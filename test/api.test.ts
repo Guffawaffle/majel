@@ -13,6 +13,7 @@ import type { MemoryService, Frame } from "../src/server/services/memory.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
 import { makeState } from "./helpers/make-state.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
+import { collectApiRoutes } from "../src/server/route-introspection.js";
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -648,6 +649,20 @@ describe("GET /api", () => {
       expect(endpoint.path).toBeDefined();
       expect(endpoint.description).toBeDefined();
     }
+  });
+
+  it("matches all registered Express /api routes", async () => {
+    const app = createApp(makeState());
+    const res = await testRequest(app).get("/api");
+
+    const discoveryRoutes = (res.body.data.endpoints as Array<{ method: string; path: string }>)
+      .map((endpoint) => `${endpoint.method.toUpperCase()} ${endpoint.path}`)
+      .sort();
+    const runtimeRoutes = collectApiRoutes(app)
+      .map((route) => `${route.method} ${route.path}`)
+      .sort();
+
+    expect(discoveryRoutes).toEqual(runtimeRoutes);
   });
 });
 
