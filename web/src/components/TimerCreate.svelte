@@ -38,7 +38,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="timer-create" onkeydown={handleKeydown} role="dialog" aria-modal="true" aria-label="New Timer">
+<div class="timer-create" onkeydown={handleKeydown} role="dialog" aria-modal="true" aria-label="New Timer" tabindex="-1">
   <div class="create-header">
     <span class="create-title">New Timer</span>
     <button class="btn-icon" onclick={onclose} aria-label="Close">✕</button>
@@ -61,8 +61,8 @@
     </div>
 
     <div class="form-row">
-      <label class="form-label">Duration</label>
-      <div class="duration-inputs">
+      <span class="form-label" id="duration-label">Duration</span>
+      <div class="duration-inputs" role="group" aria-labelledby="duration-label">
         <label class="dur-field">
           <input class="form-input dur-num" type="number" min="0" max="99" bind:value={hours} />
           <span class="dur-unit">h</span>
