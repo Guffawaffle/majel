@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-20 | Branch: `main`
+> Updated: 2026-02-21 | Branch: `main`
 
 ---
 
@@ -136,12 +136,14 @@ Implement IndexedDB cache with stale-while-revalidate strategy. Eliminates redun
 
 | Issue | Phase | Title | Status |
 |---|---|---|---|
-| #107 | 1 | IDB engine + catalog data caching | [ ] Not started |
+| #107 | 1 | IDB engine + catalog data caching | [x] Done (eb1de1f) |
 | #108 | 2 | Crew entities + invalidation rules | [ ] Not started |
 | #109 | 3 | Optimistic updates + offline indicators | [ ] Not started |
 | #110 | 4 | Settings, ETag, multi-tab, metrics | [ ] Not started |
 
 **Target:** 0 network calls on tab switch, FleetView < 200ms, < 500 KB bandwidth per session.
+
+**Phase 1 delivered:** `idb-cache.ts` (283 LOC), `cached-fetch.ts` (140), `cache-keys.ts` (87), `cache-store.svelte.ts` (66), `index.ts` (33) + 3 test files (43 tests). Wired into `catalog.ts`, `App.svelte`, `Sidebar.svelte`.
 
 ---
 
@@ -151,11 +153,13 @@ Implement IndexedDB cache with stale-while-revalidate strategy. Eliminates redun
 
 Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, repeating mode, persistent top bar. Used for ship travel timers, resource refresh cycles, event cadence.
 
-- [ ] Timer store + tick engine + localStorage persistence
-- [ ] Web Audio API sound definitions (10 LCARS-themed sounds)
-- [ ] TimerBar / TimerPill / TimerDetail / TimerCreate components
-- [ ] Wire into App.svelte above view router
-- [ ] Tests
+- [~] Timer store + tick engine + localStorage persistence
+- [~] Web Audio API sound definitions (10 LCARS-themed sounds)
+- [~] TimerBar / TimerPill / TimerDetail / TimerCreate components
+- [~] Wire into App.svelte above view router
+- [~] Tests
+
+**Status:** Copilot agent PR #112 (draft) — 11 files, +1,620 lines, 36 tests. Needs review + CI validation.
 
 ---
 
@@ -179,6 +183,11 @@ Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, rep
 - [x] README dependency table missing `pg`, `cookie-parser`
 - [x] CONTRIBUTING.md "What We're NOT Accepting" section is stale (auth, cloud, model selector all exist now)
 - [ ] CONTRIBUTING.md says "No linter configured" — this should be revisited
+
+### Security
+- [x] **minimatch ReDoS (GHSA-3ppc-4f35-3m26):** 7 high-severity transitive deps via typescript-eslint → resolved via `overrides` in package.json (04ded17)
+- [x] **ajv moderate vulnerability:** resolved via `npm audit fix` (04ded17)
+- [x] **xlsx prototype pollution (GHSA-4r6h-8v6p-xvw6):** no upstream fix from SheetJS — feature-flagged at server validation layer + UI picker restricted to CSV-only (ae9e866)
 
 ---
 

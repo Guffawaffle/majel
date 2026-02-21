@@ -7,6 +7,7 @@
   import { getUser, hasRole, logout } from "../lib/auth.svelte.js";
   import { checkHealth as apiCheckHealth } from "../lib/api/health.js";
   import { getSessionId } from "../lib/chat.svelte.js";
+  import { getCacheReady, getCacheError, teardownCache } from "../lib/cache/index.js";
   import {
     getSessions,
     refreshSessions,
@@ -66,6 +67,7 @@
   }
 
   async function handleLogout() {
+    teardownCache();
     await logout();
   }
 </script>
@@ -143,6 +145,10 @@
     <div class="sidebar-status">
       <span class="status-dot {healthStatus}"></span>
       <span class="status-text">{healthText}</span>
+    </div>
+    <div class="sidebar-status">
+      <span class="status-dot {getCacheReady() ? 'online' : getCacheError() ? 'offline' : 'loading'}"></span>
+      <span class="status-text">{getCacheReady() ? 'Cache' : getCacheError() ?? 'Cache…'}</span>
     </div>
     {#if getUser()}
       <div class="sidebar-meta">
