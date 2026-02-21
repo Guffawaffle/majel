@@ -30,3 +30,10 @@ export type { CachedResult, RevalidateCallback } from "./cached-fetch.js";
 
 // Svelte reactive store
 export { initCache, teardownCache, getCacheReady, getCacheError } from "./cache-store.svelte.js";
+
+// Optimistic mutation helpers (Phase 3)
+export { optimisticCreate, optimisticUpdate, optimisticDelete } from "./optimistic.js";
+
+// Sync queue (Phase 3)
+export { getQueue, isReplaying, enqueue, dequeue, clearQueue, replayQueue } from "./sync-queue.svelte.js";
+export type { QueuedMutation } from "./sync-queue.svelte.js";
