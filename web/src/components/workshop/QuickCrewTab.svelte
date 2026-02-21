@@ -63,6 +63,8 @@
       .sort((a, b) => a.name.localeCompare(b.name)),
   );
 
+  const officerById = $derived(new Map(ownedOfficers.map((o) => [o.id, o])));
+
   const selectedShip = $derived(ships.find((ship) => ship.id === shipId));
 
   const recommendations = $derived.by(() => {
@@ -120,6 +122,19 @@
 
   const maxPower = $derived(Math.max(...ownedOfficers.map((officer) => officer.userPower ?? 0), 1));
 
+  /** Collect synergyIds of already-selected crew (excluding the slot being picked). */
+  const selectedSynergyIds = $derived.by(() => {
+    const ids = new Set<number>();
+    for (const s of SLOTS) {
+      if (s === ui.pickerSlot) continue;
+      const oid = ui.selectedSlots[s];
+      if (!oid) continue;
+      const o = officerById.get(oid);
+      if (o?.synergyId) ids.add(o.synergyId);
+    }
+    return ids;
+  });
+
   const pickerList = $derived.by(() => {
     const slot = ui.pickerSlot;
     if (!slot) return [];
@@ -140,9 +155,13 @@
           slot,
         });
         const total = Math.round((score.goalFit + score.shipFit + score.counterFit + score.readiness + score.reservation + score.captainBonus) * 10) / 10;
-        return { officer, total, score };
+        const hasSynergy = Boolean(officer.synergyId && selectedSynergyIds.has(officer.synergyId));
+        return { officer, total, score, hasSynergy };
       })
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => {
+        if (a.hasSynergy !== b.hasSynergy) return a.hasSynergy ? -1 : 1;
+        return b.total - a.total;
+      })
       .slice(0, 28);
   });
 
@@ -167,6 +186,16 @@
   function pickFromTray(officerId: string) {
     if (!ui.pickerSlot) return;
     chooseOfficer(ui.pickerSlot, officerId);
+  }
+
+  function slotGroupName(slot: BridgeSlot): string | null {
+    const id = ui.selectedSlots[slot];
+    if (!id) return null;
+    return officerById.get(id)?.groupName ?? null;
+  }
+
+  function handleBackdropKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape") send({ type: "picker/close" });
   }
 
   function trioValid(): boolean {
@@ -306,20 +335,36 @@
         <h4 class="qc-heading">Selected Crew</h4>
         <div class="qc-slots">
           {#each SLOTS as slot}
-            <div class="qc-slot-card">
+            {@const group = slotGroupName(slot)}
+            <button
+              class="qc-slot-card"
+              type="button"
+              onclick={() => openPicker(slot)}
+              aria-label={ui.selectedSlots[slot]
+                ? `Change ${SLOT_LABEL[slot]}: ${findOfficerName(officers, ui.selectedSlots[slot])}`
+                : `Pick ${SLOT_LABEL[slot]}`}
+            >
               <div class="qc-slot-header">
                 <span>{SLOT_LABEL[slot]}</span>
-                <div class="qc-slot-actions">
-                  <button class="ws-action" onclick={() => openPicker(slot)}>Pick</button>
-                  {#if ui.selectedSlots[slot]}
-                    <button class="ws-action ws-action-danger" onclick={() => clearSlot(slot)}>Clear</button>
-                  {/if}
-                </div>
+                {#if group}
+                  <span class="qc-slot-group">{group}</span>
+                {/if}
               </div>
               <div class="qc-slot-value">
-                {ui.selectedSlots[slot] ? findOfficerName(officers, ui.selectedSlots[slot]) : "Unassigned"}
+                <span class="qc-slot-name">{ui.selectedSlots[slot] ? findOfficerName(officers, ui.selectedSlots[slot]) : "Unassigned"}</span>
+                {#if ui.selectedSlots[slot]}
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <span
+                    class="qc-slot-remove"
+                    role="button"
+                    tabindex="0"
+                    aria-label={`Remove ${findOfficerName(officers, ui.selectedSlots[slot])} from ${SLOT_LABEL[slot]}`}
+                    onclick={(e) => { e.stopPropagation(); clearSlot(slot); }}
+                    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); clearSlot(slot); } }}
+                  >×</span>
+                {/if}
               </div>
-            </div>
+            </button>
           {/each}
         </div>
 
@@ -362,12 +407,18 @@
   {/if}
 
   {#if ui.pickerSlot}
-    <div class="ws-form qc-picker">
-      <div class="ws-toolbar qc-picker-toolbar">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="qc-backdrop"
+      onclick={() => send({ type: "picker/close" })}
+      onkeydown={handleBackdropKeydown}
+    ></div>
+    <div class="qc-modal" role="dialog" aria-modal="true" aria-label={`Pick ${SLOT_LABEL[ui.pickerSlot]}`}>
+      <div class="qc-modal-header">
         <h4>Pick {SLOT_LABEL[ui.pickerSlot]}</h4>
-        <button class="ws-btn ws-btn-cancel" onclick={() => send({ type: "picker/close" })}>Close</button>
+        <button class="ws-btn ws-btn-cancel" onclick={() => send({ type: "picker/close" })} aria-label="Close picker">×</button>
       </div>
-      <label class="ws-field ws-wide">
+      <label class="ws-field ws-wide qc-modal-search">
         <span>Search</span>
         <input
           type="text"
@@ -378,8 +429,13 @@
       </label>
       <div class="qc-picker-list">
         {#each pickerList as item}
-          <button class="qc-pick" onclick={() => pickFromTray(item.officer.id)}>
-            <span class="qc-pick-name">{item.officer.name}</span>
+          <button class="qc-pick" class:qc-pick-synergy={item.hasSynergy} onclick={() => pickFromTray(item.officer.id)}>
+            <span class="qc-pick-name">
+              {item.officer.name}
+              {#if item.hasSynergy}
+                <span class="qc-synergy-badge">synergy</span>
+              {/if}
+            </span>
             <span class="qc-pick-score">{item.total}</span>
             <span class="qc-pick-meta">
               goal {item.score.goalFit} · ship {item.score.shipFit} · counter {item.score.counterFit} · ready {item.score.readiness} · res {item.score.reservation}
