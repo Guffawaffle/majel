@@ -3,13 +3,14 @@
   Phase 1 (#96) of the Svelte migration.
 -->
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import TitleBar from "./components/TitleBar.svelte";
   import HelpPanel from "./components/HelpPanel.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { getCurrentView, views } from "./lib/router.svelte.js";
-  import { fetchMe, isLoading, getError, hasRole } from "./lib/auth.svelte.js";
+  import { fetchMe, isLoading, getError, hasRole, getUser } from "./lib/auth.svelte.js";
+  import { initCache, teardownCache } from "./lib/cache/index.js";
   import type { Role } from "./lib/types.js";
 
   import ChatView from "./views/ChatView.svelte";
@@ -44,8 +45,16 @@
     }
   }
 
-  onMount(() => {
-    fetchMe();
+  onMount(async () => {
+    await fetchMe();
+    const user = getUser();
+    if (user) {
+      await initCache(user.id);
+    }
+  });
+
+  onDestroy(() => {
+    teardownCache();
   });
 </script>
 
