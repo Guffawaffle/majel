@@ -68,6 +68,9 @@ jobs:
       - name: Test with coverage
         run: npx vitest run --coverage
 
+      - name: Test (web)
+        run: npm run test:web
+
       - name: Build
         run: npm run build
 
