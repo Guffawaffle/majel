@@ -14,7 +14,7 @@ import { makeState } from "./helpers/make-state.js";
 import { createCrewStore, type CrewStore } from "../src/server/stores/crew-store.js";
 import { createReceiptStore, type ReceiptStore } from "../src/server/stores/receipt-store.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
-import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
+import { createTestPool, truncatePublicTables, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;
 beforeAll(() => { pool = createTestPool(); });
@@ -103,11 +103,14 @@ describe("Crew routes — live store", () => {
   let receiptStore: ReceiptStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     crewStore = await createCrewStore(pool);
     receiptStore = await createReceiptStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     app = createApp(makeState({ crewStore, receiptStore, referenceStore: refStore }));
 
     // Seed reference data for FK targets
@@ -516,9 +519,12 @@ describe("Receipt routes — live store", () => {
   let app: Express;
   let receiptStore: ReceiptStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     receiptStore = await createReceiptStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     app = createApp(makeState({ receiptStore }));
   });
 

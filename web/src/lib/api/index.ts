@@ -14,6 +14,7 @@ export { checkHealth } from "./health.js";
 export { sendChat, loadHistory, searchRecall } from "./chat.js";
 export { fetchSessions, restoreSession, deleteSession } from "./sessions.js";
 export { saveFleetSetting, loadFleetSettings, loadSetting } from "./settings.js";
+export { loadUserSetting, saveUserSetting } from "./user-settings.js";
 export { fetchModels, selectModel } from "./models.js";
 export {
   fetchCatalogOfficers,
@@ -95,3 +96,10 @@ export {
   fetchDiagnosticSchema,
   executeDiagnosticQuery,
 } from "./diagnostic.js";
+export {
+  analyzeImportFile,
+  parseImportFile,
+  mapImportRows,
+  resolveImportRows,
+  commitImportRows,
+} from "./imports.js";

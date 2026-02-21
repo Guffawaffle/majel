@@ -71,9 +71,6 @@ export interface ReceiptStore {
 // ═══════════════════════════════════════════════════════════
 
 const SCHEMA_STATEMENTS = [
-  // Drop + recreate with user_id (#94)
-  `DROP TABLE IF EXISTS import_receipts CASCADE`,
-
   `CREATE TABLE IF NOT EXISTS import_receipts (
     id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL DEFAULT 'local',

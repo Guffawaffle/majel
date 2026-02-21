@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { createCrewStore, type CrewStore } from "../src/server/stores/crew-store.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
-import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
+import { createTestPool, truncatePublicTables, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;
 beforeAll(() => { pool = createTestPool(); });
@@ -50,10 +50,13 @@ describe("CrewStore — Bridge Cores", () => {
   let store: CrewStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedBaseData(refStore);
   });
 
@@ -162,10 +165,13 @@ describe("CrewStore — Bridge Cores", () => {
 describe("CrewStore — Below Deck Policies", () => {
   let store: CrewStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
   });
 
   it("creates a below deck policy", async () => {
@@ -236,10 +242,13 @@ describe("CrewStore — Loadouts", () => {
   let store: CrewStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedBaseData(refStore);
   });
 
@@ -370,10 +379,13 @@ describe("CrewStore — Loadout Variants", () => {
   let refStore: ReferenceStore;
   let baseLoadoutId: number;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedBaseData(refStore);
     const loadout = await store.createLoadout({ shipId: "vidar", name: "Base" });
     baseLoadoutId = loadout.id;
@@ -457,10 +469,13 @@ describe("CrewStore — Loadout Variants", () => {
 describe("CrewStore — Docks", () => {
   let store: CrewStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
   });
 
   it("upserts a dock", async () => {
@@ -516,10 +531,13 @@ describe("CrewStore — Fleet Presets", () => {
   let store: CrewStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedBaseData(refStore);
   });
 
@@ -611,10 +629,13 @@ describe("CrewStore — Plan Items", () => {
   let store: CrewStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedBaseData(refStore);
   });
 
@@ -685,10 +706,13 @@ describe("CrewStore — Officer Reservations", () => {
   let store: CrewStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedBaseData(refStore);
   });
 
@@ -742,10 +766,13 @@ describe("CrewStore — resolveVariant", () => {
   let store: CrewStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedBaseData(refStore);
   });
 
@@ -849,10 +876,13 @@ describe("CrewStore — getEffectiveDockState", () => {
   let store: CrewStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     store = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedBaseData(refStore);
   });
 

@@ -81,6 +81,7 @@ import { createAdmiralRoutes } from "./routes/admiral.js";
 import { createTargetRoutes } from "./routes/targets.js";
 import { createCrewRoutes } from "./routes/crews.js";
 import { createReceiptRoutes } from "./routes/receipts.js";
+import { createImportRoutes } from "./routes/imports.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -272,6 +273,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createTargetRoutes(appState));
   app.use(createCrewRoutes(appState));
   app.use(createReceiptRoutes(appState));
+  app.use(createImportRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
   app.get("/app/{*splat}", (_req, res) => {

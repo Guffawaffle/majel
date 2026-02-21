@@ -2,8 +2,8 @@
  * pg-test.ts — PostgreSQL test helper for Vitest.
  *
  * Provides a shared pool factory and database cleanup utility.
- * Each test file creates a pool in beforeAll, drops all tables in
- * beforeEach (store factories recreate via initSchema), and drains
+ * Each test file creates a pool in beforeAll, resets the public schema in
+ * beforeEach (store factories recreate schema via initSchema), and drains
  * the pool in afterAll.
  *
  * Connection: TEST_DATABASE_URL env var, or defaults to local docker-compose PG.
@@ -24,19 +24,34 @@ export function createTestPool(): Pool {
 }
 
 /**
- * Drop every table in the public schema (CASCADE).
- * Store factories will recreate them via initSchema.
+ * Reset the public schema completely.
+ * This avoids expensive per-table loops while preserving strong isolation.
  */
 export async function cleanDatabase(pool: Pool): Promise<void> {
   await pool.query(`
-    DO $$ DECLARE
-      r RECORD;
-    BEGIN
-      FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-        EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-      END LOOP;
-    END $$;
+    DROP SCHEMA IF EXISTS public CASCADE;
+    CREATE SCHEMA public;
   `);
+}
+
+/**
+ * Truncate all public schema tables and reset identities.
+ * Use when schema is initialized once and tests only need data isolation.
+ */
+export async function truncatePublicTables(pool: Pool): Promise<void> {
+  const result = await pool.query<{ tablename: string }>(`
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+  `);
+
+  if (result.rows.length === 0) return;
+
+  const tableList = result.rows
+    .map((row) => `"${row.tablename.replace(/"/g, '""')}"`)
+    .join(", ");
+
+  await pool.query(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
 }
 
 export type { Pool };

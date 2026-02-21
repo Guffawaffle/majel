@@ -479,6 +479,68 @@ export interface ViewDef {
   gate?: "admiral";
 }
 
+// ─── Import Analysis ───────────────────────────────────────
+
+export interface ImportMappingSuggestion {
+  sourceColumn: string;
+  suggestedField: string | null;
+  confidence: "high" | "medium" | "low";
+  reason: string;
+}
+
+export interface ImportAnalysis {
+  fileName: string;
+  format: "csv" | "xlsx";
+  rowCount: number;
+  headers: string[];
+  sampleRows: string[][];
+  candidateFields: string[];
+  suggestions: ImportMappingSuggestion[];
+}
+
+export interface ParsedImportData {
+  fileName: string;
+  format: "csv" | "xlsx";
+  headers: string[];
+  rows: string[][];
+  sampleRows: string[][];
+  rowCount: number;
+}
+
+export interface MappedImportRow {
+  rowIndex: number;
+  officerId?: string;
+  officerName?: string;
+  officerLevel?: number | null;
+  officerRank?: string | null;
+  officerPower?: number | null;
+  officerOwned?: boolean | null;
+  shipId?: string;
+  shipName?: string;
+  shipLevel?: number | null;
+  shipTier?: number | null;
+  shipPower?: number | null;
+  shipOwned?: boolean | null;
+}
+
+export interface ResolveCandidate {
+  id: string;
+  name: string;
+  score: number;
+}
+
+export interface UnresolvedImportItem {
+  rowIndex: number;
+  entityType: "officer" | "ship";
+  rawValue: string;
+  candidates: ResolveCandidate[];
+}
+
+export interface ResolvedImportRow extends MappedImportRow {
+  officerRefId?: string | null;
+  shipRefId?: string | null;
+}
+
 // ─── Import Receipts ────────────────────────────────────────
 
 /** Server-side import receipt shape. */
@@ -486,11 +548,11 @@ export interface ImportReceipt {
   id: number;
   sourceType: string;
   sourceMeta: Record<string, unknown>;
-  mapping: Record<string, unknown>;
+  mapping: Record<string, unknown> | null;
   layer: string;
   changeset: { added?: unknown[]; updated?: unknown[]; removed?: unknown[] };
   inverse: { added?: unknown[]; updated?: unknown[]; removed?: unknown[] };
-  unresolved: unknown[];
+  unresolved: unknown[] | null;
   createdAt: string;
 }
 

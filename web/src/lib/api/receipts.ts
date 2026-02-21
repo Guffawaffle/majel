@@ -19,12 +19,14 @@ export async function fetchReceipts(filters?: ReceiptFilters): Promise<ImportRec
 
 /** Fetch a single receipt by ID. */
 export async function fetchReceipt(id: string): Promise<ImportReceipt> {
-  return apiFetch<ImportReceipt>(`/api/import/receipts/${pathEncode(id)}`);
+  const data = await apiFetch<{ receipt: ImportReceipt }>(`/api/import/receipts/${pathEncode(id)}`);
+  return data.receipt;
 }
 
 /** Undo an import receipt. */
 export async function undoReceipt(id: string): Promise<UndoReceiptResult> {
-  return apiPost<UndoReceiptResult>(`/api/import/receipts/${pathEncode(id)}/undo`, {});
+  const data = await apiPost<{ undo: UndoReceiptResult }>(`/api/import/receipts/${pathEncode(id)}/undo`, {});
+  return data.undo;
 }
 
 /** Resolve conflicting items in a receipt. */
@@ -32,5 +34,6 @@ export async function resolveReceiptItems(
   id: string,
   resolvedItems: unknown,
 ): Promise<ImportReceipt> {
-  return apiPost<ImportReceipt>(`/api/import/receipts/${pathEncode(id)}/resolve`, { resolvedItems });
+  const data = await apiPost<{ receipt: ImportReceipt }>(`/api/import/receipts/${pathEncode(id)}/resolve`, { resolvedItems });
+  return data.receipt;
 }

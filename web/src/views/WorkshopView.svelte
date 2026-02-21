@@ -24,15 +24,17 @@
   import LoadoutsTab from "../components/workshop/LoadoutsTab.svelte";
   import PoliciesTab from "../components/workshop/PoliciesTab.svelte";
   import ReservationsTab from "../components/workshop/ReservationsTab.svelte";
+  import ImportsTab from "../components/workshop/ImportsTab.svelte";
 
   // ── Shared state ──
 
-  type TabId = "cores" | "loadouts" | "policies" | "reservations";
+  type TabId = "cores" | "loadouts" | "policies" | "reservations" | "imports";
   const TABS: { id: TabId; label: string; icon: string }[] = [
     { id: "cores", label: "Cores", icon: "👥" },
     { id: "loadouts", label: "Loadouts", icon: "📋" },
     { id: "policies", label: "Policies", icon: "📏" },
     { id: "reservations", label: "Reservations", icon: "🔒" },
+    { id: "imports", label: "Imports", icon: "📥" },
   ];
 
   let activeTab = $state<TabId>("cores");
@@ -131,6 +133,8 @@
           {officers}
           onRefresh={refresh}
         />
+      {:else if activeTab === "imports"}
+        <ImportsTab onCommitted={refresh} />
       {/if}
     </div>
   {/if}

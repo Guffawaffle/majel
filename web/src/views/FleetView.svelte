@@ -21,6 +21,7 @@
     setReservation,
     deleteReservation,
   } from "../lib/api/crews.js";
+  import { loadUserSetting, saveUserSetting } from "../lib/api/user-settings.js";
   import type {
     CatalogOfficer,
     CatalogShip,
@@ -65,6 +66,8 @@
   let editingReservation = $state<string | null>(null);
   let reservationText = $state("");
   let reservationLocked = $state(false);
+
+  const FLEET_VIEW_MODE_KEY = "display.fleetViewMode";
 
   // ── Derived ──
 
@@ -151,7 +154,7 @@
       }
 
       // Effective state — dock assignments
-      for (const entry of effective.docks) {
+      for (const entry of effective?.docks ?? []) {
         if (entry.loadout) {
           const ld = entry.loadout as { shipId?: string; name?: string };
           if (ld.shipId) {
@@ -164,7 +167,7 @@
 
       // Conflicts
       const oConflicts = new Map<string, OfficerConflict>();
-      for (const c of effective.conflicts) {
+      for (const c of effective?.conflicts ?? []) {
         oConflicts.set(c.officerId, c);
       }
 
@@ -216,6 +219,16 @@
     } else {
       sortField = field;
       sortDir = "asc";
+    }
+  }
+
+  async function setViewMode(mode: "cards" | "list") {
+    if (viewMode === mode) return;
+    viewMode = mode;
+    try {
+      await saveUserSetting(FLEET_VIEW_MODE_KEY, mode);
+    } catch (err) {
+      console.error("Failed to persist fleet view mode:", err);
     }
   }
 
@@ -353,7 +366,13 @@
 
   // ── Lifecycle ──
 
-  onMount(() => { refresh(); });
+  onMount(() => {
+    void (async () => {
+      const savedMode = await loadUserSetting(FLEET_VIEW_MODE_KEY, "cards");
+      viewMode = savedMode === "list" ? "list" : "cards";
+      await refresh();
+    })();
+  });
 
   onDestroy(() => {
     for (const t of saveTimers.values()) clearTimeout(t);
@@ -422,13 +441,13 @@
       <button
         class="fleet-view-btn"
         class:active={viewMode === "cards"}
-        onclick={() => { viewMode = "cards"; }}
+        onclick={() => { void setViewMode("cards"); }}
         aria-label="Card view"
       >▦</button>
       <button
         class="fleet-view-btn"
         class:active={viewMode === "list"}
-        onclick={() => { viewMode = "list"; }}
+        onclick={() => { void setViewMode("list"); }}
         aria-label="List view"
       >☰</button>
     </div>
