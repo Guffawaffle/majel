@@ -22,6 +22,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **43 tests** across 3 test files — IDB engine, cached fetch, cache keys
 - **Integration** — wired into `catalog.ts`, `App.svelte`, `Sidebar.svelte`
 
+#### Local-First Data Cache — Phase 2 (#108)
+- **Crew entity caching** — all 13 crew GET functions routed through `cachedFetch(TTL.COMPOSITION)`: bridge cores, loadouts, variants, below-deck policies, docks, fleet presets, plan items, officer reservations, effective state
+- **Invalidation rules** — 18 crew mutation functions call `invalidateForMutation()` with 9 mutation types mapped to precise cache key prefixes; import-commit flushes all catalog + crew caches
+- **11 new tests** — crew key generation, invalidation map coverage
+
+#### Local-First Data Cache — Phase 3 (#109)
+- **Optimistic mutation helpers** (`optimistic.ts`, 89 LOC) — `optimisticCreate`, `optimisticUpdate`, `optimisticDelete` with snapshot + rollback on failure
+- **Network status store** (`network-status.svelte.ts`) — reactive `navigator.onLine` + online/offline event listeners
+- **Sync queue** (`sync-queue.svelte.ts`, 82 LOC) — in-memory mutation queue with replay on reconnect
+- **OfflineBanner component** — "Offline — viewing cached data" banner + pending mutation count + "Sync now" button; auto-replays on reconnect
+- **20 new tests** — 6 optimistic, 12 sync-queue, 2 network-status
+
+#### Local-First Data Cache — Phase 4 (#110)
+- **Settings cache** — `loadFleetSettings`, `loadSetting`, `loadUserSetting` routed through `cachedFetch(TTL.COMPOSITION)`; save mutations invalidate cache
+- **ETag/If-None-Match** — `sendOk()` computes weak ETag from data payload on GET requests, returns 304 when match; browser HTTP cache handles conditional revalidation transparently
+- **Cache hygiene** — startup purge increased from 48h to 7 days; `clearCacheOnLogout()` clears IDB + resets metrics
+- **BroadcastChannel multi-tab** — `invalidateForMutation` broadcasts patterns to other tabs via `majel-cache` channel; receiving tabs invalidate local IDB entries
+- **Performance metrics** (`cache-metrics.ts`) — hit/miss/revalidation counters + bandwidth estimation; wired into `cachedFetch`
+- **Diagnostics Cache tab** — hit rate, miss rate, revalidations, bandwidth saved, clear/refresh buttons in DiagnosticsView
+- **15 new tests** — 6 metrics, 6 broadcast, 3 settings key/invalidation
+
+#### Multi-Timer Overlay (ADR-033, #111)
+- **Timer store** (`timer.svelte.ts`, 219 LOC) — up to 10 concurrent timers, 250ms tick engine, localStorage persistence, Svelte 5 rune-based state
+- **Web Audio sounds** (`timer-audio.ts`, 217 LOC) — 10 procedural LCARS-themed alert sounds via Web Audio API
+- **UI components** — `TimerBar` (persistent top bar), `TimerPill` (compact badge), `TimerDetail` (expanded view), `TimerCreate` (form)
+- **31 tests** — 21 timer store, 10 audio engine
+
 ### Fixed
 
 #### Security
