@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://majel.dev/schemas/translator-config.schema.json",
+  "title": "TranslatorConfig",
+  "description": "Configuration for translating an external game data source into MajelGameExport format. Each .translator.json file maps one external source — no code changes needed to add new sources.",
+  "type": "object",
+  "required": ["name", "version", "sourceType"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this translator (e.g. 'Ripper Command Center')."
+    },
+    "version": {
+      "type": "string",
+      "description": "Translator config version (e.g. '1.0'). Used for forward compatibility."
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Optional description of the external source this translator handles."
+    },
+    "sourceType": {
+      "type": "string",
+      "description": "Source identifier used in MajelGameExport.source and receipt tracking (e.g. 'command-center', 'stfc-space')."
+    },
+    "officers": {
+      "$ref": "#/$defs/entityMapping",
+      "description": "Mapping config for officer entities."
+    },
+    "ships": {
+      "$ref": "#/$defs/entityMapping",
+      "description": "Mapping config for ship entities."
+    },
+    "docks": {
+      "$ref": "#/$defs/dockMapping",
+      "description": "Mapping config for dock assignments."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entityMapping": {
+      "type": "object",
+      "description": "Maps an array of external entity objects to MajelGameExport entities (officers or ships).",
+      "required": ["sourcePath", "idField", "idPrefix", "fieldMap"],
+      "properties": {
+        "sourcePath": {
+          "type": "string",
+          "description": "Dot-notation JSON path to the source array in the external payload (e.g. 'data.officers', 'officers')."
+        },
+        "idField": {
+          "type": "string",
+          "description": "Field name in the source object that holds the entity ID (e.g. 'officer_id', 'ship_id')."
+        },
+        "idPrefix": {
+          "type": "string",
+          "description": "Majel refId prefix prepended to the source ID (e.g. 'cdn:officer:', 'cdn:ship:')."
+        },
+        "fieldMap": {
+          "type": "object",
+          "description": "Maps source field names to MajelGameExport field names (e.g. { \"lvl\": \"level\", \"rnk\": \"rank\" }).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Default values for fields not present in the source data (e.g. { \"owned\": true }).",
+          "additionalProperties": true
+        },
+        "transforms": {
+          "type": "object",
+          "description": "Per-field transform rules keyed by target field name.",
+          "additionalProperties": {
+            "$ref": "#/$defs/fieldTransform"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "dockMapping": {
+      "type": "object",
+      "description": "Maps external dock/slot data to MajelGameExport dock assignments. Docks use number + shipId rather than a refId.",
+      "required": ["sourcePath", "fieldMap"],
+      "properties": {
+        "sourcePath": {
+          "type": "string",
+          "description": "Dot-notation JSON path to the source array in the external payload (e.g. 'data.docks', 'docks')."
+        },
+        "fieldMap": {
+          "type": "object",
+          "description": "Maps source field names to MajelGameExport dock field names (e.g. { \"slot\": \"number\", \"ship_ref\": \"shipId\" }).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "shipIdPrefix": {
+          "type": ["string", "null"],
+          "description": "Optional prefix for shipId values (e.g. 'cdn:ship:'). Applied to the mapped shipId field."
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Default values for fields not present in the source data.",
+          "additionalProperties": true
+        },
+        "transforms": {
+          "type": "object",
+          "description": "Per-field transform rules keyed by target field name.",
+          "additionalProperties": {
+            "$ref": "#/$defs/fieldTransform"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "fieldTransform": {
+      "type": "object",
+      "description": "A transform rule applied to a single field value during translation.",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["lookup", "toString", "toNumber", "toBoolean"],
+          "description": "Transform type. 'lookup' maps discrete values via a table. 'toString', 'toNumber', 'toBoolean' coerce the value."
+        },
+        "table": {
+          "type": "object",
+          "description": "Lookup table for 'lookup' transforms. Keys are source values (as strings), values are target values.",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

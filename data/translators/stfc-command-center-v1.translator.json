@@ -1,0 +1,57 @@
+{
+  "name": "STFC Command Center Export",
+  "version": "1.0",
+  "description": "Translates user fleet data exported from STFC Command Center (community tool). Maps player-owned officer levels, ship tiers, and dock assignments into MajelGameExport format.",
+  "sourceType": "command-center",
+  "officers": {
+    "sourcePath": "officers",
+    "idField": "id",
+    "idPrefix": "cdn:officer:",
+    "fieldMap": {
+      "level": "level",
+      "rank": "rank",
+      "tier": "tier",
+      "power": "power",
+      "owned": "owned"
+    },
+    "defaults": {
+      "owned": true
+    },
+    "transforms": {
+      "rank": { "type": "toString" },
+      "level": { "type": "toNumber" },
+      "tier": { "type": "toNumber" },
+      "power": { "type": "toNumber" }
+    }
+  },
+  "ships": {
+    "sourcePath": "ships",
+    "idField": "id",
+    "idPrefix": "cdn:ship:",
+    "fieldMap": {
+      "tier": "tier",
+      "level": "level",
+      "power": "power",
+      "owned": "owned"
+    },
+    "defaults": {
+      "owned": true
+    },
+    "transforms": {
+      "tier": { "type": "toNumber" },
+      "level": { "type": "toNumber" },
+      "power": { "type": "toNumber" }
+    }
+  },
+  "docks": {
+    "sourcePath": "docks",
+    "fieldMap": {
+      "slot": "number",
+      "ship_id": "shipId"
+    },
+    "shipIdPrefix": "cdn:ship:",
+    "transforms": {
+      "number": { "type": "toNumber" }
+    }
+  }
+}
