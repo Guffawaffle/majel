@@ -128,6 +128,37 @@ F1–F3 fixed inline. Remaining items below.
 
 ---
 
+## Up Next — Local-First Data Cache (ADR-032, #106)
+
+**Priority: Before any new features.** Infrastructure investment that improves every existing view.
+
+Implement IndexedDB cache with stale-while-revalidate strategy. Eliminates redundant API calls on tab navigation — currently ~2 MB wasted bandwidth per session.
+
+| Issue | Phase | Title | Status |
+|---|---|---|---|
+| #107 | 1 | IDB engine + catalog data caching | [ ] Not started |
+| #108 | 2 | Crew entities + invalidation rules | [ ] Not started |
+| #109 | 3 | Optimistic updates + offline indicators | [ ] Not started |
+| #110 | 4 | Settings, ETag, multi-tab, metrics | [ ] Not started |
+
+**Target:** 0 network calls on tab switch, FleetView < 200ms, < 500 KB bandwidth per session.
+
+---
+
+## Up Next — Timer Overlay (ADR-033, #111)
+
+**Priority: After cache Phase 1 (#107).** Small, self-contained feature (~500 LOC).
+
+Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, repeating mode, persistent top bar. Used for ship travel timers, resource refresh cycles, event cadence.
+
+- [ ] Timer store + tick engine + localStorage persistence
+- [ ] Web Audio API sound definitions (10 LCARS-themed sounds)
+- [ ] TimerBar / TimerPill / TimerDetail / TimerCreate components
+- [ ] Wire into App.svelte above view router
+- [ ] Tests
+
+---
+
 ## Important — Should Fix Soon
 
 ### Performance
