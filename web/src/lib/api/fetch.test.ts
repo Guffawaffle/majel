@@ -10,7 +10,7 @@ import { apiFetch, apiPost, apiPatch, apiDelete, ApiError, qs, pathEncode } from
 
 // ─── Helpers ────────────────────────────────────────────────
 
-function mockFetch(response: Partial<Response> & { body?: unknown }) {
+function mockFetch(response: Omit<Partial<Response>, 'body'> & { body?: unknown }) {
   const fn = vi.fn().mockResolvedValue({
     ok: response.ok ?? true,
     status: response.status ?? 200,
