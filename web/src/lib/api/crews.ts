@@ -297,5 +297,6 @@ export async function deleteReservation(officerId: string): Promise<void> {
 // ─── Effective State ────────────────────────────────────────
 
 export async function fetchEffectiveState(): Promise<EffectiveDockState> {
-  return apiFetch<EffectiveDockState>("/api/effective-state");
+  const data = await apiFetch<{ effectiveState: EffectiveDockState }>("/api/effective-state");
+  return data.effectiveState;
 }

@@ -82,13 +82,14 @@ describe("createMemoryService", () => {
     tmpDirs.length = 0;
   });
 
-  it("creates a memory service with all expected methods", () => {
+  it("creates a memory service with all expected methods", async () => {
     const dbPath = makeTmpDb();
     const service = createMemoryService(dbPath);
     expect(service).toHaveProperty("remember");
     expect(service).toHaveProperty("recall");
     expect(service).toHaveProperty("timeline");
     expect(service).toHaveProperty("close");
+    await service.close();
   });
 
   it("remember() stores a turn and returns a frame", async () => {

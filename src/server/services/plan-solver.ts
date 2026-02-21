@@ -110,6 +110,10 @@ export async function solvePlan(
 
   // Build loadout→bridge officer mapping (batch-fetch all loadouts at once)
   const loadoutBridgeMap = new Map<number, string[]>();
+  const loadoutById = new Map<number, Loadout>();
+  for (const loadout of allLoadouts) {
+    loadoutById.set(loadout.id, loadout);
+  }
   const loadoutIds = allLoadouts.map(l => l.id);
   const fullLoadouts = await store.getLoadoutsByIds(loadoutIds);
   for (const [id, full] of fullLoadouts) {
@@ -121,7 +125,7 @@ export async function solvePlan(
   // 4. Greedy assignment loop
   for (const pi of sorted) {
     const label = pi.label || `Plan item #${pi.id}`;
-    const loadout = allLoadouts.find(l => l.id === pi.loadoutId);
+    const loadout = pi.loadoutId ? loadoutById.get(pi.loadoutId) : undefined;
     const loadoutName = loadout?.name || null;
 
     // Check for officer conflicts in this plan item's loadout

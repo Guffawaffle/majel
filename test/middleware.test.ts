@@ -129,8 +129,8 @@ describe("Timeout middleware", () => {
     const app = express();
     app.use(express.json());
     app.use(envelopeMiddleware);
-    app.get("/fast", createTimeoutMiddleware(1000), async (_req, res) => {
-      await new Promise((r) => setTimeout(r, 100));
+    app.get("/fast", createTimeoutMiddleware(120), async (_req, res) => {
+      await new Promise((r) => setTimeout(r, 20));
       res.json({ ok: true, data: { completed: true } });
     });
 
@@ -144,7 +144,7 @@ describe("Timeout middleware", () => {
     app.use(express.json());
     app.use(envelopeMiddleware);
     app.get("/slow", createTimeoutMiddleware(100), async (_req, res) => {
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 130));
       // Don't try to respond after timeout
       if (!res.headersSent) {
         res.json({ ok: true, data: { completed: true } });
@@ -163,7 +163,7 @@ describe("Timeout middleware", () => {
     app.use(express.json());
     app.use(envelopeMiddleware);
     app.get("/slow", createTimeoutMiddleware(100), async (_req, res) => {
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 130));
       if (!res.headersSent) {
         res.json({ ok: true });
       }
@@ -179,11 +179,11 @@ describe("Timeout middleware", () => {
     const app = express();
     app.use(express.json());
     app.use(envelopeMiddleware);
-    app.get("/race", createTimeoutMiddleware(500), async (_req, res) => {
+    app.get("/race", createTimeoutMiddleware(120), async (_req, res) => {
       // Respond immediately
       res.json({ ok: true, data: { fast: true } });
       // Then wait (timeout should not fire)
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 140));
     });
 
     const res = await testRequest(app).get("/race");
@@ -196,13 +196,13 @@ describe("Timeout middleware", () => {
     app.use(express.json());
     app.use(envelopeMiddleware);
     
-    app.get("/quick", createTimeoutMiddleware(200), async (_req, res) => {
-      await new Promise((r) => setTimeout(r, 50));
+    app.get("/quick", createTimeoutMiddleware(80), async (_req, res) => {
+      await new Promise((r) => setTimeout(r, 20));
       res.json({ ok: true, data: { route: "quick" } });
     });
     
-    app.get("/patient", createTimeoutMiddleware(1000), async (_req, res) => {
-      await new Promise((r) => setTimeout(r, 100));
+    app.get("/patient", createTimeoutMiddleware(120), async (_req, res) => {
+      await new Promise((r) => setTimeout(r, 30));
       res.json({ ok: true, data: { route: "patient" } });
     });
 
@@ -287,7 +287,7 @@ describe("Error handler middleware", () => {
     app.use(express.json());
     app.use(envelopeMiddleware);
     app.get("/timeout-then-error", createTimeoutMiddleware(100), asyncHandler(async (_req, _res) => {
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 130));
       throw new Error("This should not be sent");
     }));
     app.use(errorHandler);
@@ -303,7 +303,7 @@ describe("Error handler middleware", () => {
     app.use(express.json());
     app.use(envelopeMiddleware);
     app.get("/async-error", asyncHandler(async (_req, _res) => {
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 10));
       throw new Error("Async failure");
     }));
     app.use(errorHandler);
@@ -319,13 +319,13 @@ describe("Error handler middleware", () => {
     app.use(express.json());
     app.use(envelopeMiddleware);
     app.get("/error", asyncHandler(async (_req, _res) => {
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 10));
       throw new Error("Test");
     }));
     app.use(errorHandler);
 
     const res = await testRequest(app).get("/error");
-    expect(res.body.meta.durationMs).toBeGreaterThan(40);
+    expect(res.body.meta.durationMs).toBeGreaterThan(5);
     expect(res.body.meta.timestamp).toBeDefined();
   });
 });

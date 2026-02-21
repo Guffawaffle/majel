@@ -17,7 +17,7 @@ import { createApp } from "../src/server/index.js";
 import type { AppState } from "../src/server/app-context.js";
 import { createCrewStore, type CrewStore } from "../src/server/stores/crew-store.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
-import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
+import { createTestPool, truncatePublicTables, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;
 beforeAll(() => { pool = createTestPool(); });
@@ -66,10 +66,13 @@ describe("Crew routes — bridge core validation", () => {
   let crewStore: CrewStore;
   let refStore: ReferenceStore;
 
-  beforeEach(async () => {
-    await cleanDatabase(pool);
+  beforeAll(async () => {
     refStore = await createReferenceStore(pool);
     crewStore = await createCrewStore(pool);
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
     await seedOfficer(refStore, "o1");
     app = createApp(makeState({ crewStore, referenceStore: refStore, startupComplete: true }));
   });
@@ -189,11 +192,16 @@ describe("Crew routes — bridge core validation", () => {
 
 describe("Crew routes — below deck policy validation", () => {
   let app: Express;
+  let crewStore: CrewStore;
+  let refStore: ReferenceStore;
+
+  beforeAll(async () => {
+    refStore = await createReferenceStore(pool);
+    crewStore = await createCrewStore(pool);
+  });
 
   beforeEach(async () => {
-    await cleanDatabase(pool);
-    const refStore = await createReferenceStore(pool);
-    const crewStore = await createCrewStore(pool);
+    await truncatePublicTables(pool);
     app = createApp(makeState({ crewStore, referenceStore: refStore, startupComplete: true }));
   });
 
@@ -285,12 +293,17 @@ describe("Crew routes — below deck policy validation", () => {
 
 describe("Crew routes — loadout validation", () => {
   let app: Express;
+  let crewStore: CrewStore;
+  let refStore: ReferenceStore;
+
+  beforeAll(async () => {
+    refStore = await createReferenceStore(pool);
+    crewStore = await createCrewStore(pool);
+  });
 
   beforeEach(async () => {
-    await cleanDatabase(pool);
-    const refStore = await createReferenceStore(pool);
+    await truncatePublicTables(pool);
     await seedShip(refStore, "ship1");
-    const crewStore = await createCrewStore(pool);
     app = createApp(makeState({ crewStore, referenceStore: refStore, startupComplete: true }));
   });
 
@@ -381,11 +394,16 @@ describe("Crew routes — loadout validation", () => {
 
 describe("Crew routes — variant validation", () => {
   let app: Express;
+  let crewStore: CrewStore;
+  let refStore: ReferenceStore;
+
+  beforeAll(async () => {
+    refStore = await createReferenceStore(pool);
+    crewStore = await createCrewStore(pool);
+  });
 
   beforeEach(async () => {
-    await cleanDatabase(pool);
-    const refStore = await createReferenceStore(pool);
-    const crewStore = await createCrewStore(pool);
+    await truncatePublicTables(pool);
     app = createApp(makeState({ crewStore, referenceStore: refStore, startupComplete: true }));
   });
 
@@ -481,11 +499,16 @@ describe("Crew routes — variant validation", () => {
 
 describe("Crew routes — dock validation", () => {
   let app: Express;
+  let crewStore: CrewStore;
+  let refStore: ReferenceStore;
+
+  beforeAll(async () => {
+    refStore = await createReferenceStore(pool);
+    crewStore = await createCrewStore(pool);
+  });
 
   beforeEach(async () => {
-    await cleanDatabase(pool);
-    const refStore = await createReferenceStore(pool);
-    const crewStore = await createCrewStore(pool);
+    await truncatePublicTables(pool);
     app = createApp(makeState({ crewStore, referenceStore: refStore, startupComplete: true }));
   });
 
@@ -548,11 +571,16 @@ describe("Crew routes — dock validation", () => {
 
 describe("Crew routes — fleet preset validation", () => {
   let app: Express;
+  let crewStore: CrewStore;
+  let refStore: ReferenceStore;
+
+  beforeAll(async () => {
+    refStore = await createReferenceStore(pool);
+    crewStore = await createCrewStore(pool);
+  });
 
   beforeEach(async () => {
-    await cleanDatabase(pool);
-    const refStore = await createReferenceStore(pool);
-    const crewStore = await createCrewStore(pool);
+    await truncatePublicTables(pool);
     app = createApp(makeState({ crewStore, referenceStore: refStore, startupComplete: true }));
   });
 
@@ -653,11 +681,16 @@ describe("Crew routes — fleet preset validation", () => {
 
 describe("Crew routes — plan item validation", () => {
   let app: Express;
+  let crewStore: CrewStore;
+  let refStore: ReferenceStore;
+
+  beforeAll(async () => {
+    refStore = await createReferenceStore(pool);
+    crewStore = await createCrewStore(pool);
+  });
 
   beforeEach(async () => {
-    await cleanDatabase(pool);
-    const refStore = await createReferenceStore(pool);
-    const crewStore = await createCrewStore(pool);
+    await truncatePublicTables(pool);
     app = createApp(makeState({ crewStore, referenceStore: refStore, startupComplete: true }));
   });
 
@@ -798,11 +831,16 @@ describe("Crew routes — plan item validation", () => {
 
 describe("Crew routes — officer reservation validation", () => {
   let app: Express;
+  let crewStore: CrewStore;
+  let refStore: ReferenceStore;
+
+  beforeAll(async () => {
+    refStore = await createReferenceStore(pool);
+    crewStore = await createCrewStore(pool);
+  });
 
   beforeEach(async () => {
-    await cleanDatabase(pool);
-    const refStore = await createReferenceStore(pool);
-    const crewStore = await createCrewStore(pool);
+    await truncatePublicTables(pool);
     app = createApp(makeState({ crewStore, referenceStore: refStore, startupComplete: true }));
   });
 
