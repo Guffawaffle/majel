@@ -14,7 +14,7 @@ import type {
 export async function analyzeImportFile(input: {
   fileName: string;
   contentBase64: string;
-  format: "csv";
+  format: "csv" | "tsv" | "xlsx";
 }): Promise<ImportAnalysis> {
   const data = await apiPost<{ analysis: ImportAnalysis }>("/api/import/analyze", input);
   return data.analysis;
@@ -23,7 +23,7 @@ export async function analyzeImportFile(input: {
 export async function parseImportFile(input: {
   fileName: string;
   contentBase64: string;
-  format: "csv";
+  format: "csv" | "tsv" | "xlsx";
 }): Promise<ParsedImportData> {
   const data = await apiPost<{ parsed: ParsedImportData }>("/api/import/parse", input);
   return data.parsed;

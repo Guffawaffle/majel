@@ -32,8 +32,8 @@ export function validateSourcePayload(payload: Record<string, unknown>):
   if (contentBase64.length > 15_000_000) {
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: "contentBase64 exceeds size limit" };
   }
-  if (format !== "csv") {
-    return { ok: false, code: ErrorCode.INVALID_PARAM, message: 'format must be "csv"' };
+  if (format !== "csv" && format !== "tsv" && format !== "xlsx") {
+    return { ok: false, code: ErrorCode.INVALID_PARAM, message: 'format must be one of "csv", "tsv", "xlsx"' };
   }
 
   return {

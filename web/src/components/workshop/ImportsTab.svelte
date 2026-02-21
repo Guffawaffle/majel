@@ -46,9 +46,9 @@
   const { onCommitted }: Props = $props();
 
   let fileName = $state("");
-  let format = $state<"csv">("csv");
+  let format = $state<"csv" | "tsv" | "xlsx">("csv");
   let pastedCsv = $state("");
-  let pendingFileInput = $state<{ fileName: string; contentBase64: string; format: "csv" } | null>(null);
+  let pendingFileInput = $state<{ fileName: string; contentBase64: string; format: "csv" | "tsv" | "xlsx" } | null>(null);
   let loading = $state(false);
   let error = $state("");
   let status = $state("");
@@ -103,17 +103,18 @@
     if (!file) return;
 
     fileName = file.name;
-    if (file.name.toLowerCase().endsWith(".xlsx")) {
-      error = "XLSX files are not supported. Please convert to CSV before importing.";
+    const inferredFormat = inferImportFormat(file.name);
+    if (!inferredFormat) {
+      error = "Unsupported file type. Use .csv, .tsv, or .xlsx.";
       return;
     }
-    format = "csv";
+    format = inferredFormat;
     error = "";
 
     try {
       const base64 = await fileToBase64(file);
-      pendingFileInput = { fileName, contentBase64: base64, format };
-      await runAnalyzeAndParse({ fileName, contentBase64: base64, format });
+      pendingFileInput = { fileName, contentBase64: base64, format: inferredFormat };
+      await runAnalyzeAndParse({ fileName, contentBase64: base64, format: inferredFormat });
       pastedCsv = "";
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -137,7 +138,7 @@
     }
   }
 
-  async function runAnalyzeAndParse(input: { fileName: string; contentBase64: string; format: "csv" }) {
+  async function runAnalyzeAndParse(input: { fileName: string; contentBase64: string; format: "csv" | "tsv" | "xlsx" }) {
     loading = true;
     error = "";
     status = "";
@@ -165,6 +166,14 @@
     }
   }
 
+  function inferImportFormat(name: string): "csv" | "tsv" | "xlsx" | null {
+    const lower = name.trim().toLowerCase();
+    if (lower.endsWith(".csv")) return "csv";
+    if (lower.endsWith(".tsv")) return "tsv";
+    if (lower.endsWith(".xlsx")) return "xlsx";
+    return null;
+  }
+
   function buildManualAnalysis(parsedResult: ParsedImportData): ImportAnalysis {
     return {
       fileName: parsedResult.fileName,
@@ -182,7 +191,7 @@
     };
   }
 
-  async function runManualParse(input: { fileName: string; contentBase64: string; format: "csv" }) {
+  async function runManualParse(input: { fileName: string; contentBase64: string; format: "csv" | "tsv" | "xlsx" }) {
     loading = true;
     error = "";
     status = "";
@@ -208,7 +217,7 @@
 
   async function continueManualFromFile() {
     if (!pendingFileInput) {
-      error = "Choose CSV first.";
+      error = "Choose a file first.";
       return;
     }
     fileName = pendingFileInput.fileName;
@@ -469,8 +478,8 @@
 
   <div class="imports-inputs">
     <label class="imports-upload">
-      <span>Choose CSV</span>
-      <input type="file" accept=".csv" onchange={onFileChange} />
+      <span>Choose CSV/TSV/XLSX</span>
+      <input type="file" accept=".csv,.tsv,.xlsx" onchange={onFileChange} />
     </label>
     <div class="imports-actions">
       <button class="imports-btn" onclick={() => { void continueManualFromFile(); }} disabled={loading || !pendingFileInput}>Continue with manual mapping</button>

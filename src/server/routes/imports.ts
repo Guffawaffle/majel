@@ -70,8 +70,8 @@ export function createImportRoutes(appState: AppState): Router {
     if (contentBase64.length > 15_000_000) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "contentBase64 exceeds size limit", 400);
     }
-    if (format !== "csv") {
-      return sendFail(res, ErrorCode.INVALID_PARAM, 'format must be "csv"', 400);
+    if (format !== "csv" && format !== "tsv" && format !== "xlsx") {
+      return sendFail(res, ErrorCode.INVALID_PARAM, 'format must be one of "csv", "tsv", "xlsx"', 400);
     }
 
     try {

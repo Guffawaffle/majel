@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Express } from "express";
+import { utils, write } from "xlsx";
 import { createApp } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 import { createOverlayStore, type OverlayStore } from "../src/server/stores/overlay-store.js";
@@ -82,17 +83,24 @@ const IMPORT_MAP_CASES = BASE_IMPORT_MAP_PAYLOAD_CASES;
 const IMPORT_COMMIT_CASES = BASE_IMPORT_COMMIT_PAYLOAD_CASES;
 
 describe("Import routes — data interactions", () => {
-  it("POST /api/import/analyze validates csv-only format", async () => {
+  it("POST /api/import/analyze accepts xlsx format", async () => {
+    const workbook = utils.book_new();
+    const sheet = utils.aoa_to_sheet([
+      ["Officer", "Level"],
+      ["Kirk", "20"],
+    ]);
+    utils.book_append_sheet(workbook, sheet, "First");
+
     const res = await testRequest(app)
       .post("/api/import/analyze")
       .send({
         fileName: "fleet.xlsx",
-        contentBase64: toBase64("fake"),
+        contentBase64: write(workbook, { type: "base64", bookType: "xlsx" }),
         format: "xlsx",
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error.message).toContain('format must be "csv"');
+    expect(res.status).toBe(200);
+    expect(res.body.data.analysis.format).toBe("xlsx");
   });
 
   it("POST /api/import/parse parses csv payload", async () => {
@@ -103,6 +111,51 @@ describe("Import routes — data interactions", () => {
         fileName: "fleet.csv",
         contentBase64: toBase64(csv),
         format: "csv",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.parsed.headers).toEqual(["Officer", "Level"]);
+    expect(res.body.data.parsed.rowCount).toBe(1);
+    expect(res.body.data.parsed.rows[0]).toEqual(["Kirk", "20"]);
+  });
+
+  it("POST /api/import/parse parses tsv payload", async () => {
+    const tsv = "Officer\tLevel\nKirk\t20\n";
+    const res = await testRequest(app)
+      .post("/api/import/parse")
+      .send({
+        fileName: "fleet.tsv",
+        contentBase64: toBase64(tsv),
+        format: "tsv",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.parsed.headers).toEqual(["Officer", "Level"]);
+    expect(res.body.data.parsed.rowCount).toBe(1);
+    expect(res.body.data.parsed.rows[0]).toEqual(["Kirk", "20"]);
+  });
+
+  it("POST /api/import/parse parses first sheet from xlsx payload", async () => {
+    const workbook = utils.book_new();
+    const firstSheet = utils.aoa_to_sheet([
+      ["Officer", "Level"],
+      ["Kirk", "20"],
+    ]);
+    const secondSheet = utils.aoa_to_sheet([
+      ["Officer", "Level"],
+      ["Spock", "25"],
+    ]);
+    utils.book_append_sheet(workbook, firstSheet, "First");
+    utils.book_append_sheet(workbook, secondSheet, "Second");
+
+    const xlsxBase64 = write(workbook, { type: "base64", bookType: "xlsx" });
+
+    const res = await testRequest(app)
+      .post("/api/import/parse")
+      .send({
+        fileName: "fleet.xlsx",
+        contentBase64: xlsxBase64,
+        format: "xlsx",
       });
 
     expect(res.status).toBe(200);

@@ -169,9 +169,7 @@ function admiralEnvelopeCases(): RouteErrorCase[] {
         contentBase64: Buffer.from("fake", "utf8").toString("base64"),
         format: "xlsx",
       },
-      expectedStatus: 400,
-      expectedCode: "INVALID_PARAM",
-      expectedMessageFragment: 'format must be "csv"',
+      expectedStatus: 200,
     },
     {
       name: "admiral token reaches catalog officers route",

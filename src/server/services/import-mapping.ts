@@ -1,6 +1,7 @@
 import type { GeminiEngine } from "./gemini/index.js";
+import { read, utils } from "xlsx";
 
-export type ImportFormat = "csv";
+export type ImportFormat = "csv" | "tsv" | "xlsx";
 
 export interface ImportAnalyzeInput {
   fileName: string;
@@ -98,6 +99,28 @@ const FIELD_ALIASES: Record<string, string[]> = {
   "ship.owned": ["shipowned", "ship_owned", "ship owned", "have ship"],
 };
 
+const KNOWN_SCHEMA_M86_MAP: Record<string, string> = {
+  officer: "officer.name",
+  "officer name": "officer.name",
+  level: "officer.level",
+  "officer level": "officer.level",
+  rank: "officer.rank",
+  "officer rank": "officer.rank",
+  power: "officer.power",
+  "officer power": "officer.power",
+  owned: "officer.owned",
+  "officer owned": "officer.owned",
+  ship: "ship.name",
+  "ship name": "ship.name",
+  "ship level": "ship.level",
+  tier: "ship.tier",
+  "ship tier": "ship.tier",
+  "ship power": "ship.power",
+  "ship owned": "ship.owned",
+};
+
+const KNOWN_SCHEMA_M86_REQUIRED_HEADERS = ["officer", "level", "owned"];
+
 export async function analyzeImport(
   input: ImportAnalyzeInput,
   geminiEngine: GeminiEngine | null,
@@ -119,13 +142,14 @@ export async function analyzeImport(
   const headers = normalizedRows[0]?.map((c) => c.trim()) ?? [];
   const dataRows = normalizedRows.slice(1);
   const sampleRows = dataRows.slice(0, 3).map((row) => normalizeRowLength(row, headers.length));
+  const knownSchemaSuggestions = detectKnownSchemaSuggestions(headers);
   const heuristicSuggestions = buildHeuristicSuggestions(headers, sampleRows);
 
-  const aiSuggestions = geminiEngine
-    ? await suggestWithAi(headers, sampleRows, geminiEngine)
-    : null;
+  const aiSuggestions = knownSchemaSuggestions || !geminiEngine
+    ? null
+    : await suggestWithAi(headers, sampleRows, geminiEngine);
 
-  const suggestions = mergeSuggestions(heuristicSuggestions, aiSuggestions);
+  const suggestions = knownSchemaSuggestions ?? mergeSuggestions(heuristicSuggestions, aiSuggestions);
 
   return {
     fileName: input.fileName,
@@ -223,7 +247,15 @@ export function resolveMappedRows(
 function parseRows(input: ImportAnalyzeInput): string[][] {
   const buffer = Buffer.from(input.contentBase64, "base64");
 
-  return parseCsv(buffer.toString("utf8"));
+  if (input.format === "xlsx") {
+    return parseXlsxFirstSheet(buffer);
+  }
+
+  if (input.format === "tsv") {
+    return parseDelimited(buffer.toString("utf8"), "\t");
+  }
+
+  return parseDelimited(buffer.toString("utf8"), ",");
 }
 
 function applyMappedValue(target: MappedImportRow, field: string, raw: string): void {
@@ -337,15 +369,15 @@ function normalizeLookup(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function parseCsv(csvText: string): string[][] {
+function parseDelimited(text: string, delimiter: string): string[][] {
   const rows: string[][] = [];
   let currentCell = "";
   let currentRow: string[] = [];
   let inQuotes = false;
 
-  for (let index = 0; index < csvText.length; index += 1) {
-    const char = csvText[index];
-    const next = csvText[index + 1];
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
 
     if (char === '"') {
       if (inQuotes && next === '"') {
@@ -357,7 +389,7 @@ function parseCsv(csvText: string): string[][] {
       continue;
     }
 
-    if (char === "," && !inQuotes) {
+    if (char === delimiter && !inQuotes) {
       currentRow.push(currentCell);
       currentCell = "";
       continue;
@@ -383,6 +415,56 @@ function parseCsv(csvText: string): string[][] {
   }
 
   return rows;
+}
+
+function parseXlsxFirstSheet(buffer: Buffer): string[][] {
+  const workbook = read(buffer, { type: "buffer" });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) return [];
+
+  const worksheet = workbook.Sheets[firstSheetName];
+  if (!worksheet) return [];
+
+  const rows = utils.sheet_to_json<unknown[]>(worksheet, {
+    header: 1,
+    raw: false,
+    defval: "",
+    blankrows: false,
+  });
+
+  return rows.map((row) => row.map((cell) => String(cell ?? "")));
+}
+
+function detectKnownSchemaSuggestions(headers: string[]): ImportSuggestion[] | null {
+  if (headers.length === 0) return null;
+
+  const normalizedHeaders = headers.map((header) => normalizeHeader(header));
+  const requiredMatched = KNOWN_SCHEMA_M86_REQUIRED_HEADERS.every((required) => normalizedHeaders.includes(required));
+
+  const mappedCount = normalizedHeaders.filter((header) => !!KNOWN_SCHEMA_M86_MAP[header]).length;
+  const coverage = mappedCount / headers.length;
+  const isM86 = requiredMatched && mappedCount >= 3 && coverage >= 0.5;
+
+  if (!isM86) return null;
+
+  return headers.map((header, columnIndex) => {
+    const mappedField = KNOWN_SCHEMA_M86_MAP[normalizedHeaders[columnIndex]] ?? null;
+    if (!mappedField) {
+      return {
+        sourceColumn: header,
+        suggestedField: null,
+        confidence: "low",
+        reason: "Known schema: M86 (no direct field match)",
+      };
+    }
+
+    return {
+      sourceColumn: header,
+      suggestedField: mappedField,
+      confidence: "high",
+      reason: "Known schema: M86",
+    };
+  });
 }
 
 function normalizeHeader(value: string): string {
