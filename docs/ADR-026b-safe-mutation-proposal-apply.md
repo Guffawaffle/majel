@@ -1,7 +1,7 @@
 # ADR-026b — Safe Mutation Contract: Proposal → Confirm → Apply
 
-**Status:** Proposed  
-**Date:** 2026-02-19  
+**Status:** Accepted  
+**Date:** 2026-02-19 (proposed), 2026-02-21 (accepted — Phase 1 implemented)  
 **Authors:** Guff, Copilot (planning pass)  
 **Amends:** ADR-026, ADR-026a  
 **Related:** ADR-025, ADR-028, #93
