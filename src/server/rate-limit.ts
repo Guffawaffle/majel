@@ -80,6 +80,23 @@ export const globalRateLimiter = rateLimit({
 });
 
 /**
+ * Tight rate limiter for email-sending endpoints (resend-verification, forgot-password).
+ * 3 requests per 15 minutes per IP — protects sender reputation and prevents spam.
+ */
+export const emailRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  handler: (req, res) => {
+    log.http.warn({ ip: req.ip, path: req.path, event: "rate_limit.hit", limiter: "email" }, "email rate limit exceeded");
+    sendFail(res, "RATE_LIMITED", "Too many requests. Please wait before requesting another email.", 429);
+  },
+  skip: () => IS_TEST,
+});
+
+/**
  * Rate limiter for catalog/sync endpoint (heavy DB operation).
  * 2 requests per minute — prevents hammering the datamine ingest.
  */

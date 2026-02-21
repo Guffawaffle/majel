@@ -126,6 +126,7 @@ const SQL = {
   updateUser: `UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
   updateRole: `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
   verifyEmail: `UPDATE users SET email_verified = TRUE, updated_at = NOW() WHERE id = $1`,
+  setEmailVerified: `UPDATE users SET email_verified = $2, updated_at = NOW() WHERE id = $1`,
   updatePasswordHash: `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
   updateLastLogin: `UPDATE users SET last_login_at = NOW(), failed_login_count = 0, updated_at = NOW() WHERE id = $1`,
   incrementFailedLogins: `UPDATE users SET
@@ -153,6 +154,7 @@ const SQL = {
   deleteUserSessions: `DELETE FROM user_sessions WHERE user_id = $1`,
   deleteOtherSessions: `DELETE FROM user_sessions WHERE user_id = $1 AND id != $2`,
   deleteExpiredSessions: `DELETE FROM user_sessions WHERE expires_at < NOW()`,
+  deleteStaleUnverifiedUsers: `DELETE FROM users WHERE email_verified = false AND created_at < NOW() - $1::INTERVAL RETURNING id, email`,
   listUserSessions: `SELECT * FROM user_sessions WHERE user_id = $1 ORDER BY last_seen_at DESC`,
 
   // Email tokens
@@ -330,6 +332,8 @@ export interface UserStore {
   // ── Email Verification ───────────────────────────────────
   verifyEmail(token: string): Promise<boolean>;
   createVerifyToken(userId: string): Promise<string>;
+  /** Directly set email_verified flag (Admiral use). */
+  setEmailVerified(userId: string, verified: boolean): Promise<boolean>;
 
   // ── Password Reset ───────────────────────────────────────
   createResetToken(email: string): Promise<string | null>;
@@ -355,6 +359,8 @@ export interface UserStore {
   // ── Cleanup ──────────────────────────────────────────────
   /** Delete expired sessions. Returns count of rows removed. */
   cleanupExpiredSessions(): Promise<number>;
+  /** Delete unverified users older than maxAge (e.g. '7 days'). Returns removed emails. */
+  cleanupUnverifiedUsers(maxAge: string): Promise<string[]>;
 
   // ── Lifecycle ────────────────────────────────────────────
   close(): void;
@@ -547,6 +553,11 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
       });
     },
 
+    async setEmailVerified(userId: string, verified: boolean): Promise<boolean> {
+      const res = await pool.query(SQL.setEmailVerified, [userId, verified]);
+      return (res.rowCount ?? 0) > 0;
+    },
+
     // ── Password Reset ─────────────────────────────────────
     async createResetToken(email: string): Promise<string | null> {
       const emailTrimmed = email.trim().toLowerCase();
@@ -689,6 +700,11 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
     async cleanupExpiredSessions(): Promise<number> {
       const res = await pool.query(SQL.deleteExpiredSessions);
       return res.rowCount ?? 0;
+    },
+
+    async cleanupUnverifiedUsers(maxAge: string): Promise<string[]> {
+      const res = await pool.query(SQL.deleteStaleUnverifiedUsers, [maxAge]);
+      return (res.rows as Array<{ email: string }>).map((r) => r.email);
     },
 
     // ── Lifecycle ──────────────────────────────────────────

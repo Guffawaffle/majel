@@ -1,14 +1,17 @@
 /**
- * email.ts — Email Delivery Service (ADR-019 Phase 1)
+ * email.ts — Email Delivery Service (ADR-019 Phase 4)
  *
  * Majel — STFC Fleet Intelligence System
  *
- * Development mode: Logs email content to console (no actual delivery).
- * Production mode: Gmail API (Phase 4 — not yet implemented).
+ * Transport selection:
+ *   1. SMTP configured (MAJEL_SMTP_HOST) → nodemailer SMTP transport
+ *   2. NODE_ENV !== "production"          → dev-mode console log + devTokens
+ *   3. Production without SMTP           → warning log (no delivery)
  *
  * All email functions are no-throw: failures are logged, never crash the request.
  */
 
+import { createTransport, type Transporter } from "nodemailer";
 import { log } from "../logger.js";
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -34,17 +37,76 @@ export function getDevToken(email: string): { token: string; type: string } | un
   return devTokens.get(email.toLowerCase());
 }
 
+// ─── SMTP Transport ─────────────────────────────────────────────
+
+let smtpTransport: Transporter | null = null;
+
+function getSmtpTransport(): Transporter | null {
+  if (smtpTransport) return smtpTransport;
+
+  const host = process.env.MAJEL_SMTP_HOST;
+  if (!host) return null;
+
+  const port = parseInt(process.env.MAJEL_SMTP_PORT || "587", 10);
+  const user = process.env.MAJEL_SMTP_USER || "";
+  const pass = process.env.MAJEL_SMTP_PASS || "";
+
+  smtpTransport = createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: user ? { user, pass } : undefined,
+  });
+
+  log.boot.info({ host, port, user: user || "(none)" }, "SMTP email transport configured");
+  return smtpTransport;
+}
+
+const SMTP_FROM = () => process.env.MAJEL_SMTP_FROM || process.env.MAJEL_SMTP_USER || "noreply@aria.smartergpt.dev";
+
 // ─── Send Functions ─────────────────────────────────────────────
 
 /**
- * Send an email. In dev mode, logs to console and stores token in devTokens.
- * In production, will use Gmail API (Phase 4).
+ * Send an email via SMTP if configured, otherwise fall back to dev-mode log.
  */
 async function sendEmail(message: EmailMessage, tokenInfo?: { token: string; type: string }): Promise<void> {
   const isProduction = process.env.NODE_ENV === "production";
+  const transport = getSmtpTransport();
 
+  // Always store token in dev registry (useful for dev-verify endpoint)
+  if (tokenInfo) {
+    if (devTokens.size >= DEV_TOKEN_MAX && !devTokens.has(message.to.toLowerCase())) {
+      const oldest = devTokens.keys().next().value;
+      if (oldest) devTokens.delete(oldest);
+    }
+    devTokens.set(message.to.toLowerCase(), tokenInfo);
+  }
+
+  // Path 1: SMTP transport available → send real email
+  if (transport) {
+    try {
+      await transport.sendMail({
+        from: SMTP_FROM(),
+        to: message.to,
+        subject: message.subject,
+        text: message.text,
+        html: message.html,
+      });
+      log.boot.info(
+        { to: message.to, subject: message.subject },
+        `📧 Email sent: ${message.subject}`,
+      );
+    } catch (err) {
+      log.boot.error(
+        { to: message.to, subject: message.subject, err },
+        `📧 Email delivery failed: ${message.subject}`,
+      );
+    }
+    return;
+  }
+
+  // Path 2: No SMTP → dev-mode log or production warning
   if (!isProduction) {
-    // Dev mode: log the email content
     log.boot.info(
       {
         to: message.to,
@@ -54,30 +116,11 @@ async function sendEmail(message: EmailMessage, tokenInfo?: { token: string; typ
       },
       `📧 [DEV EMAIL] ${message.subject}`,
     );
-
-    // Store token for dev-verify endpoint
-    if (tokenInfo) {
-      // Evict oldest entry if at capacity
-      if (devTokens.size >= DEV_TOKEN_MAX && !devTokens.has(message.to.toLowerCase())) {
-        const oldest = devTokens.keys().next().value;
-        if (oldest) devTokens.delete(oldest);
-      }
-      devTokens.set(message.to.toLowerCase(), tokenInfo);
-    }
-    return;
-  }
-
-  // Production: Gmail API (Phase 4)
-  // For now, log a warning that email delivery is not yet configured
-  log.boot.warn(
-    { to: message.to, subject: message.subject, tokenType: tokenInfo?.type },
-    "Email delivery not yet configured (Gmail API Phase 4)",
-  );
-
-  // Store token in dev registry as fallback until Gmail is configured
-  // (dev-verify endpoint is gated behind NODE_ENV !== "production")
-  if (tokenInfo) {
-    devTokens.set(message.to.toLowerCase(), tokenInfo);
+  } else {
+    log.boot.warn(
+      { to: message.to, subject: message.subject, tokenType: tokenInfo?.type },
+      "📧 No SMTP configured — email not delivered. Set MAJEL_SMTP_HOST to enable.",
+    );
   }
 }
 

@@ -31,6 +31,7 @@ export const AUDIT_EVENTS = [
 
   // Email verification
   "auth.verify_email",
+  "auth.resend_verification",
 
   // Password
   "auth.password.change",
@@ -42,9 +43,15 @@ export const AUDIT_EVENTS = [
 
   // Account management (Admiral)
   "admin.role_change",
+  "admin.list_users",
   "admin.lock_user",
   "admin.unlock_user",
   "admin.delete_user",
+  "admin.resend_verification",
+  "admin.verify_user",
+
+  // Cleanup
+  "auth.unverified_cleanup",
 
   // Bootstrap
   "admin.bootstrap",

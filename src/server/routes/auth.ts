@@ -5,18 +5,23 @@
  * session management, and legacy invite code redemption.
  *
  * Routes:
- *   POST /api/auth/signup          — Create account → verification email
- *   POST /api/auth/verify-email    — Verify email with token
- *   POST /api/auth/signin          — Sign in → session cookie
- *   GET  /api/auth/me              — Current user info + role
- *   POST /api/auth/logout          — Destroy current session
- *   POST /api/auth/logout-all      — Destroy all sessions
- *   POST /api/auth/change-password — Change password (kills other sessions)
- *   POST /api/auth/forgot-password — Request password reset email
- *   POST /api/auth/reset-password  — Reset password with token
- *   GET  /api/auth/status          — Auth tier check (legacy compat)
- *   POST /api/auth/redeem          — Legacy invite code redemption
- *   GET  /api/auth/dev-verify      — Dev-only: verify email by address
+ *   POST /api/auth/signup               — Create account → verification email
+ *   POST /api/auth/verify-email         — Verify email with token
+ *   POST /api/auth/resend-verification  — Resend verify email (requires nonce from signup)
+ *   POST /api/auth/signin               — Sign in → session cookie
+ *   GET  /api/auth/me                   — Current user info + role
+ *   POST /api/auth/logout               — Destroy current session
+ *   POST /api/auth/logout-all           — Destroy all sessions
+ *   POST /api/auth/change-password      — Change password (kills other sessions)
+ *   POST /api/auth/forgot-password      — Request password reset email
+ *   POST /api/auth/reset-password       — Reset password with token
+ *   GET  /api/auth/status               — Auth tier check (legacy compat)
+ *   POST /api/auth/redeem               — Legacy invite code redemption
+ *   GET  /api/auth/dev-verify           — Dev-only: verify email by address
+ *
+ * Admiral routes:
+ *   POST /api/auth/admiral/resend-verification — Resend verify email for any user
+ *   POST /api/auth/admiral/verify-user         — Directly approve a user's email
  */
 
 import type { Router, Request } from "express";
@@ -24,10 +29,47 @@ import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { SESSION_COOKIE, TENANT_COOKIE, requireRole, requireAdmiral } from "../services/auth.js";
 import { timingSafeCompare } from "../services/password.js";
-import { authRateLimiter } from "../rate-limit.js";
+import { authRateLimiter, emailRateLimiter } from "../rate-limit.js";
 import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../services/email.js";
 import { createSafeRouter } from "../safe-router.js";
 import type { AuditLogInput } from "../stores/audit-store.js";
+import { randomBytes } from "node:crypto";
+
+// ─── Resend Nonces ──────────────────────────────────────────────
+// Short-lived in-memory tokens returned from signup, required to call
+// resend-verification. Prevents unauthenticated abuse of the endpoint.
+// TTL: 15 minutes, single-use.
+
+interface ResendNonce {
+  userId: string;
+  email: string;
+  createdAt: number;
+}
+
+const RESEND_NONCE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const resendNonces = new Map<string, ResendNonce>();
+
+function createResendNonce(userId: string, email: string): string {
+  const nonce = randomBytes(32).toString("hex");
+  resendNonces.set(nonce, { userId, email, createdAt: Date.now() });
+  return nonce;
+}
+
+function consumeResendNonce(nonce: string): ResendNonce | null {
+  const entry = resendNonces.get(nonce);
+  if (!entry) return null;
+  resendNonces.delete(nonce); // single-use
+  if (Date.now() - entry.createdAt > RESEND_NONCE_TTL_MS) return null;
+  return entry;
+}
+
+// Periodic cleanup of expired nonces (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of resendNonces) {
+    if (now - val.createdAt > RESEND_NONCE_TTL_MS) resendNonces.delete(key);
+  }
+}, 5 * 60 * 1000).unref();
 
 /** Extract IP + User-Agent from a request for audit logging. */
 function auditMeta(req: Request): Pick<AuditLogInput, "ip" | "userAgent"> {
@@ -86,9 +128,14 @@ export function createAuthRoutes(appState: AppState): Router {
       // Send verification email (fire-and-forget)
       sendVerificationEmail(result.user.email, result.verifyToken).catch(() => {});
 
+      // Generate a resend nonce so the landing page can request a resend
+      // without exposing a public email-based endpoint.
+      const resendToken = createResendNonce(result.user.id, result.user.email);
+
       sendOk(res, {
         message: "Account created. Please check your email to verify your address.",
         user: { id: result.user.id, email: result.user.email, displayName: result.user.displayName },
+        resendToken,
       }, 201);
 
       appState.auditStore?.logEvent({
@@ -98,7 +145,7 @@ export function createAuthRoutes(appState: AppState): Router {
     } catch (err) {
       const raw = err instanceof Error ? err.message : "Sign-up failed";
       // Map known errors to safe messages; suppress internal details
-      const message = /duplicate|already exists|unique/i.test(raw)
+      const message = /duplicate|already exists|unique|unable to create/i.test(raw)
         ? "An account with this email already exists"
         : "Sign-up failed";
 
@@ -145,6 +192,48 @@ export function createAuthRoutes(appState: AppState): Router {
     });
 
     sendOk(res, { verified: true, message: "Email verified. You can now sign in." });
+  });
+
+  // ── POST /api/auth/resend-verification ────────────────────
+  // Requires a resendToken (nonce) from the signup response — not a public endpoint.
+  // This prevents unauthenticated email enumeration and sender-reputation abuse.
+  router.post("/api/auth/resend-verification", emailRateLimiter, async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { resendToken } = req.body ?? {};
+    if (!resendToken || typeof resendToken !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Resend token is required", 400);
+    }
+
+    const nonce = consumeResendNonce(resendToken);
+    if (!nonce) {
+      return sendFail(res, ErrorCode.UNAUTHORIZED, "Invalid or expired resend token", 401);
+    }
+
+    try {
+      const user = await appState.userStore.getUserByEmail(nonce.email);
+      if (user && !user.emailVerified) {
+        const token = await appState.userStore.createVerifyToken(user.id);
+        sendVerificationEmail(user.email, token).catch(() => {});
+        appState.auditStore?.logEvent({
+          event: "auth.resend_verification",
+          actorId: user.id,
+          detail: { email: user.email },
+          ...auditMeta(req),
+        });
+      }
+    } catch {
+      // Swallow — never reveal internal errors
+    }
+
+    // Issue a fresh nonce so the user can resend again (within rate limit)
+    const freshNonce = createResendNonce(nonce.userId, nonce.email);
+    sendOk(res, {
+      message: "If your email is registered and unverified, a new verification link has been sent.",
+      resendToken: freshNonce,
+    });
   });
 
   // ── POST /api/auth/signin ─────────────────────────────────
@@ -309,7 +398,7 @@ export function createAuthRoutes(appState: AppState): Router {
   });
 
   // ── POST /api/auth/forgot-password ────────────────────────
-  router.post("/api/auth/forgot-password", async (req, res) => {
+  router.post("/api/auth/forgot-password", emailRateLimiter, async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -589,9 +678,9 @@ export function createAuthRoutes(appState: AppState): Router {
     const users = await appState.userStore.listUsers();
 
     appState.auditStore?.logEvent({
-      event: "admin.role_change",
+      event: "admin.list_users",
       actorId: res.locals.userId ?? null,
-      detail: { action: "list_users", count: users.length },
+      detail: { count: users.length },
       ...auditMeta(req),
     });
 
@@ -688,10 +777,91 @@ export function createAuthRoutes(appState: AppState): Router {
     sendOk(res, { message: `User ${email} deleted.` });
   });
 
+  // ── POST /api/auth/admiral/resend-verification ──────────────
+  // Admin-only: resend verification email for any user
+  router.post("/api/auth/admiral/resend-verification", async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { email } = req.body ?? {};
+    if (!email || typeof email !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    }
+    if (email.length > 254) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    }
+
+    const user = await appState.userStore.getUserByEmail(email);
+    if (!user) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
+    }
+    if (user.emailVerified) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "User is already verified", 400);
+    }
+
+    const token = await appState.userStore.createVerifyToken(user.id);
+    sendVerificationEmail(user.email, token).catch(() => {});
+
+    appState.auditStore?.logEvent({
+      event: "admin.resend_verification",
+      actorId: res.locals.userId ?? null,
+      targetId: user.id,
+      detail: { email },
+      ...auditMeta(req),
+    });
+
+    sendOk(res, { message: `Verification email resent to ${email}.` });
+  });
+
+  // ── POST /api/auth/admiral/verify-user ──────────────────────
+  // Admin-only: directly approve a user's email (skip verification)
+  router.post("/api/auth/admiral/verify-user", async (req, res) => {
+    if (!appState.userStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
+    }
+
+    const { email } = req.body ?? {};
+    if (!email || typeof email !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    }
+    if (email.length > 254) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    }
+
+    const user = await appState.userStore.getUserByEmail(email);
+    if (!user) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
+    }
+    if (user.emailVerified) {
+      return sendOk(res, { message: `${user.displayName} is already verified.` });
+    }
+
+    const verified = await appState.userStore.setEmailVerified(user.id, true);
+    if (!verified) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to verify user", 500);
+    }
+
+    appState.auditStore?.logEvent({
+      event: "admin.verify_user",
+      actorId: res.locals.userId ?? null,
+      targetId: user.id,
+      detail: { email },
+      ...auditMeta(req),
+    });
+
+    sendOk(res, { message: `${user.displayName} has been verified.` });
+  });
+
   // ── GET /api/auth/dev-verify ──────────────────────────────
-  // Dev-only: verify email without actually sending/receiving email
-  if (process.env.NODE_ENV !== "production") {
+  // Dev-only: verify email without actually sending/receiving email.
+  // Defence-in-depth: the outer `if` prevents route registration outside dev,
+  // and the inner guard rejects requests even if NODE_ENV is changed at runtime.
+  if (process.env.NODE_ENV === "development") {
     router.get("/api/auth/dev-verify", async (req, res) => {
+      if (process.env.NODE_ENV !== "development") {
+        return sendFail(res, ErrorCode.UNAUTHORIZED, "Not available outside development", 403);
+      }
       if (!appState.userStore) {
         return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
       }

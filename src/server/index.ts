@@ -572,6 +572,17 @@ async function boot(): Promise<void> {
           detail: { cleaned },
         });
       }
+      // Purge unverified users older than 7 days
+      if (state.userStore) {
+        const purged = await state.userStore.cleanupUnverifiedUsers("7 days");
+        if (purged.length > 0) {
+          log.boot.info({ count: purged.length, emails: purged }, "unverified:gc");
+          state.auditStore?.logEvent({
+            event: "auth.unverified_cleanup",
+            detail: { count: purged.length, emails: purged },
+          });
+        }
+      }
     } catch (err) {
       log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "session:gc:error");
     }

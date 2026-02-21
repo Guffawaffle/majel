@@ -56,6 +56,8 @@ async function handleSignup(e) {
         const data = await resp.json();
 
         if (data.ok) {
+            // Store the resend nonce for the verification resend flow
+            if (data.data?.resendToken) lastResendToken = data.data.resendToken;
             showSection('verify');
         } else {
             showMessage('signup', data.error?.message || 'Sign-up failed', 'error');
@@ -121,6 +123,40 @@ async function handleForgot(e) {
 document.getElementById('signup-form')?.addEventListener('submit', handleSignup);
 document.getElementById('login-form')?.addEventListener('submit', handleLogin);
 document.getElementById('forgot-form')?.addEventListener('submit', handleForgot);
+
+// ── Resend verification ──────────────────
+let lastResendToken = '';
+
+document.getElementById('resend-verify-link')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const link = e.currentTarget;
+    if (!lastResendToken) {
+        showMessage('resend', 'Please sign up first.', 'error');
+        return;
+    }
+    link.textContent = 'Sending…';
+    link.style.pointerEvents = 'none';
+    try {
+        const resp = await fetch('/api/auth/resend-verification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'majel-client' },
+            body: JSON.stringify({ resendToken: lastResendToken }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            // Server issues a fresh nonce for subsequent resends
+            if (data.data?.resendToken) lastResendToken = data.data.resendToken;
+            showMessage('resend', 'Verification email resent — check your inbox.', 'success');
+        } else {
+            showMessage('resend', data.error?.message || 'Failed to resend.', 'error');
+        }
+    } catch {
+        showMessage('resend', 'Network error. Please try again.', 'error');
+    } finally {
+        link.textContent = 'resend the verification email';
+        link.style.pointerEvents = '';
+    }
+});
 
 // ── Wire up navigation links ─────────────
 document.querySelectorAll('[data-nav]').forEach(el => {
