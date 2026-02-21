@@ -1,13 +1,14 @@
 // eslint.config.mjs — ESLint flat config (v9+)
 //
-// Two zones:
+// Zones:
 //   1. src/server/**/*.ts  — TypeScript with type-aware rules
-//   2. src/client/**/*.js  — Vanilla JS with import-map validation
+//   2. scripts/**/*.ts     — TypeScript (relaxed)
+//   3. scripts/**/*.mjs    — ES modules
+//   4. test/**/*.ts         — TypeScript (relaxed)
 
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
-import importmapPlugin from './eslint-plugin-importmap.mjs';
 
 export default tseslint.config(
     // ── Global ignores ──────────────────────────────────────
@@ -49,38 +50,6 @@ export default tseslint.config(
             '@typescript-eslint/no-explicit-any': 'warn',
             'no-console': 'off', // pino handles logging, but server scripts use console
             'no-useless-assignment': 'off', // false positives on $${idx++} query-builder pattern
-        },
-    },
-
-    // ── Client: Vanilla JS with import map ──────────────────
-    {
-        files: ['src/client/**/*.js'],
-        extends: [js.configs.recommended],
-        plugins: {
-            importmap: importmapPlugin,
-        },
-        languageOptions: {
-            ecmaVersion: 2022,
-            sourceType: 'module',
-            globals: {
-                ...globals.browser,
-            },
-        },
-        rules: {
-            // Import map enforcement — catches bare specifiers that
-            // don't match any entry in the index.html import map
-            'importmap/no-unresolved-importmap': 'error',
-
-            // Practical quality rules
-            'no-unused-vars': ['warn', {
-                argsIgnorePattern: '^_',
-                varsIgnorePattern: '^_',
-                caughtErrorsIgnorePattern: '^_',
-            }],
-            'no-undef': 'off', // browser globals via globals.browser; import map aliases aren't resolvable
-            'eqeqeq': ['error', 'allow-null'],  // == null is the idiomatic null/undefined check
-            'no-var': 'error',
-            'prefer-const': 'warn',
         },
     },
 
