@@ -48,6 +48,8 @@ This is the bridge between "click everything manually in the catalog" (Quick Set
 
 ADR-026 D5 says "AI optional, never blocks setup." This formalizes the UX contract:
 
+Checklist for implementation/review: [AI UX Review Checklist](./AI-UX-REVIEW-CHECKLIST.md)
+
 **Non-blocking introduction:**
 - Aria is introduced via a small, dismissible panel/tooltip on first visit to the hub
 - Aria is never a required step in any flow
@@ -158,3 +160,4 @@ This keeps AI assistance optional and safe: models may propose, users decide to 
 - ADR-026 (Startup + Import UX Contract) — parent document, unchanged
 - ADR-025 (Crew Composition Model) — composition opt-in gate (D6)
 - ADR-015 (Canonical Entity Identity) — `raw:officer:<gameId>` format
+- AI UX Review Checklist (Reusable)

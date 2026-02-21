@@ -48,6 +48,7 @@
   let fileName = $state("");
   let format = $state<"csv">("csv");
   let pastedCsv = $state("");
+  let pendingFileInput = $state<{ fileName: string; contentBase64: string; format: "csv" } | null>(null);
   let loading = $state(false);
   let error = $state("");
   let status = $state("");
@@ -73,6 +74,21 @@
   let belowDeckSuggestions = $state<CompositionBelowDeckPolicySuggestion[]>([]);
   let loadoutSuggestions = $state<CompositionLoadoutSuggestion[]>([]);
 
+  const MANUAL_IMPORT_CANDIDATE_FIELDS = [
+    "officerId",
+    "officerName",
+    "officerLevel",
+    "officerRank",
+    "officerPower",
+    "officerOwned",
+    "shipId",
+    "shipName",
+    "shipLevel",
+    "shipTier",
+    "shipPower",
+    "shipOwned",
+  ];
+
   function sendComposition(command: ImportsCompositionCommand) {
     compositionUi = routeImportsCompositionCommand(compositionUi, command);
   }
@@ -96,6 +112,7 @@
 
     try {
       const base64 = await fileToBase64(file);
+      pendingFileInput = { fileName, contentBase64: base64, format };
       await runAnalyzeAndParse({ fileName, contentBase64: base64, format });
       pastedCsv = "";
     } catch (err) {
@@ -146,6 +163,72 @@
     } finally {
       loading = false;
     }
+  }
+
+  function buildManualAnalysis(parsedResult: ParsedImportData): ImportAnalysis {
+    return {
+      fileName: parsedResult.fileName,
+      format: parsedResult.format,
+      rowCount: parsedResult.rowCount,
+      headers: parsedResult.headers,
+      sampleRows: parsedResult.sampleRows,
+      candidateFields: [...MANUAL_IMPORT_CANDIDATE_FIELDS],
+      suggestions: parsedResult.headers.map((header) => ({
+        sourceColumn: header,
+        suggestedField: null,
+        confidence: "low",
+        reason: "Manual mapping",
+      })),
+    };
+  }
+
+  async function runManualParse(input: { fileName: string; contentBase64: string; format: "csv" }) {
+    loading = true;
+    error = "";
+    status = "";
+    commitResult = null;
+    overwriteApproval = null;
+    analysis = null;
+    parsed = null;
+    mapping = {};
+    resolvedRows = [];
+    unresolved = [];
+    try {
+      const parsedResult = await parseImportFile(input);
+      parsed = parsedResult;
+      analysis = buildManualAnalysis(parsedResult);
+      mapping = Object.fromEntries(parsedResult.headers.map((header) => [header, ""]));
+      status = `Parsed ${parsedResult.rowCount} row(s). Manual mapping enabled; choose fields, then run resolve.`;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function continueManualFromFile() {
+    if (!pendingFileInput) {
+      error = "Choose CSV first.";
+      return;
+    }
+    fileName = pendingFileInput.fileName;
+    format = pendingFileInput.format;
+    await runManualParse(pendingFileInput);
+  }
+
+  async function continueManualFromPastedCsv() {
+    if (!pastedCsv.trim()) {
+      error = "Paste CSV text first.";
+      return;
+    }
+    fileName = "pasted.csv";
+    format = "csv";
+    const input = {
+      fileName,
+      contentBase64: utf8ToBase64(pastedCsv),
+      format,
+    } as const;
+    await runManualParse(input);
   }
 
   async function runResolve() {
@@ -389,11 +472,17 @@
       <span>Choose CSV</span>
       <input type="file" accept=".csv" onchange={onFileChange} />
     </label>
+    <div class="imports-actions">
+      <button class="imports-btn" onclick={() => { void continueManualFromFile(); }} disabled={loading || !pendingFileInput}>Continue with manual mapping</button>
+    </div>
 
     <div class="imports-paste">
       <label for="csv-paste">Or paste CSV</label>
       <textarea id="csv-paste" bind:value={pastedCsv} placeholder="officer name,level,power\nKirk,50,120000"></textarea>
-      <button class="imports-btn" onclick={() => { void analyzePastedCsv(); }} disabled={loading}>Analyze pasted CSV</button>
+      <div class="imports-actions">
+        <button class="imports-btn" onclick={() => { void analyzePastedCsv(); }} disabled={loading}>Analyze pasted CSV</button>
+        <button class="imports-btn" onclick={() => { void continueManualFromPastedCsv(); }} disabled={loading}>Continue with manual mapping</button>
+      </div>
     </div>
   </div>
 
