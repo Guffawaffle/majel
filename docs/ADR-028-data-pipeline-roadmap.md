@@ -18,7 +18,8 @@
 | Phase 3: Inventory | — | Not started | Resource planning |
 | Phase 4: Events/Away Teams | — | Not started | Dynamic game state |
 | Phase 5: Battle Logs | — | Not started | Combat analysis |
-| Cross-Cutting: Safe Mutation Path | #93 | Planned | Confirmation-gated proposal/apply for agent-driven writes |
+| Cross-Cutting: Safe Mutation Path | #93 | ✅ Complete | Confirmation-gated proposal/apply for agent-driven writes (PR #118) |
+| Cross-Cutting: Translator | #78 | ✅ Complete | Config-driven external data → MajelGameExport mapping (PR #119) |
 
 ## Context
 

@@ -84,6 +84,7 @@ import { createCrewRoutes } from "./routes/crews.js";
 import { createReceiptRoutes } from "./routes/receipts.js";
 import { createImportRoutes } from "./routes/imports.js";
 import { createProposalRoutes } from "./routes/proposals.js";
+import { createTranslatorRoutes } from "./routes/translator.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -278,6 +279,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createReceiptRoutes(appState));
   app.use(createImportRoutes(appState));
   app.use(createProposalRoutes(appState));
+  app.use(createTranslatorRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
   app.get("/app/{*splat}", (_req, res) => {
