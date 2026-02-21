@@ -138,8 +138,10 @@ let sessionGcTimer: ReturnType<typeof setInterval> | null = null;
 export function createApp(appState: AppState): express.Express {
   const app = express();
 
-  // Trust exactly one proxy hop (Cloud Run's Google Frontend)
-  // Using 1 instead of true avoids ERR_ERL_PERMISSIVE_TRUST_PROXY
+  // Trust exactly one proxy hop (Cloud Run's Google Frontend).
+  // W16: For multi-proxy deployments (e.g., Cloud Armor + LB + Cloud Run),
+  // increase this to the number of trusted hops so req.ip returns the real client IP.
+  // Using 1 instead of true avoids ERR_ERL_PERMISSIVE_TRUST_PROXY.
   app.set("trust proxy", 1);
   
   // AX-First response envelope (ADR-004) — requestId + timing on every request
