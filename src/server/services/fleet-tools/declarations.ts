@@ -426,6 +426,40 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "analyze_battle_log",
+    description:
+      "Analyze a battle log JSON to identify key failure rounds, incoming/outgoing damage trends, " +
+      "ability trigger timing, and likely loss causes. " +
+      "Call this when the Admiral wants post-battle root cause analysis.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        battle_log: {
+          type: Type.OBJECT,
+          description: "Battle log payload containing rounds, damage events, and ability triggers.",
+        },
+      },
+      required: ["battle_log"],
+    },
+  },
+  {
+    name: "suggest_counter",
+    description:
+      "Given a battle log JSON, recommend specific crew/ship counter-adjustments grounded in failure analysis. " +
+      "References ability timing and research context when available. " +
+      "Call this after analyze_battle_log when the Admiral asks what to change next.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        battle_log: {
+          type: Type.OBJECT,
+          description: "Battle log payload containing rounds, damage events, and ability triggers.",
+        },
+      },
+      required: ["battle_log"],
+    },
+  },
+  {
     name: "analyze_fleet",
     description:
       "Gather comprehensive fleet state for optimization analysis: all docks with assignments, " +

@@ -60,6 +60,31 @@ interface FactionStandingRecord {
   storeAccess: "locked" | "limited" | "open";
 }
 
+interface BattleDamageEvent {
+  amount: number;
+  type: string | null;
+  sourceOfficerId: string | null;
+  sourceAbility: string | null;
+}
+
+interface BattleRound {
+  round: number;
+  damageReceived: BattleDamageEvent[];
+  damageDealt: BattleDamageEvent[];
+  abilityTriggers: string[];
+  hullAfter: number | null;
+  shieldAfter: number | null;
+  destroyed: boolean;
+}
+
+interface ParsedBattleLog {
+  battleId: string | null;
+  mode: string | null;
+  attackerOfficers: string[];
+  defenderOfficers: string[];
+  rounds: BattleRound[];
+}
+
 export function __resetWebLookupStateForTests(): void {
   webLookupCache.clear();
   webLookupRateLimit.clear();
@@ -123,6 +148,107 @@ function parseJsonOrFallback<T>(input: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function parseBattleDamageEvents(value: unknown): BattleDamageEvent[] {
+  if (!Array.isArray(value)) return [];
+  const events: BattleDamageEvent[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const amount = toFiniteNumber(record.amount) ?? 0;
+    const type = typeof record.type === "string" && record.type.trim() ? record.type.trim().toLowerCase() : null;
+    const sourceOfficerId = typeof record.source_officer_id === "string"
+      ? record.source_officer_id.trim()
+      : typeof record.sourceOfficerId === "string"
+        ? record.sourceOfficerId.trim()
+        : null;
+    const sourceAbility = typeof record.source_ability === "string"
+      ? record.source_ability.trim()
+      : typeof record.sourceAbility === "string"
+        ? record.sourceAbility.trim()
+        : null;
+    events.push({ amount, type, sourceOfficerId, sourceAbility });
+  }
+  return events;
+}
+
+function parseBattleLog(input: unknown): ParsedBattleLog | null {
+  const payload = typeof input === "string" ? parseJsonOrFallback<unknown>(input, null) : input;
+  if (!payload || typeof payload !== "object") return null;
+  const log = payload as Record<string, unknown>;
+  const roundsRaw = Array.isArray(log.rounds) ? log.rounds : [];
+  const rounds: BattleRound[] = [];
+
+  for (let index = 0; index < roundsRaw.length; index += 1) {
+    const row = roundsRaw[index];
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const abilitySource = record.ability_triggers ?? record.abilityTriggers;
+    rounds.push({
+      round: toFiniteNumber(record.round) ?? index + 1,
+      damageReceived: parseBattleDamageEvents(record.damage_received ?? record.damageReceived),
+      damageDealt: parseBattleDamageEvents(record.damage_dealt ?? record.damageDealt),
+      abilityTriggers: Array.isArray(abilitySource)
+        ? abilitySource
+          .filter((entry: unknown): entry is string => typeof entry === "string" && entry.trim().length > 0)
+          .map((entry: string) => entry.trim())
+        : [],
+      hullAfter: toFiniteNumber(record.hull_after ?? record.hullAfter),
+      shieldAfter: toFiniteNumber(record.shield_after ?? record.shieldAfter),
+      destroyed: Boolean(record.destroyed) || (toFiniteNumber(record.hull_after ?? record.hullAfter) ?? 1) <= 0,
+    });
+  }
+
+  if (rounds.length === 0) return null;
+
+  const attackerOfficers = Array.isArray(log.attacker_officers)
+    ? log.attacker_officers
+    : Array.isArray(log.attackerOfficers)
+      ? log.attackerOfficers
+      : [];
+  const defenderOfficers = Array.isArray(log.defender_officers)
+    ? log.defender_officers
+    : Array.isArray(log.defenderOfficers)
+      ? log.defenderOfficers
+      : [];
+
+  return {
+    battleId: typeof log.battle_id === "string"
+      ? log.battle_id
+      : typeof log.battleId === "string"
+        ? log.battleId
+        : null,
+    mode: typeof log.mode === "string" ? log.mode : null,
+    attackerOfficers: attackerOfficers.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0),
+    defenderOfficers: defenderOfficers.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0),
+    rounds,
+  };
+}
+
+async function mapOfficerIdsToAbilities(officerIds: string[], ctx: ToolContext): Promise<Array<Record<string, unknown>>> {
+  if (!ctx.referenceStore || officerIds.length === 0) return [];
+  const results: Array<Record<string, unknown>> = [];
+  for (const officerId of officerIds) {
+    const officer = await ctx.referenceStore.getOfficer(officerId);
+    if (!officer) continue;
+    results.push({
+      officerId,
+      name: officer.name,
+      officerAbility: officer.officerAbility,
+      captainManeuver: officer.captainManeuver,
+    });
+  }
+  return results;
 }
 
 function toIsoTimestamp(value: unknown): string | null {
@@ -1885,6 +2011,178 @@ export async function suggestCrew(
         researchCitations.length > 0
           ? "When referencing research in rationale, cite by nodeName + nodeId from researchContext.citations."
           : "No research citations available; avoid claiming specific research bonuses.",
+    },
+  };
+}
+
+export async function analyzeBattleLog(
+  battleLog: unknown,
+  ctx: ToolContext,
+): Promise<object> {
+  const parsed = parseBattleLog(battleLog);
+  if (!parsed) {
+    return { error: "Invalid battle_log payload. Expected object with non-empty rounds array." };
+  }
+
+  const roundAnalysis = parsed.rounds.map((round) => {
+    const damageReceived = round.damageReceived.reduce((sum, entry) => sum + entry.amount, 0);
+    const damageDealt = round.damageDealt.reduce((sum, entry) => sum + entry.amount, 0);
+    const incomingByType = new Map<string, number>();
+    for (const event of round.damageReceived) {
+      const key = event.type ?? "unknown";
+      incomingByType.set(key, (incomingByType.get(key) ?? 0) + event.amount);
+    }
+
+    return {
+      round: round.round,
+      damageReceived,
+      damageDealt,
+      net: damageDealt - damageReceived,
+      hullAfter: round.hullAfter,
+      shieldAfter: round.shieldAfter,
+      destroyed: round.destroyed,
+      abilityTriggers: round.abilityTriggers,
+      incomingByType: Array.from(incomingByType.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([type, amount]) => ({ type, amount })),
+    };
+  });
+
+  const failureRound = roundAnalysis
+    .filter((row) => row.destroyed)
+    .sort((a, b) => a.round - b.round)[0]
+    ?? [...roundAnalysis].sort((a, b) => b.damageReceived - a.damageReceived)[0];
+
+  const topIncomingType = (failureRound.incomingByType[0]?.type ?? "unknown").toLowerCase();
+  const likelyCause = topIncomingType.includes("kinetic")
+    ? "kinetic_spike_overwhelmed_mitigation"
+    : topIncomingType.includes("energy")
+      ? "energy_spike_broke_shields"
+      : "sustained_damage_exceeded_defense";
+
+  const allTriggered = Array.from(new Set(roundAnalysis.flatMap((row) => row.abilityTriggers))).slice(0, 10);
+  const officerRefs = await mapOfficerIdsToAbilities(
+    Array.from(new Set([...parsed.attackerOfficers, ...parsed.defenderOfficers])),
+    ctx,
+  );
+
+  const researchNodes = ctx.researchStore ? await ctx.researchStore.listNodes() : [];
+  const researchAdvisory = calculateResearchAdvisory(researchNodes);
+  const relevantBuffs = extractRelevantBuffs(researchNodes, "pvp").slice(0, 8);
+
+  return {
+    battle: {
+      battleId: parsed.battleId,
+      mode: parsed.mode,
+      rounds: parsed.rounds.length,
+    },
+    failurePoint: {
+      round: failureRound.round,
+      likelyCause,
+      damageReceived: failureRound.damageReceived,
+      hullAfter: failureRound.hullAfter,
+      shieldAfter: failureRound.shieldAfter,
+      destroyed: failureRound.destroyed,
+    },
+    roundByRound: roundAnalysis,
+    abilityHighlights: {
+      triggeredAbilities: allTriggered,
+      officerAbilities: officerRefs,
+    },
+    researchContext: {
+      ...researchAdvisory,
+      referencedBuffs: relevantBuffs.map((buff) => ({
+        nodeName: buff.nodeName,
+        nodeId: buff.nodeId,
+        metric: buff.metric,
+        value: buff.value,
+        unit: buff.unit,
+      })),
+    },
+  };
+}
+
+export async function suggestCounter(
+  battleLog: unknown,
+  ctx: ToolContext,
+): Promise<object> {
+  const analysis = await analyzeBattleLog(battleLog, ctx) as Record<string, unknown>;
+  if (analysis.error) return analysis;
+
+  const failure = analysis.failurePoint as Record<string, unknown>;
+  const likelyCause = String(failure.likelyCause ?? "sustained_damage_exceeded_defense");
+  const officerPool: Array<Record<string, unknown>> = [];
+
+  if (ctx.overlayStore && ctx.referenceStore) {
+    const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+    const allOfficers = await ctx.referenceStore.listOfficers();
+    const refMap = new Map(allOfficers.map((officer) => [officer.id, officer]));
+    for (const overlay of overlays) {
+      const ref = refMap.get(overlay.refId);
+      if (!ref) continue;
+      officerPool.push({
+        officerId: ref.id,
+        name: ref.name,
+        ability: ref.officerAbility ?? "",
+      });
+    }
+  }
+
+  const preferTerms = likelyCause.includes("energy")
+    ? ["shield", "mitigation", "defense"]
+    : likelyCause.includes("kinetic")
+      ? ["hull", "defense", "mitigation"]
+      : ["mitigation", "defense", "shield"];
+
+  const swapCandidates = officerPool
+    .filter((officer) => {
+      const ability = String(officer.ability).toLowerCase();
+      return preferTerms.some((token) => ability.includes(token));
+    })
+    .slice(0, 3)
+    .map((officer) => ({
+      action: "swap_in",
+      officerId: officer.officerId,
+      officerName: officer.name,
+      reason: `Ability aligns with ${preferTerms.join("/")} mitigation focus.`,
+    }));
+
+  const researchContext = analysis.researchContext as Record<string, unknown>;
+  const referencedBuffs = (researchContext.referencedBuffs as Array<Record<string, unknown>> | undefined) ?? [];
+  const topBuff = referencedBuffs[0];
+
+  return {
+    failureSummary: {
+      likelyCause,
+      failedRound: failure.round,
+    },
+    recommendedChanges: [
+      {
+        category: "crew",
+        recommendation: swapCandidates.length > 0
+          ? "Rotate in defensive specialists from owned roster."
+          : "Prioritize adding a defensive specialist to this matchup.",
+        swaps: swapCandidates,
+      },
+      {
+        category: "ship_tuning",
+        recommendation: likelyCause.includes("energy")
+          ? "Prioritize shield-focused mitigation and energy resistance tuning."
+          : likelyCause.includes("kinetic")
+            ? "Prioritize hull survivability and kinetic damage reduction."
+            : "Balance shield and hull mitigation to reduce sustained damage collapse.",
+      },
+      {
+        category: "research",
+        recommendation: topBuff
+          ? `Leverage ${String(topBuff.nodeName)} (${String(topBuff.metric)} ${String(topBuff.value)} ${String(topBuff.unit)}).`
+          : "Research context unavailable or sparse; treat as advisory only.",
+      },
+    ],
+    dataQuality: {
+      hasOwnedRosterContext: officerPool.length > 0,
+      hasResearchContext: referencedBuffs.length > 0,
+      researchPriority: researchContext.priority ?? "none",
     },
   };
 }

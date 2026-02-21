@@ -38,6 +38,8 @@ import {
   calculateTruePower,
   findLoadoutsForIntent,
   suggestCrew,
+  analyzeBattleLog,
+  suggestCounter,
   analyzeFleet,
   resolveConflict,
   whatIfRemoveOfficer,
@@ -163,6 +165,10 @@ async function dispatchTool(
       return findLoadoutsForIntent(String(args.intent_key ?? ""), ctx);
     case "suggest_crew":
       return suggestCrew(String(args.ship_id ?? ""), args.intent_key as string | undefined, ctx);
+    case "analyze_battle_log":
+      return analyzeBattleLog(args.battle_log, ctx);
+    case "suggest_counter":
+      return suggestCounter(args.battle_log, ctx);
     case "analyze_fleet":
       return analyzeFleet(ctx);
     case "resolve_conflict":
