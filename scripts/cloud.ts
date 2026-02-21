@@ -61,12 +61,19 @@ interface AxOutput {
 }
 
 type AuthTier = "open" | "read" | "write";
+interface CommandArgDef {
+  name: string;
+  type: string;
+  default?: string;
+  description: string;
+}
 
 interface CommandDef {
   fn: () => Promise<void>;
   tier: AuthTier;
   description: string;
   alias: string;
+  args?: CommandArgDef[];
 }
 
 let AX_MODE = false;
@@ -1496,40 +1503,6 @@ async function cmdHelp(): Promise<void> {
   const start = Date.now();
 
   if (AX_MODE) {
-    const COMMAND_ARGS: Record<string, Array<{ name: string; type: string; default?: string; description: string }>> = {
-      deploy: [],
-      build: [],
-      push: [],
-      rollback: [],
-      scale: [
-        { name: "--min", type: "integer", default: "0", description: "Minimum instances (0 = scale to zero)" },
-        { name: "--max", type: "integer", default: "cloud default", description: "Maximum instances" },
-      ],
-      canary: [
-        { name: "--percent", type: "integer", default: "10", description: "Traffic percentage for canary revision" },
-      ],
-      promote: [
-        { name: "<revision>", type: "string", description: "Revision name to route 100% traffic to" },
-      ],
-      ssh: [],
-      status: [],
-      health: [],
-      logs: [],
-      env: [],
-      secrets: [],
-      sql: [],
-      revisions: [],
-      diff: [],
-      metrics: [],
-      costs: [],
-      warm: [
-        { name: "-n", type: "integer", default: "3", description: "Number of warmup requests" },
-      ],
-      init: [
-        { name: "--force", type: "boolean", description: "Overwrite existing .cloud-auth file" },
-      ],
-    };
-
     const commands = Object.entries(COMMANDS)
       .filter(([name]) => name !== "help")
       .map(([name, def]) => ({
@@ -1537,7 +1510,7 @@ async function cmdHelp(): Promise<void> {
         alias: def.alias,
         tier: def.tier,
         description: def.description,
-        args: COMMAND_ARGS[name] ?? [],
+        args: def.args ?? [],
       }));
 
     axOutput("help", start, {
@@ -1610,7 +1583,13 @@ async function cmdHelp(): Promise<void> {
 const COMMANDS: Record<string, CommandDef> = {
   // Tier: open
   help:      { fn: cmdHelp,      tier: "open",  alias: "cloud",           description: "Show all commands, tiers, and usage" },
-  init:      { fn: cmdInit,      tier: "open",  alias: "cloud:init",      description: "Generate .cloud-auth token (chmod 600, gitignored)" },
+  init:      {
+    fn: cmdInit,
+    tier: "open",
+    alias: "cloud:init",
+    description: "Generate .cloud-auth token (chmod 600, gitignored)",
+    args: [{ name: "--force", type: "boolean", description: "Overwrite existing .cloud-auth file" }],
+  },
   // Tier: read
   status:    { fn: cmdStatus,    tier: "read",  alias: "cloud:status",    description: "Service status: URL, revision, scaling, resources" },
   health:    { fn: cmdHealth,    tier: "read",  alias: "cloud:health",    description: "Hit production /api/health endpoint" },
@@ -1622,16 +1601,43 @@ const COMMANDS: Record<string, CommandDef> = {
   diff:      { fn: cmdDiff,      tier: "read",  alias: "cloud:diff",      description: "Compare local vs deployed (version, SHA, env drift)" },
   metrics:   { fn: cmdMetrics,   tier: "read",  alias: "cloud:metrics",   description: "Log-based metrics: latency, errors, status codes (1h)" },
   costs:     { fn: cmdCosts,     tier: "read",  alias: "cloud:costs",     description: "Estimated monthly costs (Cloud Run + Cloud SQL)" },
-  warm:      { fn: cmdWarm,      tier: "read",  alias: "cloud:warm",      description: "Send warmup pings to detect cold starts" },
+  warm:      {
+    fn: cmdWarm,
+    tier: "read",
+    alias: "cloud:warm",
+    description: "Send warmup pings to detect cold starts",
+    args: [{ name: "-n", type: "integer", default: "3", description: "Number of warmup requests" }],
+  },
   sync:      { fn: cmdSync,      tier: "read",  alias: "cloud:sync",      description: "Run catalog sync on production (CDN → DB)" },
   // Tier: write (requires .cloud-auth)
   deploy:    { fn: cmdDeploy,    tier: "write", alias: "cloud:deploy",    description: "Full pipeline: local-ci \u2192 build \u2192 deploy \u2192 health check" },
   build:     { fn: cmdBuild,     tier: "write", alias: "cloud:build",     description: "Build container image via Cloud Build" },
   push:      { fn: cmdPush,      tier: "write", alias: "cloud:push",      description: "Deploy already-built image to Cloud Run" },
   rollback:  { fn: cmdRollback,  tier: "write", alias: "cloud:rollback",  description: "Roll back to previous Cloud Run revision" },
-  scale:     { fn: cmdScale,     tier: "write", alias: "cloud:scale",     description: "View/set min-max instance scaling" },
-  canary:    { fn: cmdCanary,    tier: "write", alias: "cloud:canary",    description: "Deploy with partial traffic (default 10%)" },
-  promote:   { fn: cmdPromote,   tier: "write", alias: "cloud:promote",   description: "Route 100% traffic to a specific revision" },
+  scale:     {
+    fn: cmdScale,
+    tier: "write",
+    alias: "cloud:scale",
+    description: "View/set min-max instance scaling",
+    args: [
+      { name: "--min", type: "integer", default: "0", description: "Minimum instances (0 = scale to zero)" },
+      { name: "--max", type: "integer", default: "cloud default", description: "Maximum instances" },
+    ],
+  },
+  canary:    {
+    fn: cmdCanary,
+    tier: "write",
+    alias: "cloud:canary",
+    description: "Deploy with partial traffic (default 10%)",
+    args: [{ name: "--percent", type: "integer", default: "10", description: "Traffic percentage for canary revision" }],
+  },
+  promote:   {
+    fn: cmdPromote,
+    tier: "write",
+    alias: "cloud:promote",
+    description: "Route 100% traffic to a specific revision",
+    args: [{ name: "<revision>", type: "string", description: "Revision name to route 100% traffic to" }],
+  },
   ssh:       { fn: cmdSsh,       tier: "write", alias: "cloud:ssh",       description: "Start Cloud SQL Auth Proxy for local psql" },
   // DB operations (requires IP authorization)
   "db:seed":  { fn: cmdDbSeed,   tier: "write", alias: "cloud:db:seed",  description: "Seed Cloud DB from CDN snapshot" },
