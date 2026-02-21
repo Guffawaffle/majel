@@ -12,7 +12,7 @@
  *   sendFail(res, ErrorCode.GEMINI_ERROR, "AI failed", 500, { hints: ["Try again"] });
  */
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { log } from "./logger.js";
 
@@ -110,11 +110,25 @@ function buildMeta(res: Response): ApiMeta {
 
 /** Send a success envelope. */
 export function sendOk(res: Response, data: unknown, statusCode = 200): void {
-  res.status(statusCode).json({
-    ok: true,
-    data,
-    meta: buildMeta(res),
-  });
+  const envelope = { ok: true, data, meta: buildMeta(res) };
+
+  // ETag conditional revalidation for GET requests (ADR-032 Phase 4).
+  // Hash only the data portion — meta.timestamp/durationMs change every request.
+  if (res.req?.method === "GET" && statusCode === 200) {
+    const dataJson = JSON.stringify(data);
+    const hash = createHash("md5").update(dataJson).digest("base64url").slice(0, 16);
+    const etag = `W/"${hash}"`;
+    res.setHeader("ETag", etag);
+    res.setHeader("Cache-Control", "no-cache");
+
+    const ifNoneMatch = res.req.headers["if-none-match"];
+    if (ifNoneMatch === etag) {
+      res.status(304).end();
+      return;
+    }
+  }
+
+  res.status(statusCode).json(envelope);
 }
 
 /** Options for extended error details passed to sendFail. */

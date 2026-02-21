@@ -10,6 +10,8 @@
     fetchDiagnosticSchema,
     executeDiagnosticQuery,
   } from "../lib/api/diagnostic.js";
+  import { getCacheMetrics, resetCacheMetrics, getCacheReady, cacheClear } from "../lib/cache/index.js";
+  import type { CacheMetrics } from "../lib/cache/index.js";
   import type {
     DiagnosticHealth,
     DiagnosticSummary,
@@ -20,7 +22,7 @@
 
   // ── State ──
 
-  type Tab = "health" | "summary" | "query" | "schema";
+  type Tab = "health" | "summary" | "query" | "schema" | "cache";
   let activeTab = $state<Tab>("health");
   let loading = $state(true);
   let error = $state("");
@@ -29,6 +31,7 @@
   let summaryData = $state<DiagnosticSummary | null>(null);
   let schemaData = $state<DiagnosticSchema | null>(null);
   let schemaLoaded = $state(false);
+  let cacheMetrics = $state<CacheMetrics | null>(null);
 
   // Query console
   let sqlInput = $state("");
@@ -80,6 +83,19 @@
         error = err instanceof Error ? err.message : "Failed to load schema.";
       }
     }
+    if (tab === "cache") {
+      cacheMetrics = getCacheMetrics();
+    }
+  }
+
+  function refreshCacheMetrics() {
+    cacheMetrics = getCacheMetrics();
+  }
+
+  async function handleClearCache() {
+    await cacheClear();
+    resetCacheMetrics();
+    cacheMetrics = getCacheMetrics();
   }
 
   // ── Query Console ──
@@ -140,6 +156,7 @@
     <button class="diag-tab" class:active={activeTab === "summary"} onclick={() => switchTab("summary")} role="tab" aria-selected={activeTab === "summary"}>📊 Data Summary</button>
     <button class="diag-tab" class:active={activeTab === "query"} onclick={() => switchTab("query")} role="tab" aria-selected={activeTab === "query"}>🔍 Query Console</button>
     <button class="diag-tab" class:active={activeTab === "schema"} onclick={() => switchTab("schema")} role="tab" aria-selected={activeTab === "schema"}>🗂️ Schema Browser</button>
+    <button class="diag-tab" class:active={activeTab === "cache"} onclick={() => switchTab("cache")} role="tab" aria-selected={activeTab === "cache"}>⚡ Cache</button>
   </nav>
 
   {#if error}
@@ -160,6 +177,9 @@
 
   {:else if activeTab === "schema"}
     {@render schemaSection()}
+
+  {:else if activeTab === "cache"}
+    {@render cacheSection()}
   {/if}
 </section>
 
@@ -378,6 +398,55 @@
         {/if}
       </div>
     {/if}
+  </div>
+{/snippet}
+
+{#snippet cacheSection()}
+  <div class="diag-grid">
+    <div class="diag-section">
+      <h4>Cache Status</h4>
+      <div class="diag-row">
+        <span>Status</span>
+        <span class={getCacheReady() ? "diag-ok" : "diag-warn"}>{getCacheReady() ? "Connected" : "Unavailable"}</span>
+      </div>
+      <div class="diag-row">
+        <span>Purge Window</span>
+        <span>7 days</span>
+      </div>
+    </div>
+    {#if cacheMetrics}
+      <div class="diag-section">
+        <h4>Performance</h4>
+        <div class="diag-row">
+          <span>Total Requests</span>
+          <span>{cacheMetrics.total}</span>
+        </div>
+        <div class="diag-row">
+          <span>Cache Hits</span>
+          <span class="diag-ok">{cacheMetrics.hits}</span>
+        </div>
+        <div class="diag-row">
+          <span>Cache Misses</span>
+          <span>{cacheMetrics.misses}</span>
+        </div>
+        <div class="diag-row">
+          <span>Revalidations</span>
+          <span>{cacheMetrics.revalidations}</span>
+        </div>
+        <div class="diag-row">
+          <span>Hit Rate</span>
+          <span class={cacheMetrics.hitRate > 0.5 ? "diag-ok" : ""}>{(cacheMetrics.hitRate * 100).toFixed(1)}%</span>
+        </div>
+        <div class="diag-row">
+          <span>Est. Bandwidth Saved</span>
+          <span>{cacheMetrics.bytesSaved > 1024 ? `${(cacheMetrics.bytesSaved / 1024).toFixed(1)} KB` : `${cacheMetrics.bytesSaved} B`}</span>
+        </div>
+      </div>
+    {/if}
+  </div>
+  <div class="diag-cache-actions">
+    <button class="diag-preset-btn" onclick={refreshCacheMetrics}>↻ Refresh Metrics</button>
+    <button class="diag-preset-btn diag-cache-clear" onclick={handleClearCache}>🗑 Clear Cache</button>
   </div>
 {/snippet}
 
@@ -612,6 +681,16 @@
     color: var(--text-muted);
   }
   .diag-index-unique { color: var(--accent-blue); }
+
+  /* ── Cache tab ── */
+  .diag-cache-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .diag-cache-clear {
+    color: var(--accent-red, #e55);
+  }
 
   @media (max-width: 768px) {
     .diagnostics { padding: 12px; }

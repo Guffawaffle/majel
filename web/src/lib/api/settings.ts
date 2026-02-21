@@ -4,6 +4,8 @@
 
 import type { SettingEntry } from "../types.js";
 import { apiFetch, apiPatch, qs } from "./fetch.js";
+import { cachedFetch, invalidateForMutation } from "../cache/cached-fetch.js";
+import { cacheKey, TTL } from "../cache/cache-keys.js";
 
 /**
  * Persist a single fleet setting (key → value).
@@ -11,6 +13,7 @@ import { apiFetch, apiPatch, qs } from "./fetch.js";
  */
 export async function saveFleetSetting(key: string, value: string | number): Promise<void> {
   await apiPatch("/api/settings", { [key]: String(value) });
+  await invalidateForMutation("fleet-setting");
 }
 
 /**
@@ -19,10 +22,18 @@ export async function saveFleetSetting(key: string, value: string | number): Pro
  */
 export async function loadFleetSettings(): Promise<SettingEntry[]> {
   try {
-    const data = await apiFetch<{ settings: SettingEntry[] }>(
-      `/api/settings${qs({ category: "fleet" })}`,
+    const key = cacheKey("/api/settings", { category: "fleet" });
+    const result = await cachedFetch<SettingEntry[]>(
+      key,
+      async () => {
+        const data = await apiFetch<{ settings: SettingEntry[] }>(
+          `/api/settings${qs({ category: "fleet" })}`,
+        );
+        return data.settings ?? [];
+      },
+      TTL.COMPOSITION,
     );
-    return data.settings ?? [];
+    return result.data;
   } catch {
     return [];
   }
@@ -33,8 +44,16 @@ export async function loadFleetSettings(): Promise<SettingEntry[]> {
  */
 export async function loadSetting(key: string, fallback = ""): Promise<string> {
   try {
-    const data = await apiFetch<{ settings: SettingEntry[] }>("/api/settings");
-    const entry = data.settings?.find((s) => s.key === key);
+    const k = cacheKey("/api/settings");
+    const result = await cachedFetch<SettingEntry[]>(
+      k,
+      async () => {
+        const data = await apiFetch<{ settings: SettingEntry[] }>("/api/settings");
+        return data.settings ?? [];
+      },
+      TTL.COMPOSITION,
+    );
+    const entry = result.data.find((s) => s.key === key);
     return entry?.value ?? fallback;
   } catch {
     return fallback;
