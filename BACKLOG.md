@@ -194,7 +194,7 @@ Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, rep
 - [x] README says "local-only" but cloud deployment is operational
 - [x] README dependency table missing `pg`, `cookie-parser`
 - [x] CONTRIBUTING.md "What We're NOT Accepting" section is stale (auth, cloud, model selector all exist now)
-- [ ] CONTRIBUTING.md says "No linter configured" — this should be revisited
+- [x] CONTRIBUTING.md says "No linter configured" — this should be revisited *(fixed 2026-02-21: now documents enforced `npm run lint` workflow)*
 
 ### Security
 - [x] **minimatch ReDoS (GHSA-3ppc-4f35-3m26):** 7 high-severity transitive deps via typescript-eslint → resolved via `overrides` in package.json (04ded17)

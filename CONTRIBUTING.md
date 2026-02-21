@@ -100,7 +100,13 @@ git checkout -b feature/your-feature
 
 ### Code Style
 
-**No linter is configured** (intentional choice for alpha). Follow these conventions:
+ESLint is configured and enforced in pre-commit. Run:
+
+```bash
+npm run lint
+```
+
+Follow these conventions:
 
 #### TypeScript/JavaScript
 
