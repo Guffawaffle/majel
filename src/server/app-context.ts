@@ -22,6 +22,8 @@ import type { AuditStore } from "./stores/audit-store.js";
 import type { UserSettingsStore } from "./stores/user-settings-store.js";
 import type { ResearchStore, ResearchStoreFactory } from "./stores/research-store.js";
 import type { InventoryStore, InventoryStoreFactory } from "./stores/inventory-store.js";
+import type { ProposalStore, ProposalStoreFactory } from "./stores/proposal-store.js";
+import type { ToolContextFactory } from "./services/fleet-tools/index.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./services/micro-runner.js";
@@ -69,6 +71,12 @@ export interface AppState {
   inventoryStore: InventoryStore | null;
   /** Factory that creates per-user RLS-scoped InventoryStores. */
   inventoryStoreFactory: InventoryStoreFactory | null;
+  /** ADR-026b #93: Mutation proposal store. */
+  proposalStore: ProposalStore | null;
+  /** #93: Factory for per-user proposal stores. */
+  proposalStoreFactory: ProposalStoreFactory | null;
+  /** #93: Factory for per-user tool contexts. */
+  toolContextFactory: ToolContextFactory | null;
   startupComplete: boolean;
   config: AppConfig;
 }

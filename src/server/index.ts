@@ -47,6 +47,7 @@ import { createUserSettingsStore } from "./stores/user-settings-store.js";
 import { createTargetStoreFactory } from "./stores/target-store.js";
 import { createResearchStoreFactory } from "./stores/research-store.js";
 import { createInventoryStoreFactory } from "./stores/inventory-store.js";
+import { createProposalStoreFactory } from "./stores/proposal-store.js";
 import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
@@ -82,6 +83,7 @@ import { createTargetRoutes } from "./routes/targets.js";
 import { createCrewRoutes } from "./routes/crews.js";
 import { createReceiptRoutes } from "./routes/receipts.js";
 import { createImportRoutes } from "./routes/imports.js";
+import { createProposalRoutes } from "./routes/proposals.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -127,6 +129,9 @@ const state: AppState = {
   researchStoreFactory: null,
   inventoryStore: null,
   inventoryStoreFactory: null,
+  proposalStore: null,
+  proposalStoreFactory: null,
+  toolContextFactory: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -272,6 +277,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createCrewRoutes(appState));
   app.use(createReceiptRoutes(appState));
   app.use(createImportRoutes(appState));
+  app.use(createProposalRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
   app.get("/app/{*splat}", (_req, res) => {
@@ -473,6 +479,17 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "inventory store init failed");
   }
 
+  // 2m. Initialize proposal store (ADR-026b #93)
+  try {
+    const proposalFactory = await createProposalStoreFactory(adminPool, pool);
+    state.proposalStoreFactory = proposalFactory;
+    state.proposalStore = proposalFactory.forUser("local");
+    const proposalCounts = await state.proposalStore.counts();
+    log.boot.info({ proposals: proposalCounts.total }, "proposal store online (ADR-026b, user-scoped)");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "proposal store init failed");
+  }
+
   // Resolve config from settings store
   const { geminiApiKey } = state.config;
 
@@ -498,6 +515,9 @@ async function boot(): Promise<void> {
         };
       },
     } : null;
+
+    // Expose toolContextFactory on state for proposal routes (#93)
+    state.toolContextFactory = toolContextFactory;
 
     state.geminiEngine = createGeminiEngine(
       geminiApiKey,

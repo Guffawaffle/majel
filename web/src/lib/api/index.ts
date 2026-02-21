@@ -103,3 +103,11 @@ export {
   resolveImportRows,
   commitImportRows,
 } from "./imports.js";
+export {
+  createProposal,
+  applyProposal,
+  declineProposal,
+  listProposals,
+  getProposal,
+} from "./proposals.js";
+export type { ProposalSummary, ProposalDetail } from "./proposals.js";
