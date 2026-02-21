@@ -9,7 +9,7 @@
  * - ToolContext graceful degradation
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   FLEET_TOOL_DECLARATIONS,
   executeFleetTool,
@@ -22,6 +22,7 @@ import type { TargetStore } from "../src/server/stores/target-store.js";
 import type { ReceiptStore } from "../src/server/stores/receipt-store.js";
 import type { ResearchStore } from "../src/server/stores/research-store.js";
 import type { InventoryStore } from "../src/server/stores/inventory-store.js";
+import { __resetWebLookupStateForTests } from "../src/server/services/fleet-tools/read-tools.js";
 
 // ─── Test Fixtures ──────────────────────────────────────────
 
@@ -509,6 +510,10 @@ describe("executeFleetTool", () => {
 });
 
 describe("web_lookup", () => {
+  beforeEach(() => {
+    __resetWebLookupStateForTests();
+  });
+
   it("rejects non-allowlisted domains", async () => {
     const result = await executeFleetTool("web_lookup", {
       domain: "example.com",
@@ -561,6 +566,7 @@ describe("web_lookup", () => {
     expect(first.error).toBeUndefined();
     expect(first.tool).toBe("web_lookup");
     expect((first.cache as Record<string, unknown>).hit).toBe(false);
+    expect(first).toHaveProperty("observability");
     expect((first.result as Record<string, unknown>).title).toBe("Spock");
 
     const second = await executeFleetTool("web_lookup", {
@@ -571,7 +577,57 @@ describe("web_lookup", () => {
 
     expect(second.error).toBeUndefined();
     expect((second.cache as Record<string, unknown>).hit).toBe(true);
+    expect(second).toHaveProperty("observability");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  it("extracts structured stfc.space ship facts from detail page", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue("User-agent: *\nDisallow:\n") })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: vi.fn().mockResolvedValue(`
+          <html><body>
+            <a href="/ships/uss-enterprise">USS Enterprise</a>
+          </body></html>
+        `),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: vi.fn().mockResolvedValue(`
+          <html>
+            <head>
+              <title>USS Enterprise</title>
+              <meta name="description" content="Legendary Federation explorer." />
+            </head>
+            <body>
+              <h1>USS Enterprise</h1>
+              <table>
+                <tr><th>Hull Type</th><td>Explorer</td></tr>
+                <tr><th>Rarity</th><td>Epic</td></tr>
+                <tr><th>Faction</th><td>Federation</td></tr>
+                <tr><th>Grade</th><td>3</td></tr>
+              </table>
+            </body>
+          </html>
+        `),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await executeFleetTool("web_lookup", {
+      domain: "stfc.space",
+      query: "Enterprise",
+      entity_type: "ship",
+    }, {}) as Record<string, unknown>;
+
+    expect(result.error).toBeUndefined();
+    expect((result.result as Record<string, unknown>).type).toBe("ship");
+    expect((result.result as Record<string, unknown>).hullType).toBe("Explorer");
+    expect((result.result as Record<string, unknown>).rarity).toBe("Epic");
+    expect((result.result as Record<string, unknown>).faction).toBe("Federation");
+    expect((result.result as Record<string, unknown>).grade).toBe("3");
+    expect(result).toHaveProperty("observability");
     vi.unstubAllGlobals();
   });
 });
