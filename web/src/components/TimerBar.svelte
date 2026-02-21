@@ -12,6 +12,9 @@
 
   let selectedId = $state<string | null>(null);
   let showCreate = $state(false);
+  let barEl = $state<HTMLElement | null>(null);
+  let overlayTop = $state(44);
+  let overlayLeft = $state(12);
 
   const timers = $derived(getTimers());
   const visibleTimers = $derived(timers.filter((t) => t.state !== "stopped"));
@@ -27,12 +30,14 @@
     } else {
       selectedId = id;
       showCreate = false;
+      requestAnimationFrame(updateOverlayPosition);
     }
   }
 
   function openCreate() {
     showCreate = true;
     selectedId = null;
+    requestAnimationFrame(updateOverlayPosition);
   }
 
   function closeCreate() {
@@ -47,6 +52,25 @@
     selectedId = null;
     showCreate = false;
   }
+
+  function updateOverlayPosition() {
+    if (!barEl) return;
+    const rect = barEl.getBoundingClientRect();
+    overlayTop = Math.round(rect.bottom + 2);
+    overlayLeft = Math.round(rect.left + 12);
+  }
+
+  $effect(() => {
+    if (!(showCreate || selectedTimer !== null)) return;
+    const update = () => updateOverlayPosition();
+    requestAnimationFrame(update);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  });
 
   /** Global keyboard shortcuts */
   function handleKeydown(e: KeyboardEvent) {
@@ -69,7 +93,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if visibleTimers.length > 0 || showCreate}
-  <div class="timer-bar" role="toolbar" aria-label="Active timers">
+  <div class="timer-bar" role="toolbar" aria-label="Active timers" bind:this={barEl}>
     <div class="timer-bar-inner">
       {#each visibleTimers as timer (timer.id)}
         <TimerPill
@@ -92,7 +116,7 @@
       <div class="timer-overlay-backdrop" onclick={handleOverlayClick}>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="timer-overlay-panel" onclick={(e) => e.stopPropagation()}>
+        <div class="timer-overlay-panel" style={`top:${overlayTop}px;left:${overlayLeft}px;`} onclick={(e) => e.stopPropagation()}>
           {#if showCreate}
             <TimerCreate onclose={closeCreate} />
           {:else if selectedTimer !== null}
@@ -104,7 +128,7 @@
   </div>
 {:else}
   <!-- Always mount the keyboard handler even with no timers -->
-  <div class="timer-bar-empty" role="toolbar" aria-label="Timers">
+  <div class="timer-bar-empty" role="toolbar" aria-label="Timers" bind:this={barEl}>
     <div class="timer-bar-inner">
       <button class="btn-new" onclick={openCreate} title="New timer (T)" aria-label="Add new timer">
         ⏱ Timer
@@ -117,7 +141,7 @@
       <div class="timer-overlay-backdrop" onclick={handleOverlayClick}>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="timer-overlay-panel" onclick={(e) => e.stopPropagation()}>
+        <div class="timer-overlay-panel" style={`top:${overlayTop}px;left:${overlayLeft}px;`} onclick={(e) => e.stopPropagation()}>
           <TimerCreate onclose={closeCreate} />
         </div>
       </div>
@@ -184,9 +208,7 @@
   }
 
   .timer-overlay-panel {
-    position: absolute;
-    top: calc(100% + 2px);
-    left: 0;
+    position: fixed;
     z-index: 51;
     animation: slide-down 0.15s ease;
   }

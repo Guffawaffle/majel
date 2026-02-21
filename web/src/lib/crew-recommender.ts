@@ -105,10 +105,13 @@ export function scoreOfficerForSlot(
   },
 ): OfficerScoreBreakdown {
   const text = abilityBlob(officer);
+  const maneuverText = (officer.captainManeuver ?? "").toLowerCase();
   const intentKeywords = INTENT_KEYWORDS[opts.intentKey] ?? INTENT_KEYWORDS.general;
   const reservation = getReservationPenalty(officer.id, opts.reservations);
 
-  const goalFit = hasKeyword(text, intentKeywords) ? 6 : 0;
+  const baseGoalFit = hasKeyword(text, intentKeywords) ? 6 : 0;
+  const captainIntentBoost = opts.slot === "captain" && hasKeyword(maneuverText, intentKeywords) ? 4 : 0;
+  const goalFit = baseGoalFit + captainIntentBoost;
 
   const shipClass = (opts.shipClass ?? "").toLowerCase();
   const shipKeywords = shipClass && CLASS_KEYWORDS[shipClass] ? CLASS_KEYWORDS[shipClass] : [];
@@ -251,7 +254,7 @@ export function recommendBridgeTrios(input: CrewRecommendInput): CrewRecommendat
 
   const deduped = new Map<string, CrewRecommendation>();
   for (const rec of recs.sort((a, b) => b.totalScore - a.totalScore)) {
-    const key = [rec.captainId, rec.bridge1Id, rec.bridge2Id].sort().join("|");
+    const key = `${rec.captainId}|${[rec.bridge1Id, rec.bridge2Id].sort().join("|")}`;
     if (!deduped.has(key)) deduped.set(key, rec);
   }
 

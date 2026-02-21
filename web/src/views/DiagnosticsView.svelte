@@ -146,6 +146,13 @@
   function renderValue(val: unknown): string {
     if (val == null) return "—";
     if (typeof val === "boolean") return val ? "Yes" : "No";
+    if (typeof val === "object") {
+      try {
+        return JSON.stringify(val);
+      } catch {
+        return "[unserializable object]";
+      }
+    }
     return String(val);
   }
 </script>
@@ -235,9 +242,10 @@
   <div class="diag-section">
     <h4>{title}</h4>
     {#each Object.entries(store) as [k, v]}
+      {@const displayValue = renderValue(v)}
       <div class="diag-row">
         <span>{k}</span>
-        <span class={statusClass(String(v))}>{renderValue(v)}</span>
+        <span class={statusClass(displayValue)}>{displayValue}</span>
       </div>
     {/each}
   </div>
