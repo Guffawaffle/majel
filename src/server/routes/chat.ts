@@ -4,7 +4,12 @@
 
 import express, { type Router } from "express";
 import type { AppState } from "../app-context.js";
-import { readFleetConfigForUser, formatFleetConfigBlock } from "../app-context.js";
+import {
+  readFleetConfigForUser,
+  formatFleetConfigBlock,
+  readIntentConfigForUser,
+  formatIntentConfigBlock,
+} from "../app-context.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
@@ -74,13 +79,20 @@ export function createChatRoutes(appState: AppState): Router {
       let chatMessage = message;
       if (userId && appState.userSettingsStore) {
         try {
-          const fleetConfig = await readFleetConfigForUser(appState.userSettingsStore, userId);
-          if (fleetConfig) {
-            chatMessage = `${formatFleetConfigBlock(fleetConfig)}\n\n${message}`;
+          const [fleetConfig, intentConfig] = await Promise.all([
+            readFleetConfigForUser(appState.userSettingsStore, userId),
+            readIntentConfigForUser(appState.userSettingsStore, userId),
+          ]);
+
+          const contextBlocks: string[] = [];
+          if (intentConfig) contextBlocks.push(formatIntentConfigBlock(intentConfig));
+          if (fleetConfig) contextBlocks.push(formatFleetConfigBlock(fleetConfig));
+          if (contextBlocks.length > 0) {
+            chatMessage = `${contextBlocks.join("\n\n")}\n\n${message}`;
           }
         } catch (err) {
-          // Non-fatal: proceed without fleet config rather than blocking the chat
-          log.settings.warn({ err: err instanceof Error ? err.message : String(err), userId }, "failed to read per-user fleet config");
+          // Non-fatal: proceed without per-user context rather than blocking the chat
+          log.settings.warn({ err: err instanceof Error ? err.message : String(err), userId }, "failed to read per-user chat context");
         }
       }
 

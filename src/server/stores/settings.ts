@@ -27,11 +27,12 @@ import { log } from "../logger.js";
  */
 export interface SettingDef {
   key: string;
-  category: "display" | "model" | "system" | "fleet";
+  category: "display" | "model" | "system" | "fleet" | "intent";
   label: string;
   description: string;
   type: "string" | "number" | "boolean" | "json";
   default: string;
+  options?: readonly string[];
   /** If set, this env var provides the fallback before the default. */
   envVar?: string;
   /** If true, the value is masked in API responses (e.g. future API keys). */
@@ -59,6 +60,62 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     description: "LCARS color theme. Options: default, red-alert, andorian.",
     type: "string",
     default: "default",
+  },
+
+  // ── Intent ──────────────────────────────────────────────────
+  {
+    key: "intent.humor",
+    category: "intent",
+    label: "Humor",
+    description: "Wit and playful commentary intensity (+, -, off).",
+    type: "string",
+    default: "+",
+    options: ["+", "-", "off"],
+  },
+  {
+    key: "intent.lore",
+    category: "intent",
+    label: "Lore Flavor",
+    description: "Star Trek in-universe flavor intensity (+, -, off).",
+    type: "string",
+    default: "+",
+    options: ["+", "-", "off"],
+  },
+  {
+    key: "intent.verbosity",
+    category: "intent",
+    label: "Verbosity",
+    description: "Default response detail level (+, -, off).",
+    type: "string",
+    default: "-",
+    options: ["+", "-", "off"],
+  },
+  {
+    key: "intent.confirmation",
+    category: "intent",
+    label: "Confirmation",
+    description: "Safety confirmation tendency for risky actions (+, -, off).",
+    type: "string",
+    default: "-",
+    options: ["+", "-", "off"],
+  },
+  {
+    key: "intent.proactive",
+    category: "intent",
+    label: "Proactive Suggestions",
+    description: "Frequency of unsolicited next-step suggestions (+, -, off).",
+    type: "string",
+    default: "-",
+    options: ["+", "-", "off"],
+  },
+  {
+    key: "intent.formality",
+    category: "intent",
+    label: "Formality",
+    description: "Professional tone intensity (+, -, off).",
+    type: "string",
+    default: "-",
+    options: ["+", "-", "off"],
   },
 
   // ── Model ───────────────────────────────────────────────────
@@ -281,6 +338,9 @@ export async function createSettingsStore(adminPool: Pool, runtimePool?: Pool): 
     }
     if (def.type === "boolean" && !["true", "false", "1", "0"].includes(value)) {
       throw new Error(`Setting ${key} must be a boolean, got: ${value}`);
+    }
+    if (def.options && !def.options.includes(value)) {
+      throw new Error(`Setting ${key} must be one of: ${def.options.join(", ")}`);
     }
     return def;
   }

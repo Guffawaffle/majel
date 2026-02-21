@@ -19,7 +19,7 @@ import { SETTINGS_SCHEMA, type SettingsStore } from "./settings.js";
 // ─── Schema ─────────────────────────────────────────────────────
 
 /** Allowed user-overridable setting key prefixes. System/model settings are admin-only. */
-const USER_OVERRIDABLE_PREFIXES = ["display.", "fleet."];
+const USER_OVERRIDABLE_PREFIXES = ["display.", "fleet.", "intent."];
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS user_settings (
@@ -66,6 +66,9 @@ function validateUserSetting(key: string, value: string): void {
   }
   if (def.type === "boolean" && !["true", "false", "1", "0"].includes(value)) {
     throw new Error(`Setting ${key} must be a boolean, got: ${value}`);
+  }
+  if (def.options && !def.options.includes(value)) {
+    throw new Error(`Setting ${key} must be one of: ${def.options.join(", ")}`);
   }
 }
 

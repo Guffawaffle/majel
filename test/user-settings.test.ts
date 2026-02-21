@@ -145,10 +145,11 @@ describe("UserSettingsStore", () => {
     it("returns only user-overridable settings", async () => {
       const userId = await createTestUser();
       const all = await userSettingsStore.getAllForUser(userId);
-      // Should include display.* and fleet.* but NOT model.* or system.*
+      // Should include display.*, fleet.*, intent.* but NOT model.* or system.*
       const keys = all.map((e) => e.key);
       expect(keys).toContain("display.admiralName");
       expect(keys).toContain("fleet.opsLevel");
+      expect(keys).toContain("intent.humor");
       expect(keys).not.toContain("model.name");
       expect(keys).not.toContain("system.port");
     });
@@ -173,7 +174,15 @@ describe("UserSettingsStore", () => {
       const userId = await createTestUser();
       await userSettingsStore.setForUser(userId, "display.admiralName", "Kirk");
       await userSettingsStore.setForUser(userId, "display.theme", "red-alert");
-      expect(await userSettingsStore.countForUser(userId)).toBe(2);
+      await userSettingsStore.setForUser(userId, "intent.humor", "off");
+      expect(await userSettingsStore.countForUser(userId)).toBe(3);
+    });
+
+    it("rejects invalid intent mode values", async () => {
+      const userId = await createTestUser();
+      await expect(userSettingsStore.setForUser(userId, "intent.humor", "max")).rejects.toThrow(
+        "must be one of"
+      );
     });
   });
 

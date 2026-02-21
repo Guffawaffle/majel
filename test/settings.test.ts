@@ -37,7 +37,7 @@ describe("SETTINGS_SCHEMA", () => {
   });
 
   it("has sensible categories", () => {
-    const validCats = ["display", "model", "system", "fleet"];
+    const validCats = ["display", "model", "system", "fleet", "intent"];
     for (const def of SETTINGS_SCHEMA) {
       expect(validCats).toContain(def.category);
     }
@@ -69,6 +69,7 @@ describe("getCategories", () => {
     expect(cats).toContain("display");
     expect(cats).toContain("model");
     expect(cats).toContain("system");
+    expect(cats).toContain("intent");
   });
 });
 
@@ -115,6 +116,12 @@ describe("settings store: get/set/delete", () => {
   it("set() validates number type", async () => {
     await expect(store.set("model.temperature", "not-a-number")).rejects.toThrow(
       "must be a number"
+    );
+  });
+
+  it("set() validates enum options for intent settings", async () => {
+    await expect(store.set("intent.humor", "max")).rejects.toThrow(
+      "must be one of"
     );
   });
 

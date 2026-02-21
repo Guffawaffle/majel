@@ -11,6 +11,74 @@
 
 import type { FleetConfig } from "./index.js";
 
+export type IntentMode = "+" | "-" | "off";
+
+export interface IntentConfig {
+  humor: IntentMode;
+  lore: IntentMode;
+  verbosity: IntentMode;
+  confirmation: IntentMode;
+  proactive: IntentMode;
+  formality: IntentMode;
+}
+
+export const DEFAULT_INTENT_CONFIG: IntentConfig = {
+  humor: "+",
+  lore: "+",
+  verbosity: "-",
+  confirmation: "-",
+  proactive: "-",
+  formality: "-",
+};
+
+function normalizeIntentMode(value: string | undefined, fallback: IntentMode): IntentMode {
+  if (value === "+" || value === "-" || value === "off") return value;
+  return fallback;
+}
+
+export function resolveIntentConfig(overrides?: Partial<IntentConfig> | null): IntentConfig {
+  if (!overrides) return { ...DEFAULT_INTENT_CONFIG };
+  return {
+    humor: normalizeIntentMode(overrides.humor, DEFAULT_INTENT_CONFIG.humor),
+    lore: normalizeIntentMode(overrides.lore, DEFAULT_INTENT_CONFIG.lore),
+    verbosity: normalizeIntentMode(overrides.verbosity, DEFAULT_INTENT_CONFIG.verbosity),
+    confirmation: normalizeIntentMode(overrides.confirmation, DEFAULT_INTENT_CONFIG.confirmation),
+    proactive: normalizeIntentMode(overrides.proactive, DEFAULT_INTENT_CONFIG.proactive),
+    formality: normalizeIntentMode(overrides.formality, DEFAULT_INTENT_CONFIG.formality),
+  };
+}
+
+function buildPersonalitySection(config: IntentConfig): string {
+  const lines = [
+    "PERSONALITY:",
+    "- Calm, concise, shows your work. Precision IS your personality.",
+    "- State what you know, flag what you're uncertain about, say plainly when you don't know.",
+    "- Use real-world dates in yyyy-mm-dd format (e.g. 2026-02-08), not stardates.",
+  ];
+
+  if (config.humor === "+") lines.push("- Dry wit and warmth are welcome when they improve clarity.");
+  if (config.humor === "-") lines.push("- Keep humor brief and secondary to clear analysis.");
+
+  if (config.lore === "+") lines.push("- Star Trek flavor as seasoning, not the main dish.");
+  if (config.lore === "-") lines.push("- Keep Star Trek references minimal and only when useful.");
+
+  if (config.verbosity === "+") lines.push("- Default to deeper explanations with rationale and alternatives.");
+  if (config.verbosity === "-") lines.push("- Prefer concise answers by default; expand only when needed.");
+
+  if (config.confirmation === "+") lines.push("- For risky or destructive actions, confirm intent before proceeding.");
+  if (config.confirmation === "-") lines.push("- Confirm only when risk is meaningful; avoid repetitive confirmation loops.");
+
+  if (config.proactive === "+") lines.push("- Offer next-step suggestions proactively when they clearly add value.");
+  if (config.proactive === "-") lines.push("- Keep unsolicited suggestions minimal and tightly scoped.");
+
+  if (config.formality === "+") lines.push("- Maintain a polished, professional bridge-officer tone.");
+  if (config.formality === "-") lines.push("- Keep tone professional but conversational.");
+
+  lines.push("- Address the user as \"Admiral\" when it fits naturally.");
+
+  return `${lines.join("\n")}\n\n`;
+}
+
 // ─── Safety Settings ──────────────────────────────────────────
 
 import {
@@ -53,20 +121,17 @@ export function buildSystemPrompt(
   fleetConfig?: FleetConfig | null,
   dockBriefing?: string | null,
   hasTools?: boolean,
+  intentConfig?: Partial<IntentConfig> | null,
 ): string {
+  const resolvedIntents = resolveIntentConfig(intentConfig);
 
   // ── Layer 1: Identity ─────────────────────────────────────────
   let prompt = `You are Aria, the Fleet Intelligence System aboard Admiral Guff's flagship.
 Your full designation is Ariadne — named in honor of Majel Barrett-Roddenberry (1932–2008), the voice of every Starfleet computer.
 
-PERSONALITY:
-- Calm, concise, shows your work. Precision IS your personality.
-- Dry wit and warmth — you care about the Admiral's success.
-- State what you know, flag what you're uncertain about, say plainly when you don't know.
-- Star Trek flavor as seasoning, not the main dish. Address the user as "Admiral" when it fits naturally.
-- Use real-world dates in yyyy-mm-dd format (e.g. 2026-02-08), not stardates.
-
 `;
+
+  prompt += buildPersonalitySection(resolvedIntents);
 
   // ── Layer 2: Scope & Authority ───────────────────────────────────
   prompt += `SCOPE & AUTHORITY:
@@ -118,6 +183,7 @@ ARCHITECTURE (general description only):
 You run on Google Gemini (model selectable by the Admiral). Your supporting systems include conversation memory (Lex), a settings store (PostgreSQL), a reference catalog (structured game data officers/ships), and a user overlay (ownership, targeting, levels).
 You CANNOT inspect your own subsystems at runtime — you don't know current memory frame counts, connection status, or settings values unless they're in your context. For live diagnostics, direct the Admiral to /api/health.
 If asked how your systems work, describe them generally. Do not claim implementation specifics you haven't been given.
+Per-user [INTENT CONFIG] blocks in user messages override personality intensity for that request.
 
 `;
 

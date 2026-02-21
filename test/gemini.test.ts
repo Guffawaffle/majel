@@ -30,6 +30,23 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("Dry wit");
       expect(prompt).toContain("Admiral");
     });
+
+    it("supports intent mode overrides in prompt assembly", () => {
+      const prompt = buildSystemPrompt(null, null, false, {
+        humor: "off",
+        lore: "off",
+        verbosity: "+",
+        confirmation: "+",
+        proactive: "-",
+        formality: "+",
+      });
+
+      expect(prompt).not.toContain("Dry wit and warmth");
+      expect(prompt).not.toContain("Star Trek flavor as seasoning");
+      expect(prompt).toContain("Default to deeper explanations");
+      expect(prompt).toContain("confirm intent before proceeding");
+      expect(prompt).toContain("professional bridge-officer tone");
+    });
   });
 
   describe("scope & authority layer", () => {

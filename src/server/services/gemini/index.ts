@@ -34,7 +34,13 @@ import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
 
 export { MODEL_REGISTRY, MODEL_REGISTRY_MAP, getModelDef, resolveModelId, DEFAULT_MODEL } from "./model-registry.js";
 export type { ModelDef } from "./model-registry.js";
-export { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
+export {
+  buildSystemPrompt,
+  SAFETY_SETTINGS,
+  DEFAULT_INTENT_CONFIG,
+  resolveIntentConfig,
+} from "./system-prompt.js";
+export type { IntentMode, IntentConfig } from "./system-prompt.js";
 
 // ─── Engine Types ─────────────────────────────────────────────
 

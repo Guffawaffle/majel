@@ -5,7 +5,7 @@
  * between the main app factory and route modules.
  */
 
-import type { GeminiEngine, FleetConfig } from "./services/gemini/index.js";
+import type { GeminiEngine, FleetConfig, IntentConfig, IntentMode } from "./services/gemini/index.js";
 import type { MemoryService } from "./services/memory.js";
 import type { FrameStoreFactory } from "./stores/postgres-frame-store.js";
 import type { SettingsStore } from "./stores/settings.js";
@@ -27,6 +27,10 @@ import type { ToolContextFactory } from "./services/fleet-tools/index.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./services/micro-runner.js";
+
+function toIntentMode(value: string): IntentMode {
+  return value === "+" || value === "-" || value === "off" ? value : "-";
+}
 
 // ─── App State ──────────────────────────────────────────────────
 
@@ -128,6 +132,43 @@ Operations Level: ${config.opsLevel}
 Active Drydocks: ${config.drydockCount}
 Ship Hangar Slots: ${config.shipHangarSlots}
 [END FLEET CONFIG]`;
+}
+
+/** Read per-user intent configuration for chat-time modulation (#90). */
+export async function readIntentConfigForUser(
+  userSettingsStore: UserSettingsStore | null,
+  userId: string,
+): Promise<IntentConfig | null> {
+  if (!userSettingsStore) return null;
+  const [humor, lore, verbosity, confirmation, proactive, formality] = await Promise.all([
+    userSettingsStore.getForUser(userId, "intent.humor"),
+    userSettingsStore.getForUser(userId, "intent.lore"),
+    userSettingsStore.getForUser(userId, "intent.verbosity"),
+    userSettingsStore.getForUser(userId, "intent.confirmation"),
+    userSettingsStore.getForUser(userId, "intent.proactive"),
+    userSettingsStore.getForUser(userId, "intent.formality"),
+  ]);
+
+  return {
+    humor: toIntentMode(humor.value),
+    lore: toIntentMode(lore.value),
+    verbosity: toIntentMode(verbosity.value),
+    confirmation: toIntentMode(confirmation.value),
+    proactive: toIntentMode(proactive.value),
+    formality: toIntentMode(formality.value),
+  };
+}
+
+/** Format an IntentConfig as a labeled context block for per-message injection (#90). */
+export function formatIntentConfigBlock(config: IntentConfig): string {
+  return `[INTENT CONFIG]
+humor: ${config.humor}
+lore: ${config.lore}
+verbosity: ${config.verbosity}
+confirmation: ${config.confirmation}
+proactive: ${config.proactive}
+formality: ${config.formality}
+[END INTENT CONFIG]`;
 }
 
 /**
