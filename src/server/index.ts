@@ -159,7 +159,11 @@ export function createApp(appState: AppState): express.Express {
   app.use(createIpAllowlist(appState.config.allowedIps));
 
   // Body parser with size limit (ADR-005 Phase 4)
-  app.use(express.json({ limit: '100kb' }));
+  // Skip /api/chat — it has its own 10MB parser for base64 image payloads (ADR-008)
+  app.use((req, res, next) => {
+    if (req.path === "/api/chat") return next();
+    express.json({ limit: "100kb" })(req, res, next);
+  });
 
   // Cookie parser (ADR-018 Phase 2 — tenant cookies)
   app.use(cookieParser());
