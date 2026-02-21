@@ -9,9 +9,12 @@
   import HelpPanel from "./components/HelpPanel.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import TimerBar from "./components/TimerBar.svelte";
+  import OfflineBanner from "./components/OfflineBanner.svelte";
   import { getCurrentView, views } from "./lib/router.svelte.js";
   import { fetchMe, isLoading, getError, hasRole, getUser } from "./lib/auth.svelte.js";
   import { initCache, teardownCache } from "./lib/cache/index.js";
+  import { getOnline } from "./lib/network-status.svelte.js";
+  import { getQueue, replayQueue } from "./lib/cache/sync-queue.svelte.js";
   import type { Role } from "./lib/types.js";
 
   import ChatView from "./views/ChatView.svelte";
@@ -46,16 +49,25 @@
     }
   }
 
+  // Auto-replay queued mutations when coming back online
+  function handleOnline() {
+    if (getQueue().length > 0) {
+      replayQueue();
+    }
+  }
+
   onMount(async () => {
     await fetchMe();
     const user = getUser();
     if (user) {
       await initCache(user.id);
     }
+    window.addEventListener("online", handleOnline);
   });
 
   onDestroy(() => {
     teardownCache();
+    window.removeEventListener("online", handleOnline);
   });
 </script>
 
@@ -83,6 +95,7 @@
 
       <TitleBar helpOpen={helpOpen} ontogglehelp={toggleHelp} />
       <TimerBar />
+      <OfflineBanner />
 
       <div class="app-content">
         {#each Object.entries(viewComponents) as [name, Component]}
