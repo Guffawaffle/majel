@@ -61,7 +61,7 @@
   - File: `src/server/routes/core.ts` — corrected to `admiral`
 - [x] **F5 (MINOR):** `COMMAND_ARGS` and `COMMANDS` are separate maps — will desync *(fixed 2026-02-21: args moved into `CommandDef` in `scripts/cloud.ts`)*
   - File: `scripts/cloud.ts` ~L1287 vs ~L1356
-- [ ] **F6 (MINOR):** `shellSplit` only handles single quotes — double-quoted args silently break
+- [x] **F6 (MINOR):** `shellSplit` only handles single quotes — double-quoted args silently break *(fixed 2026-02-21: parser now supports single/double quotes + escaping in `scripts/cloud.ts`)*
   - File: `scripts/cloud.ts` ~L115
 
 #### Security
@@ -206,7 +206,7 @@ Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, rep
 ## Minor — Nice to Have
 
 - [x] Cloud CLI: merge `COMMAND_ARGS` into `CommandDef` interface (F5)
-- [ ] Cloud CLI: `shellSplit` should handle double quotes or warn (F6)
+- [x] Cloud CLI: `shellSplit` should handle double quotes or warn (F6)
 - [ ] API: auto-generate discovery from Express router introspection (F4 long-term fix)
 - [ ] API: define `HealthResponse` type to guard contract (E4)
 - [x] API: type `res.locals` via Express module augmentation (E5)

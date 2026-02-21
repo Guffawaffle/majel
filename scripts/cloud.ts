@@ -124,21 +124,55 @@ function run(cmd: string, opts?: { silent?: boolean; capture?: boolean }): strin
   }
 }
 
-/** Naive shell-split: respects single-quotes (for gcloud format flags). */
+/** Shell-split supporting single/double quotes and backslash escaping. */
 function shellSplit(cmd: string): string[] {
   const tokens: string[] = [];
   let current = "";
-  let inSingleQuote = false;
-  for (const ch of cmd) {
-    if (ch === "'" && !inSingleQuote) { inSingleQuote = true; continue; }
-    if (ch === "'" && inSingleQuote) { inSingleQuote = false; continue; }
-    if (ch === " " && !inSingleQuote) {
-      if (current) { tokens.push(current); current = ""; }
+  let quote: "'" | '"' | null = null;
+
+  for (let index = 0; index < cmd.length; index += 1) {
+    const ch = cmd[index] ?? "";
+
+    if (ch === "\\") {
+      const next = cmd[index + 1];
+      if (next != null) {
+        current += next;
+        index += 1;
+        continue;
+      }
+      current += ch;
       continue;
     }
+
+    if ((ch === "'" || ch === '"')) {
+      if (quote === null) {
+        quote = ch;
+        continue;
+      }
+      if (quote === ch) {
+        quote = null;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (/\s/.test(ch) && quote === null) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
     current += ch;
   }
-  if (current) tokens.push(current);
+
+  if (quote !== null) {
+    throw new Error(`Unterminated quote (${quote}) in command: ${cmd}`);
+  }
+
+  if (current.length > 0) tokens.push(current);
   return tokens;
 }
 
