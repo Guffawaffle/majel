@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] — 2026-02-21
+
+### Security
+- **Replace xlsx with exceljs** — removed vulnerable `xlsx@0.18.5` (prototype pollution, GHSA-4r6h-8v6p-xvw6) and replaced with `exceljs@4.4.0` (zero known CVEs). XLSX import support fully re-enabled. (`src/server/services/import-mapping.ts`, `test/import-routes-data.test.ts`)
+- **SSRF hardening for web_lookup** — all 4 `fetch()` calls in the web lookup tool now use `redirect: "error"` (blocks open-redirect SSRF), `AbortSignal.timeout(10_000)` (prevents slowloris/hang), and a 2 MB response size cap via `safeReadText()` helper. (`src/server/services/fleet-tools/read-tools-web-lookup.ts`)
+
+### Fixed
+
+#### Crew Recommender (QuickCrew "Simple Mode")
+- **Parsteel typo** — corrected "parasteel" → "parsteel" across intent catalog, crew types, and recommender keyword maps to match STFC game data. Mining-para intent now resource-matches correctly. (`web/src/lib/crew-recommender.ts`, `web/src/lib/intent-catalog.ts`, `src/server/types/crew-types.ts`)
+- **Ore substring false positives** — replaced `.includes()` with `\b` word-boundary regex in `hasKeyword()` and `miningGoalFit()`. "ore" no longer false-matches on "explores", "stored", etc.
+- **Inert Captain Maneuver detection** — officers whose CM text contains "has no effect", "inert", or "does nothing" now receive a -2 penalty instead of the +3 captain bonus.
+- **Dead code removal** — removed unused `abilityBlob()` function that joined all 3 abilities regardless of bridge slot (was a BDA/CM leakage vector, never called).
+- **Dead INTENT_KEYWORDS cleanup** — removed 9 unreachable `mining-*` entries from `INTENT_KEYWORDS` (the mining code path uses `MINING_RESOURCE_KEYWORDS` via `miningGoalFit()` instead).
+
+#### Performance
+- **AdmiralView tab-scoped refresh** — replaced 3-dataset fan-out `onMount → refresh()` with `$effect` watching `activeTab`. Only fetches data for the active tab; tracks loaded tabs to avoid redundant requests on tab switch. (#123) (`web/src/views/AdmiralView.svelte`)
+- **FleetView cross-ref fan-out reduction** — `buildCrossRefs()` now performs tab-scoped lazy loading: officer cross-refs (bridge cores, reservations) fetched only when officers tab is active, ship cross-refs (loadouts, docks) only for ships tab. Removed dead `fetchBelowDeckPolicies()` call that was fetched but never consumed. Added `crossRefLoadedTabs` tracking to avoid redundant rebuilds on tab switch. (#127) (`web/src/views/FleetView.svelte`)
+
+### Added
+- **Web lookup rate-limit tests** — 3 new tests covering rate-limit enforcement after 5 requests, per-domain isolation, and observability metrics. (`test/fleet-tools.test.ts`)
+
+---
+
 ## [0.6.0] — 2026-02-21
 
 ### Added

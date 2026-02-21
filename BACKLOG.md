@@ -199,7 +199,7 @@ Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, rep
 ### Security
 - [x] **minimatch ReDoS (GHSA-3ppc-4f35-3m26):** 7 high-severity transitive deps via typescript-eslint → resolved via `overrides` in package.json (04ded17)
 - [x] **ajv moderate vulnerability:** resolved via `npm audit fix` (04ded17)
-- [x] **xlsx prototype pollution (GHSA-4r6h-8v6p-xvw6):** no upstream fix from SheetJS — feature-flagged at server validation layer + UI picker restricted to CSV-only (ae9e866)
+- [x] **xlsx prototype pollution (GHSA-4r6h-8v6p-xvw6):** ~~no upstream fix from SheetJS — feature-flagged at server validation layer + UI picker restricted to CSV-only (ae9e866)~~ → **Resolved (3a94f47):** replaced `xlsx@0.18.5` with `exceljs@4.4.0` (zero CVEs). XLSX import fully re-enabled.
 
 ---
 
@@ -213,6 +213,25 @@ Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, rep
 - [x] API: `ErrorCode` namespace convention for module-specific codes (E2)
 - [x] Shared AX types between CLI and API (E3)
 - [x] Integration test: discovery endpoints match actual Express routes *(fixed 2026-02-21: `test/api.test.ts` route parity assertion using introspection)*
+
+---
+
+## Done — Post-v0.6.0 Review Sweep (2026-02-21)
+
+Comprehensive 10-finding code review of all post-v0.6.0 changes. All resolved in commit `3a94f47`.
+
+| # | Category | Finding | Resolution |
+|---|---|---|---|
+| 1 | Security | `xlsx@0.18.5` prototype pollution (GHSA-4r6h-8v6p-xvw6) | Replaced with `exceljs@4.4.0` — XLSX import re-enabled |
+| 2 | Bug | "parasteel" typo in 4 locations | Corrected to "parsteel" across intent catalog, crew types, recommender |
+| 3 | Bug | `abilityBlob()` joined all 3 abilities regardless of slot (BDA/CM leakage) | Removed dead function |
+| 4 | Bug | Ore substring false positives ("ore" matching "explores", "stored") | Word-boundary `\b` regex in `hasKeyword()` and `miningGoalFit()` |
+| 5 | Bug | Inert CM gets +3 captain bonus | Added inert-text detection → -2 penalty |
+| 6 | Security | SSRF risk in web_lookup — no redirect blocking, no timeout, no size cap | `safeFetchInit()` + `safeReadText()` on all 4 `fetch()` calls |
+| 7 | Performance | AdmiralView overfetch on mount (#123) | `$effect` tab-scoped lazy refresh, loaded-tabs tracking |
+| 8 | Performance | FleetView cross-ref fan-out (#127) | Tab-scoped lazy cross-ref loading, removed dead `fetchBelowDeckPolicies()` |
+| 9 | Test coverage | Missing web_lookup rate-limit tests | 3 new tests: enforcement, per-domain isolation, observability |
+| 10 | Dead code | 9 unreachable `mining-*` entries in INTENT_KEYWORDS | Removed |
 
 ---
 
@@ -289,4 +308,4 @@ See [ADR-006](docs/ADR-006-open-alpha.md) for the full list. Key items:
 
 ---
 
-*Last updated by PM sweep — 2026-02-20*
+*Last updated by PM sweep — 2026-02-21*
