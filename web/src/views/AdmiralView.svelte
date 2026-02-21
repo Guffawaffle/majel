@@ -63,6 +63,30 @@
     }
   }
 
+  async function refreshUsers() {
+    try {
+      users = await adminListUsers();
+    } catch (err: unknown) {
+      error = err instanceof Error ? err.message : "Failed to refresh users.";
+    }
+  }
+
+  async function refreshInvites() {
+    try {
+      invites = await adminListInvites();
+    } catch (err: unknown) {
+      error = err instanceof Error ? err.message : "Failed to refresh invites.";
+    }
+  }
+
+  async function refreshSessions() {
+    try {
+      sessions = await adminListSessions();
+    } catch (err: unknown) {
+      error = err instanceof Error ? err.message : "Failed to refresh sessions.";
+    }
+  }
+
   // ── Helpers ──
 
   function fmtDate(d: string | null): string {
@@ -90,7 +114,7 @@
     if (!(await confirm({ title: `Change ${email} to ${newRole}?` }))) return;
     try {
       await adminSetRole(email, newRole);
-      await refresh();
+      await refreshUsers();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Role change failed."; }
   }
 
@@ -99,7 +123,7 @@
     if (!(await confirm({ title: `${action.charAt(0).toUpperCase() + action.slice(1)} ${email}?` }))) return;
     try {
       await adminSetLock(email, !isLocked);
-      await refresh();
+      await refreshUsers();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Lock toggle failed."; }
   }
 
@@ -107,7 +131,7 @@
     if (!(await confirm({ title: `Permanently delete user ${email}?`, subtitle: "This cannot be undone.", severity: "danger", approveLabel: "Delete" }))) return;
     try {
       await adminDeleteUser(email);
-      await refresh();
+      await refreshUsers();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Delete failed."; }
   }
 
@@ -120,7 +144,7 @@
       const result = await adminCreateInvite(opts);
       await navigator.clipboard.writeText(result.code);
       invLabel = "";
-      await refresh();
+      await refreshInvites();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Invite creation failed."; }
   }
 
@@ -128,7 +152,7 @@
     if (!(await confirm({ title: `Revoke invite ${code.slice(0, 6)}…?`, severity: "warning" }))) return;
     try {
       await adminRevokeInvite(code);
-      await refresh();
+      await refreshInvites();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Revoke failed."; }
   }
 
@@ -138,7 +162,7 @@
     if (!(await confirm({ title: `Kill session ${id.slice(0, 12)}…?`, severity: "warning" }))) return;
     try {
       await adminDeleteSession(id);
-      await refresh();
+      await refreshSessions();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Kill failed."; }
   }
 
@@ -146,7 +170,7 @@
     if (!(await confirm({ title: "Kill ALL sessions?", subtitle: "This will log out every user.", severity: "danger", approveLabel: "Kill All" }))) return;
     try {
       await adminDeleteAllSessions();
-      await refresh();
+      await refreshSessions();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Kill all failed."; }
   }
 </script>

@@ -52,7 +52,7 @@ export async function initCache(userId: string): Promise<void> {
       // Startup hygiene: purge entries older than 7 days
       await cachePurge(PURGE_AGE_MS);
       // Open multi-tab broadcast channel
-      openBroadcast();
+      openBroadcast(userId);
     }
   } catch (e) {
     cacheReady = false;

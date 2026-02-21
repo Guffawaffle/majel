@@ -10,6 +10,7 @@ import type { ViewDef } from "./types.js";
 /** All registered views, in sidebar display order */
 export const views: ViewDef[] = [
   { name: "chat",        icon: "💬", title: "Chat",             subtitle: "Gemini-powered fleet advisor" },
+  { name: "startsync",   icon: "📥", title: "Start / Sync",     subtitle: "Onboarding, import paths, and receipt history" },
   { name: "catalog",     icon: "📋", title: "Catalog",          subtitle: "Reference data & ownership tracking" },
   { name: "fleet",       icon: "🚀", title: "Fleet",            subtitle: "Your owned roster — levels, ranks & power" },
   { name: "crews",       icon: "⚓", title: "Workshop",         subtitle: "Composition workshop — cores, loadouts, policies & reservations" },

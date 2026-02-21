@@ -7,7 +7,7 @@
   import { getUser, hasRole, logout } from "../lib/auth.svelte.js";
   import { checkHealth as apiCheckHealth } from "../lib/api/health.js";
   import { getSessionId } from "../lib/chat.svelte.js";
-  import { getCacheReady, getCacheError, teardownCache } from "../lib/cache/index.js";
+  import { getCacheReady, getCacheError } from "../lib/cache/index.js";
   import {
     getSessions,
     refreshSessions,
@@ -67,7 +67,6 @@
   }
 
   async function handleLogout() {
-    teardownCache();
     await logout();
   }
 </script>

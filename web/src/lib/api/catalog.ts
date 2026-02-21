@@ -14,9 +14,10 @@ import type {
   OwnershipState,
 } from "../types.js";
 import { apiFetch, apiPatch, apiPost, pathEncode, qs } from "./fetch.js";
-import { cachedFetch, invalidateForMutation } from "../cache/cached-fetch.js";
+import { cachedFetch } from "../cache/cached-fetch.js";
 import { cacheKey, TTL } from "../cache/cache-keys.js";
 import type { FetchOpts } from "./crews.js";
+import { runLockedMutation } from "./mutation.js";
 
 // ─── Filter shapes ──────────────────────────────────────────
 
@@ -84,16 +85,42 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
 
 /** Set a single officer's overlay. Throws on failure. Invalidates related cache. */
 export async function setOfficerOverlay(id: string, overlay: OfficerOverlayPatch): Promise<OfficerOverlayResponse> {
-  const result = await apiPatch<OfficerOverlayResponse>(`/api/catalog/officers/${pathEncode(id)}/overlay`, overlay);
-  await invalidateForMutation("officer-overlay");
-  return result;
+  const path = `/api/catalog/officers/${pathEncode(id)}/overlay`;
+  return runLockedMutation({
+    label: "Update officer overlay",
+    lockKey: `officer-overlay:${id}`,
+    mutationKey: "officer-overlay",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: "Update officer overlay",
+      lockKey: `officer-overlay:${id}`,
+      method: "PATCH",
+      path,
+      body: overlay,
+      mutationKey: "officer-overlay",
+    },
+    mutate: () => apiPatch<OfficerOverlayResponse>(path, overlay),
+  });
 }
 
 /** Set a single ship's overlay. Throws on failure. Invalidates related cache. */
 export async function setShipOverlay(id: string, overlay: ShipOverlayPatch): Promise<ShipOverlayResponse> {
-  const result = await apiPatch<ShipOverlayResponse>(`/api/catalog/ships/${pathEncode(id)}/overlay`, overlay);
-  await invalidateForMutation("ship-overlay");
-  return result;
+  const path = `/api/catalog/ships/${pathEncode(id)}/overlay`;
+  return runLockedMutation({
+    label: "Update ship overlay",
+    lockKey: `ship-overlay:${id}`,
+    mutationKey: "ship-overlay",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: "Update ship overlay",
+      lockKey: `ship-overlay:${id}`,
+      method: "PATCH",
+      path,
+      body: overlay,
+      mutationKey: "ship-overlay",
+    },
+    mutate: () => apiPatch<ShipOverlayResponse>(path, overlay),
+  });
 }
 
 /** Bulk-set officer overlays. Invalidates related cache. */
@@ -101,9 +128,23 @@ export async function bulkSetOfficerOverlay(
   refIds: string[],
   overlay: { ownershipState?: OwnershipState; target?: boolean },
 ): Promise<BulkOverlayResponse> {
-  const result = await apiPost<BulkOverlayResponse>("/api/catalog/officers/bulk-overlay", { refIds, ...overlay });
-  await invalidateForMutation("bulk-officer-overlay");
-  return result;
+  const path = "/api/catalog/officers/bulk-overlay";
+  const body = { refIds, ...overlay };
+  return runLockedMutation({
+    label: "Bulk update officer overlay",
+    lockKey: "bulk-officer-overlay",
+    mutationKey: "bulk-officer-overlay",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: "Bulk update officer overlay",
+      lockKey: "bulk-officer-overlay",
+      method: "POST",
+      path,
+      body,
+      mutationKey: "bulk-officer-overlay",
+    },
+    mutate: () => apiPost<BulkOverlayResponse>(path, body),
+  });
 }
 
 /** Bulk-set ship overlays. Invalidates related cache. */
@@ -111,7 +152,21 @@ export async function bulkSetShipOverlay(
   refIds: string[],
   overlay: { ownershipState?: OwnershipState; target?: boolean },
 ): Promise<BulkOverlayResponse> {
-  const result = await apiPost<BulkOverlayResponse>("/api/catalog/ships/bulk-overlay", { refIds, ...overlay });
-  await invalidateForMutation("bulk-ship-overlay");
-  return result;
+  const path = "/api/catalog/ships/bulk-overlay";
+  const body = { refIds, ...overlay };
+  return runLockedMutation({
+    label: "Bulk update ship overlay",
+    lockKey: "bulk-ship-overlay",
+    mutationKey: "bulk-ship-overlay",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: "Bulk update ship overlay",
+      lockKey: "bulk-ship-overlay",
+      method: "POST",
+      path,
+      body,
+      mutationKey: "bulk-ship-overlay",
+    },
+    mutate: () => apiPost<BulkOverlayResponse>(path, body),
+  });
 }

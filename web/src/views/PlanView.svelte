@@ -85,6 +85,60 @@
     }
   }
 
+  async function refreshStateScope() {
+    try {
+      const [es, pi] = await Promise.all([
+        fetchEffectiveState({ forceNetwork: true }),
+        fetchCrewPlanItems(undefined, { forceNetwork: true }),
+      ]);
+      effectiveState = es;
+      planItems = pi;
+    } catch (err) {
+      console.error("Plan state-scope refresh failed:", err);
+    }
+  }
+
+  async function refreshDocksScope() {
+    try {
+      const [dk, es, pi] = await Promise.all([
+        fetchCrewDocks({ forceNetwork: true }),
+        fetchEffectiveState({ forceNetwork: true }),
+        fetchCrewPlanItems(undefined, { forceNetwork: true }),
+      ]);
+      docks = dk;
+      effectiveState = es;
+      planItems = pi;
+    } catch (err) {
+      console.error("Plan docks-scope refresh failed:", err);
+    }
+  }
+
+  async function refreshPresetsScope() {
+    try {
+      const [fp, es] = await Promise.all([
+        fetchFleetPresets({ forceNetwork: true }),
+        fetchEffectiveState({ forceNetwork: true }),
+      ]);
+      fleetPresets = fp;
+      effectiveState = es;
+    } catch (err) {
+      console.error("Plan presets-scope refresh failed:", err);
+    }
+  }
+
+  async function refreshPlanItemsScope() {
+    try {
+      const [pi, es] = await Promise.all([
+        fetchCrewPlanItems(undefined, { forceNetwork: true }),
+        fetchEffectiveState({ forceNetwork: true }),
+      ]);
+      planItems = pi;
+      effectiveState = es;
+    } catch (err) {
+      console.error("Plan items-scope refresh failed:", err);
+    }
+  }
+
   onMount(() => { refresh(); });
 
   function switchTab(id: TabId) {
@@ -122,25 +176,25 @@
           {fleetPresets}
           {loadouts}
           {officers}
-          onRefresh={() => refresh(true)}
+          onRefresh={refreshStateScope}
         />
       {:else if activeTab === "docks"}
         <DocksTab
           {docks}
-          onRefresh={() => refresh(true)}
+          onRefresh={refreshDocksScope}
         />
       {:else if activeTab === "presets"}
         <PresetsTab
           {fleetPresets}
           {loadouts}
-          onRefresh={() => refresh(true)}
+          onRefresh={refreshPresetsScope}
         />
       {:else if activeTab === "items"}
         <PlanItemsTab
           {planItems}
           {loadouts}
           {officers}
-          onRefresh={() => refresh(true)}
+          onRefresh={refreshPlanItemsScope}
         />
       {/if}
     </div>

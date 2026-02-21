@@ -9,10 +9,12 @@
  */
 
 import { cacheInvalidate } from "./idb-cache.js";
+import { bumpEpochForPatterns } from "./cache-epochs.js";
 
-const CHANNEL_NAME = "majel-cache";
+const CHANNEL_PREFIX = "majel-cache";
 
 let channel: BroadcastChannel | null = null;
+let channelScope: string | null = null;
 
 // ─── Lifecycle ──────────────────────────────────────────────
 
@@ -20,13 +22,18 @@ let channel: BroadcastChannel | null = null;
  * Open the broadcast channel and listen for invalidation events from other tabs.
  * Call once during cache initialization.
  */
-export function openBroadcast(): void {
-  if (channel) return;
+export function openBroadcast(userId: string): void {
+  const scope = String(userId || "anonymous");
+  if (channel && channelScope === scope) return;
+  if (channel && channelScope !== scope) closeBroadcast();
   try {
-    channel = new BroadcastChannel(CHANNEL_NAME);
+    channelScope = scope;
+    channel = new BroadcastChannel(`${CHANNEL_PREFIX}:${scope}`);
     channel.onmessage = (event: MessageEvent) => {
-      const msg = event.data as { type: string; patterns?: string[] };
+      const msg = event.data as { type: string; patterns?: string[]; scope?: string };
+      if (msg.scope && msg.scope !== channelScope) return;
       if (msg.type === "invalidate" && Array.isArray(msg.patterns)) {
+        bumpEpochForPatterns(msg.patterns);
         // Invalidate locally — don't re-broadcast (would loop)
         Promise.all(msg.patterns.map((p) => cacheInvalidate(p))).catch(() => {});
       }
@@ -42,6 +49,7 @@ export function closeBroadcast(): void {
   if (channel) {
     channel.close();
     channel = null;
+    channelScope = null;
   }
 }
 
@@ -54,7 +62,7 @@ export function closeBroadcast(): void {
 export function broadcastInvalidation(patterns: string[]): void {
   if (!channel) return;
   try {
-    channel.postMessage({ type: "invalidate", patterns });
+    channel.postMessage({ type: "invalidate", patterns, scope: channelScope });
   } catch {
     // Channel closed or other error — silently ignore
   }

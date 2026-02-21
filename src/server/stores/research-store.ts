@@ -113,7 +113,7 @@ const SCHEMA_STATEMENTS = [
 ];
 
 const SQL = {
-  deleteAll: `DELETE FROM research_nodes`,
+  deleteAll: `DELETE FROM research_nodes WHERE user_id = $1`,
   insertNode: `INSERT INTO research_nodes (
       user_id, node_id, tree, name, max_level, dependencies, buffs,
       level, completed, state_updated_at, source, captured_at, updated_at
@@ -125,12 +125,14 @@ const SQL = {
       node_id, tree, name, max_level, dependencies, buffs,
       level, completed, state_updated_at, source, captured_at, updated_at
     FROM research_nodes
+    WHERE user_id = $1
     ORDER BY tree ASC, name ASC`,
   counts: `SELECT
       COUNT(*) AS nodes,
       COUNT(DISTINCT tree) AS trees,
       COUNT(*) FILTER (WHERE completed = TRUE) AS completed
-    FROM research_nodes`,
+    FROM research_nodes
+    WHERE user_id = $1`,
 };
 
 function mapNodeRow(row: Record<string, unknown>): ResearchNodeRecord {
@@ -154,7 +156,7 @@ function createScopedResearchStore(pool: Pool, userId: string): ResearchStore {
   return {
     async replaceSnapshot(input) {
       return withUserScope(pool, userId, async (client) => {
-        await client.query(SQL.deleteAll);
+        await client.query(SQL.deleteAll, [userId]);
 
         const stateMap = new Map(input.state.map((entry) => [entry.nodeId, entry]));
         for (const node of input.nodes) {
@@ -183,7 +185,7 @@ function createScopedResearchStore(pool: Pool, userId: string): ResearchStore {
 
     async listNodes() {
       return withUserRead(pool, userId, async (client) => {
-        const result = await client.query(SQL.listNodes);
+        const result = await client.query(SQL.listNodes, [userId]);
         return result.rows.map((row) => mapNodeRow(row as Record<string, unknown>));
       });
     },
@@ -229,7 +231,7 @@ function createScopedResearchStore(pool: Pool, userId: string): ResearchStore {
 
     async counts() {
       return withUserRead(pool, userId, async (client) => {
-        const result = await client.query(SQL.counts);
+        const result = await client.query(SQL.counts, [userId]);
         const row = result.rows[0] as { nodes: string | number; trees: string | number; completed: string | number };
         return {
           nodes: Number(row.nodes),

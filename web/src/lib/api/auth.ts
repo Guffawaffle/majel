@@ -6,6 +6,7 @@
 
 import type { User } from "../types.js";
 import { apiFetch, ApiError } from "./fetch.js";
+import { runLockedMutation } from "./mutation.js";
 
 /** Fetch the current authenticated user, or null if not logged in. */
 export async function getMe(): Promise<User | null> {
@@ -24,5 +25,11 @@ export async function getMe(): Promise<User | null> {
 
 /** Log out the current user. Server clears the session cookie. */
 export async function postLogout(): Promise<void> {
-  await apiFetch("/api/auth/logout", { method: "POST" });
+  await runLockedMutation({
+    label: "Logout",
+    lockKey: "auth:logout",
+    mutate: async () => {
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    },
+  });
 }

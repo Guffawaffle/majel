@@ -8,6 +8,8 @@
 import type { Role, User } from "./types.js";
 import { getMe, postLogout } from "./api/auth.js";
 import { ApiError } from "./api/fetch.js";
+import { clearCacheOnLogout } from "./cache/cache-store.svelte.js";
+import { clearQueue } from "./cache/sync-queue.svelte.js";
 
 let user = $state<User | null>(null);
 let loading = $state(true);
@@ -69,6 +71,8 @@ export async function fetchMe(): Promise<void> {
 /** Log out and redirect to landing page. */
 export async function logout(): Promise<void> {
   try {
+    await clearCacheOnLogout();
+    clearQueue();
     await postLogout();
   } finally {
     user = null;

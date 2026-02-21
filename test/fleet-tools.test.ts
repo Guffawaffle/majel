@@ -941,6 +941,17 @@ describe("list_research", () => {
     expect(listByTree).toHaveBeenCalledWith({ tree: "combat", includeCompleted: false });
   });
 
+  it("trims tree filter and defaults includeCompleted=true", async () => {
+    const listByTree = vi.fn().mockResolvedValue([]);
+    const ctx: ToolContext = {
+      researchStore: createMockResearchStore({ listByTree }),
+    };
+
+    await executeFleetTool("list_research", { tree: "  combat  " }, ctx);
+
+    expect(listByTree).toHaveBeenCalledWith({ tree: "combat", includeCompleted: true });
+  });
+
   it("returns error when research store unavailable", async () => {
     const result = await executeFleetTool("list_research", {}, {});
     expect(result).toHaveProperty("error");
@@ -970,6 +981,17 @@ describe("list_inventory", () => {
 
     await executeFleetTool("list_inventory", { category: "ore", query: "3★" }, ctx);
     expect(listByCategory).toHaveBeenCalledWith({ category: "ore", q: "3★" });
+  });
+
+  it("normalizes category casing and trims query", async () => {
+    const listByCategory = vi.fn().mockResolvedValue([]);
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore({ listByCategory }),
+    };
+
+    await executeFleetTool("list_inventory", { category: "  ORE  ", query: "  tritanium  " }, ctx);
+
+    expect(listByCategory).toHaveBeenCalledWith({ category: "ore", q: "tritanium" });
   });
 
   it("returns error when inventory store unavailable", async () => {
@@ -1755,6 +1777,22 @@ describe("update_inventory", () => {
 
     const call = upsertItems.mock.calls[0][0];
     expect(call.source).toBe("translator");
+  });
+
+  it("trims category/name/grade before persistence", async () => {
+    const upsertItems = vi.fn().mockResolvedValue({ upserted: 1, categories: 1 });
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore({ upsertItems }),
+    };
+
+    await executeFleetTool("update_inventory", {
+      items: [{ category: "  ORE ", name: "  Tritanium  ", grade: "  G3  ", quantity: 50 }],
+    }, ctx);
+
+    const saved = upsertItems.mock.calls[0][0].items[0];
+    expect(saved.category).toBe("ore");
+    expect(saved.name).toBe("Tritanium");
+    expect(saved.grade).toBe("G3");
   });
 
   it("returns partial success with warnings for mixed valid/invalid items", async () => {
@@ -3357,6 +3395,45 @@ describe("sync_research", () => {
 
     expect(result.tool).toBe("sync_research");
     expect(String(result.error)).toContain("schema_version");
+  });
+
+  it("returns parse error for invalid payload_json", async () => {
+    const ctx: ToolContext = {
+      researchStore: createMockResearchStore(),
+    };
+    const result = await executeFleetTool("sync_research", {
+      payload_json: "{ not-json",
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_research");
+    expect(String(result.error)).toContain("payload_json is not valid JSON");
+  });
+
+  it("validates node buff fields", async () => {
+    const ctx: ToolContext = {
+      researchStore: createMockResearchStore(),
+    };
+    const invalidExport = {
+      schema_version: "1.0",
+      nodes: [
+        {
+          node_id: "combat.weapon",
+          tree: "combat",
+          name: "Weapon",
+          max_level: 10,
+          dependencies: [],
+          buffs: [{ kind: "combat", metric: "weapon_damage", value: "bad", unit: "percent" }],
+        },
+      ],
+      state: [{ node_id: "combat.weapon", level: 1, completed: false }],
+    };
+
+    const result = await executeFleetTool("sync_research", {
+      export: invalidExport,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_research");
+    expect(String(result.error)).toContain("invalid buff fields");
   });
 
   it("returns error when research store unavailable", async () => {

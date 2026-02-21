@@ -6,6 +6,7 @@
 
 import { apiFetch, apiDelete, apiPatch, apiPost, pathEncode } from "./fetch.js";
 import type { AdminInvite, AdminSession, AdminUser, Role } from "../types.js";
+import { runLockedMutation } from "./mutation.js";
 
 // ─── User Management ────────────────────────────────────────
 
@@ -15,7 +16,13 @@ export async function adminListUsers(): Promise<AdminUser[]> {
 }
 
 export async function adminSetRole(email: string, role: Role): Promise<void> {
-  await apiPost("/api/auth/admiral/set-role", { email, role });
+  await runLockedMutation({
+    label: `Set role ${email}`,
+    lockKey: `admiral:user:${email}`,
+    mutate: async () => {
+      await apiPost("/api/auth/admiral/set-role", { email, role });
+    },
+  });
 }
 
 export async function adminSetLock(
@@ -23,11 +30,23 @@ export async function adminSetLock(
   locked: boolean,
   reason?: string,
 ): Promise<void> {
-  await apiPatch("/api/auth/admiral/lock", { email, locked, reason });
+  await runLockedMutation({
+    label: `Set lock ${email}`,
+    lockKey: `admiral:user:${email}`,
+    mutate: async () => {
+      await apiPatch("/api/auth/admiral/lock", { email, locked, reason });
+    },
+  });
 }
 
 export async function adminDeleteUser(email: string): Promise<void> {
-  await apiDelete("/api/auth/admiral/user", { email });
+  await runLockedMutation({
+    label: `Delete user ${email}`,
+    lockKey: `admiral:user:${email}`,
+    mutate: async () => {
+      await apiDelete("/api/auth/admiral/user", { email });
+    },
+  });
 }
 
 // ─── Invite Management ──────────────────────────────────────
@@ -44,11 +63,21 @@ export async function adminListInvites(): Promise<AdminInvite[]> {
 }
 
 export async function adminCreateInvite(opts?: InviteOpts): Promise<{ code: string }> {
-  return apiPost<{ code: string }>("/api/admiral/invites", opts ?? {});
+  return runLockedMutation({
+    label: "Create invite",
+    lockKey: "admiral:invite:create",
+    mutate: () => apiPost<{ code: string }>("/api/admiral/invites", opts ?? {}),
+  });
 }
 
 export async function adminRevokeInvite(code: string): Promise<void> {
-  await apiDelete(`/api/admiral/invites/${pathEncode(code)}`);
+  await runLockedMutation({
+    label: `Revoke invite ${code}`,
+    lockKey: `admiral:invite:${code}`,
+    mutate: async () => {
+      await apiDelete(`/api/admiral/invites/${pathEncode(code)}`);
+    },
+  });
 }
 
 // ─── Session Management ─────────────────────────────────────
@@ -59,9 +88,21 @@ export async function adminListSessions(): Promise<AdminSession[]> {
 }
 
 export async function adminDeleteSession(id: string): Promise<void> {
-  await apiDelete(`/api/admiral/sessions/${pathEncode(id)}`);
+  await runLockedMutation({
+    label: `Delete admin session ${id}`,
+    lockKey: `admiral:session:${id}`,
+    mutate: async () => {
+      await apiDelete(`/api/admiral/sessions/${pathEncode(id)}`);
+    },
+  });
 }
 
 export async function adminDeleteAllSessions(): Promise<void> {
-  await apiDelete("/api/admiral/sessions");
+  await runLockedMutation({
+    label: "Delete all admin sessions",
+    lockKey: "admiral:session:all",
+    mutate: async () => {
+      await apiDelete("/api/admiral/sessions");
+    },
+  });
 }

@@ -26,6 +26,14 @@ vi.mock("./api/fetch.js", () => ({
   },
 }));
 
+vi.mock("./cache/cache-store.svelte.js", () => ({
+  clearCacheOnLogout: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./cache/sync-queue.svelte.js", () => ({
+  clearQueue: vi.fn(),
+}));
+
 import { getUser, isLoading, getError, hasRole, fetchMe, logout } from "./auth.svelte.js";
 import { getMe, postLogout } from "./api/auth.js";
 import { ApiError } from "./api/fetch.js";

@@ -57,6 +57,10 @@
   let officerConflicts = $state<Map<string, OfficerConflict>>(new Map());
   let shipDockMap = $state<Map<string, string>>(new Map());
   let reservationMap = $state<Map<string, OfficerReservation>>(new Map());
+  let crossRefDirty = $state(true);
+  let crossRefLastBuiltAt = 0;
+
+  const CROSS_REF_REBUILD_MS = 60_000;
 
   // Save feedback
   let saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -182,8 +186,17 @@
       officerConflicts = oConflicts;
       shipDockMap = sDock;
       reservationMap = rMap;
+      crossRefDirty = false;
+      crossRefLastBuiltAt = Date.now();
     } catch (err) {
       console.error("Cross-ref build failed:", err);
+    }
+  }
+
+  async function maybeBuildCrossRefs() {
+    const stale = Date.now() - crossRefLastBuiltAt > CROSS_REF_REBUILD_MS;
+    if (crossRefDirty || stale) {
+      await buildCrossRefs();
     }
   }
 
@@ -198,7 +211,7 @@
       ]);
       officers = o;
       ships = s;
-      await buildCrossRefs();
+      await maybeBuildCrossRefs();
     } catch (err) {
       console.error("Fleet refresh failed:", err);
     } finally {
@@ -348,6 +361,7 @@
         m.delete(editingReservation);
         reservationMap = m;
       }
+      crossRefDirty = true;
     } catch (err) {
       console.error("Reservation save failed:", err);
     }

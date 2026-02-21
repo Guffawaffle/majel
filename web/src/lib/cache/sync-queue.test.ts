@@ -4,11 +4,12 @@
  * ADR-032 Phase 3: Tests queue/dequeue/replay/clear operations.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   getQueue,
   isReplaying,
   enqueue,
+  enqueueIntent,
   dequeue,
   clearQueue,
   replayQueue,
@@ -17,6 +18,13 @@ import {
 describe("sync queue", () => {
   beforeEach(() => {
     clearQueue();
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("majel-sync-queue-v1");
+    }
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("starts empty", () => {
@@ -105,5 +113,79 @@ describe("sync queue", () => {
     const ts = getQueue()[0].queuedAt;
     expect(ts).toBeGreaterThanOrEqual(before);
     expect(ts).toBeLessThanOrEqual(after);
+  });
+
+  it("persists intent items for durability", () => {
+    enqueueIntent({
+      label: "persist me",
+      lockKey: "dock:1",
+      method: "PUT",
+      path: "/api/crew/docks/1",
+      body: { label: "Alpha" },
+      mutationKey: "crew-dock",
+    });
+
+    if (typeof window !== "undefined") {
+      const raw = window.localStorage.getItem("majel-sync-queue-v1");
+      expect(raw).toBeTruthy();
+      expect(raw).toContain("persist me");
+      expect(raw).toContain("/api/crew/docks/1");
+    }
+  });
+
+  it("replays durable intent items through fetch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({ data: {} }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    enqueueIntent({
+      label: "replay me",
+      lockKey: "dock:1",
+      method: "PUT",
+      path: "/api/crew/docks/1",
+      body: { label: "Bravo" },
+      mutationKey: "crew-dock",
+    });
+
+    const count = await replayQueue();
+    expect(count).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/crew/docks/1", expect.objectContaining({
+      method: "PUT",
+      credentials: "same-origin",
+    }));
+    expect(getQueue()).toHaveLength(0);
+  });
+
+  it("defers later same-lock intents when an earlier one fails", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, json: vi.fn().mockResolvedValue({}) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: vi.fn().mockResolvedValue({ data: {} }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    enqueueIntent({
+      label: "first",
+      lockKey: "dock:1",
+      method: "PUT",
+      path: "/api/crew/docks/1",
+      body: { label: "First" },
+      mutationKey: "crew-dock",
+    });
+    enqueueIntent({
+      label: "second",
+      lockKey: "dock:1",
+      method: "PUT",
+      path: "/api/crew/docks/1",
+      body: { label: "Second" },
+      mutationKey: "crew-dock",
+    });
+
+    const count = await replayQueue();
+    expect(count).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getQueue()).toHaveLength(2);
   });
 });

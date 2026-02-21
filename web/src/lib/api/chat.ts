@@ -4,6 +4,7 @@
 
 import type { ChatImage, ChatResponse, HistoryResponse, RecallResponse } from "../types.js";
 import { apiFetch, qs } from "./fetch.js";
+import { runLockedMutation } from "./mutation.js";
 
 /**
  * Send a chat message (optionally with an image attachment).
@@ -14,10 +15,14 @@ export async function sendChat(
   message: string,
   image?: ChatImage,
 ): Promise<ChatResponse> {
-  return apiFetch<ChatResponse>("/api/chat", {
-    method: "POST",
-    headers: { "X-Session-Id": sessionId },
-    body: JSON.stringify({ message, ...(image && { image }) }),
+  return runLockedMutation({
+    label: "Send chat message",
+    lockKey: `chat:${sessionId}`,
+    mutate: () => apiFetch<ChatResponse>("/api/chat", {
+      method: "POST",
+      headers: { "X-Session-Id": sessionId },
+      body: JSON.stringify({ message, ...(image && { image }) }),
+    }),
   });
 }
 

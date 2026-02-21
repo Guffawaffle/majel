@@ -492,17 +492,19 @@ export function createCatalogRoutes(appState: AppState): Router {
     }
 
     // ADR-026 D7: Create receipt for audit trail + undo
+    let receiptId: number | null = null;
     if (appState.receiptStore && updated > 0) {
-      await appState.receiptStore.createReceipt({
+      const receipt = await appState.receiptStore.createReceipt({
         sourceType: "catalog_clicks",
         layer: "ownership",
         sourceMeta: { entity: "officers", count: refIds.length },
         changeset: { updated: refIds.map((id: string) => ({ id, ownershipState, target })) },
         inverse: { updated: refIds.map((id: string) => ({ id, revert: true })) },
       });
+      receiptId = receipt.id;
     }
 
-    sendOk(res, { updated, refIds: refIds.length });
+    sendOk(res, { updated, refIds: refIds.length, receiptId });
   });
 
   router.post("/api/catalog/ships/bulk-overlay", admiral, async (req, res) => {
@@ -532,17 +534,19 @@ export function createCatalogRoutes(appState: AppState): Router {
     }
 
     // ADR-026 D7: Create receipt for audit trail + undo
+    let receiptId: number | null = null;
     if (appState.receiptStore && updated > 0) {
-      await appState.receiptStore.createReceipt({
+      const receipt = await appState.receiptStore.createReceipt({
         sourceType: "catalog_clicks",
         layer: "ownership",
         sourceMeta: { entity: "ships", count: refIds.length },
         changeset: { updated: refIds.map((id: string) => ({ id, ownershipState, target })) },
         inverse: { updated: refIds.map((id: string) => ({ id, revert: true })) },
       });
+      receiptId = receipt.id;
     }
 
-    sendOk(res, { updated, refIds: refIds.length });
+    sendOk(res, { updated, refIds: refIds.length, receiptId });
   });
 
   return router;

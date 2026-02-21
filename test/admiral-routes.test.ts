@@ -15,6 +15,7 @@ import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
 import type { AppState } from "../src/server/app-context.js";
 import { createInviteStore, type InviteStore } from "../src/server/stores/invite-store.js";
+import { createAuditStore, type AuditStore } from "../src/server/stores/audit-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;
@@ -68,6 +69,11 @@ describe("Admiral routes — inviteStore null", () => {
 
   it("DELETE /sessions (all) → 503", async () => {
     const res = await testRequest(app).delete("/api/admiral/sessions").set("Authorization", bearer);
+    expect(res.status).toBe(503);
+  });
+
+  it("GET /audit-log → 503", async () => {
+    const res = await testRequest(app).get("/api/admiral/audit-log").set("Authorization", bearer);
     expect(res.status).toBe(503);
   });
 });
@@ -169,5 +175,86 @@ describe("Admiral routes — input validation", () => {
     const res = await testRequest(app).delete("/api/admiral/sessions").set("Authorization", bearer);
     expect(res.status).toBe(200);
     expect(res.body.data.deleted).toBe(0);
+  });
+});
+
+describe("Admiral routes — audit log query", () => {
+  let app: Express;
+  let inviteStore: InviteStore;
+  let auditStore: AuditStore;
+
+  const actorA = "11111111-1111-4111-8111-111111111111";
+  const actorB = "22222222-2222-4222-8222-222222222222";
+  const targetA = "33333333-3333-4333-8333-333333333333";
+
+  beforeEach(async () => {
+    await cleanDatabase(pool);
+    inviteStore = await createInviteStore(pool);
+    auditStore = await createAuditStore(pool);
+
+    await auditStore.logEvent({
+      event: "auth.signin.success",
+      actorId: actorA,
+      targetId: targetA,
+      detail: { source: "test" },
+    });
+    await auditStore.logEvent({
+      event: "auth.signin.failure",
+      actorId: actorB,
+      detail: { source: "test" },
+    });
+
+    app = createApp(makeState({ inviteStore, auditStore }));
+  });
+
+  it("returns recent audit log entries", async () => {
+    const res = await testRequest(app).get("/api/admiral/audit-log").set("Authorization", bearer);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data.entries)).toBe(true);
+    expect(res.body.data.count).toBeGreaterThanOrEqual(2);
+  });
+
+  it("filters by event", async () => {
+    const res = await testRequest(app)
+      .get("/api/admiral/audit-log")
+      .query({ event: "auth.signin.failure" })
+      .set("Authorization", bearer);
+    expect(res.status).toBe(200);
+    expect(res.body.data.entries.length).toBe(1);
+    expect(res.body.data.entries[0].eventType).toBe("auth.signin.failure");
+  });
+
+  it("filters by actorId", async () => {
+    const res = await testRequest(app)
+      .get("/api/admiral/audit-log")
+      .query({ actorId: actorA })
+      .set("Authorization", bearer);
+    expect(res.status).toBe(200);
+    expect(res.body.data.entries.length).toBe(1);
+    expect(res.body.data.entries[0].actorId).toBe(actorA);
+  });
+
+  it("rejects invalid event", async () => {
+    const res = await testRequest(app)
+      .get("/api/admiral/audit-log")
+      .query({ event: "not.real" })
+      .set("Authorization", bearer);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid UUID filter", async () => {
+    const res = await testRequest(app)
+      .get("/api/admiral/audit-log")
+      .query({ actorId: "bad-id" })
+      .set("Authorization", bearer);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid date window", async () => {
+    const res = await testRequest(app)
+      .get("/api/admiral/audit-log")
+      .query({ from: "2026-02-21T00:00:00Z", to: "2026-02-20T00:00:00Z" })
+      .set("Authorization", bearer);
+    expect(res.status).toBe(400);
   });
 });

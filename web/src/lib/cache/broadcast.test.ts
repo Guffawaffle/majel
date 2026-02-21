@@ -45,25 +45,33 @@ describe("broadcast", () => {
   });
 
   it("opens a channel with the correct name", () => {
-    openBroadcast();
+    openBroadcast("u1");
     expect(MockBroadcastChannel.instances).toHaveLength(1);
-    expect(MockBroadcastChannel.instances[0].name).toBe("majel-cache");
+    expect(MockBroadcastChannel.instances[0].name).toBe("majel-cache:u1");
   });
 
   it("does not open duplicate channels", () => {
-    openBroadcast();
-    openBroadcast();
+    openBroadcast("u1");
+    openBroadcast("u1");
     expect(MockBroadcastChannel.instances).toHaveLength(1);
   });
 
+  it("opens a new channel when user scope changes", () => {
+    openBroadcast("u1");
+    openBroadcast("u2");
+    expect(MockBroadcastChannel.instances).toHaveLength(2);
+    expect(MockBroadcastChannel.instances[1].name).toBe("majel-cache:u2");
+  });
+
   it("broadcasts invalidation patterns", () => {
-    openBroadcast();
+    openBroadcast("u1");
     broadcastInvalidation(["catalog:*", "settings*"]);
     const ch = MockBroadcastChannel.instances[0];
     expect(ch.messages).toHaveLength(1);
     expect(ch.messages[0]).toEqual({
       type: "invalidate",
       patterns: ["catalog:*", "settings*"],
+      scope: "u1",
     });
   });
 
@@ -73,7 +81,7 @@ describe("broadcast", () => {
   });
 
   it("closes the channel on teardown", () => {
-    openBroadcast();
+    openBroadcast("u1");
     const ch = MockBroadcastChannel.instances[0];
     expect(ch.closed).toBe(false);
     closeBroadcast();
@@ -85,12 +93,12 @@ describe("broadcast", () => {
     const { cacheInvalidate } = await import("./idb-cache.js");
     const spy = vi.mocked(cacheInvalidate);
 
-    openBroadcast();
+    openBroadcast("u1");
     const ch = MockBroadcastChannel.instances[0];
 
     // Simulate receiving a message from another tab
     ch.onmessage?.(new MessageEvent("message", {
-      data: { type: "invalidate", patterns: ["settings*"] },
+      data: { type: "invalidate", patterns: ["settings*"], scope: "u1" },
     }));
 
     // cacheInvalidate is called (mocked in test env, may or may not resolve)

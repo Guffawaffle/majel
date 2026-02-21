@@ -21,6 +21,7 @@
 
   let editingNum = $state<number | "new" | null>(null);
   let formError = $state("");
+  let saving = $state(false);
 
   // Form
   let formNum = $state(1);
@@ -63,18 +64,23 @@
   }
 
   async function save() {
+    if (saving) return;
     if (!formNum || formNum < 1) { formError = "Dock number is required."; return; }
 
     formError = "";
+    saving = true;
     try {
       await upsertCrewDock(formNum, {
         label: formLabel.trim() || undefined,
+        unlocked: formUnlocked,
         notes: formNotes.trim() || undefined,
       });
       editingNum = null;
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Save failed.";
+    } finally {
+      saving = false;
     }
   }
 
@@ -161,7 +167,7 @@
       <p class="pl-form-error">{formError}</p>
     {/if}
     <div class="pl-form-actions">
-      <button class="pl-btn pl-btn-save" onclick={save}>Save</button>
+      <button class="pl-btn pl-btn-save" onclick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
       <button class="pl-btn pl-btn-cancel" onclick={cancel}>Cancel</button>
     </div>
   </div>

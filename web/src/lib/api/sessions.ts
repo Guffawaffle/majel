@@ -4,6 +4,7 @@
 
 import type { ChatSession, SessionSummary } from "../types.js";
 import { apiFetch, apiDelete, pathEncode, qs } from "./fetch.js";
+import { runLockedMutation } from "./mutation.js";
 
 /**
  * Fetch recent sessions (most recent first).
@@ -38,7 +39,13 @@ export async function restoreSession(id: string): Promise<ChatSession | null> {
  */
 export async function deleteSession(id: string): Promise<boolean> {
   try {
-    await apiDelete(`/api/sessions/${pathEncode(id)}`);
+    await runLockedMutation({
+      label: `Delete session ${id}`,
+      lockKey: `session:${id}`,
+      mutate: async () => {
+        await apiDelete(`/api/sessions/${pathEncode(id)}`);
+      },
+    });
     return true;
   } catch {
     return false;

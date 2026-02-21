@@ -114,6 +114,25 @@ const PROPOSAL_COLS = `id, user_id AS "userId", schema_version AS "schemaVersion
   created_at AS "createdAt", expires_at AS "expiresAt",
   applied_at AS "appliedAt", declined_at AS "declinedAt"`;
 
+function mapProposal(row: Record<string, unknown>): MutationProposal {
+  return {
+    id: String(row.id),
+    userId: String(row.userId),
+    schemaVersion: Number(row.schemaVersion),
+    tool: String(row.tool),
+    argsJson: (row.argsJson as Record<string, unknown>) ?? {},
+    argsHash: String(row.argsHash),
+    proposalJson: (row.proposalJson as Record<string, unknown>) ?? {},
+    status: String(row.status) as ProposalStatus,
+    declineReason: row.declineReason == null ? null : String(row.declineReason),
+    appliedReceiptId: row.appliedReceiptId == null ? null : Number(row.appliedReceiptId),
+    createdAt: new Date(String(row.createdAt)).toISOString(),
+    expiresAt: new Date(String(row.expiresAt)).toISOString(),
+    appliedAt: row.appliedAt == null ? null : new Date(String(row.appliedAt)).toISOString(),
+    declinedAt: row.declinedAt == null ? null : new Date(String(row.declinedAt)).toISOString(),
+  };
+}
+
 // ═══════════════════════════════════════════════════════════
 // Implementation
 // ═══════════════════════════════════════════════════════════
@@ -140,28 +159,31 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
           ],
         );
         log.fleet.debug({ id, tool: input.tool }, "proposal created");
-        return result.rows[0] as MutationProposal;
+        return mapProposal(result.rows[0] as Record<string, unknown>);
       });
     },
 
     async get(id) {
       return withUserRead(pool, userId, async (client) => {
         const result = await client.query(
-          `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1`,
-          [id],
+          `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1 AND user_id = $2`,
+          [id, userId],
         );
-        return (result.rows[0] as MutationProposal) ?? null;
+        const row = result.rows[0] as Record<string, unknown> | undefined;
+        return row ? mapProposal(row) : null;
       });
     },
 
     async apply(id, receiptId) {
-      return withUserScope(pool, userId, async (client) => {
+      type ApplyResult = { kind: "applied"; proposal: MutationProposal } | { kind: "expired"; expiresAt: string };
+      const result = await withUserScope(pool, userId, async (client): Promise<ApplyResult> => {
         // Fetch current state
         const current = await client.query(
-          `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1`,
-          [id],
+          `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1 AND user_id = $2`,
+          [id, userId],
         );
-        const proposal = (current.rows[0] as MutationProposal) ?? null;
+        const row = current.rows[0] as Record<string, unknown> | undefined;
+        const proposal = row ? mapProposal(row) : null;
         if (!proposal) {
           throw new Error(`Proposal ${id} not found`);
         }
@@ -176,34 +198,43 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
           await client.query(
             `UPDATE mutation_proposals
              SET status = 'expired'
-             WHERE id = $1`,
-            [id],
+             WHERE id = $1 AND user_id = $2`,
+            [id, userId],
           );
-          throw new Error(
-            `Cannot apply proposal ${id}: proposal has expired (expired at ${proposal.expiresAt})`,
-          );
+          return { kind: "expired", expiresAt: proposal.expiresAt };
         }
 
-        const result = await client.query(
+        const updated = await client.query(
           `UPDATE mutation_proposals
            SET status = 'applied', applied_at = NOW(), applied_receipt_id = $1
-           WHERE id = $2
+           WHERE id = $2 AND user_id = $3
            RETURNING ${PROPOSAL_COLS}`,
-          [receiptId, id],
+          [receiptId, id, userId],
         );
         log.fleet.debug({ id, receiptId }, "proposal applied");
-        return result.rows[0] as MutationProposal;
+        return {
+          kind: "applied",
+          proposal: mapProposal(updated.rows[0] as Record<string, unknown>),
+        };
       });
+
+      if (result.kind === "expired") {
+        throw new Error(
+          `Cannot apply proposal ${id}: proposal has expired (expired at ${result.expiresAt})`,
+        );
+      }
+      return result.proposal;
     },
 
     async decline(id, reason) {
       return withUserScope(pool, userId, async (client) => {
         // Fetch current state
         const current = await client.query(
-          `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1`,
-          [id],
+          `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1 AND user_id = $2`,
+          [id, userId],
         );
-        const proposal = (current.rows[0] as MutationProposal) ?? null;
+        const row = current.rows[0] as Record<string, unknown> | undefined;
+        const proposal = row ? mapProposal(row) : null;
         if (!proposal) {
           throw new Error(`Proposal ${id} not found`);
         }
@@ -216,27 +247,27 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
         const result = await client.query(
           `UPDATE mutation_proposals
            SET status = 'declined', declined_at = NOW(), decline_reason = $1
-           WHERE id = $2
+           WHERE id = $2 AND user_id = $3
            RETURNING ${PROPOSAL_COLS}`,
-          [reason ?? null, id],
+          [reason ?? null, id, userId],
         );
         log.fleet.debug({ id, reason }, "proposal declined");
-        return result.rows[0] as MutationProposal;
+        return mapProposal(result.rows[0] as Record<string, unknown>);
       });
     },
 
     async list(options) {
       return withUserRead(pool, userId, async (client) => {
-        const clauses: string[] = [];
-        const params: unknown[] = [];
-        let idx = 1;
+        const clauses: string[] = ["user_id = $1"];
+        const params: unknown[] = [userId];
+        let idx = 2;
 
         if (options?.status) {
           clauses.push(`status = $${idx++}`);
           params.push(options.status);
         }
 
-        const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+        const where = `WHERE ${clauses.join(" AND ")}`;
         const limitClause = options?.limit ? `LIMIT $${idx++}` : "";
         if (options?.limit) params.push(options.limit);
 
@@ -244,7 +275,7 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
           `SELECT ${PROPOSAL_COLS} FROM mutation_proposals ${where} ORDER BY created_at DESC ${limitClause}`,
           params,
         );
-        return result.rows as MutationProposal[];
+        return result.rows.map((row) => mapProposal(row as Record<string, unknown>));
       });
     },
 
@@ -253,7 +284,8 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
         const result = await client.query(
           `UPDATE mutation_proposals
            SET status = 'expired'
-           WHERE status = 'proposed' AND expires_at < NOW()`,
+           WHERE user_id = $1 AND status = 'proposed' AND expires_at < NOW()`,
+          [userId],
         );
         const count = result.rowCount ?? 0;
         if (count > 0) {
@@ -272,7 +304,9 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
             COUNT(*) FILTER (WHERE status = 'applied')::int AS applied,
             COUNT(*) FILTER (WHERE status = 'declined')::int AS declined,
             COUNT(*) FILTER (WHERE status = 'expired')::int AS expired
-           FROM mutation_proposals`,
+           FROM mutation_proposals
+           WHERE user_id = $1`,
+          [userId],
         );
         return result.rows[0] as {
           total: number;

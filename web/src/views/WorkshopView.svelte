@@ -25,6 +25,7 @@
   import PoliciesTab from "../components/workshop/PoliciesTab.svelte";
   import ReservationsTab from "../components/workshop/ReservationsTab.svelte";
   import ImportsTab from "../components/workshop/ImportsTab.svelte";
+  import { consumeWorkshopLaunchIntent } from "../lib/view-intent.svelte.js";
 
   // ── Shared state ──
 
@@ -74,7 +75,57 @@
     }
   }
 
-  onMount(() => { refresh(); });
+  async function refreshCoresScope() {
+    try {
+      const [c, l] = await Promise.all([
+        fetchBridgeCores({ forceNetwork: true }),
+        fetchCrewLoadouts(undefined, { forceNetwork: true }),
+      ]);
+      bridgeCores = c;
+      loadouts = l;
+    } catch (err) {
+      console.error("Workshop cores-scope refresh failed:", err);
+    }
+  }
+
+  async function refreshLoadoutsScope() {
+    try {
+      const l = await fetchCrewLoadouts(undefined, { forceNetwork: true });
+      loadouts = l;
+    } catch (err) {
+      console.error("Workshop loadouts-scope refresh failed:", err);
+    }
+  }
+
+  async function refreshPoliciesScope() {
+    try {
+      const [p, l] = await Promise.all([
+        fetchBelowDeckPolicies({ forceNetwork: true }),
+        fetchCrewLoadouts(undefined, { forceNetwork: true }),
+      ]);
+      belowDeckPolicies = p;
+      loadouts = l;
+    } catch (err) {
+      console.error("Workshop policies-scope refresh failed:", err);
+    }
+  }
+
+  async function refreshReservationsScope() {
+    try {
+      const r = await fetchReservations({ forceNetwork: true });
+      reservations = r;
+    } catch (err) {
+      console.error("Workshop reservations-scope refresh failed:", err);
+    }
+  }
+
+  onMount(() => {
+    const launchIntent = consumeWorkshopLaunchIntent();
+    if (launchIntent?.tab === "imports") {
+      activeTab = "imports";
+    }
+    refresh();
+  });
 
   function switchTab(id: TabId) {
     activeTab = id;
@@ -110,7 +161,7 @@
           {bridgeCores}
           {loadouts}
           {officers}
-          onRefresh={() => refresh(true)}
+          onRefresh={refreshCoresScope}
         />
       {:else if activeTab === "loadouts"}
         <LoadoutsTab
@@ -119,20 +170,20 @@
           {belowDeckPolicies}
           {officers}
           {ships}
-          onRefresh={() => refresh(true)}
+          onRefresh={refreshLoadoutsScope}
         />
       {:else if activeTab === "policies"}
         <PoliciesTab
           {belowDeckPolicies}
           {loadouts}
           {officers}
-          onRefresh={() => refresh(true)}
+          onRefresh={refreshPoliciesScope}
         />
       {:else if activeTab === "reservations"}
         <ReservationsTab
           {reservations}
           {officers}
-          onRefresh={() => refresh(true)}
+          onRefresh={refreshReservationsScope}
         />
       {:else if activeTab === "imports"}
         <ImportsTab onCommitted={() => refresh(true)} />

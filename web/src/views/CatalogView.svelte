@@ -17,6 +17,7 @@
   import type { OfficerFilters, ShipFilters } from "../lib/api/catalog.js";
   import type { CatalogOfficer, CatalogShip, CatalogCounts, OwnershipState } from "../lib/types.js";
   import { hullTypeLabel, officerClassShort, formatDuration } from "../lib/game-enums.js";
+  import { consumeCatalogLaunchIntent } from "../lib/view-intent.svelte.js";
 
   // ── State ──
 
@@ -85,14 +86,13 @@
       if (filterOfficerClass) oFilters.officerClass = filterOfficerClass;
       if (filterHullType) sFilters.hullType = filterHullType;
 
-      const [o, s, c] = await Promise.all([
-        fetchCatalogOfficers(oFilters),
-        fetchCatalogShips(sFilters),
-        fetchCatalogCounts(),
-      ]);
-      officers = o;
-      ships = s;
-      counts = c;
+      const cPromise = fetchCatalogCounts();
+      if (activeTab === "officers") {
+        officers = await fetchCatalogOfficers(oFilters);
+      } else {
+        ships = await fetchCatalogShips(sFilters);
+      }
+      counts = await cPromise;
     } catch (err) {
       console.error("Catalog refresh failed:", err);
     } finally {
@@ -275,7 +275,13 @@
 
   // ── Init ──
 
-  onMount(() => { refresh(); });
+  onMount(() => {
+    const launchIntent = consumeCatalogLaunchIntent();
+    if (launchIntent?.ownership) {
+      filterOwnership = launchIntent.ownership;
+    }
+    refresh();
+  });
   onDestroy(() => { clearTimeout(searchTimer); });
 </script>
 

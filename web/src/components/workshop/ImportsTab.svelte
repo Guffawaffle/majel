@@ -2,11 +2,13 @@
   import { onMount } from "svelte";
   import {
     analyzeImportFile,
+    commitCompositionInference,
     commitImportRows,
     mapImportRows,
     parseImportFile,
     resolveImportRows,
   } from "../../lib/api/imports.js";
+  import { fetchCatalogOfficers, fetchCatalogShips } from "../../lib/api/catalog.js";
   import {
     fetchReceipt,
     fetchReceipts,
@@ -15,6 +17,11 @@
   import { ApiError } from "../../lib/api/fetch.js";
   import type {
     ImportAnalysis,
+    CatalogOfficer,
+    CatalogShip,
+    CompositionBelowDeckPolicySuggestion,
+    CompositionBridgeCoreSuggestion,
+    CompositionLoadoutSuggestion,
     ImportReceipt,
     ParsedImportData,
     ResolvedImportRow,
@@ -50,6 +57,13 @@
   let receiptUnresolved = $state<UnresolvedImportItem[]>([]);
   let receiptSelection = $state<Record<string, boolean>>({});
   let receiptLoading = $state(false);
+  let showCompositionPrompt = $state(false);
+  let compositionPromptDismissed = $state(false);
+  let compositionGenerating = $state(false);
+  let compositionPreviewOpen = $state(false);
+  let bridgeCoreSuggestions = $state<CompositionBridgeCoreSuggestion[]>([]);
+  let belowDeckSuggestions = $state<CompositionBelowDeckPolicySuggestion[]>([]);
+  let loadoutSuggestions = $state<CompositionLoadoutSuggestion[]>([]);
 
   onMount(() => {
     void loadRecentReceipts();
@@ -176,6 +190,12 @@
         unresolved: result.summary.unresolved,
       };
       overwriteApproval = null;
+      showCompositionPrompt = true;
+      compositionPromptDismissed = false;
+      compositionPreviewOpen = false;
+      bridgeCoreSuggestions = [];
+      belowDeckSuggestions = [];
+      loadoutSuggestions = [];
       status = `Committed import. Receipt #${result.receipt.id}.`;
       await onCommitted?.();
       await loadRecentReceipts();
@@ -206,6 +226,226 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function openCompositionPreview() {
+    if (!commitResult) {
+      error = "Commit import before running composition inference.";
+      return;
+    }
+    compositionGenerating = true;
+    error = "";
+    try {
+      const [officers, ships] = await Promise.all([
+        fetchCatalogOfficers({ ownership: "owned" }, { forceNetwork: true }),
+        fetchCatalogShips({ ownership: "owned" }, { forceNetwork: true }),
+      ]);
+      const generated = buildCompositionSuggestions(officers, ships);
+      bridgeCoreSuggestions = generated.bridgeCores;
+      belowDeckSuggestions = generated.policies;
+      loadoutSuggestions = generated.loadouts;
+      compositionPreviewOpen = true;
+      showCompositionPrompt = false;
+      status = "Composition preview generated. Review suggestions before commit.";
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      compositionGenerating = false;
+    }
+  }
+
+  function skipCompositionInference() {
+    compositionPromptDismissed = true;
+    showCompositionPrompt = false;
+    compositionPreviewOpen = false;
+    bridgeCoreSuggestions = [];
+    belowDeckSuggestions = [];
+    loadoutSuggestions = [];
+  }
+
+  async function commitCompositionFromPreview() {
+    if (!commitResult) {
+      error = "Commit import before creating composition entities.";
+      return;
+    }
+
+    const acceptedCount =
+      bridgeCoreSuggestions.filter((entry) => entry.accepted).length +
+      belowDeckSuggestions.filter((entry) => entry.accepted).length +
+      loadoutSuggestions.filter((entry) => entry.accepted).length;
+    if (acceptedCount === 0) {
+      error = "Select at least one suggestion to create.";
+      return;
+    }
+
+    loading = true;
+    error = "";
+    try {
+      const result = await commitCompositionInference({
+        sourceReceiptId: commitResult.receiptId,
+        sourceMeta: { generatedBy: "heuristic", ui: "imports-tab" },
+        bridgeCores: bridgeCoreSuggestions,
+        belowDeckPolicies: belowDeckSuggestions,
+        loadouts: loadoutSuggestions,
+      });
+
+      status = `Committed composition inference. Receipt #${result.receipt.id}.`;
+      compositionPreviewOpen = false;
+      showCompositionPrompt = false;
+      compositionPromptDismissed = true;
+      await loadRecentReceipts();
+      selectedReceiptId = String(result.receipt.id);
+      await loadReceiptDetail(selectedReceiptId);
+      await onCommitted?.();
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      loading = false;
+    }
+  }
+
+  function rarityScore(value: string | null): number {
+    const normalized = String(value ?? "").toLowerCase();
+    if (normalized.includes("legendary")) return 5;
+    if (normalized.includes("epic")) return 4;
+    if (normalized.includes("rare")) return 3;
+    if (normalized.includes("uncommon")) return 2;
+    if (normalized.includes("common")) return 1;
+    return 0;
+  }
+
+  function inferIntentFromShipClass(shipClass: string | null): "combat" | "mining" | "hostile" {
+    const normalized = String(shipClass ?? "").toLowerCase();
+    if (normalized.includes("survey")) return "mining";
+    if (normalized.includes("interceptor") || normalized.includes("battleship") || normalized.includes("explorer")) return "combat";
+    return "hostile";
+  }
+
+  function policyForIntent(intent: "combat" | "mining" | "hostile", index: number): CompositionBelowDeckPolicySuggestion {
+    if (intent === "mining") {
+      return {
+        key: `policy-mining-${index}`,
+        accepted: true,
+        name: "Mining BD",
+        mode: "stats_then_bda",
+        spec: { prefer_modifiers: ["mining_rate", "protected_cargo", "warp_range"], avoid_reserved: true, max_slots: 5 },
+      };
+    }
+    if (intent === "hostile") {
+      return {
+        key: `policy-hostile-${index}`,
+        accepted: true,
+        name: "Hostile BD",
+        mode: "stats_then_bda",
+        spec: { prefer_modifiers: ["damage_vs_hostiles", "critical_damage", "mitigation"], avoid_reserved: true, max_slots: 5 },
+      };
+    }
+    return {
+      key: `policy-combat-${index}`,
+      accepted: true,
+      name: "Combat BD",
+      mode: "stats_then_bda",
+      spec: { prefer_modifiers: ["attack", "critical_chance", "critical_damage"], avoid_reserved: true, max_slots: 5 },
+    };
+  }
+
+  function buildCompositionSuggestions(officers: CatalogOfficer[], ships: CatalogShip[]): {
+    bridgeCores: CompositionBridgeCoreSuggestion[];
+    policies: CompositionBelowDeckPolicySuggestion[];
+    loadouts: CompositionLoadoutSuggestion[];
+  } {
+    const ownedOfficers = officers.filter((officer) => officer.ownershipState === "owned");
+    const ownedShips = ships.filter((ship) => ship.ownershipState === "owned");
+
+    const byGroup = new Map<string, CatalogOfficer[]>();
+    for (const officer of ownedOfficers) {
+      const groupName = officer.groupName?.trim();
+      if (!groupName) continue;
+      const key = groupName.toLowerCase();
+      const current = byGroup.get(key) ?? [];
+      current.push(officer);
+      byGroup.set(key, current);
+    }
+
+    const bridgeCores: CompositionBridgeCoreSuggestion[] = [];
+    const officerById = new Map<string, CatalogOfficer>();
+    for (const officer of ownedOfficers) officerById.set(officer.id, officer);
+
+    let bridgeCoreIndex = 0;
+    for (const [groupKey, members] of byGroup.entries()) {
+      if (members.length < 3) continue;
+      const cmCapable = members.filter((officer) => (officer.captainManeuver ?? "").trim().length > 0);
+      if (cmCapable.length === 0) continue;
+
+      const sorted = [...members].sort((left, right) => {
+        const rarityDiff = rarityScore(right.rarity) - rarityScore(left.rarity);
+        if (rarityDiff !== 0) return rarityDiff;
+        return (right.userLevel ?? 0) - (left.userLevel ?? 0);
+      });
+      const captain = [...cmCapable].sort((left, right) => {
+        const rarityDiff = rarityScore(right.rarity) - rarityScore(left.rarity);
+        if (rarityDiff !== 0) return rarityDiff;
+        return (right.userLevel ?? 0) - (left.userLevel ?? 0);
+      })[0];
+
+      const remainder = sorted.filter((officer) => officer.id !== captain.id).slice(0, 2);
+      if (remainder.length < 2) continue;
+      const selected = [captain, ...remainder];
+
+      bridgeCores.push({
+        key: `core-${bridgeCoreIndex++}`,
+        accepted: true,
+        name: `${selected[0].groupName ?? groupKey} Trio`,
+        members: [
+          { officerId: selected[0].id, officerName: selected[0].name, slot: "captain" },
+          { officerId: selected[1].id, officerName: selected[1].name, slot: "bridge_1" },
+          { officerId: selected[2].id, officerName: selected[2].name, slot: "bridge_2" },
+        ],
+      });
+
+      if (bridgeCores.length >= 5) break;
+    }
+
+    const intents = [...new Set(ownedShips.map((ship) => inferIntentFromShipClass(ship.shipClass)))];
+    const policies = intents.slice(0, 3).map((intent, index) => policyForIntent(intent, index));
+
+    const loadouts: CompositionLoadoutSuggestion[] = [];
+    let loadoutIndex = 0;
+    for (const core of bridgeCores) {
+      const captain = core.members.find((member) => member.slot === "captain");
+      const captainOfficer = captain ? officerById.get(captain.officerId) : undefined;
+      const captainFaction = String(captainOfficer?.faction?.name ?? "").toLowerCase();
+
+      const scoredShips = [...ownedShips].map((ship) => {
+        const intent = inferIntentFromShipClass(ship.shipClass);
+        const policy = policies.find((entry) => entry.key.includes(intent));
+        let score = 0;
+        if (captainFaction.length > 0 && String(ship.faction ?? "").toLowerCase().includes(captainFaction)) score += 5;
+        if (intent === "combat" && /interceptor|battleship|explorer/i.test(String(ship.shipClass ?? ""))) score += 3;
+        if (intent === "mining" && /survey/i.test(String(ship.shipClass ?? ""))) score += 3;
+        if (intent === "hostile") score += 1;
+        score += ship.userTier ?? 0;
+        return { ship, intent, policyKey: policy?.key, score };
+      });
+
+      scoredShips.sort((left, right) => right.score - left.score);
+      const selected = scoredShips[0];
+      if (!selected) continue;
+
+      loadouts.push({
+        key: `loadout-${loadoutIndex++}`,
+        accepted: true,
+        name: `${selected.ship.name} ${core.name}`,
+        shipId: selected.ship.id,
+        shipName: selected.ship.name,
+        bridgeCoreKey: core.key,
+        belowDeckPolicyKey: selected.policyKey,
+        intentKeys: [selected.intent],
+        tags: ["import-inferred"],
+      });
+    }
+
+    return { bridgeCores, policies, loadouts };
   }
 
   async function loadRecentReceipts() {
@@ -454,6 +694,78 @@
         <span>Receipt #{commitResult.receiptId}</span>
         <span>{commitResult.added} added, {commitResult.updated} updated, {commitResult.unchanged} unchanged, {commitResult.unresolved} unresolved</span>
       </div>
+
+      {#if showCompositionPrompt && !compositionPromptDismissed}
+        <h3 class="imports-section-title">Also create crews/loadouts from this import?</h3>
+        <div class="imports-history">
+          <p class="imports-state">Optional step: infer bridge cores, below-deck policies, and loadouts from owned entities.</p>
+          <div class="imports-actions">
+            <button class="imports-btn" onclick={() => { void openCompositionPreview(); }} disabled={compositionGenerating || loading}>Yes, show me</button>
+            <button class="imports-btn" onclick={skipCompositionInference} disabled={compositionGenerating || loading}>No thanks</button>
+          </div>
+        </div>
+      {/if}
+
+      {#if compositionPreviewOpen}
+        <h3 class="imports-section-title">Composition inference preview</h3>
+
+        <div class="imports-history">
+          <p class="imports-state">Review each suggestion before commit. Edit names, then keep checked to create.</p>
+
+          <h4 class="imports-subtitle">Suggested Bridge Cores</h4>
+          {#if bridgeCoreSuggestions.length === 0}
+            <p class="imports-state">No bridge core suggestions found.</p>
+          {:else}
+            <div class="imports-unresolved">
+              {#each bridgeCoreSuggestions as core}
+                <label class="imports-unresolved-row">
+                  <input type="checkbox" bind:checked={core.accepted} />
+                  <span>Bridge Core</span>
+                  <input class="imports-edit" type="text" bind:value={core.name} />
+                  <span class="imports-unresolved-candidates">{core.members.map((member) => `${member.slot}: ${member.officerName}`).join(" · ")}</span>
+                </label>
+              {/each}
+            </div>
+          {/if}
+
+          <h4 class="imports-subtitle">Suggested Below Deck Policies</h4>
+          {#if belowDeckSuggestions.length === 0}
+            <p class="imports-state">No below deck policy suggestions found.</p>
+          {:else}
+            <div class="imports-unresolved">
+              {#each belowDeckSuggestions as policy}
+                <label class="imports-unresolved-row">
+                  <input type="checkbox" bind:checked={policy.accepted} />
+                  <span>Policy ({policy.mode})</span>
+                  <input class="imports-edit" type="text" bind:value={policy.name} />
+                  <span class="imports-unresolved-candidates">Prefer: {(policy.spec.prefer_modifiers ?? []).join(", ") || "none"}</span>
+                </label>
+              {/each}
+            </div>
+          {/if}
+
+          <h4 class="imports-subtitle">Suggested Loadouts</h4>
+          {#if loadoutSuggestions.length === 0}
+            <p class="imports-state">No loadout suggestions found.</p>
+          {:else}
+            <div class="imports-unresolved">
+              {#each loadoutSuggestions as loadout}
+                <label class="imports-unresolved-row">
+                  <input type="checkbox" bind:checked={loadout.accepted} />
+                  <span>Loadout · {loadout.shipName}</span>
+                  <input class="imports-edit" type="text" bind:value={loadout.name} />
+                  <span class="imports-unresolved-candidates">Intent: {loadout.intentKeys.join(", ") || "none"}</span>
+                </label>
+              {/each}
+            </div>
+          {/if}
+
+          <div class="imports-actions">
+            <button class="imports-btn" onclick={() => { void commitCompositionFromPreview(); }} disabled={loading}>Commit composition</button>
+            <button class="imports-btn" onclick={skipCompositionInference} disabled={loading}>Skip</button>
+          </div>
+        </div>
+      {/if}
     {/if}
 
   {/if}
@@ -745,5 +1057,15 @@
     border-radius: var(--radius-sm);
     padding: 8px;
     font: inherit;
+  }
+
+  .imports-edit {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    font: inherit;
+    min-width: 220px;
   }
 </style>

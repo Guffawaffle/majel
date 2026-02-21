@@ -16,6 +16,11 @@ import type {
   MutationProposal,
 } from "../src/server/stores/proposal-store.js";
 import type { ToolContextFactory } from "../src/server/services/fleet-tools/declarations.js";
+import {
+  BASE_PROPOSAL_CREATE_VALIDATION_CASES,
+  BASE_PROPOSAL_STORE_UNAVAILABLE_CASES,
+} from "./helpers/data-route-base.js";
+import { expectRouteErrorCase } from "./helpers/route-cases.js";
 
 // ─── Mock executeFleetTool ──────────────────────────────────
 
@@ -97,10 +102,7 @@ describe("GET /api/mutations/proposals", () => {
   it("returns 503 when proposal store not available", async () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
-
-    const res = await testRequest(app).get("/api/mutations/proposals");
-    expect(res.status).toBe(503);
-    expect(res.body.error.code).toBe("PROPOSAL_STORE_NOT_AVAILABLE");
+    await expectRouteErrorCase(app, BASE_PROPOSAL_STORE_UNAVAILABLE_CASES[0]);
   });
 
   it("returns proposals list with count", async () => {
@@ -184,10 +186,7 @@ describe("GET /api/mutations/proposals/:id", () => {
   it("returns 503 when store unavailable", async () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
-
-    const res = await testRequest(app).get("/api/mutations/proposals/prop_any");
-    expect(res.status).toBe(503);
-    expect(res.body.error.code).toBe("PROPOSAL_STORE_NOT_AVAILABLE");
+    await expectRouteErrorCase(app, BASE_PROPOSAL_STORE_UNAVAILABLE_CASES[1]);
   });
 });
 
@@ -197,15 +196,10 @@ describe("POST /api/mutations/proposals", () => {
   it("returns 503 when proposal store not available", async () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
-
-    const res = await testRequest(app)
-      .post("/api/mutations/proposals")
-      .send({ tool: "sync_overlay", args: {} });
-    expect(res.status).toBe(503);
-    expect(res.body.error.code).toBe("PROPOSAL_STORE_NOT_AVAILABLE");
+    await expectRouteErrorCase(app, BASE_PROPOSAL_STORE_UNAVAILABLE_CASES[2]);
   });
 
-  it("returns 400 when tool is missing", async () => {
+  it.each(BASE_PROPOSAL_CREATE_VALIDATION_CASES)("validates payload: $name", async ({ payload, expectedStatus, expectedMessageFragment }) => {
     const store = createMockProposalStore();
     const state = makeState({
       startupComplete: true,
@@ -215,40 +209,11 @@ describe("POST /api/mutations/proposals", () => {
 
     const res = await testRequest(app)
       .post("/api/mutations/proposals")
-      .send({ args: { export: {} } });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("MISSING_PARAM");
-  });
-
-  it("returns 400 when args is missing", async () => {
-    const store = createMockProposalStore();
-    const state = makeState({
-      startupComplete: true,
-      proposalStoreFactory: createMockProposalStoreFactory(store),
-    });
-    const app = createApp(state);
-
-    const res = await testRequest(app)
-      .post("/api/mutations/proposals")
-      .send({ tool: "sync_overlay" });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("MISSING_PARAM");
-  });
-
-  it("returns 400 for unsupported tool", async () => {
-    const store = createMockProposalStore();
-    const state = makeState({
-      startupComplete: true,
-      proposalStoreFactory: createMockProposalStoreFactory(store),
-    });
-    const app = createApp(state);
-
-    const res = await testRequest(app)
-      .post("/api/mutations/proposals")
-      .send({ tool: "delete_everything", args: {} });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("INVALID_PARAM");
-    expect(res.body.error.message).toContain("not supported");
+      .send(payload);
+    expect(res.status).toBe(expectedStatus);
+    if (expectedMessageFragment) {
+      expect(String(res.body.error.message)).toContain(expectedMessageFragment);
+    }
   });
 
   it("creates proposal with preview data", async () => {
@@ -304,12 +269,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
   it("returns 503 when store unavailable", async () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
-
-    const res = await testRequest(app)
-      .post("/api/mutations/proposals/prop_any/apply")
-      .send({});
-    expect(res.status).toBe(503);
-    expect(res.body.error.code).toBe("PROPOSAL_STORE_NOT_AVAILABLE");
+    await expectRouteErrorCase(app, BASE_PROPOSAL_STORE_UNAVAILABLE_CASES[3]);
   });
 
   it("applies proposal successfully", async () => {
@@ -389,6 +349,123 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
       .send({});
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("CONFLICT");
+  });
+
+  it("returns 409 when proposal args hash is tampered", async () => {
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      argsJson: { export: { version: "1.0", officers: [] } },
+      argsHash: "not-the-real-hash",
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+    const callsBefore = mockedExecute.mock.calls.length;
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CONFLICT");
+    expect(res.body.error.message).toContain("tampered");
+    expect(mockedExecute.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("returns 503 when tool context is unavailable", async () => {
+    const { createHash } = await import("node:crypto");
+    const args = { export: { version: "1.0", officers: [] } };
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      argsJson: args,
+      argsHash: createHash("sha256").update(JSON.stringify(args)).digest("hex"),
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({ get: vi.fn().mockResolvedValue(proposal) });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: undefined,
+    });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("PROPOSAL_STORE_NOT_AVAILABLE");
+  });
+
+  it("returns 409 when execution result contains error", async () => {
+    const { createHash } = await import("node:crypto");
+    const args = { export: { version: "1.0", officers: [] } };
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      argsJson: args,
+      argsHash: createHash("sha256").update(JSON.stringify(args)).digest("hex"),
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    mockedExecute.mockResolvedValueOnce({ tool: "sync_overlay", error: "Overlay validation failed" });
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CONFLICT");
+    expect(res.body.error.message).toContain("Overlay validation failed");
+  });
+
+  it("returns 500 for unexpected execution failures", async () => {
+    const { createHash } = await import("node:crypto");
+    const args = { export: { version: "1.0", officers: [] } };
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      argsJson: args,
+      argsHash: createHash("sha256").update(JSON.stringify(args)).digest("hex"),
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    mockedExecute.mockRejectedValueOnce(new Error("boom"));
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe("INTERNAL_ERROR");
+    expect(res.body.error.message).toContain("boom");
   });
 });
 

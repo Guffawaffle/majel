@@ -505,6 +505,7 @@ describe("POST /api/catalog/officers/bulk-overlay", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.updated).toBeGreaterThan(0);
     expect(res.body.data.refIds).toBe(2);
+    expect(["number", "object"]).toContain(typeof res.body.data.receiptId);
 
     // Verify
     const kirk = await overlayStore.getOfficerOverlay("cdn:officer:100");
@@ -524,6 +525,7 @@ describe("POST /api/catalog/officers/bulk-overlay", () => {
       });
     expect(res.status).toBe(200);
     expect(res.body.data.updated).toBeGreaterThan(0);
+    expect(["number", "object"]).toContain(typeof res.body.data.receiptId);
   });
 
   it("rejects empty refIds array", async () => {

@@ -34,6 +34,31 @@ interface ShipOverlayRow {
   power: number | null;
 }
 
+interface CompositionBridgeCoreInput {
+  key: string;
+  name: string;
+  notes?: string;
+  members: Array<{ officerId: string; slot: "captain" | "bridge_1" | "bridge_2" }>;
+}
+
+interface CompositionBelowDeckPolicyInput {
+  key: string;
+  name: string;
+  mode: "stats_then_bda" | "pinned_only" | "stat_fill_only";
+  notes?: string;
+  spec?: Record<string, unknown>;
+}
+
+interface CompositionLoadoutInput {
+  name: string;
+  shipId: string;
+  bridgeCoreKey?: string;
+  belowDeckPolicyKey?: string;
+  intentKeys?: string[];
+  tags?: string[];
+  notes?: string;
+}
+
 export function createImportRoutes(appState: AppState): Router {
   const router = createSafeRouter();
   const visitor = requireVisitor(appState);
@@ -424,6 +449,253 @@ export function createImportRoutes(appState: AppState): Router {
       receipt: { id: outcome.receiptId },
       summary: outcome.summary,
       requiresApproval: false,
+    });
+  });
+
+  router.post("/api/import/composition/commit", async (req, res) => {
+    const userId = (res.locals.userId as string) || "local";
+    if (!appState.pool) {
+      return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Database pool not available", 503);
+    }
+    if (!appState.referenceStore) {
+      return sendFail(res, ErrorCode.REFERENCE_STORE_NOT_AVAILABLE, "Reference store not available", 503);
+    }
+
+    const {
+      sourceReceiptId,
+      bridgeCores,
+      belowDeckPolicies,
+      loadouts,
+      sourceMeta,
+    } = req.body ?? {};
+
+    if (!Number.isInteger(sourceReceiptId) || sourceReceiptId < 1) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "sourceReceiptId must be a positive integer", 400);
+    }
+
+    const receiptStore = appState.receiptStoreFactory?.forUser(userId) ?? appState.receiptStore;
+    if (!receiptStore) {
+      return sendFail(res, ErrorCode.RECEIPT_STORE_NOT_AVAILABLE, "Receipt store not available", 503);
+    }
+    const sourceReceipt = await receiptStore.getReceipt(sourceReceiptId);
+    if (!sourceReceipt) {
+      return sendFail(res, ErrorCode.NOT_FOUND, `Source receipt ${sourceReceiptId} not found`, 404);
+    }
+    if (sourceReceipt.layer !== "ownership") {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "sourceReceiptId must reference an ownership-layer receipt", 400);
+    }
+
+    const bridgeCoreInputs = Array.isArray(bridgeCores) ? (bridgeCores as CompositionBridgeCoreInput[]) : [];
+    const belowDeckPolicyInputs = Array.isArray(belowDeckPolicies) ? (belowDeckPolicies as CompositionBelowDeckPolicyInput[]) : [];
+    const loadoutInputs = Array.isArray(loadouts) ? (loadouts as CompositionLoadoutInput[]) : [];
+
+    if (bridgeCoreInputs.length + belowDeckPolicyInputs.length + loadoutInputs.length === 0) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "At least one accepted suggestion is required", 400);
+    }
+
+    const bridgeKeySet = new Set<string>();
+    for (const input of bridgeCoreInputs) {
+      if (!input || typeof input !== "object") {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "bridgeCores entries must be objects", 400);
+      }
+      if (typeof input.key !== "string" || input.key.trim().length === 0 || input.key.length > 100) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "bridge core key must be 1-100 characters", 400);
+      }
+      if (bridgeKeySet.has(input.key)) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, `Duplicate bridge core key: ${input.key}`, 400);
+      }
+      bridgeKeySet.add(input.key);
+      if (typeof input.name !== "string" || input.name.trim().length === 0 || input.name.length > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "bridge core name must be 1-200 characters", 400);
+      }
+      if (!Array.isArray(input.members) || input.members.length === 0 || input.members.length > 3) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "bridge core members must have 1-3 entries", 400);
+      }
+      for (const member of input.members) {
+        if (!member || typeof member !== "object") {
+          return sendFail(res, ErrorCode.INVALID_PARAM, "bridge core member must be an object", 400);
+        }
+        if (typeof member.officerId !== "string" || member.officerId.length === 0 || member.officerId.length > 200) {
+          return sendFail(res, ErrorCode.INVALID_PARAM, "bridge core member officerId must be 1-200 characters", 400);
+        }
+        if (member.slot !== "captain" && member.slot !== "bridge_1" && member.slot !== "bridge_2") {
+          return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid bridge slot: ${String(member.slot)}`, 400);
+        }
+      }
+    }
+
+    const policyKeySet = new Set<string>();
+    for (const input of belowDeckPolicyInputs) {
+      if (!input || typeof input !== "object") {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "belowDeckPolicies entries must be objects", 400);
+      }
+      if (typeof input.key !== "string" || input.key.trim().length === 0 || input.key.length > 100) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "below deck policy key must be 1-100 characters", 400);
+      }
+      if (policyKeySet.has(input.key)) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, `Duplicate below deck policy key: ${input.key}`, 400);
+      }
+      policyKeySet.add(input.key);
+      if (typeof input.name !== "string" || input.name.trim().length === 0 || input.name.length > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "below deck policy name must be 1-200 characters", 400);
+      }
+      if (input.mode !== "stats_then_bda" && input.mode !== "pinned_only" && input.mode !== "stat_fill_only") {
+        return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid below deck policy mode: ${String(input.mode)}`, 400);
+      }
+      if (input.spec !== undefined && (typeof input.spec !== "object" || input.spec === null)) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "below deck policy spec must be an object", 400);
+      }
+    }
+
+    for (const input of loadoutInputs) {
+      if (!input || typeof input !== "object") {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "loadouts entries must be objects", 400);
+      }
+      if (typeof input.name !== "string" || input.name.trim().length === 0 || input.name.length > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "loadout name must be 1-200 characters", 400);
+      }
+      if (typeof input.shipId !== "string" || input.shipId.length === 0 || input.shipId.length > 200) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "loadout shipId must be 1-200 characters", 400);
+      }
+      if (input.bridgeCoreKey !== undefined && !bridgeKeySet.has(input.bridgeCoreKey)) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown bridgeCoreKey: ${input.bridgeCoreKey}`, 400);
+      }
+      if (input.belowDeckPolicyKey !== undefined && !policyKeySet.has(input.belowDeckPolicyKey)) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown belowDeckPolicyKey: ${input.belowDeckPolicyKey}`, 400);
+      }
+      if (input.intentKeys !== undefined && (!Array.isArray(input.intentKeys) || input.intentKeys.some((v) => typeof v !== "string" || v.length > 100))) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "loadout intentKeys must be a string[] with max length 100 each", 400);
+      }
+      if (input.tags !== undefined && (!Array.isArray(input.tags) || input.tags.some((v) => typeof v !== "string" || v.length > 100))) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "loadout tags must be a string[] with max length 100 each", 400);
+      }
+    }
+
+    const uniqueOfficerIds = [...new Set(bridgeCoreInputs.flatMap((input) => input.members.map((member) => member.officerId)))];
+    const uniqueShipIds = [...new Set(loadoutInputs.map((input) => input.shipId))];
+
+    const [officerChecks, shipChecks] = await Promise.all([
+      Promise.all(uniqueOfficerIds.map(async (id) => ({ id, found: !!(await appState.referenceStore!.getOfficer(id)) }))),
+      Promise.all(uniqueShipIds.map(async (id) => ({ id, found: !!(await appState.referenceStore!.getShip(id)) }))),
+    ]);
+
+    const missingOfficers = officerChecks.filter((entry) => !entry.found).map((entry) => entry.id);
+    const missingShips = shipChecks.filter((entry) => !entry.found).map((entry) => entry.id);
+    if (missingOfficers.length > 0 || missingShips.length > 0) {
+      return sendFail(
+        res,
+        ErrorCode.INVALID_PARAM,
+        `Unknown reference IDs in composition payload (officers: ${missingOfficers.join(", ") || "none"}; ships: ${missingShips.join(", ") || "none"})`,
+        400,
+      );
+    }
+
+    const compositionOutcome = await withUserScope(appState.pool, userId, async (client) => {
+      const bridgeCoreByKey = new Map<string, number>();
+      const policyByKey = new Map<string, number>();
+      const now = new Date().toISOString();
+
+      const changesAdded: Array<Record<string, unknown>> = [];
+      const inverseRemoved: Array<Record<string, unknown>> = [];
+
+      for (const input of bridgeCoreInputs) {
+        const insertCore = await client.query<{ id: number; name: string }>(
+          `INSERT INTO bridge_cores (user_id, name, notes, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, name`,
+          [userId, input.name.trim(), input.notes?.trim() || null, now, now],
+        );
+        const bridgeCoreId = insertCore.rows[0].id;
+        bridgeCoreByKey.set(input.key, bridgeCoreId);
+
+        for (const member of input.members) {
+          await client.query(
+            `INSERT INTO bridge_core_members (user_id, bridge_core_id, officer_id, slot)
+             VALUES ($1, $2, $3, $4)`,
+            [userId, bridgeCoreId, member.officerId, member.slot],
+          );
+        }
+
+        const item = { entityType: "bridge_core", id: bridgeCoreId, name: input.name.trim() };
+        changesAdded.push(item);
+        inverseRemoved.push(item);
+      }
+
+      for (const input of belowDeckPolicyInputs) {
+        const insertPolicy = await client.query<{ id: number; name: string }>(
+          `INSERT INTO below_deck_policies (user_id, name, mode, spec, notes, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id, name`,
+          [userId, input.name.trim(), input.mode, JSON.stringify(input.spec ?? {}), input.notes?.trim() || null, now, now],
+        );
+        const policyId = insertPolicy.rows[0].id;
+        policyByKey.set(input.key, policyId);
+
+        const item = { entityType: "below_deck_policy", id: policyId, name: input.name.trim() };
+        changesAdded.push(item);
+        inverseRemoved.push(item);
+      }
+
+      for (const input of loadoutInputs) {
+        const bridgeCoreId = input.bridgeCoreKey ? (bridgeCoreByKey.get(input.bridgeCoreKey) ?? null) : null;
+        const belowDeckPolicyId = input.belowDeckPolicyKey ? (policyByKey.get(input.belowDeckPolicyKey) ?? null) : null;
+
+        const insertLoadout = await client.query<{ id: number; name: string }>(
+          `INSERT INTO loadouts (user_id, ship_id, bridge_core_id, below_deck_policy_id, name, priority, is_active, intent_keys, tags, notes, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, 0, TRUE, $6, $7, $8, $9, $10)
+           RETURNING id, name`,
+          [
+            userId,
+            input.shipId,
+            bridgeCoreId,
+            belowDeckPolicyId,
+            input.name.trim(),
+            JSON.stringify(input.intentKeys ?? []),
+            JSON.stringify(input.tags ?? []),
+            input.notes?.trim() || null,
+            now,
+            now,
+          ],
+        );
+        const loadoutId = insertLoadout.rows[0].id;
+        const item = { entityType: "loadout", id: loadoutId, name: input.name.trim() };
+        changesAdded.push(item);
+        inverseRemoved.push(item);
+      }
+
+      const receiptInsert = await client.query<{ id: number }>(
+        `INSERT INTO import_receipts (user_id, source_type, source_meta, mapping, layer, changeset, inverse, unresolved, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8)
+         RETURNING id`,
+        [
+          userId,
+          "file_import",
+          JSON.stringify({
+            sourceReceiptId,
+            step: "composition_inference",
+            ...(typeof sourceMeta === "object" && sourceMeta ? sourceMeta : {}),
+          }),
+          null,
+          "composition",
+          JSON.stringify({ added: changesAdded, updated: [], removed: [] }),
+          JSON.stringify({ added: [], updated: [], removed: inverseRemoved }),
+          now,
+        ],
+      );
+
+      return {
+        receiptId: receiptInsert.rows[0].id,
+        summary: {
+          bridgeCores: bridgeCoreInputs.length,
+          belowDeckPolicies: belowDeckPolicyInputs.length,
+          loadouts: loadoutInputs.length,
+        },
+      };
+    });
+
+    return sendOk(res, {
+      receipt: { id: compositionOutcome.receiptId },
+      summary: compositionOutcome.summary,
     });
   });
 

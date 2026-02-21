@@ -17,7 +17,7 @@
   import { fetchModels, selectModel } from "../lib/api/models.js";
   import { addSystemMessage } from "../lib/chat.svelte.js";
   import type { ModelsResponse } from "../lib/types.js";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
 
   // ── Text input ──
   let inputText = $state("");
@@ -38,13 +38,21 @@
 
   // ── Send ──
   const canSend = $derived(!isSending() && (inputText.trim().length > 0 || getPendingImage() != null));
+  let sessionRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function scheduleSessionsRefresh() {
+    if (sessionRefreshTimer) clearTimeout(sessionRefreshTimer);
+    sessionRefreshTimer = setTimeout(() => {
+      void refreshSessions();
+    }, 350);
+  }
 
   async function handleSend() {
     if (!canSend) return;
     const text = inputText;
     inputText = "";
     if (textareaEl) textareaEl.style.height = "auto";
-    await send(text, () => refreshSessions());
+    await send(text, scheduleSessionsRefresh);
   }
 
   // ── Image ──
@@ -94,6 +102,10 @@
     if (hasRole("admiral")) {
       try { modelsData = await fetchModels(); } catch { /* non-admiral or error */ }
     }
+  });
+
+  onDestroy(() => {
+    if (sessionRefreshTimer) clearTimeout(sessionRefreshTimer);
   });
 
   function togglePicker() { pickerOpen = !pickerOpen; }

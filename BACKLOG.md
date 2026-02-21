@@ -16,6 +16,14 @@
 
 ---
 
+## Next Cloud Deploy Marker (Queued)
+
+- **Do not deploy yet.**
+- **Deploy checkpoint:** after ADR-026a A1 Guided Setup Templates (#70) is complete and validated.
+- **Validation gate:** targeted tests for Start/Sync guided setup + catalog bulk receipt behavior pass.
+
+---
+
 ## Critical — Must Fix Before Merge
 
 ### [x] Security Hardening (e685c09)

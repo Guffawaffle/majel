@@ -16,6 +16,7 @@ import { cacheInvalidate } from "./idb-cache.js";
 import { INVALIDATION_MAP } from "./cache-keys.js";
 import { recordHit, recordMiss, recordRevalidation } from "./cache-metrics.js";
 import { broadcastInvalidation } from "./broadcast.js";
+import { bumpEpochForPatterns, captureEpoch } from "./cache-epochs.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -59,8 +60,11 @@ export async function cachedFetch<T>(
   if (forceNetwork || ttl === 0 || !isCacheOpen()) {
     // For forced network, clear any stale in-flight dedup to guarantee a fresh request
     if (forceNetwork) inflight.delete(key);
+    const epoch = captureEpoch(key);
     const data = await dedupFetch(key, fetcher);
-    if (forceNetwork && ttl > 0 && isCacheOpen()) await cacheSet(key, data, ttl);
+    if (forceNetwork && ttl > 0 && isCacheOpen() && captureEpoch(key) === epoch) {
+      await cacheSet(key, data, ttl);
+    }
     return { data, fromCache: false, stale: false };
   }
 
@@ -85,8 +89,11 @@ export async function cachedFetch<T>(
 
   // MISS → fetch, store, return
   recordMiss();
+  const epoch = captureEpoch(key);
   const data = await dedupFetch(key, fetcher);
-  await cacheSet(key, data, ttl);
+  if (captureEpoch(key) === epoch) {
+    await cacheSet(key, data, ttl);
+  }
   return { data, fromCache: false, stale: false };
 }
 
@@ -99,8 +106,9 @@ export async function networkFetch<T>(
   fetcher: () => Promise<T>,
   ttl: number,
 ): Promise<T> {
+  const epoch = captureEpoch(key);
   const data = await fetcher();
-  if (ttl > 0 && isCacheOpen()) {
+  if (ttl > 0 && isCacheOpen() && captureEpoch(key) === epoch) {
     await cacheSet(key, data, ttl);
   }
   return data;
@@ -116,6 +124,8 @@ export async function networkFetch<T>(
 export async function invalidateForMutation(mutation: string): Promise<void> {
   const patterns = INVALIDATION_MAP[mutation];
   if (!patterns) return;
+
+  bumpEpochForPatterns(patterns);
 
   // Clear in-flight fetches that might return pre-mutation data (dedup race fix)
   for (const pattern of patterns) {
@@ -157,8 +167,10 @@ function revalidateBackground<T>(
   ttl: number,
   onRevalidate?: RevalidateCallback<T>,
 ): void {
+  const epoch = captureEpoch(key);
   dedupFetch(key, fetcher)
     .then(async (data) => {
+      if (captureEpoch(key) !== epoch) return;
       await cacheSet(key, data, ttl);
       onRevalidate?.(data);
     })

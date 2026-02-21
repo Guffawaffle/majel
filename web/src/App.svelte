@@ -24,12 +24,14 @@
   import FleetView from "./views/FleetView.svelte";
   import WorkshopView from "./views/WorkshopView.svelte";
   import PlanView from "./views/PlanView.svelte";
+  import StartSyncView from "./views/StartSyncView.svelte";
   import DiagnosticsView from "./views/DiagnosticsView.svelte";
   import AdmiralView from "./views/AdmiralView.svelte";
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous Svelte component map
   const viewComponents: Record<string, any> = {
     chat: ChatView,
+    startsync: StartSyncView,
     catalog: CatalogView,
     fleet: FleetView,
     crews: WorkshopView,

@@ -45,12 +45,16 @@ export function cacheKey(endpoint: string, filters?: Record<string, unknown>): s
 
   // Build sorted query portion
   if (filters && Object.keys(filters).length > 0) {
-    const sorted = Object.entries(filters)
+    const entries = Object.entries(filters)
       .filter(([, v]) => v != null && v !== "")
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${String(v)}`)
-      .join("&");
-    if (sorted) return `${base}?${sorted}`;
+      .sort(([a], [b]) => a.localeCompare(b));
+    if (entries.length > 0) {
+      const sp = new URLSearchParams();
+      for (const [k, v] of entries) {
+        sp.set(k, String(v));
+      }
+      return `${base}?${sp.toString()}`;
+    }
   }
 
   return base;
@@ -133,6 +137,7 @@ export const INVALIDATION_MAP: Record<string, string[]> = {
   // Reservation set/delete → reservations
   "officer-reservation": [
     "officer-reservations*",
+    "effective-state",
   ],
 
   // Import commit → full flush (catalog + crews)

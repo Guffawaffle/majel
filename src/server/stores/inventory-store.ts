@@ -65,7 +65,7 @@ const SCHEMA_STATEMENTS = [
     user_id TEXT NOT NULL DEFAULT 'local',
     category TEXT NOT NULL,
     name TEXT NOT NULL,
-    grade TEXT,
+    grade TEXT NOT NULL DEFAULT '',
     quantity BIGINT NOT NULL CHECK (quantity >= 0),
     unit TEXT,
     source TEXT,
@@ -75,6 +75,9 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_inventory_items_user ON inventory_items(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_inventory_items_category ON inventory_items(category)`,
+  `ALTER TABLE inventory_items ALTER COLUMN grade SET DEFAULT ''`,
+  `UPDATE inventory_items SET grade = '' WHERE grade IS NULL`,
+  `ALTER TABLE inventory_items ALTER COLUMN grade SET NOT NULL`,
   `ALTER TABLE inventory_items ENABLE ROW LEVEL SECURITY`,
   `ALTER TABLE inventory_items FORCE ROW LEVEL SECURITY`,
   `DO $$ BEGIN
@@ -103,13 +106,15 @@ const SQL = {
       updated_at = NOW()`,
   listItems: `SELECT id, category, name, grade, quantity, unit, source, captured_at, updated_at
     FROM inventory_items
-    WHERE ($1::text IS NULL OR category = $1)
-      AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
+    WHERE user_id = $1
+      AND ($2::text IS NULL OR category = $2)
+      AND ($3::text IS NULL OR name ILIKE '%' || $3 || '%')
     ORDER BY category ASC, name ASC`,
   counts: `SELECT
     COUNT(*) AS items,
     COUNT(DISTINCT category) AS categories
-    FROM inventory_items`,
+    FROM inventory_items
+    WHERE user_id = $1`,
 };
 
 function mapInventoryRow(row: Record<string, unknown>): InventoryItemRecord {
@@ -117,7 +122,7 @@ function mapInventoryRow(row: Record<string, unknown>): InventoryItemRecord {
     id: Number(row.id),
     category: String(row.category) as InventoryCategory,
     name: String(row.name),
-    grade: row.grade == null ? null : String(row.grade),
+    grade: row.grade == null || String(row.grade) === "" ? null : String(row.grade),
     quantity: Number(row.quantity),
     unit: row.unit == null ? null : String(row.unit),
     source: row.source == null ? null : String(row.source),
@@ -135,7 +140,7 @@ function createScopedInventoryStore(pool: Pool, userId: string): InventoryStore 
             userId,
             item.category,
             item.name.trim(),
-            item.grade,
+            item.grade ?? "",
             Math.max(0, Math.floor(item.quantity)),
             item.unit,
             input.source,
@@ -153,7 +158,7 @@ function createScopedInventoryStore(pool: Pool, userId: string): InventoryStore 
       return withUserRead(pool, userId, async (client) => {
         const category = filters?.category ?? null;
         const q = filters?.q?.trim() || null;
-        const result = await client.query(SQL.listItems, [category, q]);
+        const result = await client.query(SQL.listItems, [userId, category, q]);
         return result.rows.map((row) => mapInventoryRow(row as Record<string, unknown>));
       });
     },
@@ -181,7 +186,7 @@ function createScopedInventoryStore(pool: Pool, userId: string): InventoryStore 
 
     async counts() {
       return withUserRead(pool, userId, async (client) => {
-        const result = await client.query(SQL.counts);
+        const result = await client.query(SQL.counts, [userId]);
         const row = result.rows[0] as { items: string | number; categories: string | number };
         return {
           items: Number(row.items),

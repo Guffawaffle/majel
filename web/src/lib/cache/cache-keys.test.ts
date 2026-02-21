@@ -39,6 +39,11 @@ describe("cacheKey", () => {
     expect(key).toBe("catalog:officers:merged?q=new");
   });
 
+  it("URL-encodes special characters in filter values", () => {
+    const key = cacheKey("/api/catalog/officers/merged", { q: "spock & kirk=best" });
+    expect(key).toBe("catalog:officers:merged?q=spock+%26+kirk%3Dbest");
+  });
+
   it("handles no filters", () => {
     expect(cacheKey("/api/catalog/counts")).toBe("catalog:counts");
   });
@@ -135,6 +140,7 @@ describe("INVALIDATION_MAP", () => {
   it("officer-reservation invalidates reservations", () => {
     expect(INVALIDATION_MAP["officer-reservation"]).toEqual([
       "officer-reservations*",
+      "effective-state",
     ]);
   });
 

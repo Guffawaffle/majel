@@ -1,183 +1,153 @@
-/**
- * proposal-store.test.ts — Unit tests for ProposalStore interface & types (ADR-026b, #93 Phase 5)
- *
- * Majel — STFC Fleet Intelligence System
- *
- * Since ProposalStore uses PostgreSQL with RLS, integration testing requires
- * a real database. These tests verify the module's type exports and interface
- * shape. Full integration coverage lives in api.test.ts and proposals.test.ts.
- */
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { createProposalStoreFactory } from "../src/server/stores/proposal-store.js";
+import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
-import { describe, it, expect, vi } from "vitest";
-import type {
-  ProposalStore,
-  ProposalStatus,
-  MutationProposal,
-  CreateProposalInput,
-} from "../src/server/stores/proposal-store.js";
+let pool: Pool;
 
-// ─── Mock Store Factory ─────────────────────────────────────
-
-const FIXTURE_PROPOSAL: MutationProposal = {
-  id: "prop_test-uuid-1234",
-  userId: "test-user",
-  schemaVersion: 1,
-  tool: "sync_overlay",
-  argsJson: { export: { version: "1.0", officers: [] } },
-  argsHash: "abc123",
-  proposalJson: { tool: "sync_overlay", dryRun: true, summary: {}, changesPreview: {} },
-  status: "proposed",
-  declineReason: null,
-  appliedReceiptId: null,
-  createdAt: "2026-02-21T00:00:00Z",
-  expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-  appliedAt: null,
-  declinedAt: null,
-};
-
-function createMockProposalStore(overrides: Partial<ProposalStore> = {}): ProposalStore {
-  return {
-    create: vi.fn().mockResolvedValue(FIXTURE_PROPOSAL),
-    get: vi.fn().mockResolvedValue(FIXTURE_PROPOSAL),
-    apply: vi.fn().mockResolvedValue({ ...FIXTURE_PROPOSAL, status: "applied" }),
-    decline: vi.fn().mockResolvedValue({ ...FIXTURE_PROPOSAL, status: "declined" }),
-    list: vi.fn().mockResolvedValue([FIXTURE_PROPOSAL]),
-    expireStale: vi.fn().mockResolvedValue(0),
-    counts: vi.fn().mockResolvedValue({ total: 1, proposed: 1, applied: 0, declined: 0, expired: 0 }),
-    close: vi.fn(),
-    ...overrides,
-  };
-}
-
-// ─── Type Shape Tests ───────────────────────────────────────
-
-describe("Proposal store types", () => {
-  it("ProposalStatus union accepts valid values", () => {
-    const statuses: ProposalStatus[] = ["proposed", "applied", "declined", "expired"];
-    expect(statuses).toHaveLength(4);
-    // TypeScript compilation alone proves the union is correct;
-    // this runtime assertion confirms we can assign all four.
-    for (const s of statuses) {
-      expect(typeof s).toBe("string");
-    }
-  });
-
-  it("MutationProposal has all required fields", () => {
-    const proposal: MutationProposal = FIXTURE_PROPOSAL;
-    const requiredKeys: (keyof MutationProposal)[] = [
-      "id", "userId", "schemaVersion", "tool",
-      "argsJson", "argsHash", "proposalJson", "status",
-      "declineReason", "appliedReceiptId",
-      "createdAt", "expiresAt", "appliedAt", "declinedAt",
-    ];
-    for (const key of requiredKeys) {
-      expect(key in proposal).toBe(true);
-    }
-  });
-
-  it("CreateProposalInput has required fields", () => {
-    const input: CreateProposalInput = {
-      tool: "sync_overlay",
-      argsJson: { export: {} },
-      argsHash: "hash123",
-      proposalJson: { tool: "sync_overlay" },
-      expiresAt: new Date().toISOString(),
-    };
-    const requiredKeys: (keyof CreateProposalInput)[] = [
-      "tool", "argsJson", "argsHash", "proposalJson", "expiresAt",
-    ];
-    for (const key of requiredKeys) {
-      expect(key in input).toBe(true);
-    }
-  });
+beforeAll(() => {
+  pool = createTestPool();
 });
 
-// ─── Mock Store Shape Tests ─────────────────────────────────
+afterAll(async () => {
+  await pool.end();
+});
 
-describe("ProposalStore mock interface", () => {
-  it("mock store implements all interface methods", () => {
-    const store = createMockProposalStore();
-    expect(typeof store.create).toBe("function");
-    expect(typeof store.get).toBe("function");
-    expect(typeof store.apply).toBe("function");
-    expect(typeof store.decline).toBe("function");
-    expect(typeof store.list).toBe("function");
-    expect(typeof store.expireStale).toBe("function");
-    expect(typeof store.counts).toBe("function");
-    expect(typeof store.close).toBe("function");
+function futureIso(minutes: number): string {
+  return new Date(Date.now() + minutes * 60_000).toISOString();
+}
+
+function pastIso(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString();
+}
+
+describe("ProposalStore", () => {
+  beforeEach(async () => {
+    await cleanDatabase(pool);
   });
 
-  it("create returns a MutationProposal", async () => {
-    const store = createMockProposalStore();
-    const result = await store.create({
+  it("creates, retrieves, and lists proposals", async () => {
+    const factory = await createProposalStoreFactory(pool);
+    const store = factory.forUser("u1");
+
+    const created = await store.create({
+      tool: "sync_overlay",
+      argsJson: { dryRun: true },
+      argsHash: "hash-1",
+      proposalJson: { summary: "preview" },
+      expiresAt: futureIso(15),
+    });
+
+    expect(created.id.startsWith("prop_")).toBe(true);
+    expect(created.status).toBe("proposed");
+
+    const fetched = await store.get(created.id);
+    expect(fetched?.id).toBe(created.id);
+
+    const listed = await store.list();
+    expect(listed).toHaveLength(1);
+    expect(listed[0].id).toBe(created.id);
+
+    const counts = await store.counts();
+    expect(counts).toEqual({ total: 1, proposed: 1, applied: 0, declined: 0, expired: 0 });
+  });
+
+  it("applies a proposed record and sets receipt id", async () => {
+    const factory = await createProposalStoreFactory(pool);
+    const store = factory.forUser("u1");
+    const created = await store.create({
       tool: "sync_overlay",
       argsJson: {},
-      argsHash: "hash",
+      argsHash: "hash-apply",
       proposalJson: {},
-      expiresAt: new Date().toISOString(),
+      expiresAt: futureIso(10),
     });
-    expect(result.id).toBe(FIXTURE_PROPOSAL.id);
-    expect(result.status).toBe("proposed");
+
+    const applied = await store.apply(created.id, 42);
+    expect(applied.status).toBe("applied");
+    expect(applied.appliedReceiptId).toBe(42);
+    expect(applied.appliedAt).toBeTruthy();
+
+    await expect(store.decline(created.id, "too late")).rejects.toThrow("expected 'proposed'");
   });
 
-  it("get returns a proposal or null", async () => {
-    const store = createMockProposalStore();
-    const result = await store.get("prop_test-uuid-1234");
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("prop_test-uuid-1234");
-  });
-
-  it("get returns null for unknown id", async () => {
-    const store = createMockProposalStore({
-      get: vi.fn().mockResolvedValue(null),
+  it("declines a proposed record with reason", async () => {
+    const factory = await createProposalStoreFactory(pool);
+    const store = factory.forUser("u1");
+    const created = await store.create({
+      tool: "sync_overlay",
+      argsJson: {},
+      argsHash: "hash-decline",
+      proposalJson: {},
+      expiresAt: futureIso(10),
     });
-    const result = await store.get("prop_unknown");
-    expect(result).toBeNull();
+
+    const declined = await store.decline(created.id, "operator cancelled");
+    expect(declined.status).toBe("declined");
+    expect(declined.declineReason).toBe("operator cancelled");
+    expect(declined.declinedAt).toBeTruthy();
+
+    await expect(store.apply(created.id, 11)).rejects.toThrow("expected 'proposed'");
   });
 
-  it("apply returns a proposal with applied status", async () => {
-    const store = createMockProposalStore();
-    const result = await store.apply("prop_test-uuid-1234", 42);
-    expect(result.status).toBe("applied");
-  });
-
-  it("decline returns a proposal with declined status", async () => {
-    const store = createMockProposalStore();
-    const result = await store.decline("prop_test-uuid-1234", "Not needed");
-    expect(result.status).toBe("declined");
-  });
-
-  it("list returns an array of proposals", async () => {
-    const store = createMockProposalStore();
-    const result = await store.list();
-    expect(Array.isArray(result)).toBe(true);
-    expect(result).toHaveLength(1);
-  });
-
-  it("list with status filter calls through", async () => {
-    const listFn = vi.fn().mockResolvedValue([]);
-    const store = createMockProposalStore({ list: listFn });
-    await store.list({ status: "applied" });
-    expect(listFn).toHaveBeenCalledWith({ status: "applied" });
-  });
-
-  it("expireStale returns count of expired proposals", async () => {
-    const store = createMockProposalStore();
-    const result = await store.expireStale();
-    expect(result).toBe(0);
-  });
-
-  it("counts returns aggregated counts", async () => {
-    const store = createMockProposalStore();
-    const result = await store.counts();
-    expect(result).toEqual({ total: 1, proposed: 1, applied: 0, declined: 0, expired: 0 });
-  });
-
-  it("overrides are applied correctly", async () => {
-    const store = createMockProposalStore({
-      counts: vi.fn().mockResolvedValue({ total: 5, proposed: 2, applied: 2, declined: 1, expired: 0 }),
+  it("marks expired on apply when expiresAt is in the past", async () => {
+    const factory = await createProposalStoreFactory(pool);
+    const store = factory.forUser("u1");
+    const created = await store.create({
+      tool: "sync_overlay",
+      argsJson: {},
+      argsHash: "hash-expired",
+      proposalJson: {},
+      expiresAt: pastIso(1),
     });
-    const result = await store.counts();
-    expect(result.total).toBe(5);
+
+    await expect(store.apply(created.id, 12)).rejects.toThrow("proposal has expired");
+
+    const expired = await store.get(created.id);
+    expect(expired?.status).toBe("expired");
+  });
+
+  it("expires stale proposals in batch", async () => {
+    const factory = await createProposalStoreFactory(pool);
+    const store = factory.forUser("u1");
+
+    await store.create({
+      tool: "sync_overlay",
+      argsJson: {},
+      argsHash: "hash-old",
+      proposalJson: {},
+      expiresAt: pastIso(5),
+    });
+    await store.create({
+      tool: "sync_overlay",
+      argsJson: {},
+      argsHash: "hash-new",
+      proposalJson: {},
+      expiresAt: futureIso(5),
+    });
+
+    const expiredCount = await store.expireStale();
+    expect(expiredCount).toBe(1);
+
+    const counts = await store.counts();
+    expect(counts.expired).toBe(1);
+    expect(counts.proposed).toBe(1);
+  });
+
+  it("enforces user isolation", async () => {
+    const factory = await createProposalStoreFactory(pool);
+    const a = factory.forUser("u-a");
+    const b = factory.forUser("u-b");
+
+    const created = await a.create({
+      tool: "sync_overlay",
+      argsJson: {},
+      argsHash: "hash-a",
+      proposalJson: {},
+      expiresAt: futureIso(10),
+    });
+
+    expect(await b.get(created.id)).toBeNull();
+    expect(await b.list()).toHaveLength(0);
+    await expect(b.apply(created.id, 7)).rejects.toThrow("not found");
   });
 });

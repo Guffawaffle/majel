@@ -572,6 +572,36 @@ export interface ImportReceipt {
   createdAt: string;
 }
 
+export interface CompositionBridgeCoreSuggestion {
+  key: string;
+  name: string;
+  accepted: boolean;
+  members: Array<{ officerId: string; officerName: string; slot: BridgeSlot }>;
+  notes?: string;
+}
+
+export interface CompositionBelowDeckPolicySuggestion {
+  key: string;
+  name: string;
+  accepted: boolean;
+  mode: BelowDeckMode;
+  spec: { pinned?: string[]; prefer_modifiers?: string[]; avoid_reserved?: boolean; max_slots?: number };
+  notes?: string;
+}
+
+export interface CompositionLoadoutSuggestion {
+  key: string;
+  name: string;
+  accepted: boolean;
+  shipId: string;
+  shipName: string;
+  bridgeCoreKey?: string;
+  belowDeckPolicyKey?: string;
+  intentKeys: string[];
+  tags: string[];
+  notes?: string;
+}
+
 /** Response from the undo-receipt endpoint. */
 export interface UndoReceiptResult {
   success: boolean;
@@ -636,4 +666,5 @@ export interface ShipOverlayResponse {
 export interface BulkOverlayResponse {
   updated: number;
   refIds: number;
+  receiptId?: number | null;
 }

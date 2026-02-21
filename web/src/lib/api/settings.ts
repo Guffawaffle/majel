@@ -4,16 +4,33 @@
 
 import type { SettingEntry } from "../types.js";
 import { apiFetch, apiPatch, qs } from "./fetch.js";
-import { cachedFetch, invalidateForMutation } from "../cache/cached-fetch.js";
+import { cachedFetch } from "../cache/cached-fetch.js";
 import { cacheKey, TTL } from "../cache/cache-keys.js";
+import { runLockedMutation } from "./mutation.js";
 
 /**
  * Persist a single fleet setting (key → value).
  * Throws ApiError on failure.
  */
 export async function saveFleetSetting(key: string, value: string | number): Promise<void> {
-  await apiPatch("/api/settings", { [key]: String(value) });
-  await invalidateForMutation("fleet-setting");
+  const body = { [key]: String(value) };
+  await runLockedMutation({
+    label: `Save fleet setting ${key}`,
+    lockKey: `fleet-setting:${key}`,
+    mutationKey: "fleet-setting",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: `Save fleet setting ${key}`,
+      lockKey: `fleet-setting:${key}`,
+      method: "PATCH",
+      path: "/api/settings",
+      body,
+      mutationKey: "fleet-setting",
+    },
+    mutate: async () => {
+      await apiPatch("/api/settings", body);
+    },
+  });
 }
 
 /**

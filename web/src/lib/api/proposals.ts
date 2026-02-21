@@ -3,6 +3,7 @@
  */
 
 import { apiFetch, apiPost, qs } from "./fetch.js";
+import { runLockedMutation } from "./mutation.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -43,10 +44,15 @@ export async function createProposal(
 export async function applyProposal(
   id: string,
 ): Promise<{ applied: boolean; proposal_id: string; receipt_id: number }> {
-  return apiPost<{ applied: boolean; proposal_id: string; receipt_id: number }>(
-    `/api/mutations/proposals/${encodeURIComponent(id)}/apply`,
-    {},
-  );
+  return runLockedMutation({
+    label: `Apply proposal ${id}`,
+    lockKey: `proposal:${id}`,
+    mutationKey: "import-commit",
+    mutate: () => apiPost<{ applied: boolean; proposal_id: string; receipt_id: number }>(
+      `/api/mutations/proposals/${encodeURIComponent(id)}/apply`,
+      {},
+    ),
+  });
 }
 
 /** Decline a pending proposal with an optional reason. */
@@ -54,10 +60,15 @@ export async function declineProposal(
   id: string,
   reason?: string,
 ): Promise<{ declined: boolean; proposal_id: string }> {
-  return apiPost<{ declined: boolean; proposal_id: string }>(
-    `/api/mutations/proposals/${encodeURIComponent(id)}/decline`,
-    { reason },
-  );
+  return runLockedMutation({
+    label: `Decline proposal ${id}`,
+    lockKey: `proposal:${id}`,
+    mutationKey: "import-commit",
+    mutate: () => apiPost<{ declined: boolean; proposal_id: string }>(
+      `/api/mutations/proposals/${encodeURIComponent(id)}/decline`,
+      { reason },
+    ),
+  });
 }
 
 /** List proposals, optionally filtered by status and limited. */

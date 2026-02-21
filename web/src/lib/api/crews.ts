@@ -24,8 +24,9 @@ import type {
   ResolvedLoadout,
 } from "../types.js";
 import { apiFetch, apiDelete, apiPatch, apiPost, apiPut, pathEncode, qs } from "./fetch.js";
-import { cachedFetch, invalidateForMutation } from "../cache/cached-fetch.js";
+import { cachedFetch } from "../cache/cached-fetch.js";
 import { cacheKey, TTL } from "../cache/cache-keys.js";
+import { runLockedMutation } from "./mutation.js";
 
 /** Options for cacheable fetch functions. */
 export interface FetchOpts {
@@ -67,25 +68,49 @@ export async function createBridgeCore(
   members: BridgeCoreMemberInput[],
   notes: string,
 ): Promise<BridgeCoreWithMembers> {
-  const data = await apiPost<{ bridgeCore: BridgeCoreWithMembers }>("/api/bridge-cores", { name, members, notes });
-  await invalidateForMutation("bridge-core");
-  return data.bridgeCore;
+  return runLockedMutation({
+    label: "Save bridge core",
+    lockKey: "bridge-core:new",
+    mutationKey: "bridge-core",
+    mutate: async () => {
+      const data = await apiPost<{ bridgeCore: BridgeCoreWithMembers }>("/api/bridge-cores", { name, members, notes });
+      return data.bridgeCore;
+    },
+  });
 }
 
 export async function updateBridgeCore(id: string, data: { name?: string; notes?: string }): Promise<BridgeCoreWithMembers> {
-  const res = await apiPatch<{ bridgeCore: BridgeCoreWithMembers }>(`/api/bridge-cores/${pathEncode(id)}`, data);
-  await invalidateForMutation("bridge-core");
-  return res.bridgeCore;
+  return runLockedMutation({
+    label: "Update bridge core",
+    lockKey: `bridge-core:${id}`,
+    mutationKey: "bridge-core",
+    mutate: async () => {
+      const res = await apiPatch<{ bridgeCore: BridgeCoreWithMembers }>(`/api/bridge-cores/${pathEncode(id)}`, data);
+      return res.bridgeCore;
+    },
+  });
 }
 
 export async function deleteBridgeCore(id: string): Promise<void> {
-  await apiDelete(`/api/bridge-cores/${pathEncode(id)}`);
-  await invalidateForMutation("bridge-core");
+  await runLockedMutation({
+    label: "Delete bridge core",
+    lockKey: `bridge-core:${id}`,
+    mutationKey: "bridge-core",
+    mutate: async () => {
+      await apiDelete(`/api/bridge-cores/${pathEncode(id)}`);
+    },
+  });
 }
 
 export async function setBridgeCoreMembers(id: string, members: BridgeCoreMemberInput[]): Promise<void> {
-  await apiPut(`/api/bridge-cores/${pathEncode(id)}/members`, { members });
-  await invalidateForMutation("bridge-core");
+  await runLockedMutation({
+    label: "Update bridge core members",
+    lockKey: `bridge-core:${id}`,
+    mutationKey: "bridge-core",
+    mutate: async () => {
+      await apiPut(`/api/bridge-cores/${pathEncode(id)}/members`, { members });
+    },
+  });
 }
 
 // ─── Below Deck Policies ────────────────────────────────────
@@ -118,20 +143,38 @@ export async function createBelowDeckPolicy(
   spec: BelowDeckPolicy["spec"],
   notes: string,
 ): Promise<BelowDeckPolicy> {
-  const data = await apiPost<{ belowDeckPolicy: BelowDeckPolicy }>("/api/below-deck-policies", { name, mode, spec, notes });
-  await invalidateForMutation("below-deck-policy");
-  return data.belowDeckPolicy;
+  return runLockedMutation({
+    label: "Save below deck policy",
+    lockKey: "below-deck-policy:new",
+    mutationKey: "below-deck-policy",
+    mutate: async () => {
+      const data = await apiPost<{ belowDeckPolicy: BelowDeckPolicy }>("/api/below-deck-policies", { name, mode, spec, notes });
+      return data.belowDeckPolicy;
+    },
+  });
 }
 
 export async function updateBelowDeckPolicy(id: string, data: { name?: string; mode?: BelowDeckMode; spec?: BelowDeckPolicy["spec"]; notes?: string }): Promise<BelowDeckPolicy> {
-  const res = await apiPatch<{ belowDeckPolicy: BelowDeckPolicy }>(`/api/below-deck-policies/${pathEncode(id)}`, data);
-  await invalidateForMutation("below-deck-policy");
-  return res.belowDeckPolicy;
+  return runLockedMutation({
+    label: "Update below deck policy",
+    lockKey: `below-deck-policy:${id}`,
+    mutationKey: "below-deck-policy",
+    mutate: async () => {
+      const res = await apiPatch<{ belowDeckPolicy: BelowDeckPolicy }>(`/api/below-deck-policies/${pathEncode(id)}`, data);
+      return res.belowDeckPolicy;
+    },
+  });
 }
 
 export async function deleteBelowDeckPolicy(id: string): Promise<void> {
-  await apiDelete(`/api/below-deck-policies/${pathEncode(id)}`);
-  await invalidateForMutation("below-deck-policy");
+  await runLockedMutation({
+    label: "Delete below deck policy",
+    lockKey: `below-deck-policy:${id}`,
+    mutationKey: "below-deck-policy",
+    mutate: async () => {
+      await apiDelete(`/api/below-deck-policies/${pathEncode(id)}`);
+    },
+  });
 }
 
 // ─── Crew Loadouts ──────────────────────────────────────────
@@ -179,20 +222,38 @@ export interface LoadoutInput {
 }
 
 export async function createCrewLoadout(data: LoadoutInput): Promise<Loadout> {
-  const res = await apiPost<{ loadout: Loadout }>("/api/crew/loadouts", data);
-  await invalidateForMutation("crew-loadout");
-  return res.loadout;
+  return runLockedMutation({
+    label: "Save crew loadout",
+    lockKey: "crew-loadout:new",
+    mutationKey: "crew-loadout",
+    mutate: async () => {
+      const res = await apiPost<{ loadout: Loadout }>("/api/crew/loadouts", data);
+      return res.loadout;
+    },
+  });
 }
 
 export async function updateCrewLoadout(id: string, data: Partial<LoadoutInput>): Promise<Loadout> {
-  const res = await apiPatch<{ loadout: Loadout }>(`/api/crew/loadouts/${pathEncode(id)}`, data);
-  await invalidateForMutation("crew-loadout");
-  return res.loadout;
+  return runLockedMutation({
+    label: "Update crew loadout",
+    lockKey: `crew-loadout:${id}`,
+    mutationKey: "crew-loadout",
+    mutate: async () => {
+      const res = await apiPatch<{ loadout: Loadout }>(`/api/crew/loadouts/${pathEncode(id)}`, data);
+      return res.loadout;
+    },
+  });
 }
 
 export async function deleteCrewLoadout(id: string): Promise<void> {
-  await apiDelete(`/api/crew/loadouts/${pathEncode(id)}`);
-  await invalidateForMutation("crew-loadout");
+  await runLockedMutation({
+    label: "Delete crew loadout",
+    lockKey: `crew-loadout:${id}`,
+    mutationKey: "crew-loadout",
+    mutate: async () => {
+      await apiDelete(`/api/crew/loadouts/${pathEncode(id)}`);
+    },
+  });
 }
 
 // ─── Loadout Variants ───────────────────────────────────────
@@ -213,20 +274,38 @@ export async function createVariant(
   patch: VariantPatch,
   notes: string,
 ): Promise<LoadoutVariant> {
-  const data = await apiPost<{ variant: LoadoutVariant }>(`/api/crew/loadouts/${pathEncode(loadoutId)}/variants`, { name, patch, notes });
-  await invalidateForMutation("crew-variant");
-  return data.variant;
+  return runLockedMutation({
+    label: "Save loadout variant",
+    lockKey: `crew-variant:new:${loadoutId}`,
+    mutationKey: "crew-variant",
+    mutate: async () => {
+      const data = await apiPost<{ variant: LoadoutVariant }>(`/api/crew/loadouts/${pathEncode(loadoutId)}/variants`, { name, patch, notes });
+      return data.variant;
+    },
+  });
 }
 
 export async function updateVariant(id: string, data: { name?: string; patch?: VariantPatch; notes?: string }): Promise<LoadoutVariant> {
-  const res = await apiPatch<{ variant: LoadoutVariant }>(`/api/crew/loadouts/variants/${pathEncode(id)}`, data);
-  await invalidateForMutation("crew-variant");
-  return res.variant;
+  return runLockedMutation({
+    label: "Update loadout variant",
+    lockKey: `crew-variant:${id}`,
+    mutationKey: "crew-variant",
+    mutate: async () => {
+      const res = await apiPatch<{ variant: LoadoutVariant }>(`/api/crew/loadouts/variants/${pathEncode(id)}`, data);
+      return res.variant;
+    },
+  });
 }
 
 export async function deleteVariant(id: string): Promise<void> {
-  await apiDelete(`/api/crew/loadouts/variants/${pathEncode(id)}`);
-  await invalidateForMutation("crew-variant");
+  await runLockedMutation({
+    label: "Delete loadout variant",
+    lockKey: `crew-variant:${id}`,
+    mutationKey: "crew-variant",
+    mutate: async () => {
+      await apiDelete(`/api/crew/loadouts/variants/${pathEncode(id)}`);
+    },
+  });
 }
 
 export async function resolveVariant(loadoutId: string, variantId: string): Promise<ResolvedLoadout> {
@@ -259,15 +338,46 @@ export async function fetchCrewDock(num: number): Promise<Dock> {
   return data;
 }
 
-export async function upsertCrewDock(num: number, data: { shipId?: string | null; loadoutId?: number | null; variantId?: number | null; label?: string; notes?: string }): Promise<Dock> {
-  const res = await apiPut<{ dock: Dock }>(`/api/crew/docks/${pathEncode(num)}`, data);
-  await invalidateForMutation("crew-dock");
-  return res.dock;
+export async function upsertCrewDock(num: number, data: { shipId?: string | null; loadoutId?: number | null; variantId?: number | null; label?: string; unlocked?: boolean; notes?: string }): Promise<Dock> {
+  const path = `/api/crew/docks/${pathEncode(num)}`;
+  return runLockedMutation({
+    label: `Upsert dock ${num}`,
+    lockKey: `crew-dock:${num}`,
+    mutationKey: "crew-dock",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: `Upsert dock ${num}`,
+      lockKey: `crew-dock:${num}`,
+      method: "PUT",
+      path,
+      body: data,
+      mutationKey: "crew-dock",
+    },
+    mutate: async () => {
+      const res = await apiPut<{ dock: Dock }>(path, data);
+      return res.dock;
+    },
+  });
 }
 
 export async function deleteCrewDock(num: number): Promise<void> {
-  await apiDelete(`/api/crew/docks/${pathEncode(num)}`);
-  await invalidateForMutation("crew-dock");
+  const path = `/api/crew/docks/${pathEncode(num)}`;
+  await runLockedMutation({
+    label: `Delete dock ${num}`,
+    lockKey: `crew-dock:${num}`,
+    mutationKey: "crew-dock",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: `Delete dock ${num}`,
+      lockKey: `crew-dock:${num}`,
+      method: "DELETE",
+      path,
+      mutationKey: "crew-dock",
+    },
+    mutate: async () => {
+      await apiDelete(path);
+    },
+  });
 }
 
 // ─── Fleet Presets ──────────────────────────────────────────
@@ -295,30 +405,60 @@ export async function fetchFleetPreset(id: string): Promise<FleetPresetWithSlots
 }
 
 export async function createFleetPreset(name: string, notes: string): Promise<FleetPresetWithSlots> {
-  const data = await apiPost<{ fleetPreset: FleetPresetWithSlots }>("/api/fleet-presets", { name, notes });
-  await invalidateForMutation("fleet-preset");
-  return data.fleetPreset;
+  return runLockedMutation({
+    label: "Save fleet preset",
+    lockKey: "fleet-preset:new",
+    mutationKey: "fleet-preset",
+    mutate: async () => {
+      const data = await apiPost<{ fleetPreset: FleetPresetWithSlots }>("/api/fleet-presets", { name, notes });
+      return data.fleetPreset;
+    },
+  });
 }
 
 export async function updateFleetPreset(id: string, data: { name?: string; notes?: string }): Promise<FleetPresetWithSlots> {
-  const res = await apiPatch<{ fleetPreset: FleetPresetWithSlots }>(`/api/fleet-presets/${pathEncode(id)}`, data);
-  await invalidateForMutation("fleet-preset");
-  return res.fleetPreset;
+  return runLockedMutation({
+    label: "Update fleet preset",
+    lockKey: `fleet-preset:${id}`,
+    mutationKey: "fleet-preset",
+    mutate: async () => {
+      const res = await apiPatch<{ fleetPreset: FleetPresetWithSlots }>(`/api/fleet-presets/${pathEncode(id)}`, data);
+      return res.fleetPreset;
+    },
+  });
 }
 
 export async function deleteFleetPreset(id: string): Promise<void> {
-  await apiDelete(`/api/fleet-presets/${pathEncode(id)}`);
-  await invalidateForMutation("fleet-preset");
+  await runLockedMutation({
+    label: "Delete fleet preset",
+    lockKey: `fleet-preset:${id}`,
+    mutationKey: "fleet-preset",
+    mutate: async () => {
+      await apiDelete(`/api/fleet-presets/${pathEncode(id)}`);
+    },
+  });
 }
 
 export async function setFleetPresetSlots(id: string, slots: FleetPresetSlot[]): Promise<void> {
-  await apiPut(`/api/fleet-presets/${pathEncode(id)}/slots`, { slots });
-  await invalidateForMutation("fleet-preset");
+  await runLockedMutation({
+    label: "Update fleet preset slots",
+    lockKey: `fleet-preset:${id}`,
+    mutationKey: "fleet-preset",
+    mutate: async () => {
+      await apiPut(`/api/fleet-presets/${pathEncode(id)}/slots`, { slots });
+    },
+  });
 }
 
 export async function activateFleetPreset(id: string): Promise<void> {
-  await apiPost(`/api/fleet-presets/${pathEncode(id)}/activate`, {});
-  await invalidateForMutation("fleet-preset");
+  await runLockedMutation({
+    label: "Activate fleet preset",
+    lockKey: `fleet-preset:${id}`,
+    mutationKey: "fleet-preset",
+    mutate: async () => {
+      await apiPost(`/api/fleet-presets/${pathEncode(id)}/activate`, {});
+    },
+  });
 }
 
 // ─── Plan Items ─────────────────────────────────────────────
@@ -363,20 +503,38 @@ export interface PlanItemInput {
 }
 
 export async function createCrewPlanItem(data: PlanItemInput): Promise<PlanItem> {
-  const res = await apiPost<{ planItem: PlanItem }>("/api/crew/plan", data);
-  await invalidateForMutation("crew-plan");
-  return res.planItem;
+  return runLockedMutation({
+    label: "Save crew plan item",
+    lockKey: "crew-plan:new",
+    mutationKey: "crew-plan",
+    mutate: async () => {
+      const res = await apiPost<{ planItem: PlanItem }>("/api/crew/plan", data);
+      return res.planItem;
+    },
+  });
 }
 
 export async function updateCrewPlanItem(id: string, data: Partial<PlanItemInput>): Promise<PlanItem> {
-  const res = await apiPatch<{ planItem: PlanItem }>(`/api/crew/plan/${pathEncode(id)}`, data);
-  await invalidateForMutation("crew-plan");
-  return res.planItem;
+  return runLockedMutation({
+    label: "Update crew plan item",
+    lockKey: `crew-plan:${id}`,
+    mutationKey: "crew-plan",
+    mutate: async () => {
+      const res = await apiPatch<{ planItem: PlanItem }>(`/api/crew/plan/${pathEncode(id)}`, data);
+      return res.planItem;
+    },
+  });
 }
 
 export async function deleteCrewPlanItem(id: string): Promise<void> {
-  await apiDelete(`/api/crew/plan/${pathEncode(id)}`);
-  await invalidateForMutation("crew-plan");
+  await runLockedMutation({
+    label: "Delete crew plan item",
+    lockKey: `crew-plan:${id}`,
+    mutationKey: "crew-plan",
+    mutate: async () => {
+      await apiDelete(`/api/crew/plan/${pathEncode(id)}`);
+    },
+  });
 }
 
 // ─── Officer Reservations ───────────────────────────────────
@@ -399,18 +557,50 @@ export async function setReservation(
   locked: boolean,
   notes: string,
 ): Promise<OfficerReservation> {
-  const data = await apiPut<{ reservation: OfficerReservation }>(`/api/officer-reservations/${pathEncode(officerId)}`, {
+  const path = `/api/officer-reservations/${pathEncode(officerId)}`;
+  const body = {
     reservedFor,
     locked,
     notes,
+  };
+  return runLockedMutation({
+    label: "Save officer reservation",
+    lockKey: `officer-reservation:${officerId}`,
+    mutationKey: "officer-reservation",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: "Save officer reservation",
+      lockKey: `officer-reservation:${officerId}`,
+      method: "PUT",
+      path,
+      body,
+      mutationKey: "officer-reservation",
+    },
+    mutate: async () => {
+      const data = await apiPut<{ reservation: OfficerReservation }>(path, body);
+      return data.reservation;
+    },
   });
-  await invalidateForMutation("officer-reservation");
-  return data.reservation;
 }
 
 export async function deleteReservation(officerId: string): Promise<void> {
-  await apiDelete(`/api/officer-reservations/${pathEncode(officerId)}`);
-  await invalidateForMutation("officer-reservation");
+  const path = `/api/officer-reservations/${pathEncode(officerId)}`;
+  await runLockedMutation({
+    label: "Delete officer reservation",
+    lockKey: `officer-reservation:${officerId}`,
+    mutationKey: "officer-reservation",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: "Delete officer reservation",
+      lockKey: `officer-reservation:${officerId}`,
+      method: "DELETE",
+      path,
+      mutationKey: "officer-reservation",
+    },
+    mutate: async () => {
+      await apiDelete(path);
+    },
+  });
 }
 
 // ─── Effective State ────────────────────────────────────────

@@ -1,7 +1,8 @@
 import { apiFetch, apiPut } from "./fetch.js";
 import type { SettingEntry } from "../types.js";
-import { cachedFetch, invalidateForMutation } from "../cache/cached-fetch.js";
+import { cachedFetch } from "../cache/cached-fetch.js";
 import { cacheKey, TTL } from "../cache/cache-keys.js";
+import { runLockedMutation } from "./mutation.js";
 
 export async function loadUserSetting(key: string, fallback = ""): Promise<string> {
   try {
@@ -22,8 +23,23 @@ export async function loadUserSetting(key: string, fallback = ""): Promise<strin
 }
 
 export async function saveUserSetting(key: string, value: string | number): Promise<void> {
-  await apiPut(`/api/user-settings/${encodeURIComponent(key)}`, {
-    value: String(value),
+  const path = `/api/user-settings/${encodeURIComponent(key)}`;
+  const body = { value: String(value) };
+  await runLockedMutation({
+    label: `Save user setting ${key}`,
+    lockKey: `user-setting:${key}`,
+    mutationKey: "user-setting",
+    queueOnNetworkError: true,
+    replayIntent: {
+      label: `Save user setting ${key}`,
+      lockKey: `user-setting:${key}`,
+      method: "PUT",
+      path,
+      body,
+      mutationKey: "user-setting",
+    },
+    mutate: async () => {
+      await apiPut(path, body);
+    },
   });
-  await invalidateForMutation("user-setting");
 }

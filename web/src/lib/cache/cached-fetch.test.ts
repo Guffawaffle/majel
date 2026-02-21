@@ -6,9 +6,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "fake-indexeddb/auto";
 import { openCache, closeCache, destroyCache, cacheSet, cacheGet } from "./idb-cache.js";
 import { cachedFetch, networkFetch, invalidateForMutation } from "./cached-fetch.js";
+import { resetEpochsForTests } from "./cache-epochs.js";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    void rej;
+  });
+  return { promise, resolve };
+}
 
 describe("cachedFetch", () => {
   beforeEach(async () => {
+    resetEpochsForTests();
     await openCache("test-swr-user");
   });
 
@@ -124,6 +135,7 @@ describe("cachedFetch", () => {
 
 describe("networkFetch", () => {
   beforeEach(async () => {
+    resetEpochsForTests();
     await openCache("test-network-user");
   });
 
@@ -150,6 +162,7 @@ describe("networkFetch", () => {
 
 describe("invalidateForMutation", () => {
   beforeEach(async () => {
+    resetEpochsForTests();
     await openCache("test-invalidate-user");
   });
 
@@ -176,5 +189,19 @@ describe("invalidateForMutation", () => {
     await cacheSet("key", "val", 60_000);
     await invalidateForMutation("unknown-mutation");
     expect(await cacheGet("key")).not.toBeNull();
+  });
+
+  it("drops stale writeback when invalidation happens during an in-flight miss", async () => {
+    const gate = deferred<string>();
+
+    const pending = cachedFetch("crew:docks", () => gate.promise, 60_000);
+    await new Promise((r) => setTimeout(r, 0));
+
+    await invalidateForMutation("crew-dock");
+    gate.resolve("stale-result");
+    await pending;
+
+    const entry = await cacheGet<string>("crew:docks");
+    expect(entry).toBeNull();
   });
 });
