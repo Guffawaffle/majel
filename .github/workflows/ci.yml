@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Lint → Typecheck → Test → Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: majel
+          POSTGRES_PASSWORD: majel
+          POSTGRES_DB: majel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U majel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    env:
+      CI: true
+      DATABASE_URL: postgres://majel:majel@localhost:5432/majel
+      DATABASE_ADMIN_URL: postgres://majel:majel@localhost:5432/majel
+      GEMINI_API_KEY: ""
+      MAJEL_ADMIN_TOKEN: ""
+      MAJEL_INVITE_SECRET: ""
+      MAJEL_ALLOWED_IPS: ""
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install server dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck (server)
+        run: npm run typecheck
+
+      - name: Typecheck (web)
+        run: npm run check:web
+
+      - name: Test with coverage
+        run: npx vitest run --coverage
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/lcov.info
+          retention-days: 14
