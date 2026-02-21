@@ -56,18 +56,19 @@
 
   // ── Data fetching ──
 
-  async function refresh() {
+  async function refresh(forceNetwork = false) {
     loading = true;
+    const net = forceNetwork || undefined;
     try {
       const [es, fp, pi, lo, bc, bdp, dk, off] = await Promise.all([
-        fetchEffectiveState(),
-        fetchFleetPresets(),
-        fetchCrewPlanItems(),
-        fetchCrewLoadouts(),
-        fetchBridgeCores(),
-        fetchBelowDeckPolicies(),
-        fetchCrewDocks(),
-        fetchCatalogOfficers({ ownership: "owned" }),
+        fetchEffectiveState({ forceNetwork: net }),
+        fetchFleetPresets({ forceNetwork: net }),
+        fetchCrewPlanItems(undefined, { forceNetwork: net }),
+        fetchCrewLoadouts(undefined, { forceNetwork: net }),
+        fetchBridgeCores({ forceNetwork: net }),
+        fetchBelowDeckPolicies({ forceNetwork: net }),
+        fetchCrewDocks({ forceNetwork: net }),
+        fetchCatalogOfficers({ ownership: "owned" }, { forceNetwork: net }),
       ]);
       effectiveState = es;
       fleetPresets = fp;
@@ -121,25 +122,25 @@
           {fleetPresets}
           {loadouts}
           {officers}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
         />
       {:else if activeTab === "docks"}
         <DocksTab
           {docks}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
         />
       {:else if activeTab === "presets"}
         <PresetsTab
           {fleetPresets}
           {loadouts}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
         />
       {:else if activeTab === "items"}
         <PlanItemsTab
           {planItems}
           {loadouts}
           {officers}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
         />
       {/if}
     </div>

@@ -46,16 +46,21 @@ const inflight = new Map<string, Promise<unknown>>();
  * @param fetcher   — Network fetch function
  * @param ttl       — TTL in ms (from TTL constants)
  * @param onRevalidate — Optional callback when background revalidation completes
+ * @param forceNetwork — If true, bypass cache entirely and fetch fresh from network
  */
 export async function cachedFetch<T>(
   key: string,
   fetcher: () => Promise<T>,
   ttl: number,
   onRevalidate?: RevalidateCallback<T>,
+  forceNetwork?: boolean,
 ): Promise<CachedResult<T>> {
-  // Skip cache entirely for VOLATILE (ttl=0) or if cache unavailable
-  if (ttl === 0 || !isCacheOpen()) {
+  // Skip cache entirely for VOLATILE (ttl=0), forced network, or if cache unavailable
+  if (forceNetwork || ttl === 0 || !isCacheOpen()) {
+    // For forced network, clear any stale in-flight dedup to guarantee a fresh request
+    if (forceNetwork) inflight.delete(key);
     const data = await dedupFetch(key, fetcher);
+    if (forceNetwork && ttl > 0 && isCacheOpen()) await cacheSet(key, data, ttl);
     return { data, fromCache: false, stale: false };
   }
 
@@ -104,10 +109,24 @@ export async function networkFetch<T>(
 /**
  * Invalidate cache entries for a named mutation.
  * Uses the INVALIDATION_MAP to determine which keys to invalidate.
+ *
+ * Also clears any in-flight dedup promises for the invalidated keys
+ * to prevent background revalidations from returning stale data.
  */
 export async function invalidateForMutation(mutation: string): Promise<void> {
   const patterns = INVALIDATION_MAP[mutation];
   if (!patterns) return;
+
+  // Clear in-flight fetches that might return pre-mutation data (dedup race fix)
+  for (const pattern of patterns) {
+    const prefix = pattern.endsWith("*") ? pattern.slice(0, -1) : null;
+    for (const key of inflight.keys()) {
+      if (prefix ? key.startsWith(prefix) : key === pattern) {
+        inflight.delete(key);
+      }
+    }
+  }
+
   await Promise.all(patterns.map((p) => cacheInvalidate(p)));
   // Broadcast invalidation to other tabs (ADR-032 Phase 4)
   broadcastInvalidation(patterns);

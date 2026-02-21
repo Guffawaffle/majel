@@ -361,6 +361,19 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
   }
 
+  // 2c. Initialize reference store (must precede crew store — FK deps on reference_officers/ships)
+  // Data is seeded externally via scripts/seed-cloud-db.ts (ADR-028).
+  // No boot-time sync — DB is the source of truth, not local snapshot files.
+  try {
+    state.referenceStore = await createReferenceStore(adminPool, pool);
+    // Purge legacy raw:* entries that duplicate CDN data (different IDs, different casing)
+    const purged = await state.referenceStore.purgeLegacyEntries();
+    const refCounts = await state.referenceStore.counts();
+    log.boot.info({ officers: refCounts.officers, ships: refCounts.ships, purgedShips: purged.ships, purgedOfficers: purged.officers }, "reference store online");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
+  }
+
   // 2d. Initialize crew store (ADR-025 — unified composition model, #94 user-scoped)
   try {
     state.crewStoreFactory = await createCrewStoreFactory(adminPool, pool);
@@ -389,20 +402,7 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "behavior store init failed");
   }
 
-  // 2f. Initialize reference store
-  // Data is seeded externally via scripts/seed-cloud-db.ts (ADR-028).
-  // No boot-time sync — DB is the source of truth, not local snapshot files.
-  try {
-    state.referenceStore = await createReferenceStore(adminPool, pool);
-    // Purge legacy raw:* entries that duplicate CDN data (different IDs, different casing)
-    const purged = await state.referenceStore.purgeLegacyEntries();
-    const refCounts = await state.referenceStore.counts();
-    log.boot.info({ officers: refCounts.officers, ships: refCounts.ships, purgedShips: purged.ships, purgedOfficers: purged.officers }, "reference store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
-  }
-
-  // 2g. Initialize overlay store (#85: factory pattern for per-user RLS scoping)
+  // 2f. Initialize overlay store (#85: factory pattern for per-user RLS scoping)
   try {
     const overlayFactory = await createOverlayStoreFactory(adminPool, pool);
     state.overlayStoreFactory = overlayFactory;

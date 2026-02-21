@@ -16,6 +16,7 @@ import type {
 import { apiFetch, apiPatch, apiPost, pathEncode, qs } from "./fetch.js";
 import { cachedFetch, invalidateForMutation } from "../cache/cached-fetch.js";
 import { cacheKey, TTL } from "../cache/cache-keys.js";
+import type { FetchOpts } from "./crews.js";
 
 // ─── Filter shapes ──────────────────────────────────────────
 
@@ -41,25 +42,29 @@ export interface ShipFilters {
 // ─── Read ───────────────────────────────────────────────────
 
 /** Fetch merged officers with optional filters (SWR-cached). */
-export async function fetchCatalogOfficers(filters?: OfficerFilters): Promise<CatalogOfficer[]> {
+export async function fetchCatalogOfficers(filters?: OfficerFilters, opts?: FetchOpts): Promise<CatalogOfficer[]> {
   const endpoint = `/api/catalog/officers/merged${qs({ ...filters })}`;
   const key = cacheKey("/api/catalog/officers/merged", filters as Record<string, unknown>);
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ officers: CatalogOfficer[] }>(endpoint).then((d) => d.officers),
     TTL.OVERLAY,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }
 
 /** Fetch merged ships with optional filters (SWR-cached). */
-export async function fetchCatalogShips(filters?: ShipFilters): Promise<CatalogShip[]> {
+export async function fetchCatalogShips(filters?: ShipFilters, opts?: FetchOpts): Promise<CatalogShip[]> {
   const endpoint = `/api/catalog/ships/merged${qs({ ...filters })}`;
   const key = cacheKey("/api/catalog/ships/merged", filters as Record<string, unknown>);
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ ships: CatalogShip[] }>(endpoint).then((d) => d.ships),
     TTL.OVERLAY,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }

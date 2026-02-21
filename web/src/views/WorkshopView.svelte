@@ -49,16 +49,17 @@
 
   // ── Data fetching ──
 
-  async function refresh() {
+  async function refresh(forceNetwork = false) {
     loading = true;
+    const net = forceNetwork || undefined;
     try {
       const [c, p, l, r, o, s] = await Promise.all([
-        fetchBridgeCores(),
-        fetchBelowDeckPolicies(),
-        fetchCrewLoadouts(),
-        fetchReservations(),
-        fetchCatalogOfficers({ ownership: "owned" }),
-        fetchCatalogShips(),
+        fetchBridgeCores({ forceNetwork: net }),
+        fetchBelowDeckPolicies({ forceNetwork: net }),
+        fetchCrewLoadouts(undefined, { forceNetwork: net }),
+        fetchReservations({ forceNetwork: net }),
+        fetchCatalogOfficers({ ownership: "owned" }, { forceNetwork: net }),
+        fetchCatalogShips(undefined, { forceNetwork: net }),
       ]);
       bridgeCores = c;
       belowDeckPolicies = p;
@@ -109,7 +110,7 @@
           {bridgeCores}
           {loadouts}
           {officers}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
         />
       {:else if activeTab === "loadouts"}
         <LoadoutsTab
@@ -118,23 +119,23 @@
           {belowDeckPolicies}
           {officers}
           {ships}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
         />
       {:else if activeTab === "policies"}
         <PoliciesTab
           {belowDeckPolicies}
           {loadouts}
           {officers}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
         />
       {:else if activeTab === "reservations"}
         <ReservationsTab
           {reservations}
           {officers}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
         />
       {:else if activeTab === "imports"}
-        <ImportsTab onCommitted={refresh} />
+        <ImportsTab onCommitted={() => refresh(true)} />
       {/if}
     </div>
   {/if}

@@ -27,14 +27,22 @@ import { apiFetch, apiDelete, apiPatch, apiPost, apiPut, pathEncode, qs } from "
 import { cachedFetch, invalidateForMutation } from "../cache/cached-fetch.js";
 import { cacheKey, TTL } from "../cache/cache-keys.js";
 
+/** Options for cacheable fetch functions. */
+export interface FetchOpts {
+  /** Bypass cache and fetch fresh from network. Use after mutations. */
+  forceNetwork?: boolean;
+}
+
 // ─── Bridge Cores ───────────────────────────────────────────
 
-export async function fetchBridgeCores(): Promise<BridgeCoreWithMembers[]> {
+export async function fetchBridgeCores(opts?: FetchOpts): Promise<BridgeCoreWithMembers[]> {
   const key = cacheKey("/api/bridge-cores");
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ bridgeCores: BridgeCoreWithMembers[] }>("/api/bridge-cores").then((d) => d.bridgeCores),
     TTL.COMPOSITION,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }
@@ -82,12 +90,14 @@ export async function setBridgeCoreMembers(id: string, members: BridgeCoreMember
 
 // ─── Below Deck Policies ────────────────────────────────────
 
-export async function fetchBelowDeckPolicies(): Promise<BelowDeckPolicy[]> {
+export async function fetchBelowDeckPolicies(opts?: FetchOpts): Promise<BelowDeckPolicy[]> {
   const key = cacheKey("/api/below-deck-policies");
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ belowDeckPolicies: BelowDeckPolicy[] }>("/api/below-deck-policies").then((d) => d.belowDeckPolicies),
     TTL.COMPOSITION,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }
@@ -133,13 +143,15 @@ export interface LoadoutFilters {
   active?: boolean;
 }
 
-export async function fetchCrewLoadouts(filters?: LoadoutFilters): Promise<Loadout[]> {
+export async function fetchCrewLoadouts(filters?: LoadoutFilters, opts?: FetchOpts): Promise<Loadout[]> {
   const endpoint = `/api/crew/loadouts${qs({ ...filters })}`;
   const key = cacheKey("/api/crew/loadouts", filters as Record<string, unknown>);
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ loadouts: Loadout[] }>(endpoint).then((d) => d.loadouts),
     TTL.COMPOSITION,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }
@@ -225,12 +237,14 @@ export async function resolveVariant(loadoutId: string, variantId: string): Prom
 
 // ─── Docks ──────────────────────────────────────────────────
 
-export async function fetchCrewDocks(): Promise<Dock[]> {
+export async function fetchCrewDocks(opts?: FetchOpts): Promise<Dock[]> {
   const key = cacheKey("/api/crew/docks");
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ docks: Dock[] }>("/api/crew/docks").then((d) => d.docks),
     TTL.COMPOSITION,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }
@@ -258,12 +272,14 @@ export async function deleteCrewDock(num: number): Promise<void> {
 
 // ─── Fleet Presets ──────────────────────────────────────────
 
-export async function fetchFleetPresets(): Promise<FleetPresetWithSlots[]> {
+export async function fetchFleetPresets(opts?: FetchOpts): Promise<FleetPresetWithSlots[]> {
   const key = cacheKey("/api/fleet-presets");
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ fleetPresets: FleetPresetWithSlots[] }>("/api/fleet-presets").then((d) => d.fleetPresets),
     TTL.COMPOSITION,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }
@@ -312,13 +328,15 @@ export interface PlanFilters {
   dockNumber?: number;
 }
 
-export async function fetchCrewPlanItems(filters?: PlanFilters): Promise<PlanItem[]> {
+export async function fetchCrewPlanItems(filters?: PlanFilters, opts?: FetchOpts): Promise<PlanItem[]> {
   const endpoint = `/api/crew/plan${qs({ ...filters })}`;
   const key = cacheKey("/api/crew/plan", filters as Record<string, unknown>);
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ planItems: PlanItem[] }>(endpoint).then((d) => d.planItems),
     TTL.COMPOSITION,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }
@@ -363,12 +381,14 @@ export async function deleteCrewPlanItem(id: string): Promise<void> {
 
 // ─── Officer Reservations ───────────────────────────────────
 
-export async function fetchReservations(): Promise<OfficerReservation[]> {
+export async function fetchReservations(opts?: FetchOpts): Promise<OfficerReservation[]> {
   const key = cacheKey("/api/officer-reservations");
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ reservations: OfficerReservation[] }>("/api/officer-reservations").then((d) => d.reservations),
     TTL.COMPOSITION,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }
@@ -395,12 +415,14 @@ export async function deleteReservation(officerId: string): Promise<void> {
 
 // ─── Effective State ────────────────────────────────────────
 
-export async function fetchEffectiveState(): Promise<EffectiveDockState> {
+export async function fetchEffectiveState(opts?: FetchOpts): Promise<EffectiveDockState> {
   const key = cacheKey("/api/effective-state");
   const { data } = await cachedFetch(
     key,
     () => apiFetch<{ effectiveState: EffectiveDockState }>("/api/effective-state").then((d) => d.effectiveState),
     TTL.COMPOSITION,
+    undefined,
+    opts?.forceNetwork,
   );
   return data;
 }

@@ -38,9 +38,10 @@ export function createCrewRoutes(appState: AppState): Router {
   const MAX_NOTES = 2000;
   const MAX_LABEL = 200;
 
-  /** Guard: return crew store or 503 */
-  function getStore() {
-    return appState.crewStore;
+  /** Guard: return user-scoped crew store or 503 */
+  function getStore(res: import("express").Response) {
+    const userId = (res.locals.userId as string) || "local";
+    return appState.crewStoreFactory?.forUser(userId) ?? appState.crewStore;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -48,14 +49,14 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/bridge-cores", async (_req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const cores = await store.listBridgeCores();
     sendOk(res, { bridgeCores: cores, count: cores.length });
   });
 
   router.get("/api/bridge-cores/:id", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid bridge core ID", 400);
@@ -65,7 +66,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.post("/api/bridge-cores", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const { name, members, notes } = req.body;
     if (!name || typeof name !== "string") {
@@ -108,7 +109,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.patch("/api/bridge-cores/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid bridge core ID", 400);
@@ -125,7 +126,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.delete("/api/bridge-cores/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid bridge core ID", 400);
@@ -135,7 +136,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.put("/api/bridge-cores/:id/members", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid bridge core ID", 400);
@@ -171,14 +172,14 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/below-deck-policies", async (_req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const policies = await store.listBelowDeckPolicies();
     sendOk(res, { belowDeckPolicies: policies, count: policies.length });
   });
 
   router.get("/api/below-deck-policies/:id", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid policy ID", 400);
@@ -188,7 +189,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.post("/api/below-deck-policies", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const { name, mode, spec, notes } = req.body;
     if (!name || typeof name !== "string") {
@@ -219,7 +220,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.patch("/api/below-deck-policies/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid policy ID", 400);
@@ -241,7 +242,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.delete("/api/below-deck-policies/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid policy ID", 400);
@@ -255,7 +256,7 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/crew/loadouts", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const filters: { shipId?: string; intentKey?: string; tag?: string; active?: boolean } = {};
     if (req.query.shipId) filters.shipId = req.query.shipId as string;
@@ -267,7 +268,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.get("/api/crew/loadouts/:id", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid loadout ID", 400);
@@ -277,7 +278,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.post("/api/crew/loadouts", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const { shipId, name, bridgeCoreId, belowDeckPolicyId, priority, isActive, intentKeys, tags, notes } = req.body;
     if (!shipId || typeof shipId !== "string") {
@@ -313,7 +314,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.patch("/api/crew/loadouts/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid loadout ID", 400);
@@ -332,7 +333,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.delete("/api/crew/loadouts/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid loadout ID", 400);
@@ -346,7 +347,7 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/crew/loadouts/:loadoutId/variants", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const loadoutId = parseInt(req.params.loadoutId as string, 10);
     if (isNaN(loadoutId)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid loadout ID", 400);
@@ -355,7 +356,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.post("/api/crew/loadouts/:loadoutId/variants", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const loadoutId = parseInt(req.params.loadoutId as string, 10);
     if (isNaN(loadoutId)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid loadout ID", 400);
@@ -388,7 +389,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.patch("/api/crew/loadouts/variants/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid variant ID", 400);
@@ -415,7 +416,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.delete("/api/crew/loadouts/variants/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid variant ID", 400);
@@ -427,7 +428,7 @@ export function createCrewRoutes(appState: AppState): Router {
   // ── Resolve Variant (composition function) ──────────
 
   router.get("/api/crew/loadouts/:loadoutId/variants/:variantId/resolve", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const loadoutId = parseInt(req.params.loadoutId as string, 10);
     const variantId = parseInt(req.params.variantId as string, 10);
@@ -448,14 +449,14 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/crew/docks", async (_req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const docks = await store.listDocks();
     sendOk(res, { docks, count: docks.length });
   });
 
   router.get("/api/crew/docks/:num", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const num = parseInt(req.params.num as string, 10);
     if (isNaN(num) || num < 1) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid dock number", 400);
@@ -465,7 +466,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.put("/api/crew/docks/:num", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const num = parseInt(req.params.num as string, 10);
     if (isNaN(num) || num < 1) return sendFail(res, ErrorCode.INVALID_PARAM, "Dock number must be >= 1", 400);
@@ -481,7 +482,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.delete("/api/crew/docks/:num", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const num = parseInt(req.params.num as string, 10);
     if (isNaN(num) || num < 1) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid dock number", 400);
@@ -495,14 +496,14 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/fleet-presets", async (_req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const presets = await store.listFleetPresets();
     sendOk(res, { fleetPresets: presets, count: presets.length });
   });
 
   router.get("/api/fleet-presets/:id", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid preset ID", 400);
@@ -512,7 +513,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.post("/api/fleet-presets", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const { name, notes } = req.body;
     if (!name || typeof name !== "string") {
@@ -537,7 +538,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.patch("/api/fleet-presets/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid preset ID", 400);
@@ -559,7 +560,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.delete("/api/fleet-presets/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid preset ID", 400);
@@ -569,7 +570,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.put("/api/fleet-presets/:id/slots", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid preset ID", 400);
@@ -593,7 +594,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.post("/api/fleet-presets/:id/activate", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid preset ID", 400);
@@ -612,7 +613,7 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/crew/plan", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const filters: { active?: boolean; dockNumber?: number } = {};
     if (req.query.active !== undefined) filters.active = req.query.active === "true";
@@ -622,7 +623,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.get("/api/crew/plan/:id", async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid plan item ID", 400);
@@ -632,7 +633,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.post("/api/crew/plan", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const { intentKey, label, loadoutId, variantId, dockNumber, awayOfficers, priority, isActive, source, notes } = req.body;
     if (label !== undefined && typeof label === "string" && label.length > MAX_LABEL) {
@@ -671,7 +672,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.patch("/api/crew/plan/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid plan item ID", 400);
@@ -702,7 +703,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.delete("/api/crew/plan/:id", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid plan item ID", 400);
@@ -716,14 +717,14 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/officer-reservations", async (_req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const reservations = await store.listReservations();
     sendOk(res, { reservations, count: reservations.length });
   });
 
   router.put("/api/officer-reservations/:officerId", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const { officerId } = req.params as Record<string, string>;
     const { reservedFor, locked, notes } = req.body;
@@ -746,7 +747,7 @@ export function createCrewRoutes(appState: AppState): Router {
   });
 
   router.delete("/api/officer-reservations/:officerId", admiral, async (req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const { officerId } = req.params as Record<string, string>;
     const deleted = await store.deleteReservation(officerId);
@@ -759,7 +760,7 @@ export function createCrewRoutes(appState: AppState): Router {
   // ═══════════════════════════════════════════════════════
 
   router.get("/api/effective-state", async (_req, res) => {
-    const store = getStore();
+    const store = getStore(res);
     if (!store) return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Crew store not available", 503);
     const state = await store.getEffectiveDockState();
     sendOk(res, { effectiveState: state });
