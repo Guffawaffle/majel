@@ -145,4 +145,16 @@ export const INVALIDATION_MAP: Record<string, string[]> = {
     "officer-reservations*",
     "effective-state",
   ],
+
+  // ─── Settings (Phase 4) ─────────────────────────────────────
+
+  // Fleet setting save → fleet settings list
+  "fleet-setting": [
+    "settings*",
+  ],
+
+  // User setting save → user settings list
+  "user-setting": [
+    "user-settings*",
+  ],
 };

@@ -14,6 +14,8 @@
 import { cacheGet, cacheSet, isFresh, isCacheOpen } from "./idb-cache.js";
 import { cacheInvalidate } from "./idb-cache.js";
 import { INVALIDATION_MAP } from "./cache-keys.js";
+import { recordHit, recordMiss, recordRevalidation } from "./cache-metrics.js";
+import { broadcastInvalidation } from "./broadcast.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -61,17 +63,23 @@ export async function cachedFetch<T>(
   const entry = await cacheGet<T>(key);
 
   if (entry) {
+    // Estimate cached data size for bandwidth tracking
+    const estimatedBytes = JSON.stringify(entry.data).length;
+
     if (isFresh(entry)) {
       // HIT + fresh
+      recordHit(estimatedBytes);
       return { data: entry.data, fromCache: true, stale: false };
     }
 
     // HIT + stale → serve stale, revalidate in background
+    recordRevalidation();
     revalidateBackground(key, fetcher, ttl, onRevalidate);
     return { data: entry.data, fromCache: true, stale: true };
   }
 
   // MISS → fetch, store, return
+  recordMiss();
   const data = await dedupFetch(key, fetcher);
   await cacheSet(key, data, ttl);
   return { data, fromCache: false, stale: false };
@@ -101,6 +109,8 @@ export async function invalidateForMutation(mutation: string): Promise<void> {
   const patterns = INVALIDATION_MAP[mutation];
   if (!patterns) return;
   await Promise.all(patterns.map((p) => cacheInvalidate(p)));
+  // Broadcast invalidation to other tabs (ADR-032 Phase 4)
+  broadcastInvalidation(patterns);
 }
 
 // ─── Internals ──────────────────────────────────────────────

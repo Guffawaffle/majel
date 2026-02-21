@@ -165,4 +165,24 @@ describe("INVALIDATION_MAP", () => {
     expect(cacheKey("/api/crew/plan", { dockNumber: 3 }))
       .toBe("crew:plan?dockNumber=3");
   });
+
+  // ─── Settings invalidation (Phase 4) ─────────────────────
+
+  it("fleet-setting invalidates settings cache", () => {
+    const patterns = INVALIDATION_MAP["fleet-setting"];
+    expect(patterns).toBeDefined();
+    expect(patterns).toContain("settings*");
+  });
+
+  it("user-setting invalidates user-settings cache", () => {
+    const patterns = INVALIDATION_MAP["user-setting"];
+    expect(patterns).toBeDefined();
+    expect(patterns).toContain("user-settings*");
+  });
+
+  it("generates correct settings keys", () => {
+    expect(cacheKey("/api/settings", { category: "fleet" })).toBe("settings?category=fleet");
+    expect(cacheKey("/api/settings")).toBe("settings");
+    expect(cacheKey("/api/user-settings")).toBe("user-settings");
+  });
 });

@@ -12,15 +12,17 @@
  *   private $state → exported getter functions
  */
 
-import { openCache, closeCache, cachePurge, isCacheOpen } from "./idb-cache.js";
+import { openCache, closeCache, cachePurge, cacheClear, destroyCache, isCacheOpen } from "./idb-cache.js";
+import { openBroadcast, closeBroadcast } from "./broadcast.js";
+import { resetCacheMetrics } from "./cache-metrics.js";
 
 // ─── State ──────────────────────────────────────────────────
 
 let cacheReady = $state(false);
 let cacheError = $state<string | null>(null);
 
-// 48-hour purge window for stale entries
-const PURGE_AGE_MS = 48 * 60 * 60 * 1_000;
+// 7-day purge window for stale entries (ADR-032 Phase 4)
+const PURGE_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 
 // ─── Getters ────────────────────────────────────────────────
 
@@ -39,16 +41,18 @@ export function getCacheError(): string | null {
 /**
  * Initialize the cache for the given user.
  * Call after authentication resolves (user ID is known).
- * Performs startup purge of stale entries.
+ * Performs startup purge of stale entries and opens cross-tab channel.
  */
 export async function initCache(userId: string): Promise<void> {
   try {
     await openCache(userId);
     cacheReady = isCacheOpen();
     cacheError = cacheReady ? null : "IndexedDB unavailable";
-    // Startup hygiene: purge entries older than 48 hours
     if (cacheReady) {
+      // Startup hygiene: purge entries older than 7 days
       await cachePurge(PURGE_AGE_MS);
+      // Open multi-tab broadcast channel
+      openBroadcast();
     }
   } catch (e) {
     cacheReady = false;
@@ -57,9 +61,23 @@ export async function initCache(userId: string): Promise<void> {
 }
 
 /**
- * Tear down the cache (e.g., on logout).
+ * Tear down the cache (e.g., on component destroy).
  */
 export function teardownCache(): void {
+  closeBroadcast();
+  closeCache();
+  cacheReady = false;
+  cacheError = null;
+}
+
+/**
+ * Clear all cached data and reset metrics (e.g., on logout).
+ * Ensures no stale user data leaks across sessions.
+ */
+export async function clearCacheOnLogout(): Promise<void> {
+  closeBroadcast();
+  await cacheClear();
+  resetCacheMetrics();
   closeCache();
   cacheReady = false;
   cacheError = null;

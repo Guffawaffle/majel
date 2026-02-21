@@ -29,7 +29,7 @@ export { cachedFetch, networkFetch, invalidateForMutation } from "./cached-fetch
 export type { CachedResult, RevalidateCallback } from "./cached-fetch.js";
 
 // Svelte reactive store
-export { initCache, teardownCache, getCacheReady, getCacheError } from "./cache-store.svelte.js";
+export { initCache, teardownCache, clearCacheOnLogout, getCacheReady, getCacheError } from "./cache-store.svelte.js";
 
 // Optimistic mutation helpers (Phase 3)
 export { optimisticCreate, optimisticUpdate, optimisticDelete } from "./optimistic.js";
@@ -37,3 +37,10 @@ export { optimisticCreate, optimisticUpdate, optimisticDelete } from "./optimist
 // Sync queue (Phase 3)
 export { getQueue, isReplaying, enqueue, dequeue, clearQueue, replayQueue } from "./sync-queue.svelte.js";
 export type { QueuedMutation } from "./sync-queue.svelte.js";
+
+// Performance metrics (Phase 4)
+export { getCacheMetrics, resetCacheMetrics } from "./cache-metrics.js";
+export type { CacheMetrics } from "./cache-metrics.js";
+
+// Cross-tab broadcast (Phase 4)
+export { openBroadcast, closeBroadcast, broadcastInvalidation } from "./broadcast.js";
