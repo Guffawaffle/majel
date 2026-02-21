@@ -448,6 +448,11 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("set_officer_overlay");
   });
 
+  it("includes inventory mutation tools (#75)", () => {
+    const names = FLEET_TOOL_DECLARATIONS.map((t) => t.name);
+    expect(names).toContain("update_inventory");
+  });
+
   it("search tools have required query parameter", () => {
     const searchOfficers = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "search_officers");
     expect(searchOfficers?.parameters?.required).toContain("query");
@@ -1703,6 +1708,260 @@ describe("detect_target_conflicts", () => {
     const result = await executeFleetTool("detect_target_conflicts", {}, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Crew");
+  });
+});
+
+// ─── Inventory Mutation Tools (#75 Phase 3) ────────────────
+
+describe("update_inventory", () => {
+  it("records items via upsertItems and returns confirmation", async () => {
+    const upsertItems = vi.fn().mockResolvedValue({ upserted: 2, categories: 2 });
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore({ upsertItems }),
+    };
+    const result = await executeFleetTool("update_inventory", {
+      items: [
+        { category: "ore", name: "3★ Ore", grade: "3-star", quantity: 280 },
+        { category: "gas", name: "2★ Gas", grade: "2-star", quantity: 500 },
+      ],
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("update_inventory");
+    expect(result.recorded).toBe(true);
+    expect(result.upserted).toBe(2);
+    expect(result.categories).toBe(2);
+    const items = result.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(2);
+    expect(items[0].name).toBe("3★ Ore");
+    expect(items[1].name).toBe("2★ Gas");
+    expect(result.nextSteps).toBeDefined();
+    expect(upsertItems).toHaveBeenCalledOnce();
+
+    // Verify source defaults to "chat"
+    const call = upsertItems.mock.calls[0][0];
+    expect(call.source).toBe("chat");
+    expect(call.items).toHaveLength(2);
+  });
+
+  it("uses custom source when provided", async () => {
+    const upsertItems = vi.fn().mockResolvedValue({ upserted: 1, categories: 1 });
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore({ upsertItems }),
+    };
+    await executeFleetTool("update_inventory", {
+      items: [{ category: "ore", name: "Tritanium", quantity: 100 }],
+      source: "translator",
+    }, ctx);
+
+    const call = upsertItems.mock.calls[0][0];
+    expect(call.source).toBe("translator");
+  });
+
+  it("returns partial success with warnings for mixed valid/invalid items", async () => {
+    const upsertItems = vi.fn().mockResolvedValue({ upserted: 1, categories: 1 });
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore({ upsertItems }),
+    };
+    const result = await executeFleetTool("update_inventory", {
+      items: [
+        { category: "ore", name: "3★ Ore", quantity: 280 },
+        { category: "invalid_cat", name: "Bad Item", quantity: 10 },
+        { category: "gas", name: "", quantity: 50 },
+      ],
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.recorded).toBe(true);
+    expect(result.upserted).toBe(1);
+    const items = result.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe("3★ Ore");
+    const warnings = result.warnings as string[];
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("invalid category");
+    expect(warnings[1]).toContain("name is required");
+  });
+
+  it("returns error when all items are invalid", async () => {
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore(),
+    };
+    const result = await executeFleetTool("update_inventory", {
+      items: [
+        { category: "invalid", name: "Bad", quantity: 1 },
+      ],
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("update_inventory");
+    expect(result.error).toBe("No valid items to record.");
+    expect(result.validationErrors).toBeDefined();
+  });
+
+  it("returns error for empty items array", async () => {
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore(),
+    };
+    const result = await executeFleetTool("update_inventory", {
+      items: [],
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("update_inventory");
+    expect(result.error).toContain("items array is required");
+  });
+
+  it("returns error when items is not an array", async () => {
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore(),
+    };
+    const result = await executeFleetTool("update_inventory", {
+      items: "not-an-array",
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("update_inventory");
+    expect(result.error).toContain("items array is required");
+  });
+
+  it("returns error when inventory store unavailable", async () => {
+    const result = await executeFleetTool("update_inventory", {
+      items: [{ category: "ore", name: "3★ Ore", quantity: 280 }],
+    }, {}) as Record<string, unknown>;
+
+    expect(result.tool).toBe("update_inventory");
+    expect(result.error).toContain("Inventory store not available");
+  });
+
+  it("rejects negative quantity", async () => {
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore(),
+    };
+    const result = await executeFleetTool("update_inventory", {
+      items: [{ category: "ore", name: "3★ Ore", quantity: -5 }],
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.error).toBe("No valid items to record.");
+    const errors = result.validationErrors as string[];
+    expect(errors[0]).toContain("non-negative");
+  });
+
+  it("accepts zero quantity (clear inventory entry)", async () => {
+    const upsertItems = vi.fn().mockResolvedValue({ upserted: 1, categories: 1 });
+    const ctx: ToolContext = {
+      inventoryStore: createMockInventoryStore({ upsertItems }),
+    };
+    const result = await executeFleetTool("update_inventory", {
+      items: [{ category: "ore", name: "3★ Ore", quantity: 0 }],
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.recorded).toBe(true);
+  });
+});
+
+// ─── suggest_targets: Ready to Upgrade (#75) ───────────────
+
+describe("suggest_targets — Ready to Upgrade", () => {
+  it("includes readyToUpgrade when ship has ≥80% resource coverage", async () => {
+    const shipWithTiers: ReferenceShip = {
+      ...FIXTURE_SHIP,
+      id: "cdn:ship:enterprise",
+      name: "USS Enterprise",
+      maxTier: 10,
+      tiers: [
+        {
+          tier: 6,
+          components: [
+            { build_cost: [{ resource_id: 101, amount: 300, name: "3★ Ore" }] },
+            { build_cost: [{ resource_id: 102, amount: 100, name: "3★ Crystal" }] },
+          ],
+        },
+      ],
+    } as ReferenceShip;
+
+    const ownedOverlay = { refId: "cdn:ship:enterprise", ownershipState: "owned", tier: 5 };
+
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        listShips: vi.fn().mockResolvedValue([shipWithTiers]),
+      }),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn()
+          .mockResolvedValueOnce([ownedOverlay])  // 1. owned ships for display
+          .mockResolvedValueOnce([])               // 2. targeted ships for overlay targets
+          .mockResolvedValueOnce([ownedOverlay]),  // 3. owned ships for upgrade check
+      }),
+      inventoryStore: createMockInventoryStore({
+        listItems: vi.fn().mockResolvedValue([
+          { id: 1, category: "ore", name: "3★ Ore", grade: "3-star", quantity: 300, unit: null, source: "chat", capturedAt: "2026-01-01", updatedAt: "2026-01-01" },
+          { id: 2, category: "crystal", name: "3★ Crystal", grade: "3-star", quantity: 100, unit: null, source: "chat", capturedAt: "2026-01-01", updatedAt: "2026-01-01" },
+        ]),
+      }),
+    };
+
+    const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
+
+    // Should have readyToUpgrade since 100% coverage
+    const ready = result.readyToUpgrade as Array<Record<string, unknown>>;
+    expect(ready).toBeDefined();
+    expect(ready.length).toBeGreaterThanOrEqual(1);
+    expect(ready[0].shipName).toBe("USS Enterprise");
+    expect(ready[0].coveragePct).toBe(100);
+  });
+
+  it("omits readyToUpgrade when resource coverage is below 80%", async () => {
+    const shipWithTiers: ReferenceShip = {
+      ...FIXTURE_SHIP,
+      id: "cdn:ship:enterprise",
+      name: "USS Enterprise",
+      maxTier: 10,
+      tiers: [
+        {
+          tier: 6,
+          components: [
+            { build_cost: [{ resource_id: 101, amount: 1000, name: "3★ Ore" }] },
+          ],
+        },
+      ],
+    } as ReferenceShip;
+
+    const ownedOverlay = { refId: "cdn:ship:enterprise", ownershipState: "owned", tier: 5 };
+
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        listShips: vi.fn().mockResolvedValue([shipWithTiers]),
+      }),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn()
+          .mockResolvedValueOnce([ownedOverlay])  // 1. owned ships for display
+          .mockResolvedValueOnce([])               // 2. targeted ships for overlay targets
+          .mockResolvedValueOnce([ownedOverlay]),  // 3. owned ships for upgrade check
+      }),
+      inventoryStore: createMockInventoryStore({
+        listItems: vi.fn().mockResolvedValue([
+          { id: 1, category: "ore", name: "3★ Ore", grade: "3-star", quantity: 100, unit: null, source: "chat", capturedAt: "2026-01-01", updatedAt: "2026-01-01" },
+        ]),
+      }),
+    };
+
+    const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
+
+    // Only 10% coverage (100/1000) — should NOT have readyToUpgrade
+    expect(result.readyToUpgrade).toBeUndefined();
+  });
+
+  it("degrades gracefully when inventory store unavailable", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+      }),
+    };
+
+    const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
+
+    // Should work fine — just no ready-to-upgrade data
+    expect(result).not.toHaveProperty("error");
+    expect(result.readyToUpgrade).toBeUndefined();
   });
 });
 

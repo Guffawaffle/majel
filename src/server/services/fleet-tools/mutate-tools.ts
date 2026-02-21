@@ -1723,6 +1723,94 @@ export async function setShipOverlayTool(
 }
 
 /**
+ * Record inventory items from manual chat input ("I have 280 3-star Ore").
+ * Upserts items by (category, name, grade) key — existing entries get updated quantities.
+ */
+export async function updateInventoryTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.inventoryStore) {
+    return { tool: "update_inventory", error: "Inventory store not available." };
+  }
+
+  const rawItems = args.items;
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return {
+      tool: "update_inventory",
+      error: "items array is required and must contain at least one item.",
+      input: { items: rawItems },
+    };
+  }
+
+  const VALID_CATEGORIES = ["ore", "gas", "crystal", "parts", "currency", "blueprint", "other"];
+  const validatedItems: Array<{ category: string; name: string; grade: string | null; quantity: number; unit: string | null }> = [];
+  const errors: string[] = [];
+
+  for (let i = 0; i < rawItems.length; i++) {
+    const item = rawItems[i] as Record<string, unknown>;
+    const category = String(item.category ?? "").trim().toLowerCase();
+    const name = String(item.name ?? "").trim();
+    const grade = item.grade != null ? String(item.grade).trim() : null;
+    const quantity = Number(item.quantity ?? 0);
+
+    if (!VALID_CATEGORIES.includes(category)) {
+      errors.push(`Item ${i}: invalid category '${category}'. Must be one of: ${VALID_CATEGORIES.join(", ")}`);
+      continue;
+    }
+    if (!name) {
+      errors.push(`Item ${i}: name is required.`);
+      continue;
+    }
+    if (name.length > MAX_NAME_LEN) {
+      errors.push(`Item ${i}: name must be ${MAX_NAME_LEN} characters or fewer.`);
+      continue;
+    }
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      errors.push(`Item ${i}: quantity must be a non-negative number.`);
+      continue;
+    }
+
+    validatedItems.push({ category, name, grade, quantity, unit: null });
+  }
+
+  if (validatedItems.length === 0) {
+    return {
+      tool: "update_inventory",
+      error: "No valid items to record.",
+      validationErrors: errors,
+      input: { items: rawItems },
+    };
+  }
+
+  const source = str(args, "source") || "chat";
+  const result = await ctx.inventoryStore.upsertItems({
+    source,
+    capturedAt: new Date().toISOString(),
+    items: validatedItems.map(v => ({
+      category: v.category as import("../../stores/inventory-store.js").InventoryCategory,
+      name: v.name,
+      grade: v.grade,
+      quantity: v.quantity,
+      unit: v.unit,
+    })),
+  });
+
+  return {
+    tool: "update_inventory",
+    recorded: true,
+    upserted: result.upserted,
+    categories: result.categories,
+    items: validatedItems.map(v => ({ category: v.category, name: v.name, grade: v.grade, quantity: v.quantity })),
+    ...(errors.length > 0 ? { warnings: errors } : {}),
+    nextSteps: [
+      "Use list_inventory to verify the recorded inventory.",
+      "Use calculate_upgrade_path to check resource gaps for a specific ship upgrade.",
+    ],
+  };
+}
+
+/**
  * Set or update an officer's personal overlay: ownership state, current level/rank/power.
  * This lets the Admiral record their actual in-game officer progression.
  */

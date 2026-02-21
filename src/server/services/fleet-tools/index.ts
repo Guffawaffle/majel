@@ -57,6 +57,7 @@ import {
   completeTargetTool,
   setShipOverlayTool,
   setOfficerOverlayTool,
+  updateInventoryTool,
 } from "./mutate-tools.js";
 
 // ─── Dispatcher ─────────────────────────────────────────────
@@ -188,6 +189,8 @@ async function dispatchTool(
       return setShipOverlayTool(args, ctx);
     case "set_officer_overlay":
       return setOfficerOverlayTool(args, ctx);
+    case "update_inventory":
+      return updateInventoryTool(args, ctx);
     default:
       return { error: `Unknown tool: ${name}` };
   }
