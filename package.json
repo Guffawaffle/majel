@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/server/index.js",
   "scripts": {
-    "build": "tsc && cp -r src/client dist/client && npm --prefix web run build",
+    "build": "tsc && mkdir -p dist/landing && cp src/landing/landing.html src/landing/landing.css src/landing/landing.js dist/landing/ && npm --prefix web run build",
     "start": "node --import dotenv/config dist/server/index.js",
     "dev": "MAJEL_LOG_PRETTY=true tsx watch --import dotenv/config src/server/index.ts",
     "dev:full": "npm run pg:start && npm run dev",

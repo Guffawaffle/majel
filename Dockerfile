@@ -18,7 +18,7 @@ RUN npm ci --loglevel=error
 COPY web/package.json web/package-lock.json web/
 RUN cd web && npm ci --loglevel=error
 
-# Copy source and build everything (server + vanilla landing + Svelte client)
+# Copy source and build everything (server + landing page + Svelte client)
 COPY tsconfig.json ./
 COPY src/ src/
 COPY web/ web/
