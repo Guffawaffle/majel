@@ -15,6 +15,12 @@
 import { randomUUID, createHash } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { log } from "./logger.js";
+import type {
+  ApiEnvelope,
+  ApiErrorResponse,
+  ApiMeta,
+  ApiSuccess,
+} from "../shared/ax.js";
 
 // ─── Error Codes (stable, machine-readable) ─────────────────────
 
@@ -57,34 +63,46 @@ export const ErrorCode = {
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
 
+function toErrorCodeSegment(value: string): string {
+  return value
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+}
+
+/**
+ * Define module-specific error codes with a stable namespace convention.
+ *
+ * Example:
+ *   const ImportErrorCode = defineModuleErrorCodes("import", ["parse_failed"]);
+ *   // { PARSE_FAILED: "IMPORT_PARSE_FAILED" }
+ */
+export function defineModuleErrorCodes<const T extends readonly string[]>(
+  namespace: string,
+  codes: T,
+): { readonly [K in T[number]]: string } {
+  const normalizedNamespace = toErrorCodeSegment(namespace);
+  if (!normalizedNamespace) {
+    throw new Error("namespace must contain at least one alphanumeric character");
+  }
+
+  const entries = codes.map((code) => {
+    const normalizedCode = toErrorCodeSegment(code);
+    if (!normalizedCode) {
+      throw new Error("code must contain at least one alphanumeric character");
+    }
+    return [normalizedCode, `${normalizedNamespace}_${normalizedCode}`] as const;
+  });
+
+  return Object.freeze(Object.fromEntries(entries)) as { readonly [K in T[number]]: string };
+}
+
 // ─── Meta ───────────────────────────────────────────────────────
 
-export interface ApiMeta {
-  requestId: string;
-  timestamp: string;
-  durationMs: number;
-}
+// ─── Envelope types (re-exported for tests and consumers) ───────
 
-// ─── Envelope types (exported for tests) ────────────────────────
-
-export interface ApiSuccess<T = unknown> {
-  ok: true;
-  data: T;
-  meta: ApiMeta;
-}
-
-export interface ApiErrorResponse {
-  ok: false;
-  error: {
-    code: string;
-    message: string;
-    detail?: unknown;
-    hints?: string[];
-  };
-  meta: ApiMeta;
-}
-
-export type ApiEnvelope<T = unknown> = ApiSuccess<T> | ApiErrorResponse;
+export type { ApiMeta, ApiSuccess, ApiErrorResponse, ApiEnvelope };
 
 // ─── Middleware: attach requestId + startTime ───────────────────
 

@@ -82,8 +82,8 @@
 
 #### Extensibility
 - [x] **E1 (IMPORTANT):** `sendFail` positional signature (same fix as F1)
-- [ ] **E2 (MINOR):** `ErrorCode` is frozen const — no module-specific extension mechanism
-- [ ] **E3 (IMPORTANT):** CLI `AxOutput` and API `ApiErrorResponse` schemas will diverge
+- [x] **E2 (MINOR):** `ErrorCode` is frozen const — no module-specific extension mechanism *(fixed 2026-02-21: added `defineModuleErrorCodes(namespace, codes)` in `src/server/envelope.ts` for namespaced extensions)*
+- [x] **E3 (IMPORTANT):** CLI `AxOutput` and API `ApiErrorResponse` schemas will diverge *(fixed 2026-02-21: shared contracts added in `src/shared/ax.ts`, consumed by CLI and API envelope)*
   - Mitigation: `docs/AX-SCHEMA.md` documents both
 - [x] **E4 (MINOR):** Health response spreads raw store `counts()` — no type guard
   - File: `src/server/routes/core.ts` — `safeCounts()` now wraps with `active` + `error` fallback
@@ -210,8 +210,8 @@ Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, rep
 - [ ] API: auto-generate discovery from Express router introspection (F4 long-term fix)
 - [ ] API: define `HealthResponse` type to guard contract (E4)
 - [x] API: type `res.locals` via Express module augmentation (E5)
-- [ ] API: `ErrorCode` namespace convention for module-specific codes (E2)
-- [ ] Shared AX types between CLI and API (E3)
+- [x] API: `ErrorCode` namespace convention for module-specific codes (E2)
+- [x] Shared AX types between CLI and API (E3)
 - [ ] Integration test: discovery endpoints match actual Express routes
 
 ---

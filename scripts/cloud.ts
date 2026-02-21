@@ -31,6 +31,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import os from "node:os";
+import type { AxCommandOutput } from "../src/shared/ax.js";
 
 // ─── Constants ──────────────────────────────────────────────────
 
@@ -49,16 +50,6 @@ const AUTH_FILE = resolve(ROOT, ".cloud-auth");
 const AUTH_TOKEN_BYTES = 32; // 64 hex chars
 
 // ─── Types ──────────────────────────────────────────────────────
-
-interface AxOutput {
-  command: string;
-  success: boolean;
-  timestamp: string;
-  durationMs: number;
-  data: Record<string, unknown>;
-  errors?: string[];
-  hints?: string[];
-}
 
 type AuthTier = "open" | "read" | "write";
 interface CommandArgDef {
@@ -90,7 +81,7 @@ function getPackageVersion(): string {
 }
 
 function axOutput(command: string, start: number, data: Record<string, unknown>, opts?: { errors?: string[]; hints?: string[]; success?: boolean }): void {
-  const output: AxOutput = {
+  const output: AxCommandOutput = {
     command: `cloud:${command}`,
     success: opts?.success ?? true,
     timestamp: new Date().toISOString(),

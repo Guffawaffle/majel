@@ -16,7 +16,7 @@ Two response formats exist for AI agent consumption:
 }
 ```
 
-**TypeScript type:** `AxOutput` in `scripts/cloud.ts`
+**TypeScript type:** `AxCommandOutput` in `src/shared/ax.ts` (consumed by `scripts/cloud.ts`)
 
 All `process.exit(1)` paths emit valid JSON in AX mode.
 All failures include both `errors` (what happened) and `hints` (what to try).
@@ -52,7 +52,7 @@ npm run cloud -- help --ax    # Lists all commands with arg schemas
 }
 ```
 
-**TypeScript types:** `ApiSuccess`, `ApiErrorResponse` in `src/server/envelope.ts`
+**TypeScript types:** `ApiSuccess`, `ApiErrorResponse` in `src/shared/ax.ts` (re-exported from `src/server/envelope.ts`)
 
 ### Discovery
 
@@ -72,9 +72,11 @@ Every endpoint in `GET /api` includes an `auth` field:
 ### Error Codes
 
 Defined in `src/server/envelope.ts` → `ErrorCode` object.
+Module-specific extension convention uses `defineModuleErrorCodes(namespace, codes)`
+to generate stable namespaced values (e.g. `IMPORT_PARSE_FAILED`).
 Key codes for agents:
 - `GEMINI_NOT_READY` — check `detail.reason` for "initializing" vs "no API key"
 - `MISSING_PARAM` — check `hints` for required fields
 - `INVALID_PARAM` — check `detail` for valid values (e.g., `validModels`)
 - `UNAUTHORIZED` — check `hints` for auth methods
-- `INSUFFICIENT_RANK` — check `detail.currentRole` + `detail.requiredRole`
+- `INSUFFICIENT_RANK` — check message/hints for required role context
