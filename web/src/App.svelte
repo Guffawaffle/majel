@@ -8,6 +8,7 @@
   import TitleBar from "./components/TitleBar.svelte";
   import HelpPanel from "./components/HelpPanel.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
+  import TimerBar from "./components/TimerBar.svelte";
   import { getCurrentView, views } from "./lib/router.svelte.js";
   import { fetchMe, isLoading, getError, hasRole } from "./lib/auth.svelte.js";
   import type { Role } from "./lib/types.js";
@@ -72,6 +73,7 @@
       </div>
 
       <TitleBar helpOpen={helpOpen} ontogglehelp={toggleHelp} />
+      <TimerBar />
 
       <div class="app-content">
         {#each Object.entries(viewComponents) as [name, Component]}
