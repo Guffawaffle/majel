@@ -1,0 +1,249 @@
+.imports {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.imports-title {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.imports-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.imports-inputs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.imports-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.imports-upload input,
+.imports-paste textarea,
+.imports-mapping-right select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  font: inherit;
+}
+
+.imports-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.imports-paste label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.imports-paste textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.imports-btn {
+  align-self: flex-start;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.imports-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.imports-state {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.imports-error {
+  margin: 0;
+  color: var(--accent-red, #f44);
+}
+
+.imports-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.imports-section-title {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.imports-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.imports-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.imports-table th,
+.imports-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.imports-table th {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.imports-table td {
+  color: var(--text-secondary);
+}
+
+.imports-mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.imports-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.imports-mapping-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.imports-mapping-left {
+  min-width: 0;
+}
+
+.imports-col-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.imports-reason {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.imports-mapping-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.imports-confidence {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.imports-confidence.high {
+  color: var(--accent-green);
+}
+
+.imports-confidence.medium {
+  color: var(--accent-gold);
+}
+
+.imports-confidence.low {
+  color: var(--accent-red, #f44);
+}
+
+.imports-unresolved {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.imports-unresolved-row {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.imports-unresolved-candidates {
+  color: var(--text-muted);
+}
+
+.imports-history {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.imports-history-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.imports-history-controls select {
+  min-width: 320px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  font: inherit;
+}
+
+.imports-edit {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font: inherit;
+  min-width: 220px;
+}

@@ -1,0 +1,170 @@
+/* ── Stats ── */
+.ws-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.ws-stats-bar strong { color: var(--text-primary); }
+
+/* ── Loadout Toolbar ── */
+.lo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.lo-search {
+  flex: 1;
+  min-width: 160px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+.lo-filters { display: flex; gap: 6px; }
+.lo-filters select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+.lo-sort {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+}
+.lo-sort-label { color: var(--text-muted); }
+.lo-sort select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+.lo-dir-btn { padding: 5px 10px; }
+
+/* ── Intent Grid ── */
+.ws-intent-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+}
+.ws-intent-fieldset legend {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding: 0 4px;
+}
+.ws-intent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+.ws-intent-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.ws-intent-option input { width: auto; margin: 0; }
+
+/* ── Cards (file-specific) ── */
+.ws-card-active { border-left: 3px solid var(--accent-green, #5a5); }
+
+/* ── Badges (file-specific) ── */
+.ws-badge-active { background: var(--accent-green, #5a5); color: #000; }
+.ws-badge-priority { background: var(--accent-gold-dim); color: var(--bg-primary); }
+
+/* ── Card body (file-specific) ── */
+.ws-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.88rem;
+}
+.ws-row-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-width: 90px;
+}
+
+/* ── Intent & Tag chips ── */
+.ws-intent-list, .ws-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.ws-intent-chip, .ws-tag-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.76rem;
+}
+.ws-intent-chip { background: var(--bg-tertiary); color: var(--text-primary); }
+.ws-tag-chip { background: var(--bg-tertiary); color: var(--text-muted); border: 1px solid var(--border); }
+
+/* ── Variant section ── */
+.var-section {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.var-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.var-add-btn { font-size: 0.78rem; padding: 3px 10px; }
+.var-list { display: flex; flex-direction: column; gap: 6px; }
+.var-card {
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--accent-gold-dim);
+  border-radius: 4px;
+  padding: 10px 14px;
+}
+.var-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.var-card-name { font-weight: 600; flex: 1; font-size: 0.88rem; }
+.var-patch-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.var-divider { color: var(--border); }
+.var-empty { padding: 12px 0; font-size: 0.82rem; }
+
+/* Variant form */
+.var-form {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent-gold);
+  border-radius: 4px;
+  padding: 14px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .lo-toolbar { flex-direction: column; align-items: stretch; }
+  .lo-search { min-width: 0; }
+}

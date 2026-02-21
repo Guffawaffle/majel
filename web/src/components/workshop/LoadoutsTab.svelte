@@ -5,6 +5,7 @@
    * Most complex tab in the Workshop.
    */
   import "../../styles/workshop-shared.css";
+  import "../../styles/loadouts-tab.css";
   import {
     createCrewLoadout,
     updateCrewLoadout,
@@ -27,6 +28,11 @@
     BridgeSlot,
   } from "../../lib/types.js";
   import { INTENT_CATALOG, INTENT_CATEGORIES, intentLabel } from "../../lib/intent-catalog.js";
+  import {
+    createInitialLoadoutsTabUiState,
+    routeLoadoutsTabCommand,
+    type LoadoutsTabCommand,
+  } from "../../lib/loadouts-tab-commands.js";
 
   // ── Props ──
 
@@ -52,13 +58,7 @@
 
   // ── Loadout state ──
 
-  let editingId = $state<number | "new" | null>(null);
-  let formError = $state("");
-  let searchQuery = $state("");
-  let filterIntent = $state("");
-  let filterActive = $state<"" | "true" | "false">("");
-  let sortField = $state<"name" | "ship" | "priority">("name");
-  let sortDir = $state<"asc" | "desc">("asc");
+  let ui = $state(createInitialLoadoutsTabUiState());
 
   // Form
   let formName = $state("");
@@ -72,14 +72,15 @@
   let formNotes = $state("");
 
   // Variants
-  let expandedId = $state<number | null>(null);
   let variantCache = $state<Record<number, LoadoutVariant[]>>({});
-  let editingVariantId = $state<number | "new" | null>(null);
-  let variantFormError = $state("");
   let vFormName = $state("");
   let vFormNotes = $state("");
   let vFormSlots = $state<Record<BridgeSlot, string>>({ captain: "", bridge_1: "", bridge_2: "" });
   let vFormPolicyId = $state("");
+
+  function send(command: LoadoutsTabCommand) {
+    ui = routeLoadoutsTabCommand(ui, command);
+  }
 
   // ── Helpers ──
 
@@ -107,23 +108,23 @@
 
   const filtered = $derived.by(() => {
     let list = loadouts;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (ui.searchQuery) {
+      const q = ui.searchQuery.toLowerCase();
       list = list.filter(
         (l) => l.name.toLowerCase().includes(q) || shipName(l.shipId).toLowerCase().includes(q),
       );
     }
-    if (filterIntent) {
-      list = list.filter((l) => l.intentKeys?.includes(filterIntent));
+    if (ui.filterIntent) {
+      list = list.filter((l) => l.intentKeys?.includes(ui.filterIntent));
     }
-    if (filterActive === "true") list = list.filter((l) => l.isActive);
-    if (filterActive === "false") list = list.filter((l) => !l.isActive);
+    if (ui.filterActive === "true") list = list.filter((l) => l.isActive);
+    if (ui.filterActive === "false") list = list.filter((l) => !l.isActive);
 
     // Sort
-    const dir = sortDir === "asc" ? 1 : -1;
+    const dir = ui.sortDir === "asc" ? 1 : -1;
     list = [...list].sort((a, b) => {
-      if (sortField === "name") return a.name.localeCompare(b.name) * dir;
-      if (sortField === "ship") return shipName(a.shipId).localeCompare(shipName(b.shipId)) * dir;
+      if (ui.sortField === "name") return a.name.localeCompare(b.name) * dir;
+      if (ui.sortField === "ship") return shipName(a.shipId).localeCompare(shipName(b.shipId)) * dir;
       return ((a.priority ?? 0) - (b.priority ?? 0)) * dir;
     });
     return list;
@@ -145,7 +146,7 @@
   // ── Loadout form lifecycle ──
 
   function startNew() {
-    editingId = "new";
+    send({ type: "loadout/new" });
     formName = "";
     formShipId = "";
     formCoreId = "";
@@ -155,12 +156,12 @@
     formIntents = new Set();
     formTags = "";
     formNotes = "";
-    formError = "";
+    send({ type: "loadout/error-clear" });
     collapseVariants();
   }
 
   function startEdit(lo: Loadout) {
-    editingId = lo.id;
+    send({ type: "loadout/edit", id: lo.id });
     formName = lo.name;
     formShipId = lo.shipId ?? "";
     formCoreId = lo.bridgeCoreId != null ? String(lo.bridgeCoreId) : "";
@@ -170,17 +171,16 @@
     formIntents = new Set(lo.intentKeys ?? []);
     formTags = (lo.tags ?? []).join(", ");
     formNotes = lo.notes ?? "";
-    formError = "";
+    send({ type: "loadout/error-clear" });
     collapseVariants();
   }
 
   function cancelEdit() {
-    editingId = null;
-    formError = "";
+    send({ type: "loadout/edit-cancel" });
   }
 
   async function saveLoadout() {
-    if (!formName.trim()) { formError = "Name is required."; return; }
+    if (!formName.trim()) { send({ type: "loadout/error", message: "Name is required." }); return; }
 
     const data: LoadoutInput = {
       name: formName.trim(),
@@ -194,17 +194,17 @@
       notes: formNotes.trim(),
     };
 
-    formError = "";
+    send({ type: "loadout/error-clear" });
     try {
-      if (editingId === "new") {
+      if (ui.editingId === "new") {
         await createCrewLoadout(data);
-      } else if (editingId != null) {
-        await updateCrewLoadout(String(editingId), data);
+      } else if (ui.editingId != null) {
+        await updateCrewLoadout(String(ui.editingId), data);
       }
-      editingId = null;
+      send({ type: "loadout/edit-cancel" });
       await onRefresh();
     } catch (err: unknown) {
-      formError = err instanceof Error ? err.message : "Save failed.";
+      send({ type: "loadout/error", message: err instanceof Error ? err.message : "Save failed." });
     }
   }
 
@@ -213,10 +213,10 @@
     try {
       await deleteCrewLoadout(String(lo.id));
       delete variantCache[lo.id];
-      if (expandedId === lo.id) expandedId = null;
+      if (ui.expandedId === lo.id) send({ type: "variant/collapse" });
       await onRefresh();
     } catch (err: unknown) {
-      formError = err instanceof Error ? err.message : "Delete failed.";
+      send({ type: "loadout/error", message: err instanceof Error ? err.message : "Delete failed." });
     }
   }
 
@@ -237,35 +237,31 @@
   // ── Variant helpers ──
 
   async function toggleVariants(loadoutId: number) {
-    if (expandedId === loadoutId) {
+    if (ui.expandedId === loadoutId) {
       collapseVariants();
       return;
     }
-    expandedId = loadoutId;
-    editingVariantId = null;
-    variantFormError = "";
+    send({ type: "variant/toggle", loadoutId });
     if (!variantCache[loadoutId]) {
       variantCache[loadoutId] = await fetchVariants(String(loadoutId));
     }
   }
 
   function collapseVariants() {
-    expandedId = null;
-    editingVariantId = null;
-    variantFormError = "";
+    send({ type: "variant/collapse" });
   }
 
   function startNewVariant() {
-    editingVariantId = "new";
+    send({ type: "variant/new" });
     vFormName = "";
     vFormNotes = "";
     vFormSlots = { captain: "", bridge_1: "", bridge_2: "" };
     vFormPolicyId = "";
-    variantFormError = "";
+    send({ type: "variant/error-clear" });
   }
 
   function startEditVariant(v: LoadoutVariant) {
-    editingVariantId = v.id;
+    send({ type: "variant/edit", id: v.id });
     vFormName = v.name;
     vFormNotes = v.notes ?? "";
     const bridge = v.patch?.bridge ?? {};
@@ -275,45 +271,44 @@
       bridge_2: bridge.bridge_2 ?? "",
     };
     vFormPolicyId = v.patch?.below_deck_policy_id != null ? String(v.patch.below_deck_policy_id) : "";
-    variantFormError = "";
+    send({ type: "variant/error-clear" });
   }
 
   function cancelVariant() {
-    editingVariantId = null;
-    variantFormError = "";
+    send({ type: "variant/cancel" });
   }
 
   async function saveVariant() {
-    if (!vFormName.trim()) { variantFormError = "Name is required."; return; }
-    if (expandedId == null) return;
+    if (!vFormName.trim()) { send({ type: "variant/error", message: "Name is required." }); return; }
+    if (ui.expandedId == null) return;
 
     const bridge: Record<string, string> = {};
     for (const s of SLOTS) if (vFormSlots[s]) bridge[s] = vFormSlots[s];
     const patch: VariantPatch = { bridge };
     if (vFormPolicyId) patch.below_deck_policy_id = Number(vFormPolicyId);
 
-    variantFormError = "";
+    send({ type: "variant/error-clear" });
     try {
-      if (editingVariantId === "new") {
-        await createVariant(String(expandedId), vFormName.trim(), patch, vFormNotes.trim());
-      } else if (editingVariantId != null) {
-        await updateVariant(String(editingVariantId), { name: vFormName.trim(), patch, notes: vFormNotes.trim() });
+      if (ui.editingVariantId === "new") {
+        await createVariant(String(ui.expandedId), vFormName.trim(), patch, vFormNotes.trim());
+      } else if (ui.editingVariantId != null) {
+        await updateVariant(String(ui.editingVariantId), { name: vFormName.trim(), patch, notes: vFormNotes.trim() });
       }
-      editingVariantId = null;
-      variantCache[expandedId] = await fetchVariants(String(expandedId));
+      send({ type: "variant/cancel" });
+      variantCache[ui.expandedId] = await fetchVariants(String(ui.expandedId));
     } catch (err: unknown) {
-      variantFormError = err instanceof Error ? err.message : "Save failed.";
+      send({ type: "variant/error", message: err instanceof Error ? err.message : "Save failed." });
     }
   }
 
   async function handleDeleteVariant(v: LoadoutVariant) {
     if (!(await confirm({ title: `Delete variant "${v.name}"?`, severity: "warning", approveLabel: "Delete" }))) return;
-    if (expandedId == null) return;
+    if (ui.expandedId == null) return;
     try {
       await deleteVariant(String(v.id));
-      variantCache[expandedId] = await fetchVariants(String(expandedId));
+      variantCache[ui.expandedId] = await fetchVariants(String(ui.expandedId));
     } catch (err: unknown) {
-      variantFormError = err instanceof Error ? err.message : "Delete failed.";
+      send({ type: "variant/error", message: err instanceof Error ? err.message : "Delete failed." });
     }
   }
 
@@ -347,16 +342,17 @@
       class="lo-search"
       type="text"
       placeholder="Search loadouts…"
-      bind:value={searchQuery}
+      value={ui.searchQuery}
+      oninput={(event) => send({ type: "search/set", value: (event.currentTarget as HTMLInputElement).value })}
     />
     <div class="lo-filters">
-      <select bind:value={filterIntent}>
+      <select value={ui.filterIntent} onchange={(event) => send({ type: "filter/intent", value: (event.currentTarget as HTMLSelectElement).value })}>
         <option value="">All intents</option>
         {#each usedIntents as key}
           <option value={key}>{intentLabel(key)}</option>
         {/each}
       </select>
-      <select bind:value={filterActive}>
+      <select value={ui.filterActive} onchange={(event) => send({ type: "filter/active", value: (event.currentTarget as HTMLSelectElement).value as "" | "true" | "false" })}>
         <option value="">All</option>
         <option value="true">Active</option>
         <option value="false">Inactive</option>
@@ -364,20 +360,20 @@
     </div>
     <div class="lo-sort">
       <span class="lo-sort-label">Sort:</span>
-      <select bind:value={sortField}>
+      <select value={ui.sortField} onchange={(event) => send({ type: "sort/field", value: (event.currentTarget as HTMLSelectElement).value as "name" | "ship" | "priority" })}>
         <option value="name">Name</option>
         <option value="ship">Ship</option>
         <option value="priority">Priority</option>
       </select>
-      <button class="ws-btn lo-dir-btn" onclick={() => (sortDir = sortDir === "asc" ? "desc" : "asc")}>
-        {sortDir === "asc" ? "↑" : "↓"}
+      <button class="ws-btn lo-dir-btn" onclick={() => send({ type: "sort/toggle-dir" })}>
+        {ui.sortDir === "asc" ? "↑" : "↓"}
       </button>
     </div>
     <button class="ws-btn ws-btn-create" onclick={startNew}>+ New Loadout</button>
   </div>
 
   <!-- New form -->
-  {#if editingId === "new"}
+  {#if ui.editingId === "new"}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="ws-form" role="form" onkeydown={handleKeydown}>
       {@render loadoutForm()}
@@ -390,7 +386,7 @@
   {:else}
     <div class="ws-list">
       {#each filtered as lo (lo.id)}
-        {#if editingId === lo.id}
+        {#if ui.editingId === lo.id}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <div class="ws-form" role="form" onkeydown={handleKeydown}>
             {@render loadoutForm()}
@@ -408,10 +404,10 @@
               <div class="ws-card-actions">
                 <button
                   class="ws-action"
-                  title={expandedId === lo.id ? "Collapse variants" : "Expand variants"}
+                  title={ui.expandedId === lo.id ? "Collapse variants" : "Expand variants"}
                   onclick={() => toggleVariants(lo.id)}
                 >
-                  {expandedId === lo.id ? "▾" : "▸"}
+                  {ui.expandedId === lo.id ? "▾" : "▸"}
                 </button>
                 <button class="ws-action" onclick={() => startEdit(lo)} title="Edit">✎</button>
                 <button class="ws-action ws-action-danger" onclick={() => handleDelete(lo)} title="Delete">✕</button>
@@ -441,7 +437,7 @@
             </div>
 
             <!-- Variant section -->
-            {#if expandedId === lo.id}
+            {#if ui.expandedId === lo.id}
               {@render variantSection(lo)}
             {/if}
           </div>
@@ -518,8 +514,8 @@
       <textarea bind:value={formNotes} maxlength="500" rows="2"></textarea>
     </label>
   </div>
-  {#if formError}
-    <p class="ws-form-error">{formError}</p>
+  {#if ui.formError}
+    <p class="ws-form-error">{ui.formError}</p>
   {/if}
   <div class="ws-form-actions">
     <button class="ws-btn ws-btn-save" onclick={saveLoadout}>Save</button>
@@ -534,16 +530,16 @@
       <button class="ws-btn ws-btn-create var-add-btn" onclick={startNewVariant}>+ Add Variant</button>
     </div>
 
-    {#if editingVariantId === "new"}
+    {#if ui.editingVariantId === "new"}
       {@render variantForm()}
     {/if}
 
-    {#if (variantCache[lo.id] ?? []).length === 0 && editingVariantId !== "new"}
+    {#if (variantCache[lo.id] ?? []).length === 0 && ui.editingVariantId !== "new"}
       <p class="ws-empty var-empty">No variants. Variants let you patch bridge or policy for specific scenarios.</p>
     {:else}
       <div class="var-list">
         {#each variantCache[lo.id] ?? [] as v (v.id)}
-          {#if editingVariantId === v.id}
+          {#if ui.editingVariantId === v.id}
             {@render variantForm()}
           {:else}
             <div class="var-card">
@@ -605,8 +601,8 @@
         <textarea bind:value={vFormNotes} maxlength="500" rows="2"></textarea>
       </label>
     </div>
-    {#if variantFormError}
-      <p class="ws-form-error">{variantFormError}</p>
+    {#if ui.variantFormError}
+      <p class="ws-form-error">{ui.variantFormError}</p>
     {/if}
     <div class="ws-form-actions">
       <button class="ws-btn ws-btn-save" onclick={saveVariant}>Save</button>
@@ -615,175 +611,3 @@
   </div>
 {/snippet}
 
-<style>
-  /* ── Stats ── */
-  .ws-stats-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-  }
-  .ws-stats-bar strong { color: var(--text-primary); }
-
-  /* ── Loadout Toolbar ── */
-  .lo-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 12px;
-  }
-  .lo-search {
-    flex: 1;
-    min-width: 160px;
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.88rem;
-  }
-  .lo-filters { display: flex; gap: 6px; }
-  .lo-filters select {
-    padding: 5px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.82rem;
-  }
-  .lo-sort {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.82rem;
-  }
-  .lo-sort-label { color: var(--text-muted); }
-  .lo-sort select {
-    padding: 5px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 0.82rem;
-  }
-  .lo-dir-btn { padding: 5px 10px; }
-
-  /* ── Intent Grid ── */
-  .ws-intent-fieldset {
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 10px;
-  }
-  .ws-intent-fieldset legend {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    padding: 0 4px;
-  }
-  .ws-intent-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 6px;
-  }
-  .ws-intent-option {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.82rem;
-    cursor: pointer;
-  }
-  .ws-intent-option input { width: auto; margin: 0; }
-
-  /* ── Cards (file-specific) ── */
-  .ws-card-active { border-left: 3px solid var(--accent-green, #5a5); }
-
-  /* ── Badges (file-specific) ── */
-  .ws-badge-active { background: var(--accent-green, #5a5); color: #000; }
-  .ws-badge-priority { background: var(--accent-gold-dim); color: var(--bg-primary); }
-
-  /* ── Card body (file-specific) ── */
-  .ws-row {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    font-size: 0.88rem;
-  }
-  .ws-row-label {
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    min-width: 90px;
-  }
-
-  /* ── Intent & Tag chips ── */
-  .ws-intent-list, .ws-tag-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 2px;
-  }
-  .ws-intent-chip, .ws-tag-chip {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 0.76rem;
-  }
-  .ws-intent-chip { background: var(--bg-tertiary); color: var(--text-primary); }
-  .ws-tag-chip { background: var(--bg-tertiary); color: var(--text-muted); border: 1px solid var(--border); }
-
-  /* ── Variant section ── */
-  .var-section {
-    border-top: 1px solid var(--border);
-    margin-top: 10px;
-    padding-top: 10px;
-  }
-  .var-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    font-size: 0.88rem;
-    font-weight: 600;
-  }
-  .var-add-btn { font-size: 0.78rem; padding: 3px 10px; }
-  .var-list { display: flex; flex-direction: column; gap: 6px; }
-  .var-card {
-    background: var(--bg-tertiary);
-    border-left: 3px solid var(--accent-gold-dim);
-    border-radius: 4px;
-    padding: 10px 14px;
-  }
-  .var-card-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .var-card-name { font-weight: 600; flex: 1; font-size: 0.88rem; }
-  .var-patch-summary {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 6px;
-    font-size: 0.82rem;
-    color: var(--text-muted);
-  }
-  .var-divider { color: var(--border); }
-  .var-empty { padding: 12px 0; font-size: 0.82rem; }
-
-  /* Variant form */
-  .var-form {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--accent-gold);
-    border-radius: 4px;
-    padding: 14px;
-    margin-bottom: 8px;
-  }
-
-  @media (max-width: 768px) {
-    .lo-toolbar { flex-direction: column; align-items: stretch; }
-    .lo-search { min-width: 0; }
-  }
-</style>

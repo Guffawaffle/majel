@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import "../../styles/imports-tab.css";
   import {
     analyzeImportFile,
     commitCompositionInference,
@@ -15,10 +16,20 @@
     resolveReceiptItems,
   } from "../../lib/api/receipts.js";
   import { ApiError } from "../../lib/api/fetch.js";
+  import {
+    buildCompositionSuggestions,
+    coerceUnresolved,
+    fileToBase64,
+    unresolvedCount,
+    utf8ToBase64,
+  } from "../../lib/imports-tab-helpers.js";
+  import {
+    createInitialImportsCompositionUiState,
+    routeImportsCompositionCommand,
+    type ImportsCompositionCommand,
+  } from "../../lib/imports-tab-commands.js";
   import type {
     ImportAnalysis,
-    CatalogOfficer,
-    CatalogShip,
     CompositionBelowDeckPolicySuggestion,
     CompositionBridgeCoreSuggestion,
     CompositionLoadoutSuggestion,
@@ -57,13 +68,14 @@
   let receiptUnresolved = $state<UnresolvedImportItem[]>([]);
   let receiptSelection = $state<Record<string, boolean>>({});
   let receiptLoading = $state(false);
-  let showCompositionPrompt = $state(false);
-  let compositionPromptDismissed = $state(false);
-  let compositionGenerating = $state(false);
-  let compositionPreviewOpen = $state(false);
+  let compositionUi = $state(createInitialImportsCompositionUiState());
   let bridgeCoreSuggestions = $state<CompositionBridgeCoreSuggestion[]>([]);
   let belowDeckSuggestions = $state<CompositionBelowDeckPolicySuggestion[]>([]);
   let loadoutSuggestions = $state<CompositionLoadoutSuggestion[]>([]);
+
+  function sendComposition(command: ImportsCompositionCommand) {
+    compositionUi = routeImportsCompositionCommand(compositionUi, command);
+  }
 
   onMount(() => {
     void loadRecentReceipts();
@@ -194,9 +206,7 @@
         unresolved: result.summary.unresolved,
       };
       overwriteApproval = null;
-      showCompositionPrompt = true;
-      compositionPromptDismissed = false;
-      compositionPreviewOpen = false;
+      sendComposition({ type: "composition/after-import-commit" });
       bridgeCoreSuggestions = [];
       belowDeckSuggestions = [];
       loadoutSuggestions = [];
@@ -237,7 +247,7 @@
       error = "Commit import before running composition inference.";
       return;
     }
-    compositionGenerating = true;
+    sendComposition({ type: "composition/generating", value: true });
     error = "";
     try {
       const [officers, ships] = await Promise.all([
@@ -248,20 +258,17 @@
       bridgeCoreSuggestions = generated.bridgeCores;
       belowDeckSuggestions = generated.policies;
       loadoutSuggestions = generated.loadouts;
-      compositionPreviewOpen = true;
-      showCompositionPrompt = false;
+      sendComposition({ type: "composition/open-preview" });
       status = "Composition preview generated. Review suggestions before commit.";
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
-      compositionGenerating = false;
+      sendComposition({ type: "composition/generating", value: false });
     }
   }
 
   function skipCompositionInference() {
-    compositionPromptDismissed = true;
-    showCompositionPrompt = false;
-    compositionPreviewOpen = false;
+    sendComposition({ type: "composition/skip" });
     bridgeCoreSuggestions = [];
     belowDeckSuggestions = [];
     loadoutSuggestions = [];
@@ -294,9 +301,7 @@
       });
 
       status = `Committed composition inference. Receipt #${result.receipt.id}.`;
-      compositionPreviewOpen = false;
-      showCompositionPrompt = false;
-      compositionPromptDismissed = true;
+      sendComposition({ type: "composition/skip" });
       await loadRecentReceipts();
       selectedReceiptId = String(result.receipt.id);
       await loadReceiptDetail(selectedReceiptId);
@@ -306,150 +311,6 @@
     } finally {
       loading = false;
     }
-  }
-
-  function rarityScore(value: string | null): number {
-    const normalized = String(value ?? "").toLowerCase();
-    if (normalized.includes("legendary")) return 5;
-    if (normalized.includes("epic")) return 4;
-    if (normalized.includes("rare")) return 3;
-    if (normalized.includes("uncommon")) return 2;
-    if (normalized.includes("common")) return 1;
-    return 0;
-  }
-
-  function inferIntentFromShipClass(shipClass: string | null): "combat" | "mining" | "hostile" {
-    const normalized = String(shipClass ?? "").toLowerCase();
-    if (normalized.includes("survey")) return "mining";
-    if (normalized.includes("interceptor") || normalized.includes("battleship") || normalized.includes("explorer")) return "combat";
-    return "hostile";
-  }
-
-  function policyForIntent(intent: "combat" | "mining" | "hostile", index: number): CompositionBelowDeckPolicySuggestion {
-    if (intent === "mining") {
-      return {
-        key: `policy-mining-${index}`,
-        accepted: true,
-        name: "Mining BD",
-        mode: "stats_then_bda",
-        spec: { prefer_modifiers: ["mining_rate", "protected_cargo", "warp_range"], avoid_reserved: true, max_slots: 5 },
-      };
-    }
-    if (intent === "hostile") {
-      return {
-        key: `policy-hostile-${index}`,
-        accepted: true,
-        name: "Hostile BD",
-        mode: "stats_then_bda",
-        spec: { prefer_modifiers: ["damage_vs_hostiles", "critical_damage", "mitigation"], avoid_reserved: true, max_slots: 5 },
-      };
-    }
-    return {
-      key: `policy-combat-${index}`,
-      accepted: true,
-      name: "Combat BD",
-      mode: "stats_then_bda",
-      spec: { prefer_modifiers: ["attack", "critical_chance", "critical_damage"], avoid_reserved: true, max_slots: 5 },
-    };
-  }
-
-  function buildCompositionSuggestions(officers: CatalogOfficer[], ships: CatalogShip[]): {
-    bridgeCores: CompositionBridgeCoreSuggestion[];
-    policies: CompositionBelowDeckPolicySuggestion[];
-    loadouts: CompositionLoadoutSuggestion[];
-  } {
-    const ownedOfficers = officers.filter((officer) => officer.ownershipState === "owned");
-    const ownedShips = ships.filter((ship) => ship.ownershipState === "owned");
-
-    const byGroup = new Map<string, CatalogOfficer[]>();
-    for (const officer of ownedOfficers) {
-      const groupName = officer.groupName?.trim();
-      if (!groupName) continue;
-      const key = groupName.toLowerCase();
-      const current = byGroup.get(key) ?? [];
-      current.push(officer);
-      byGroup.set(key, current);
-    }
-
-    const bridgeCores: CompositionBridgeCoreSuggestion[] = [];
-    const officerById = new Map<string, CatalogOfficer>();
-    for (const officer of ownedOfficers) officerById.set(officer.id, officer);
-
-    let bridgeCoreIndex = 0;
-    for (const [groupKey, members] of byGroup.entries()) {
-      if (members.length < 3) continue;
-      const cmCapable = members.filter((officer) => (officer.captainManeuver ?? "").trim().length > 0);
-      if (cmCapable.length === 0) continue;
-
-      const sorted = [...members].sort((left, right) => {
-        const rarityDiff = rarityScore(right.rarity) - rarityScore(left.rarity);
-        if (rarityDiff !== 0) return rarityDiff;
-        return (right.userLevel ?? 0) - (left.userLevel ?? 0);
-      });
-      const captain = [...cmCapable].sort((left, right) => {
-        const rarityDiff = rarityScore(right.rarity) - rarityScore(left.rarity);
-        if (rarityDiff !== 0) return rarityDiff;
-        return (right.userLevel ?? 0) - (left.userLevel ?? 0);
-      })[0];
-
-      const remainder = sorted.filter((officer) => officer.id !== captain.id).slice(0, 2);
-      if (remainder.length < 2) continue;
-      const selected = [captain, ...remainder];
-
-      bridgeCores.push({
-        key: `core-${bridgeCoreIndex++}`,
-        accepted: true,
-        name: `${selected[0].groupName ?? groupKey} Trio`,
-        members: [
-          { officerId: selected[0].id, officerName: selected[0].name, slot: "captain" },
-          { officerId: selected[1].id, officerName: selected[1].name, slot: "bridge_1" },
-          { officerId: selected[2].id, officerName: selected[2].name, slot: "bridge_2" },
-        ],
-      });
-
-      if (bridgeCores.length >= 5) break;
-    }
-
-    const intents = [...new Set(ownedShips.map((ship) => inferIntentFromShipClass(ship.shipClass)))];
-    const policies = intents.slice(0, 3).map((intent, index) => policyForIntent(intent, index));
-
-    const loadouts: CompositionLoadoutSuggestion[] = [];
-    let loadoutIndex = 0;
-    for (const core of bridgeCores) {
-      const captain = core.members.find((member) => member.slot === "captain");
-      const captainOfficer = captain ? officerById.get(captain.officerId) : undefined;
-      const captainFaction = String(captainOfficer?.faction?.name ?? "").toLowerCase();
-
-      const scoredShips = [...ownedShips].map((ship) => {
-        const intent = inferIntentFromShipClass(ship.shipClass);
-        const policy = policies.find((entry) => entry.key.includes(intent));
-        let score = 0;
-        if (captainFaction.length > 0 && String(ship.faction ?? "").toLowerCase().includes(captainFaction)) score += 5;
-        if (intent === "combat" && /interceptor|battleship|explorer/i.test(String(ship.shipClass ?? ""))) score += 3;
-        if (intent === "mining" && /survey/i.test(String(ship.shipClass ?? ""))) score += 3;
-        if (intent === "hostile") score += 1;
-        score += ship.userTier ?? 0;
-        return { ship, intent, policyKey: policy?.key, score };
-      });
-
-      scoredShips.sort((left, right) => right.score - left.score);
-      const selected = scoredShips[0];
-      if (!selected) continue;
-
-      loadouts.push({
-        key: `loadout-${loadoutIndex++}`,
-        accepted: true,
-        name: `${selected.ship.name} ${core.name}`,
-        shipId: selected.ship.id,
-        shipName: selected.ship.name,
-        bridgeCoreKey: core.key,
-        belowDeckPolicyKey: selected.policyKey,
-        intentKeys: [selected.intent],
-        tags: ["import-inferred"],
-      });
-    }
-
-    return { bridgeCores, policies, loadouts };
   }
 
   async function loadRecentReceipts() {
@@ -517,59 +378,6 @@
     }
   }
 
-  function unresolvedCount(receipt: ImportReceipt): number {
-    return Array.isArray(receipt.unresolved) ? receipt.unresolved.length : 0;
-  }
-
-  function coerceUnresolved(unresolvedValue: unknown[] | null): UnresolvedImportItem[] {
-    if (!Array.isArray(unresolvedValue)) return [];
-
-    return unresolvedValue
-      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
-      .map((item) => ({
-        rowIndex: Number(item.rowIndex ?? -1),
-        entityType: (item.entityType === "ship" ? "ship" : "officer") as "officer" | "ship",
-        rawValue: String(item.rawValue ?? ""),
-        candidates: Array.isArray(item.candidates)
-          ? item.candidates
-            .filter((candidate): candidate is Record<string, unknown> => typeof candidate === "object" && candidate !== null)
-            .map((candidate) => ({
-              id: String(candidate.id ?? ""),
-              name: String(candidate.name ?? ""),
-              score: Number(candidate.score ?? 0),
-            }))
-          : [],
-      }))
-      .filter((item) => item.rawValue.length > 0 && item.rowIndex >= 0);
-  }
-
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result;
-        if (typeof result !== "string") {
-          reject(new Error("Unexpected file payload"));
-          return;
-        }
-        const base64 = result.split(",")[1] ?? "";
-        resolve(base64);
-      };
-      reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
-      reader.readAsDataURL(file);
-    });
-  }
-
-  function utf8ToBase64(value: string): string {
-    const bytes = new TextEncoder().encode(value);
-    let binary = "";
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
-    }
-    return btoa(binary);
-  }
 </script>
 
 <section class="imports">
@@ -699,18 +507,18 @@
         <span>{commitResult.added} added, {commitResult.updated} updated, {commitResult.unchanged} unchanged, {commitResult.unresolved} unresolved</span>
       </div>
 
-      {#if showCompositionPrompt && !compositionPromptDismissed}
+      {#if compositionUi.showPrompt && !compositionUi.dismissed}
         <h3 class="imports-section-title">Also create crews/loadouts from this import?</h3>
         <div class="imports-history">
           <p class="imports-state">Optional step: infer bridge cores, below-deck policies, and loadouts from owned entities.</p>
           <div class="imports-actions">
-            <button class="imports-btn" onclick={() => { void openCompositionPreview(); }} disabled={compositionGenerating || loading}>Yes, show me</button>
-            <button class="imports-btn" onclick={skipCompositionInference} disabled={compositionGenerating || loading}>No thanks</button>
+            <button class="imports-btn" onclick={() => { void openCompositionPreview(); }} disabled={compositionUi.generating || loading}>Yes, show me</button>
+            <button class="imports-btn" onclick={skipCompositionInference} disabled={compositionUi.generating || loading}>No thanks</button>
           </div>
         </div>
       {/if}
 
-      {#if compositionPreviewOpen}
+      {#if compositionUi.previewOpen}
         <h3 class="imports-section-title">Composition inference preview</h3>
 
         <div class="imports-history">
@@ -822,254 +630,3 @@
   </div>
 </section>
 
-<style>
-  .imports {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .imports-title {
-    margin: 0;
-    font-size: 18px;
-    color: var(--text-primary);
-  }
-
-  .imports-subtitle {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 13px;
-  }
-
-  .imports-inputs {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .imports-upload {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text-secondary);
-  }
-
-  .imports-upload input,
-  .imports-paste textarea,
-  .imports-mapping-right select {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    border-radius: var(--radius-sm);
-    padding: 8px;
-    font: inherit;
-  }
-
-  .imports-paste {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .imports-paste label {
-    font-size: 13px;
-    color: var(--text-secondary);
-  }
-
-  .imports-paste textarea {
-    min-height: 96px;
-    resize: vertical;
-  }
-
-  .imports-btn {
-    align-self: flex-start;
-    padding: 8px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    cursor: pointer;
-  }
-
-  .imports-btn:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-
-  .imports-state {
-    margin: 0;
-    color: var(--text-muted);
-  }
-
-  .imports-error {
-    margin: 0;
-    color: var(--accent-red, #f44);
-  }
-
-  .imports-summary {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    font-size: 13px;
-  }
-
-  .imports-section-title {
-    margin: 8px 0 0;
-    font-size: 14px;
-    color: var(--text-primary);
-  }
-
-  .imports-table-wrap {
-    overflow: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-  }
-
-  .imports-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-
-  .imports-table th,
-  .imports-table td {
-    border-bottom: 1px solid var(--border);
-    padding: 6px 8px;
-    text-align: left;
-    vertical-align: top;
-  }
-
-  .imports-table th {
-    color: var(--text-primary);
-    background: var(--bg-secondary);
-  }
-
-  .imports-table td {
-    color: var(--text-secondary);
-  }
-
-  .imports-mapping-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .imports-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-  }
-
-  .imports-mapping-row {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 8px;
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: center;
-  }
-
-  .imports-mapping-left {
-    min-width: 0;
-  }
-
-  .imports-col-name {
-    font-size: 13px;
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-
-  .imports-reason {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .imports-mapping-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .imports-confidence {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 2px 6px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-  }
-
-  .imports-confidence.high {
-    color: var(--accent-green);
-  }
-
-  .imports-confidence.medium {
-    color: var(--accent-gold);
-  }
-
-  .imports-confidence.low {
-    color: var(--accent-red, #f44);
-  }
-
-  .imports-unresolved {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .imports-unresolved-row {
-    font-size: 12px;
-    color: var(--text-secondary);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .imports-unresolved-candidates {
-    color: var(--text-muted);
-  }
-
-  .imports-history {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .imports-history-controls {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .imports-history-controls select {
-    min-width: 320px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    border-radius: var(--radius-sm);
-    padding: 8px;
-    font: inherit;
-  }
-
-  .imports-edit {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    border-radius: var(--radius-sm);
-    padding: 6px 8px;
-    font: inherit;
-    min-width: 220px;
-  }
-</style>

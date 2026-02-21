@@ -17,6 +17,7 @@ import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
 import { VALID_BRIDGE_SLOTS, VALID_BELOW_DECK_MODES } from "../types/crew-types.js";
 import type { BridgeSlot, BelowDeckMode, VariantPatch, PlanSource } from "../types/crew-types.js";
+import { MAX_NAME, MAX_NOTES, MAX_LABEL, getCrewStore } from "../services/route-helpers/crew-route-helpers.js";
 
 export function createCrewRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -33,16 +34,7 @@ export function createCrewRoutes(appState: AppState): Router {
   router.use("/api/crew/plan", visitor);
   router.use("/api/effective-state", visitor);
 
-  /** Max string length for name/notes/label fields. */
-  const MAX_NAME = 200;
-  const MAX_NOTES = 2000;
-  const MAX_LABEL = 200;
-
-  /** Guard: return user-scoped crew store or 503 */
-  function getStore(res: import("express").Response) {
-    const userId = (res.locals.userId as string) || "local";
-    return appState.crewStoreFactory?.forUser(userId) ?? appState.crewStore;
-  }
+  const getStore = (res: import("express").Response) => getCrewStore(appState, res);
 
   // ═══════════════════════════════════════════════════════
   // Bridge Cores

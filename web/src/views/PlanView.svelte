@@ -9,11 +9,13 @@
     fetchEffectiveState,
     fetchFleetPresets,
     fetchCrewPlanItems,
+    fetchCrewDocks,
+  } from "../lib/api/crews-planning.js";
+  import {
     fetchCrewLoadouts,
     fetchBridgeCores,
     fetchBelowDeckPolicies,
-    fetchCrewDocks,
-  } from "../lib/api/crews.js";
+  } from "../lib/api/crews-composition.js";
   import { fetchCatalogOfficers } from "../lib/api/catalog.js";
   import type {
     EffectiveDockState,

@@ -9,8 +9,10 @@
     fetchBridgeCores,
     fetchBelowDeckPolicies,
     fetchCrewLoadouts,
+  } from "../lib/api/crews-composition.js";
+  import {
     fetchReservations,
-  } from "../lib/api/crews.js";
+  } from "../lib/api/crews-planning.js";
   import { fetchCatalogOfficers, fetchCatalogShips } from "../lib/api/catalog.js";
   import type {
     BridgeCoreWithMembers,
@@ -25,12 +27,25 @@
   import PoliciesTab from "../components/workshop/PoliciesTab.svelte";
   import ReservationsTab from "../components/workshop/ReservationsTab.svelte";
   import ImportsTab from "../components/workshop/ImportsTab.svelte";
+  import QuickCrewTab from "../components/workshop/QuickCrewTab.svelte";
   import { consumeWorkshopLaunchIntent } from "../lib/view-intent.svelte.js";
 
   // ── Shared state ──
 
-  type TabId = "cores" | "loadouts" | "policies" | "reservations" | "imports";
+  type ModeId = "basic" | "advanced";
+  type TabId = "quick" | "cores" | "loadouts" | "policies" | "reservations" | "imports";
+
+  const MODES: { id: ModeId; label: string }[] = [
+    { id: "basic", label: "Basic" },
+    { id: "advanced", label: "Advanced" },
+  ];
+
+  const BASIC_TABS: { id: TabId; label: string; icon: string }[] = [
+    { id: "quick", label: "Quick Crew", icon: "🧭" },
+  ];
+
   const TABS: { id: TabId; label: string; icon: string }[] = [
+    { id: "quick", label: "Quick Crew", icon: "🧭" },
     { id: "cores", label: "Cores", icon: "👥" },
     { id: "loadouts", label: "Loadouts", icon: "📋" },
     { id: "policies", label: "Policies", icon: "📏" },
@@ -38,7 +53,8 @@
     { id: "imports", label: "Imports", icon: "📥" },
   ];
 
-  let activeTab = $state<TabId>("cores");
+  let mode = $state<ModeId>("basic");
+  let activeTab = $state<TabId>("quick");
   let loading = $state(false);
 
   let bridgeCores = $state<BridgeCoreWithMembers[]>([]);
@@ -122,6 +138,7 @@
   onMount(() => {
     const launchIntent = consumeWorkshopLaunchIntent();
     if (launchIntent?.tab === "imports") {
+      mode = "advanced";
       activeTab = "imports";
     }
     refresh();
@@ -130,13 +147,32 @@
   function switchTab(id: TabId) {
     activeTab = id;
   }
+
+  function switchMode(nextMode: ModeId) {
+    mode = nextMode;
+    if (nextMode === "basic") {
+      activeTab = "quick";
+      return;
+    }
+    if (activeTab === "quick") activeTab = "cores";
+  }
+
+  const visibleTabs = $derived(mode === "basic" ? BASIC_TABS : TABS.filter((tab) => tab.id !== "quick"));
 </script>
 
 <div class="workshop">
+  <div class="ws-modebar">
+    {#each MODES as m}
+      <button class="ws-modebtn" class:active={mode === m.id} onclick={() => switchMode(m.id)}>
+        {m.label}
+      </button>
+    {/each}
+  </div>
+
   <!-- Tab bar -->
   <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
   <nav class="ws-tabs" role="tablist">
-    {#each TABS as tab}
+    {#each visibleTabs as tab}
       <button
         class="ws-tab"
         class:active={activeTab === tab.id}
@@ -156,7 +192,14 @@
   {:else}
     <!-- Tab panels -->
     <div class="ws-panel">
-      {#if activeTab === "cores"}
+      {#if activeTab === "quick"}
+        <QuickCrewTab
+          {officers}
+          {ships}
+          {reservations}
+          onRefresh={refreshCoresScope}
+        />
+      {:else if activeTab === "cores"}
         <CoresTab
           {bridgeCores}
           {loadouts}
@@ -199,6 +242,27 @@
     flex: 1;
     gap: 0;
     overflow: hidden;
+  }
+
+  .ws-modebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ws-modebtn {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .ws-modebtn.active {
+    color: var(--text-primary);
+    border-color: var(--accent-gold-dim);
   }
 
   /* ── Tab bar ── */
@@ -251,5 +315,6 @@
     .ws-tabs { overflow-x: auto; }
     .ws-tab { padding: 8px 12px; font-size: 0.82rem; }
     .ws-panel { padding: 12px; }
+    .ws-modebar { padding: 8px 12px 6px; }
   }
 </style>
