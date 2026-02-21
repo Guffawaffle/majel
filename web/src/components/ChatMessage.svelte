@@ -5,6 +5,7 @@
 <script lang="ts">
   import type { LocalMessage } from "../lib/chat.svelte.js";
   import { renderMarkdown, escapeHtml } from "../lib/markdown.js";
+  import { openLightbox } from "./ImageLightbox.svelte";
   import { onDestroy } from "svelte";
 
   interface Props {
@@ -57,7 +58,12 @@
     <div class="message-body">
       <div class="message-sender">{sender}</div>
       {#if message.imageDataUrl}
-        <img class="message-image" src={message.imageDataUrl} alt="Attached screenshot" />
+        <button class="message-image-btn" onclick={() => openLightbox(message.imageDataUrl!, "screenshot")} aria-label="View full-size image">
+          <img class="message-image" src={message.imageDataUrl} alt="Attached screenshot" />
+          <span class="image-zoom-hint">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M11 11l3.5 3.5M5 7h4M7 5v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </span>
+        </button>
       {/if}
       <div class="message-text">{@html bodyHtml}</div>
       {#if showCopy}
@@ -157,10 +163,29 @@
   .action-btn.copied { color: var(--accent-green); }
 
   /* ── Image ── */
-  .message-image {
-    max-width: 320px; max-height: 240px; border-radius: var(--radius-sm, 6px);
-    border: 1px solid var(--border); margin-bottom: 8px;
-    cursor: pointer; transition: opacity var(--transition);
+  .message-image-btn {
+    display: inline-block; background: none; border: none; padding: 0;
+    cursor: zoom-in; line-height: 0; position: relative;
   }
-  .message-image:hover { opacity: 0.85; }
+  .message-image {
+    max-width: 400px; max-height: 300px; border-radius: var(--radius-sm, 6px);
+    border: 1px solid var(--border); margin-bottom: 8px;
+    transition: opacity var(--transition), border-color var(--transition);
+  }
+  .image-zoom-hint {
+    position: absolute; bottom: 16px; right: 8px;
+    width: 28px; height: 28px; border-radius: 6px;
+    background: rgba(6, 8, 18, 0.7); backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity var(--transition);
+    pointer-events: none;
+  }
+  .message-image-btn:hover .message-image {
+    border-color: var(--accent-gold-dim, #b07820);
+    opacity: 0.92;
+  }
+  .message-image-btn:hover .image-zoom-hint { opacity: 1; }
 </style>

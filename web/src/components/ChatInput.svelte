@@ -10,6 +10,7 @@
     clearPendingImage,
     send,
   } from "../lib/chat.svelte.js";
+  import { openLightbox } from "./ImageLightbox.svelte";
   import { confirm } from "./ConfirmDialog.svelte";
   import { refreshSessions } from "../lib/sessions.svelte.js";
   import { hasRole } from "../lib/auth.svelte.js";
@@ -48,6 +49,12 @@
 
   // ── Image ──
   let fileInputEl: HTMLInputElement | undefined = $state();
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
   function handleFilePick() { fileInputEl?.click(); }
 
@@ -139,12 +146,23 @@
   <form class="chat-form" onsubmit={(e) => { e.preventDefault(); handleSend(); }}>
     <!-- Image preview bar -->
     {#if getPendingImage()}
+      {@const img = getPendingImage()}
       <div class="image-preview-bar">
         <div class="image-preview-content">
-          <img class="image-preview-thumb" src={getPendingImage()?.dataUrl} alt="Preview" />
-          <span class="image-preview-name">{getPendingImage()?.name}</span>
+          <button class="image-preview-btn" type="button" onclick={() => { if (img) openLightbox(img.dataUrl, img.name); }} aria-label="View full-size image">
+            <img class="image-preview-thumb" src={img?.dataUrl} alt="Preview" />
+            <span class="image-preview-zoom">
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="2"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </span>
+          </button>
+          <div class="image-preview-info">
+            <span class="image-preview-name">{img?.name}</span>
+            {#if img?.fileSize}
+              <span class="image-preview-size">{formatFileSize(img.fileSize)}</span>
+            {/if}
+          </div>
         </div>
-        <button type="button" class="image-preview-remove" onclick={clearPendingImage}>✕</button>
+        <button type="button" class="image-preview-remove" onclick={clearPendingImage} title="Remove image" aria-label="Remove attached image">✕</button>
       </div>
     {/if}
 
@@ -281,16 +299,41 @@
     display: flex; align-items: center; justify-content: space-between;
     gap: 10px; padding: 8px 12px; margin-bottom: 6px;
     background: var(--bg-secondary); border: 1px solid var(--border);
-    border-radius: 6px; animation: fadeIn 0.15s ease-out;
+    border-radius: 8px; animation: fadeIn 0.15s ease-out;
   }
   .image-preview-content { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .image-preview-btn {
+    background: none; border: none; padding: 0; cursor: zoom-in;
+    line-height: 0; position: relative; flex-shrink: 0;
+  }
   .image-preview-thumb {
-    width: 40px; height: 40px; object-fit: cover;
-    border-radius: 4px; border: 1px solid var(--border);
+    width: 44px; height: 44px; object-fit: cover;
+    border-radius: 6px; border: 1px solid var(--border);
+    transition: opacity var(--transition), border-color var(--transition);
+  }
+  .image-preview-zoom {
+    position: absolute; bottom: 2px; right: 2px;
+    width: 18px; height: 18px; border-radius: 4px;
+    background: rgba(6, 8, 18, 0.75);
+    color: rgba(255, 255, 255, 0.7);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity var(--transition);
+    pointer-events: none;
+  }
+  .image-preview-btn:hover .image-preview-thumb {
+    border-color: var(--accent-gold-dim, #b07820); opacity: 0.85;
+  }
+  .image-preview-btn:hover .image-preview-zoom { opacity: 1; }
+  .image-preview-info {
+    display: flex; flex-direction: column; gap: 1px; min-width: 0;
   }
   .image-preview-name {
     font-size: 0.8rem; color: var(--text-secondary);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .image-preview-size {
+    font-size: 0.7rem; color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
   }
   .image-preview-remove {
     background: none; border: 1px solid transparent; color: var(--text-muted);

@@ -9,6 +9,7 @@
   import HelpPanel from "./components/HelpPanel.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import ProposalReview from "./components/ProposalReview.svelte";
+  import ImageLightbox from "./components/ImageLightbox.svelte";
   import TimerBar from "./components/TimerBar.svelte";
   import OfflineBanner from "./components/OfflineBanner.svelte";
   import { getCurrentView, views } from "./lib/router.svelte.js";
@@ -124,6 +125,7 @@
     <HelpPanel open={helpOpen} onclose={() => (helpOpen = false)} />
     <ConfirmDialog />
     <ProposalReview />
+    <ImageLightbox />
   </div>
 {/if}
 

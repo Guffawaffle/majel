@@ -25,7 +25,7 @@ export interface LocalMessage {
 let currentSessionId = $state<string>(crypto.randomUUID());
 let messages = $state<LocalMessage[]>([]);
 let sending = $state(false);
-let pendingImage = $state<(ChatImage & { name: string; dataUrl: string }) | null>(null);
+let pendingImage = $state<(ChatImage & { name: string; dataUrl: string; fileSize: number }) | null>(null);
 
 let localIdSeq = -1;
 function nextLocalId(): number {
@@ -46,7 +46,7 @@ export function isSending(): boolean {
   return sending;
 }
 
-export function getPendingImage(): (ChatImage & { name: string; dataUrl: string }) | null {
+export function getPendingImage(): (ChatImage & { name: string; dataUrl: string; fileSize: number }) | null {
   return pendingImage;
 }
 
@@ -109,6 +109,7 @@ export function attachImage(file: File): Promise<void> {
         mimeType: file.type,
         name: file.name || "image",
         dataUrl,
+        fileSize: file.size,
       };
       resolve();
     };
