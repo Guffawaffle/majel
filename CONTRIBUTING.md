@@ -266,7 +266,7 @@ majel/
 Major architectural decisions are documented in `docs/ADR-*.md`. **Read these before contributing:**
 
 - [ADR-001: Architecture](docs/ADR-001-architecture.md) — Local-first philosophy
-- [ADR-002: Framework](docs/ADR-002-framework.md) — SvelteKit deferred to v1.0
+- [ADR-002: Framework](docs/ADR-002-framework.md) — Original SvelteKit recommendation (superseded by ADR-031)
 - [ADR-003: Epistemic Framework](docs/ADR-003-epistemic-framework.md) — Source attribution
 - [ADR-004: AX-First API](docs/ADR-004-ax-first-api.md) — Envelope pattern
 - [ADR-005: v0.3 Hardening](docs/ADR-005-v03-hardening.md) — Route split, middleware
@@ -287,6 +287,15 @@ Major architectural decisions are documented in `docs/ADR-*.md`. **Read these be
 - [ADR-020: Admiral Console](docs/ADR-020-admiral-console.md) — Admin diagnostic tooling
 - [ADR-021: Postgres Frame Store](docs/ADR-021-postgres-frame-store.md) — Lex memory on PostgreSQL with RLS
 - [ADR-022: Loadout Architecture](docs/ADR-022-loadout-architecture.md) — Store-inversion pattern
+- [ADR-023: Architecture Restructure](docs/ADR-023-architecture-restructure.md) — MVC-by-concern client refactor
+- [ADR-025: AI Tools & Briefing](docs/ADR-025-ai-tools-briefing.md) — Crew composition tools
+- [ADR-027: GenAI SDK Migration](docs/ADR-027-genai-sdk-migration.md) — @google/generative-ai → @google/genai
+- [ADR-028: Data Pipeline Roadmap](docs/ADR-028-data-pipeline-roadmap.md) — CDN data ingest (data.stfc.space)
+- [ADR-029: Package Upgrades](docs/ADR-029-package-upgrades.md) — Dependency modernization
+- [ADR-030: View Consolidation](docs/ADR-030-view-consolidation.md) — 10 views → 7 views
+- [ADR-031: Svelte Migration](docs/ADR-031-svelte-migration.md) — Svelte 5 + Vite (no Kit)
+- [ADR-032: Local-First Cache](docs/ADR-032-local-first-cache.md) — IndexedDB + SWR strategy
+- [ADR-033: Timer Overlay](docs/ADR-033-timer-overlay.md) — Multi-timer with audio alerts
 
 If your change challenges an ADR decision, discuss it in an issue before coding.
 
