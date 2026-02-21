@@ -137,13 +137,17 @@ Implement IndexedDB cache with stale-while-revalidate strategy. Eliminates redun
 | Issue | Phase | Title | Status |
 |---|---|---|---|
 | #107 | 1 | IDB engine + catalog data caching | [x] Done (eb1de1f) |
-| #108 | 2 | Crew entities + invalidation rules | [ ] Not started |
-| #109 | 3 | Optimistic updates + offline indicators | [ ] Not started |
-| #110 | 4 | Settings, ETag, multi-tab, metrics | [ ] Not started |
+| #108 | 2 | Crew entities + invalidation rules | [x] Done (b24a54c) |
+| #109 | 3 | Optimistic updates + offline indicators | [x] Done (b87f657) |
+| #110 | 4 | Settings, ETag, multi-tab, metrics | [x] Done (34a5590) |
 
 **Target:** 0 network calls on tab switch, FleetView < 200ms, < 500 KB bandwidth per session.
 
-**Phase 1 delivered:** `idb-cache.ts` (283 LOC), `cached-fetch.ts` (140), `cache-keys.ts` (87), `cache-store.svelte.ts` (66), `index.ts` (33) + 3 test files (43 tests). Wired into `catalog.ts`, `App.svelte`, `Sidebar.svelte`.
+**All four phases delivered.** 174 web tests across 13 files, 1,361 server tests passing.
+- Phase 1: IDB engine + catalog caching (eb1de1f)
+- Phase 2: 13 crew GETs cached, 18 mutations with invalidation rules (b24a54c)
+- Phase 3: Optimistic create/update/delete with rollback, offline banner, sync queue (b87f657)
+- Phase 4: Settings cache, ETag/304 conditional revalidation, 7-day purge, BroadcastChannel multi-tab, cache metrics in Diagnostics (34a5590)
 
 ---
 
@@ -153,13 +157,13 @@ Implement IndexedDB cache with stale-while-revalidate strategy. Eliminates redun
 
 Multi-timer overlay with 10 concurrent timers, 10 distinct Web Audio sounds, repeating mode, persistent top bar. Used for ship travel timers, resource refresh cycles, event cadence.
 
-- [~] Timer store + tick engine + localStorage persistence
-- [~] Web Audio API sound definitions (10 LCARS-themed sounds)
-- [~] TimerBar / TimerPill / TimerDetail / TimerCreate components
-- [~] Wire into App.svelte above view router
-- [~] Tests
+- [x] Timer store + tick engine + localStorage persistence
+- [x] Web Audio API sound definitions (10 LCARS-themed sounds)
+- [x] TimerBar / TimerPill / TimerDetail / TimerCreate components
+- [x] Wire into App.svelte above view router
+- [x] Tests (31 passing)
 
-**Status:** Copilot agent PR #112 (draft) — 11 files, +1,620 lines, 36 tests. Needs review + CI validation.
+**Status:** Merged via PR #112 (b28e7df). 11 files, +1,620 lines, 31 tests. Issue #111 closed.
 
 ---
 
