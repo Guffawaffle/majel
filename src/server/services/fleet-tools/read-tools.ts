@@ -2143,6 +2143,7 @@ export async function listTargets(
 
 export async function suggestTargets(ctx: ToolContext): Promise<object> {
   const result: Record<string, unknown> = {};
+  let ownedShipsForRecommendations: Array<{ id: string; name: string; faction: string | null }> = [];
 
   if (ctx.referenceStore) {
     const refCounts = await ctx.referenceStore.counts();
@@ -2178,7 +2179,7 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
     const overlays = await ctx.overlayStore.listShipOverlays({ ownershipState: "owned" });
     const allShips = await ctx.referenceStore.listShips();
     const shipMap = new Map(allShips.map(s => [s.id, s]));
-    result.ownedShips = overlays
+    const ownedShips = overlays
       .map((overlay) => {
         const ref = shipMap.get(overlay.refId);
         if (!ref) return null;
@@ -2195,6 +2196,15 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
         };
       })
       .filter(Boolean);
+    result.ownedShips = ownedShips;
+    ownedShipsForRecommendations = ownedShips
+      .map((entry) => ({
+        id: String((entry as Record<string, unknown>).id),
+        name: String((entry as Record<string, unknown>).name),
+        faction: (entry as Record<string, unknown>).faction == null
+          ? null
+          : String((entry as Record<string, unknown>).faction),
+      }));
   }
 
   if (ctx.crewStore) {
@@ -2234,6 +2244,56 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
       officers: targetedOfficers.length,
       ships: targetedShips.length,
     };
+  }
+
+  // ── Faction-aware store access recommendations (#76) ─────
+  // Read faction standings and gate store/blueprint recommendations by access.
+  const standingsData = await readUserJsonSetting<unknown>(ctx, "fleet.factionStandings", {});
+  const factionStandings = normalizeFactionStanding(standingsData.value);
+  if (factionStandings.length > 0 || standingsData.source !== "unavailable") {
+    result.factionStandings = factionStandings;
+  }
+
+  if (ownedShipsForRecommendations.length > 0) {
+    const standingByFaction = new Map(
+      factionStandings.map((row) => [row.faction.trim().toLowerCase(), row]),
+    );
+
+    const eligible: Array<Record<string, unknown>> = [];
+    const blocked: Array<Record<string, unknown>> = [];
+
+    for (const ship of ownedShipsForRecommendations) {
+      if (!ship.faction || ship.faction.toLowerCase() === "neutral") continue;
+      const standing = standingByFaction.get(ship.faction.trim().toLowerCase()) ?? {
+        faction: ship.faction,
+        reputation: null,
+        tier: null,
+        storeAccess: "limited" as const,
+      };
+      if (standing.storeAccess === "open") {
+        eligible.push({
+          shipId: ship.id,
+          shipName: ship.name,
+          faction: ship.faction,
+          access: standing.storeAccess,
+        });
+        continue;
+      }
+      blocked.push({
+        shipId: ship.id,
+        shipName: ship.name,
+        faction: ship.faction,
+        access: standing.storeAccess,
+        reason: "faction_store_access_insufficient",
+      });
+    }
+
+    if (eligible.length > 0 || blocked.length > 0) {
+      result.storeRecommendations = {
+        eligibleBlueprintAccess: eligible,
+        blockedByFactionAccess: blocked,
+      };
+    }
   }
 
   // ── "Ready to Upgrade" notifications ─────────────────────

@@ -1987,6 +1987,64 @@ describe("suggest_targets", () => {
     expect(result.existingTargets).toEqual([]);
     expect(result).not.toHaveProperty("catalogSize");
   });
+
+  it("adds faction-gated store recommendations from faction standings", async () => {
+    const ctx: ToolContext = {
+      userId: "00000000-0000-0000-0000-000000000001",
+      userSettingsStore: createMockUserSettingsStore(),
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn()
+          .mockResolvedValueOnce([FIXTURE_SHIP_OVERLAY])
+          .mockResolvedValueOnce([]),
+      }),
+    };
+
+    const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
+    const recommendations = result.storeRecommendations as Record<string, unknown>;
+    expect(recommendations).toBeDefined();
+
+    const blocked = recommendations.blockedByFactionAccess as Array<Record<string, unknown>>;
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0].shipName).toBe("USS Enterprise");
+    expect(blocked[0].faction).toBe("Federation");
+    expect(blocked[0].reason).toBe("faction_store_access_insufficient");
+  });
+
+  it("marks ship store recommendation eligible when faction access is open", async () => {
+    const userSettingsStore = createMockUserSettingsStore({
+      getForUser: vi.fn().mockImplementation(async (_userId: string, key: string) => {
+        if (key === "fleet.factionStandings") {
+          return {
+            key,
+            value: JSON.stringify({ Federation: { reputation: 15000000, tier: "Celebrated" } }),
+            source: "user" as const,
+          };
+        }
+        return { key, value: "[]", source: "default" as const };
+      }),
+    });
+
+    const ctx: ToolContext = {
+      userId: "00000000-0000-0000-0000-000000000001",
+      userSettingsStore,
+      referenceStore: createMockReferenceStore(),
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn()
+          .mockResolvedValueOnce([FIXTURE_SHIP_OVERLAY])
+          .mockResolvedValueOnce([]),
+      }),
+    };
+
+    const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
+    const recommendations = result.storeRecommendations as Record<string, unknown>;
+    const eligible = recommendations.eligibleBlueprintAccess as Array<Record<string, unknown>>;
+    expect(eligible).toHaveLength(1);
+    expect(eligible[0].shipName).toBe("USS Enterprise");
+    expect(eligible[0].access).toBe("open");
+  });
 });
 
 describe("detect_target_conflicts", () => {
