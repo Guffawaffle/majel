@@ -171,7 +171,7 @@ function admiralEnvelopeCases(): RouteErrorCase[] {
       },
       expectedStatus: 400,
       expectedCode: "INVALID_PARAM",
-      expectedMessageFragment: "temporarily disabled",
+      expectedMessageFragment: 'format must be "csv"',
     },
     {
       name: "admiral token reaches catalog officers route",

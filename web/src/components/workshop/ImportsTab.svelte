@@ -35,7 +35,7 @@
   const { onCommitted }: Props = $props();
 
   let fileName = $state("");
-  let format = $state<"csv" | "xlsx">("csv");
+  let format = $state<"csv">("csv");
   let pastedCsv = $state("");
   let loading = $state(false);
   let error = $state("");
@@ -75,7 +75,11 @@
     if (!file) return;
 
     fileName = file.name;
-    format = file.name.toLowerCase().endsWith(".xlsx") ? "xlsx" : "csv";
+    if (file.name.toLowerCase().endsWith(".xlsx")) {
+      error = "XLSX files are not supported. Please convert to CSV before importing.";
+      return;
+    }
+    format = "csv";
     error = "";
 
     try {
@@ -104,7 +108,7 @@
     }
   }
 
-  async function runAnalyzeAndParse(input: { fileName: string; contentBase64: string; format: "csv" | "xlsx" }) {
+  async function runAnalyzeAndParse(input: { fileName: string; contentBase64: string; format: "csv" }) {
     loading = true;
     error = "";
     status = "";

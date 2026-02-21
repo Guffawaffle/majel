@@ -506,7 +506,7 @@ export interface ImportMappingSuggestion {
 
 export interface ImportAnalysis {
   fileName: string;
-  format: "csv" | "xlsx";
+  format: "csv";
   rowCount: number;
   headers: string[];
   sampleRows: string[][];
@@ -516,7 +516,7 @@ export interface ImportAnalysis {
 
 export interface ParsedImportData {
   fileName: string;
-  format: "csv" | "xlsx";
+  format: "csv";
   headers: string[];
   rows: string[][];
   sampleRows: string[][];

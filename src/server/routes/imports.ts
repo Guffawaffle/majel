@@ -77,12 +77,8 @@ export function createImportRoutes(appState: AppState): Router {
     if (contentBase64.length > 15_000_000) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "contentBase64 exceeds size limit", 400);
     }
-    if (format !== "csv" && format !== "xlsx") {
-      return sendFail(res, ErrorCode.INVALID_PARAM, 'format must be "csv" or "xlsx"', 400);
-    }
-    // ADR-032: xlsx disabled until SheetJS vulnerability is resolved (GHSA-4r6h-8v6p-xvw6)
-    if (format === "xlsx") {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "XLSX import is temporarily disabled for security reasons. Please convert to CSV.", 400);
+    if (format !== "csv") {
+      return sendFail(res, ErrorCode.INVALID_PARAM, 'format must be "csv"', 400);
     }
 
     try {
@@ -716,12 +712,8 @@ function validateSourcePayload(payload: Record<string, unknown>):
   if (contentBase64.length > 15_000_000) {
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: "contentBase64 exceeds size limit" };
   }
-  if (format !== "csv" && format !== "xlsx") {
-    return { ok: false, code: ErrorCode.INVALID_PARAM, message: 'format must be "csv" or "xlsx"' };
-  }
-  // ADR-032: xlsx disabled until SheetJS vulnerability is resolved (GHSA-4r6h-8v6p-xvw6)
-  if (format === "xlsx") {
-    return { ok: false, code: ErrorCode.INVALID_PARAM, message: "XLSX import is temporarily disabled for security reasons. Please convert to CSV." };
+  if (format !== "csv") {
+    return { ok: false, code: ErrorCode.INVALID_PARAM, message: 'format must be "csv"' };
   }
 
   return {

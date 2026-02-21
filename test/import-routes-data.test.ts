@@ -82,7 +82,7 @@ const IMPORT_MAP_CASES = BASE_IMPORT_MAP_PAYLOAD_CASES;
 const IMPORT_COMMIT_CASES = BASE_IMPORT_COMMIT_PAYLOAD_CASES;
 
 describe("Import routes — data interactions", () => {
-  it("POST /api/import/analyze validates xlsx disabled", async () => {
+  it("POST /api/import/analyze validates csv-only format", async () => {
     const res = await testRequest(app)
       .post("/api/import/analyze")
       .send({
@@ -92,7 +92,7 @@ describe("Import routes — data interactions", () => {
       });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toContain("XLSX import is temporarily disabled");
+    expect(res.body.error.message).toContain('format must be "csv"');
   });
 
   it("POST /api/import/parse parses csv payload", async () => {

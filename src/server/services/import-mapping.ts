@@ -1,7 +1,6 @@
-import * as XLSX from "xlsx";
 import type { GeminiEngine } from "./gemini/index.js";
 
-export type ImportFormat = "csv" | "xlsx";
+export type ImportFormat = "csv";
 
 export interface ImportAnalyzeInput {
   fileName: string;
@@ -223,20 +222,6 @@ export function resolveMappedRows(
 
 function parseRows(input: ImportAnalyzeInput): string[][] {
   const buffer = Buffer.from(input.contentBase64, "base64");
-
-  if (input.format === "xlsx") {
-    const workbook = XLSX.read(buffer, { type: "buffer" });
-    const firstSheet = workbook.SheetNames[0];
-    if (!firstSheet) return [];
-    const sheet = workbook.Sheets[firstSheet];
-    const rows = XLSX.utils.sheet_to_json<string[]>(sheet, {
-      header: 1,
-      raw: false,
-      blankrows: false,
-      defval: "",
-    });
-    return rows.map((row) => row.map((cell) => String(cell ?? "")));
-  }
 
   return parseCsv(buffer.toString("utf8"));
 }
