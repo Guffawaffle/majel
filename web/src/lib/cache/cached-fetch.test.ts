@@ -6,7 +6,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "fake-indexeddb/auto";
 import { openCache, closeCache, destroyCache, cacheSet, cacheGet } from "./idb-cache.js";
 import { cachedFetch, networkFetch, invalidateForMutation } from "./cached-fetch.js";
-import type { CachedResult } from "./cached-fetch.js";
 
 describe("cachedFetch", () => {
   beforeEach(async () => {
