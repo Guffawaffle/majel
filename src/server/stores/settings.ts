@@ -212,6 +212,30 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     min: 1,
     max: 999,
   },
+  {
+    key: "fleet.activeEvents",
+    category: "fleet",
+    label: "Active Events",
+    description: "JSON array of current STFC events with scoring metadata.",
+    type: "json",
+    default: "[]",
+  },
+  {
+    key: "fleet.awayTeams",
+    category: "fleet",
+    label: "Away Team Missions",
+    description: "JSON array of active Away Team assignments and return times.",
+    type: "json",
+    default: "[]",
+  },
+  {
+    key: "fleet.factionStandings",
+    category: "fleet",
+    label: "Faction Standings",
+    description: "JSON object/array of faction reputation values and tier labels.",
+    type: "json",
+    default: "{}",
+  },
 ];
 
 /** Lookup map for fast access. */

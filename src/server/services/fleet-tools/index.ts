@@ -29,6 +29,9 @@ import {
   listIntents,
   listResearch,
   listInventory,
+  listActiveEvents,
+  listAwayTeams,
+  getFactionStanding,
   webLookup,
   calculateUpgradePath,
   estimateAcquisitionTime,
@@ -129,6 +132,12 @@ async function dispatchTool(
       );
     case "list_inventory":
       return listInventory(args.category as string | undefined, args.query as string | undefined, ctx);
+    case "list_active_events":
+      return listActiveEvents(ctx);
+    case "list_away_teams":
+      return listAwayTeams(ctx);
+    case "get_faction_standing":
+      return getFactionStanding(args.faction as string | undefined, ctx);
     case "web_lookup":
       return webLookup(
         String(args.domain ?? ""),

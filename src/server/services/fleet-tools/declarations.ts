@@ -16,6 +16,7 @@ import type { TargetStore } from "../../stores/target-store.js";
 import type { ReceiptStore } from "../../stores/receipt-store.js";
 import type { ResearchStore } from "../../stores/research-store.js";
 import type { InventoryStore } from "../../stores/inventory-store.js";
+import type { UserSettingsStore } from "../../stores/user-settings-store.js";
 
 // ─── Tool Context ───────────────────────────────────────────
 
@@ -36,6 +37,7 @@ export interface ToolContext {
   receiptStore?: ReceiptStore | null;
   researchStore?: ResearchStore | null;
   inventoryStore?: InventoryStore | null;
+  userSettingsStore?: UserSettingsStore | null;
 }
 
 /**
@@ -253,6 +255,37 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         query: {
           type: Type.STRING,
           description: "Optional name filter (partial match), e.g. 'ore' or 'latinum'.",
+        },
+      },
+    },
+  },
+  {
+    name: "list_active_events",
+    description:
+      "List active in-game events from the Admiral's live context feed. " +
+      "Returns event name, type, scoring parameters, and start/end windows. " +
+      "Call this when advising daily priorities, point optimization, or dock rotation decisions.",
+    // No parameters
+  },
+  {
+    name: "list_away_teams",
+    description:
+      "List Away Team missions currently locking officers, including mission names and return times. " +
+      "Call this before recommending crews so unavailable officers are excluded.",
+    // No parameters
+  },
+  {
+    name: "get_faction_standing",
+    description:
+      "Get current faction/syndicate standing and access tiers for the Admiral. " +
+      "Optionally filter by faction name. " +
+      "Call this when recommendation quality depends on store/reputation unlocks.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        faction: {
+          type: Type.STRING,
+          description: "Optional faction filter (e.g. 'Federation', 'Klingon', 'Romulan', 'Syndicate', 'Rogue').",
         },
       },
     },

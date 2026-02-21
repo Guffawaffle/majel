@@ -507,7 +507,7 @@ async function boot(): Promise<void> {
       : undefined;
 
     // Build a ToolContextFactory that creates user-scoped ToolContext per chat() call
-    const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStoreFactory || state.targetStoreFactory || state.researchStoreFactory || state.inventoryStoreFactory) ? {
+    const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStoreFactory || state.targetStoreFactory || state.researchStoreFactory || state.inventoryStoreFactory || state.userSettingsStore) ? {
       forUser(userId: string) {
         return {
           userId,
@@ -518,6 +518,7 @@ async function boot(): Promise<void> {
           receiptStore: state.receiptStoreFactory?.forUser(userId) ?? null,
           researchStore: state.researchStoreFactory?.forUser(userId) ?? null,
           inventoryStore: state.inventoryStoreFactory?.forUser(userId) ?? null,
+          userSettingsStore: state.userSettingsStore,
         };
       },
     } : null;
