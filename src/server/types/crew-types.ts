@@ -32,7 +32,7 @@ export const SEED_INTENTS: SeedIntent[] = [
   { key: "mining-ore", label: "Ore Mining", category: "mining", description: "Collecting raw ore from nodes", icon: "⛏️", sortOrder: 12 },
   { key: "mining-tri", label: "Tritanium Mining", category: "mining", description: "Collecting tritanium from refined nodes", icon: "🔩", sortOrder: 13 },
   { key: "mining-dil", label: "Dilithium Mining", category: "mining", description: "Collecting dilithium from refined nodes", icon: "🔮", sortOrder: 14 },
-  { key: "mining-para", label: "Parasteel Mining", category: "mining", description: "Collecting parasteel from refined nodes", icon: "🛡️", sortOrder: 15 },
+  { key: "mining-para", label: "Parsteel Mining", category: "mining", description: "Collecting parsteel from refined nodes", icon: "🛡️", sortOrder: 15 },
   { key: "mining-lat", label: "Latinum Mining", category: "mining", description: "Collecting latinum from nodes", icon: "💰", sortOrder: 16 },
   { key: "mining-iso", label: "Isogen Mining", category: "mining", description: "Collecting isogen from nodes", icon: "☢️", sortOrder: 17 },
   { key: "mining-data", label: "Data Mining", category: "mining", description: "Collecting data from nodes", icon: "📊", sortOrder: 18 },

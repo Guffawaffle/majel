@@ -220,6 +220,10 @@
     Goal first, then crew. Suggestions are transparent and editable — no auto-locking.
   </p>
 
+  <p class="qc-note">
+    Activation rules: Captain Maneuver (CM) only works in the Captain slot. Officer Ability (OA) applies to all bridge officers (including Captain) but not below decks. Below-Deck Ability (BDA) only applies in below-deck slots.
+  </p>
+
   <div class="ws-form qc-config">
     <div class="ws-form-grid">
       <label class="ws-field">

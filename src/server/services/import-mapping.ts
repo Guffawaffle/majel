@@ -1,5 +1,5 @@
 import type { GeminiEngine } from "./gemini/index.js";
-import { read, utils } from "xlsx";
+import ExcelJS from "exceljs";
 
 export type ImportFormat = "csv" | "tsv" | "xlsx";
 
@@ -125,7 +125,7 @@ export async function analyzeImport(
   input: ImportAnalyzeInput,
   geminiEngine: GeminiEngine | null,
 ): Promise<ImportAnalyzeResult> {
-  const rows = parseRows(input);
+  const rows = await parseRows(input);
   if (rows.length === 0) {
     return {
       fileName: input.fileName,
@@ -162,8 +162,8 @@ export async function analyzeImport(
   };
 }
 
-export function parseImportData(input: ImportAnalyzeInput): ParsedImportData {
-  const rows = parseRows(input).filter((r) => r.some((cell) => cell.trim().length > 0));
+export async function parseImportData(input: ImportAnalyzeInput): Promise<ParsedImportData> {
+  const rows = (await parseRows(input)).filter((r) => r.some((cell) => cell.trim().length > 0));
   const headers = rows[0]?.map((cell) => cell.trim()) ?? [];
   const dataRows = rows.slice(1).map((row) => normalizeRowLength(row, headers.length));
   const sampleRows = dataRows.slice(0, 3);
@@ -244,7 +244,7 @@ export function resolveMappedRows(
   return { resolvedRows, unresolved };
 }
 
-function parseRows(input: ImportAnalyzeInput): string[][] {
+async function parseRows(input: ImportAnalyzeInput): Promise<string[][]> {
   const buffer = Buffer.from(input.contentBase64, "base64");
 
   if (input.format === "xlsx") {
@@ -417,22 +417,21 @@ function parseDelimited(text: string, delimiter: string): string[][] {
   return rows;
 }
 
-function parseXlsxFirstSheet(buffer: Buffer): string[][] {
-  const workbook = read(buffer, { type: "buffer" });
-  const firstSheetName = workbook.SheetNames[0];
-  if (!firstSheetName) return [];
+async function parseXlsxFirstSheet(buffer: Buffer): Promise<string[][]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
 
-  const worksheet = workbook.Sheets[firstSheetName];
+  const worksheet = workbook.worksheets[0];
   if (!worksheet) return [];
 
-  const rows = utils.sheet_to_json<unknown[]>(worksheet, {
-    header: 1,
-    raw: false,
-    defval: "",
-    blankrows: false,
+  const rows: string[][] = [];
+  worksheet.eachRow((row) => {
+    rows.push(row.values
+      ? (row.values as unknown[]).slice(1).map((cell) => String(cell ?? ""))
+      : []);
   });
 
-  return rows.map((row) => row.map((cell) => String(cell ?? "")));
+  return rows;
 }
 
 function detectKnownSchemaSuggestions(headers: string[]): ImportSuggestion[] | null {

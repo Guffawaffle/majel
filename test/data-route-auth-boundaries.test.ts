@@ -165,9 +165,9 @@ function admiralEnvelopeCases(): RouteErrorCase[] {
       path: "/api/import/parse",
       headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
       body: {
-        fileName: "fleet.xlsx",
-        contentBase64: Buffer.from("fake", "utf8").toString("base64"),
-        format: "xlsx",
+        fileName: "fleet.csv",
+        contentBase64: Buffer.from("Officer,Level\nKirk,20\n", "utf8").toString("base64"),
+        format: "csv",
       },
       expectedStatus: 200,
     },

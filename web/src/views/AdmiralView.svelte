@@ -3,7 +3,6 @@
    * AdmiralView — User management, invite codes & session control.
    * Admiral-gated (router enforces role check).
    */
-  import { onMount } from "svelte";
   import {
     adminListUsers,
     adminSetRole,
@@ -42,20 +41,29 @@
 
   // ── Lifecycle ──
 
-  onMount(() => { refresh(); });
+  // Track which tabs have loaded data to avoid redundant fetches
+  const loaded = new Set<string>();
 
-  async function refresh() {
+  $effect(() => {
+    const tab = activeTab; // track reactive dependency
+    if (!loaded.has(tab)) {
+      refreshActiveTab(tab);
+    }
+  });
+
+  async function refreshActiveTab(tab?: typeof activeTab) {
+    const target = tab ?? activeTab;
     loading = true;
     error = "";
     try {
-      const [u, i, s] = await Promise.all([
-        adminListUsers(),
-        adminListInvites(),
-        adminListSessions(),
-      ]);
-      users = u;
-      invites = i;
-      sessions = s;
+      if (target === "users") {
+        users = await adminListUsers();
+      } else if (target === "invites") {
+        invites = await adminListInvites();
+      } else if (target === "sessions") {
+        sessions = await adminListSessions();
+      }
+      loaded.add(target);
     } catch (err: unknown) {
       error = err instanceof Error ? err.message : "Failed to load data.";
     } finally {

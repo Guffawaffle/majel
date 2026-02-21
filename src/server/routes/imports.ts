@@ -96,7 +96,7 @@ export function createImportRoutes(appState: AppState): Router {
     if (!validation.ok) return sendFail(res, validation.code, validation.message, 400);
 
     try {
-      const parsed = parseImportData(validation.input);
+      const parsed = await parseImportData(validation.input);
       return sendOk(res, { parsed });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Express } from "express";
-import { utils, write } from "xlsx";
+import ExcelJS from "exceljs";
 import { createApp } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 import { createOverlayStore, type OverlayStore } from "../src/server/stores/overlay-store.js";
@@ -84,18 +84,17 @@ const IMPORT_COMMIT_CASES = BASE_IMPORT_COMMIT_PAYLOAD_CASES;
 
 describe("Import routes — data interactions", () => {
   it("POST /api/import/analyze accepts xlsx format", async () => {
-    const workbook = utils.book_new();
-    const sheet = utils.aoa_to_sheet([
-      ["Officer", "Level"],
-      ["Kirk", "20"],
-    ]);
-    utils.book_append_sheet(workbook, sheet, "First");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("First");
+    sheet.addRow(["Officer", "Level"]);
+    sheet.addRow(["Kirk", "20"]);
+    const xlsxBuffer = await workbook.xlsx.writeBuffer();
 
     const res = await testRequest(app)
       .post("/api/import/analyze")
       .send({
         fileName: "fleet.xlsx",
-        contentBase64: write(workbook, { type: "base64", bookType: "xlsx" }),
+        contentBase64: Buffer.from(xlsxBuffer).toString("base64"),
         format: "xlsx",
       });
 
@@ -136,19 +135,16 @@ describe("Import routes — data interactions", () => {
   });
 
   it("POST /api/import/parse parses first sheet from xlsx payload", async () => {
-    const workbook = utils.book_new();
-    const firstSheet = utils.aoa_to_sheet([
-      ["Officer", "Level"],
-      ["Kirk", "20"],
-    ]);
-    const secondSheet = utils.aoa_to_sheet([
-      ["Officer", "Level"],
-      ["Spock", "25"],
-    ]);
-    utils.book_append_sheet(workbook, firstSheet, "First");
-    utils.book_append_sheet(workbook, secondSheet, "Second");
+    const workbook = new ExcelJS.Workbook();
+    const firstSheet = workbook.addWorksheet("First");
+    firstSheet.addRow(["Officer", "Level"]);
+    firstSheet.addRow(["Kirk", "20"]);
+    const secondSheet = workbook.addWorksheet("Second");
+    secondSheet.addRow(["Officer", "Level"]);
+    secondSheet.addRow(["Spock", "25"]);
+    const xlsxBuffer = await workbook.xlsx.writeBuffer();
 
-    const xlsxBase64 = write(workbook, { type: "base64", bookType: "xlsx" });
+    const xlsxBase64 = Buffer.from(xlsxBuffer).toString("base64");
 
     const res = await testRequest(app)
       .post("/api/import/parse")

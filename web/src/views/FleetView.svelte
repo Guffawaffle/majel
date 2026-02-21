@@ -15,7 +15,6 @@
   import {
     fetchBridgeCores,
     fetchCrewLoadouts,
-    fetchBelowDeckPolicies,
     fetchReservations,
     fetchEffectiveState,
     fetchCrewDocks,
@@ -30,7 +29,6 @@
     OfficerConflict,
     BridgeCoreWithMembers,
     Loadout,
-    BelowDeckPolicy,
     Dock,
     EffectiveDockState,
   } from "../lib/types.js";
@@ -66,6 +64,7 @@
   let reservationMap = $state<Map<string, OfficerReservation>>(new Map());
   let crossRefDirty = $state(true);
   let crossRefLastBuiltAt = 0;
+  let crossRefLoadedTabs = new Set<string>();
 
   const CROSS_REF_REBUILD_MS = 60_000;
 
@@ -134,32 +133,58 @@
   });
   const statTargetedCount = $derived(filtered.filter((it) => it.target).length);
 
-  // ── Cross-ref builder ──
+  // ── Cross-ref builder (tab-scoped lazy loading) ──
 
   async function buildCrossRefs() {
     try {
-      const [cores, loadouts, policies, reservations, effective, docks] = await Promise.all([
-        fetchBridgeCores(),
-        fetchCrewLoadouts(),
-        fetchBelowDeckPolicies(),
-        fetchReservations(),
-        fetchEffectiveState(),
-        fetchCrewDocks(),
+      // Only fetch the datasets actually needed for the active tab.
+      // fetchBelowDeckPolicies() was previously fetched but never consumed.
+      const needOfficerRefs = ui.activeTab === "officers" || !crossRefLoadedTabs.has("officers");
+      const needShipRefs = ui.activeTab === "ships" || !crossRefLoadedTabs.has("ships");
+
+      const fetches: Promise<unknown>[] = [];
+
+      // Shared: effectiveState needed by both tabs (conflicts + dock mapping)
+      const effectivePromise = (needOfficerRefs || needShipRefs)
+        ? fetchEffectiveState()
+        : Promise.resolve(null);
+
+      // Officer-specific
+      const coresPromise = needOfficerRefs ? fetchBridgeCores() : Promise.resolve(null);
+      const reservationsPromise = needOfficerRefs ? fetchReservations() : Promise.resolve(null);
+
+      // Ship-specific
+      const loadoutsPromise = needShipRefs ? fetchCrewLoadouts() : Promise.resolve(null);
+      const docksPromise = needShipRefs ? fetchCrewDocks() : Promise.resolve(null);
+
+      const [cores, loadouts, reservations, effective, docks] = await Promise.all([
+        coresPromise,
+        loadoutsPromise,
+        reservationsPromise,
+        effectivePromise,
+        docksPromise,
       ]);
 
       const maps = buildFleetCrossRefMaps({
-        cores,
-        loadouts,
-        reservations,
+        cores: cores ?? [],
+        loadouts: loadouts ?? [],
+        reservations: reservations ?? [],
         effective,
-        docks,
+        docks: docks ?? [],
       });
 
-      officerUsedIn = maps.officerUsedIn;
-      shipUsedIn = maps.shipUsedIn;
-      officerConflicts = maps.officerConflicts;
-      shipDockMap = maps.shipDockMap;
-      reservationMap = maps.reservationMap;
+      if (needOfficerRefs) {
+        officerUsedIn = maps.officerUsedIn;
+        officerConflicts = maps.officerConflicts;
+        reservationMap = maps.reservationMap;
+        crossRefLoadedTabs.add("officers");
+      }
+      if (needShipRefs) {
+        shipUsedIn = maps.shipUsedIn;
+        shipDockMap = maps.shipDockMap;
+        crossRefLoadedTabs.add("ships");
+      }
+
       crossRefDirty = false;
       crossRefLastBuiltAt = Date.now();
     } catch (err) {
@@ -169,7 +194,8 @@
 
   async function maybeBuildCrossRefs() {
     const stale = Date.now() - crossRefLastBuiltAt > CROSS_REF_REBUILD_MS;
-    if (crossRefDirty || stale) {
+    const tabMissing = !crossRefLoadedTabs.has(ui.activeTab);
+    if (crossRefDirty || stale || tabMissing) {
       await buildCrossRefs();
     }
   }
@@ -311,6 +337,7 @@
         reservationMap = m;
       }
       crossRefDirty = true;
+      crossRefLoadedTabs.clear();
     } catch (err) {
       console.error("Reservation save failed:", err);
     }

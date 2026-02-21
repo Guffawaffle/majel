@@ -5,6 +5,22 @@ const WEB_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
 const ROBOTS_CACHE_TTL_MS = 60 * 60 * 1000;
 const WEB_LOOKUP_RATE_LIMIT_MAX = 5;
 const WEB_LOOKUP_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const WEB_LOOKUP_FETCH_TIMEOUT_MS = 10_000;
+const WEB_LOOKUP_MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // 2 MB
+
+/** Hardened fetch options: block redirects, enforce timeout. */
+function safeFetchInit(): RequestInit {
+  return { redirect: "error", signal: AbortSignal.timeout(WEB_LOOKUP_FETCH_TIMEOUT_MS) };
+}
+
+/** Read response body with a size cap to prevent memory abuse. */
+async function safeReadText(response: Response): Promise<string> {
+  const contentLength = response.headers?.get?.("content-length");
+  if (contentLength && Number(contentLength) > WEB_LOOKUP_MAX_RESPONSE_BYTES) {
+    throw new Error(`Response too large (${contentLength} bytes)`);
+  }
+  return response.text();
+}
 
 const webLookupCache = new Map<string, { expiresAt: number; payload: object }>();
 const webLookupRateLimit = new Map<string, number[]>();
@@ -164,11 +180,11 @@ async function checkRobotsAllowed(domain: string): Promise<{ allowed: boolean; s
   }
 
   try {
-    const response = await fetch(`https://${domain}/robots.txt`);
+    const response = await fetch(`https://${domain}/robots.txt`, safeFetchInit());
     if (!response.ok) {
       return { allowed: false, source: "network", reason: `robots_fetch_failed_${response.status}` };
     }
-    const content = (await response.text()).toLowerCase();
+    const content = (await safeReadText(response)).toLowerCase();
     const disallowAll = /user-agent:\s*\*[\s\S]*?disallow:\s*\//m.test(content);
     robotsCache.set(domain, { checkedAt: now, disallowAll });
     return {
@@ -194,7 +210,7 @@ async function lookupFandom(
   url.searchParams.set("redirects", "1");
   url.searchParams.set("titles", query);
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), safeFetchInit());
   if (!response.ok) {
     return { error: `Lookup failed (${response.status}) for ${domain}` };
   }
@@ -227,12 +243,12 @@ async function lookupStfcSpace(
   query: string,
   entityType: "officer" | "ship" | "event" | "auto",
 ): Promise<object> {
-  const response = await fetch(`https://${domain}/search?q=${encodeURIComponent(query)}`);
+  const response = await fetch(`https://${domain}/search?q=${encodeURIComponent(query)}`, safeFetchInit());
   if (!response.ok) {
     return { error: `Lookup failed (${response.status}) for ${domain}` };
   }
 
-  const searchHtml = await response.text();
+  const searchHtml = await safeReadText(response);
   const detailPath = findStfcSpaceDetailPath(searchHtml, entityType);
   if (!detailPath) {
     return {
@@ -247,11 +263,11 @@ async function lookupStfcSpace(
     };
   }
 
-  const detailResponse = await fetch(`https://${domain}${detailPath}`);
+  const detailResponse = await fetch(`https://${domain}${detailPath}`, safeFetchInit());
   if (!detailResponse.ok) {
     return { error: `Lookup failed (${detailResponse.status}) for ${domain}${detailPath}` };
   }
-  const detailHtml = await detailResponse.text();
+  const detailHtml = await safeReadText(detailResponse);
 
   const titleMatch = detailHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
   const headingMatch = detailHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);

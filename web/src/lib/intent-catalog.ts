@@ -13,7 +13,7 @@ export const INTENT_CATALOG: readonly IntentDef[] = [
   { key: "mining-ore",       label: "Ore Mining",        icon: "⛏️",  category: "mining" },
   { key: "mining-tri",       label: "Tritanium",         icon: "🔩",  category: "mining" },
   { key: "mining-dil",       label: "Dilithium",         icon: "🔮",  category: "mining" },
-  { key: "mining-para",      label: "Parasteel",         icon: "🛡️",  category: "mining" },
+  { key: "mining-para",      label: "Parsteel",          icon: "🛡️",  category: "mining" },
   { key: "mining-lat",       label: "Latinum",           icon: "💰",  category: "mining" },
   { key: "mining-iso",       label: "Isogen",            icon: "☢️",  category: "mining" },
   { key: "mining-data",      label: "Data",              icon: "📊",  category: "mining" },
