@@ -61,6 +61,14 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     type: "string",
     default: "default",
   },
+  {
+    key: "display.helpPinned",
+    category: "display",
+    label: "Help Panel Pinned",
+    description: "Whether the contextual help panel is pinned in layout mode.",
+    type: "boolean",
+    default: "false",
+  },
 
   // ── Intent ──────────────────────────────────────────────────
   {

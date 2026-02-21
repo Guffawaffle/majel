@@ -17,6 +17,7 @@
   import { initCache, teardownCache } from "./lib/cache/index.js";
   import { getOnline } from "./lib/network-status.svelte.js";
   import { getQueue, replayQueue } from "./lib/cache/sync-queue.svelte.js";
+  import { loadUserSetting, saveUserSetting } from "./lib/api/user-settings.js";
   import type { Role } from "./lib/types.js";
 
   import ChatView from "./views/ChatView.svelte";
@@ -42,8 +43,17 @@
 
   let sidebarOpen = $state(false);
   let helpOpen = $state(false);
+  let helpPinned = $state(false);
 
   function toggleHelp() { helpOpen = !helpOpen; }
+
+  function setHelpPinned(next: boolean) {
+    helpPinned = next;
+    if (next) helpOpen = true;
+    saveUserSetting("display.helpPinned", next ? "true" : "false").catch(() => {
+      // Non-fatal in offline/error modes.
+    });
+  }
 
   /** Global ? keyboard shortcut (only when not typing in an input). */
   function handleGlobalKeydown(e: KeyboardEvent) {
@@ -62,6 +72,8 @@
 
   onMount(async () => {
     await fetchMe();
+    const pinnedSetting = await loadUserSetting("display.helpPinned", "false");
+    helpPinned = pinnedSetting === "true" || pinnedSetting === "1";
     const user = getUser();
     if (user) {
       await initCache(user.id);
@@ -124,7 +136,12 @@
       <div class="sidebar-overlay" onclick={() => (sidebarOpen = false)}></div>
     {/if}
 
-    <HelpPanel open={helpOpen} onclose={() => (helpOpen = false)} />
+    <HelpPanel
+      open={helpOpen}
+      pinned={helpPinned}
+      onclose={() => (helpOpen = false)}
+      ontogglepin={() => setHelpPinned(!helpPinned)}
+    />
     <ConfirmDialog />
     <ProposalReview />
     <ImageLightbox />

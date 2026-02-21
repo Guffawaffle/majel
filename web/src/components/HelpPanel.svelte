@@ -15,10 +15,12 @@
 
   interface Props {
     open: boolean;
+    pinned?: boolean;
     onclose: () => void;
+    ontogglepin?: () => void;
   }
 
-  const { open, onclose }: Props = $props();
+  const { open, pinned = false, onclose, ontogglepin }: Props = $props();
 
   // ── State ──
 
@@ -53,16 +55,19 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if open}
+  {#if !pinned}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="help-backdrop" class:visible={open} onclick={handleBackdropClick}></div>
+  {/if}
 
-  <aside class="help-panel" class:open aria-label="Help">
+  <aside class="help-panel" class:open class:pinned aria-label="Help">
     <div class="help-header">
       <div class="help-header-text">
         <h3 class="help-title">{help.title}</h3>
         <p class="help-intro">{help.intro}</p>
       </div>
+      <button class="help-pin" class:active={pinned} onclick={ontogglepin} aria-label={pinned ? "Unpin help" : "Pin help"} title={pinned ? "Unpin panel" : "Pin panel"}>📌</button>
       <button class="help-close" onclick={onclose} aria-label="Close help">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="4" y1="4" x2="14" y2="14" /><line x1="14" y1="4" x2="4" y2="14" />
@@ -163,6 +168,16 @@
     overflow: hidden;
   }
   .help-panel.open { transform: translateX(0); }
+  .help-panel.pinned {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    height: 100%;
+    transform: none;
+    transition: width 0.25s ease;
+    z-index: 1;
+  }
 
   /* ── Header ── */
   .help-header {
@@ -198,6 +213,23 @@
     flex-shrink: 0;
   }
   .help-close:hover { color: var(--text-primary); border-color: var(--text-muted); }
+  .help-pin {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    padding: 6px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .help-pin:hover,
+  .help-pin.active {
+    color: var(--accent-blue);
+    border-color: var(--accent-blue-dim);
+  }
 
   /* ── Body ── */
   .help-body {
