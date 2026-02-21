@@ -1564,6 +1564,68 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
     };
   }
 
+  // ── "Ready to Upgrade" notifications ─────────────────────
+  // Check owned ships against inventory to find those with enough resources
+  // for the next tier, surfacing actionable upgrade opportunities.
+  if (ctx.inventoryStore && ctx.overlayStore && ctx.referenceStore) {
+    try {
+      const ownedShipOverlays = await ctx.overlayStore.listShipOverlays({ ownershipState: "owned" });
+      const allShips = await ctx.referenceStore.listShips();
+      const shipRefMap = new Map(allShips.map(s => [s.id, s]));
+      const inventory = await ctx.inventoryStore.listItems();
+      const inventoryMap = new Map<string, number>();
+      for (const inv of inventory) {
+        const key = normalizeToken(inv.name);
+        inventoryMap.set(key, (inventoryMap.get(key) ?? 0) + inv.quantity);
+      }
+
+      const readyToUpgrade: Array<{
+        shipId: string;
+        shipName: string;
+        currentTier: number;
+        nextTier: number;
+        coveragePct: number;
+      }> = [];
+
+      for (const overlay of ownedShipOverlays) {
+        const ref = shipRefMap.get(overlay.refId);
+        if (!ref?.tiers || !Array.isArray(ref.tiers)) continue;
+        const currentTier = overlay.tier ?? ref.tier ?? 1;
+        const nextTier = currentTier + 1;
+        const maxTier = ref.maxTier ?? 99;
+        if (nextTier > maxTier) continue;
+
+        const requirements = extractTierRequirements(ref.tiers, currentTier, nextTier);
+        if (requirements.length === 0) continue;
+
+        let totalRequired = 0;
+        let totalAvailable = 0;
+        for (const req of requirements) {
+          const available = inventoryMap.get(normalizeToken(req.name)) ?? 0;
+          totalRequired += req.amount;
+          totalAvailable += Math.min(available, req.amount);
+        }
+        const coveragePct = totalRequired > 0 ? Math.round((totalAvailable / totalRequired) * 100) : 0;
+        if (coveragePct >= 80) {
+          readyToUpgrade.push({
+            shipId: overlay.refId,
+            shipName: ref.name,
+            currentTier,
+            nextTier,
+            coveragePct,
+          });
+        }
+      }
+
+      if (readyToUpgrade.length > 0) {
+        readyToUpgrade.sort((a, b) => b.coveragePct - a.coveragePct);
+        result.readyToUpgrade = readyToUpgrade.slice(0, 10);
+      }
+    } catch {
+      // Non-fatal — degrade gracefully if inventory check fails
+    }
+  }
+
   return result;
 }
 

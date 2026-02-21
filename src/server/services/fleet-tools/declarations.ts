@@ -836,6 +836,51 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "update_inventory",
+    description:
+      "Record the Admiral's current resource inventory — ore, gas, crystal, parts, currency, or blueprints. " +
+      "Use this when the Admiral tells you what resources they have " +
+      "(e.g. 'I have 280 3-star Ore and 150 3-star Crystal'). " +
+      "Each item requires a category and name; grade and quantity are optional.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        items: {
+          type: Type.ARRAY,
+          description: "Array of inventory items to record.",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              category: {
+                type: Type.STRING,
+                enum: ["ore", "gas", "crystal", "parts", "currency", "blueprint", "other"],
+                description: "Resource category.",
+              },
+              name: {
+                type: Type.STRING,
+                description: "Resource name, e.g. '3★ Ore', 'Latinum', 'Bortas Blueprints'.",
+              },
+              grade: {
+                type: Type.STRING,
+                description: "Optional grade/rarity, e.g. '3-star', 'rare', 'common'.",
+              },
+              quantity: {
+                type: Type.INTEGER,
+                description: "Amount the Admiral currently has.",
+              },
+            },
+            required: ["category", "name", "quantity"],
+          },
+        },
+        source: {
+          type: Type.STRING,
+          description: "Optional source label, e.g. 'manual', 'chat', 'import'.",
+        },
+      },
+      required: ["items"],
+    },
+  },
+  {
     name: "set_officer_overlay",
     description:
       "Record the Admiral's actual in-game officer progression: current level, rank (1-5), power, " +
