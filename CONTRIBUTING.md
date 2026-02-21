@@ -290,7 +290,7 @@ Major architectural decisions are documented in `docs/ADR-*.md`. **Read these be
 - [ADR-023: Architecture Restructure](docs/ADR-023-architecture-restructure.md) — MVC-by-concern client refactor
 - [ADR-025: AI Tools & Briefing](docs/ADR-025-ai-tools-briefing.md) — Crew composition tools
 - [ADR-027: GenAI SDK Migration](docs/ADR-027-genai-sdk-migration.md) — @google/generative-ai → @google/genai
-- [ADR-028: Data Pipeline Roadmap](docs/ADR-028-data-pipeline-roadmap.md) — CDN data ingest (data.stfc.space)
+- [ADR-028: Data Pipeline Roadmap](docs/ADR-028-data-pipeline-roadmap.md) — CDN data ingest
 - [ADR-029: Package Upgrades](docs/ADR-029-package-upgrades.md) — Dependency modernization
 - [ADR-030: View Consolidation](docs/ADR-030-view-consolidation.md) — 10 views → 7 views
 - [ADR-031: Svelte Migration](docs/ADR-031-svelte-migration.md) — Svelte 5 + Vite (no Kit)

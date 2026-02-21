@@ -8,7 +8,7 @@
 
 | Work | Issue | Status | Notes |
 |------|-------|--------|-------|
-| **CDN Reference Enrichment** | #83 | ✅ Complete | `data.stfc.space` static snapshot — 112 ships, 278 officers, hull_type/officerClass/faction/grade from game files. Enriches T2 reference catalog. |
+| **CDN Reference Enrichment** | #83 | ✅ Complete | Game data static snapshot — 112 ships, 278 officers, hull_type/officerClass/faction/grade from game files. Enriches T2 reference catalog. |
 | **CDN UI Surfacing** | #84 | ✅ Complete | Catalog & fleet views display CDN-sourced badges (hull type, officer class, faction). Filter dropdowns for officer class and hull type. |
 | **Ship Class Audit** | #79 | ✅ Complete | Resolved by CDN hull_type enum — authoritative game-file classification. |
 | **Legacy JSON Deprecation** | — | ✅ Complete | Boot no longer syncs reference data. `syncGamedataOfficers`/`syncGamedataShips` removed from boot path. |
@@ -28,14 +28,14 @@ Majel currently operates on a three-tier intelligence model:
 | Tier | Source | Freshness | Coverage |
 |------|--------|-----------|----------|
 | **T1** — User Overlays | Manual input via UI + AI chat | Stale until user updates | Officers (65), Ships (20), Loadouts, Targets |
-| **T2** — Reference Catalog | External seed from `data.stfc.space` snapshot via `scripts/seed-cloud-db.ts` | Static until re-seeded | 278 officers, 112 ships, abilities, hull types, build costs |
+| **T2** — Reference Catalog | External seed via `scripts/seed-cloud-db.ts` | Static until re-seeded | 278 officers, 112 ships, abilities, hull types, build costs |
 | **T3** — Training Knowledge | Gemini's training data | Frozen at training cutoff | Meta strategies, game mechanics, community wisdom |
 
 This architecture means Aria is a **tactical advisor who remembers what you told her**, not a real-time Combat Information Center (CIC). The gap between T1 (what the Admiral tells Aria) and ground truth (what's actually happening in-game) creates "narrative drift" — Aria may suggest crews based on stale ship tiers or missing officer upgrades.
 
 ## Decision Drivers
 
-During live testing (2026-02-17), Aria self-identified capability gaps when asked how she could improve beyond community tools like STFC.space. A follow-up conversation expanded these into five concrete data domains:
+During live testing (2026-02-17), Aria self-identified capability gaps when asked how she could improve beyond community tools. A follow-up conversation expanded these into five concrete data domains:
 
 ### Identified Capability Gaps
 
@@ -54,17 +54,17 @@ Aria proposed a tiered data model framed as "Sensor Packages" — users opt into
 | Package | Source | Safety | Coverage |
 |---------|--------|--------|----------|
 | **Standard** | Native JSON export (manual or structured chat input) | 100% safe, no 3rd party | Roster, ships, docks, basic station stats (~80% of daily needs) |
-| **Advanced** | 3rd party tools (e.g. Ripper's STFC Command Center) | User-accepted risk | Research trees, detailed materials, battle logs, events |
+| **Advanced** | 3rd party tools (e.g. Community tools (STFC Command Center)) | User-accepted risk | Research trees, detailed materials, battle logs, events |
 | **Hybrid** | Graceful degradation across both | User chooses per domain | Full CIC when available, honest "Unknown" when not |
 
-**Key architectural principle:** The Advanced package doesn't require Majel to know *where* the data came from. A **Translator layer** maps external tool schemas (e.g. Ripper's `officer_id: 123`) to Majel's internal reference IDs (`wiki:officer:james-t-kirk`). This lets Aria consume the data without coupling to any specific mod.
+**Key architectural principle:** The Advanced package doesn't require Majel to know *where* the data came from. A **Translator layer** maps external tool schemas (e.g. external `officer_id: 123`) to Majel's internal reference IDs (`wiki:officer:james-t-kirk`). This lets Aria consume the data without coupling to any specific mod.
 
 **Hybrid UX pattern:**
 > *"Admiral, I see your B'Rel blueprints via the Standard scan. For a detailed resource-required calculation, please upload an Advanced inventory scan or manually input your 3★ Ore count."*
 
 ### 3rd Party Considerations
 
-- **Ripper's Mod (STFC Command Center)** is the community's primary deep-data extraction tool (research, battle logs, detailed inventories)
+- **Community tools (STFC Command Center)** is the community's primary deep-data extraction tool (research, battle logs, detailed inventories)
 - Majel cannot *depend* on a 3rd party mod — but ignoring the most detailed data stream available to the community would be a missed opportunity
 - Solution: treat 3rd party data as an **optional overlay**, never a requirement
 - Users who don't use mods get Standard coverage; users who do get Advanced — the same codebase handles both via the Translator pattern
@@ -84,7 +84,7 @@ Aria proposed a tiered data model framed as "Sensor Packages" — users opt into
 **Data sources to investigate:**
 - DJz / "Command Center" team — active STFC data standardization effort
 - Scopely native export — the "Holy Grail" (no known API, but game state is serialized)
-- Community scrapers (stfc.space data format, wiki exports)
+- Community scrapers (game data format, wiki exports)
 - Manual structured entry via chat ("I just upgraded my Enterprise to Tier 7")
 
 **Schema sketch:**
@@ -130,7 +130,7 @@ Aria proposed a tiered data model framed as "Sensor Packages" — users opt into
 - `estimate_acquisition_time` — Based on mining rates, daily rewards, event projections
 
 **Standard mode:** Manual entry ("I have 280 3★ Ore") stored as user overlay.  
-**Advanced mode:** Full inventory import from Ripper's/Command Center via Translator.
+**Advanced mode:** Full inventory import from Command Center via Translator.
 
 ### Phase 4: Events, Away Teams & Faction Standing — Advanced Package
 
@@ -160,7 +160,7 @@ Aria proposed a tiered data model framed as "Sensor Packages" — users opt into
 **Goal:** A schema-mapping layer that lets Majel consume data from any external tool without coupling to a specific mod's data format.
 
 **Approach:**
-- Define a `TranslatorConfig` per external source (e.g. `ripper-v3.translator.json`)
+- Define a `TranslatorConfig` per external source (e.g. `stfc-command-center-v1.translator.json`)
 - Map external IDs to Majel's internal reference IDs (e.g. `officer_id: 123` → `wiki:officer:james-t-kirk`)
 - Validate translated data against `MajelGameExport` schema before ingestion
 - Log translation results for debugging without exposing source-specific details
@@ -197,7 +197,7 @@ All data access must respect:
 | Stale imports worse than no data | Track import age; warn when overlay > 7 days old |
 | 3rd party mod discontinued or broken | Translator layer decouples; Standard package always works without it |
 | Mod usage violates Scopely ToS | Majel never requires mod data; Advanced is opt-in with clear user consent |
-| Schema drift between Ripper's versions | Translator configs are versioned; validation catches mismatches |
+| Schema drift between external source versions | Translator configs are versioned; validation catches mismatches |
 | Officer pool conflicts (ship vs Away Team) | Away Team data is optional enhancement; without it, Aria discloses uncertainty |
 | Stochastic AI parsing applies wrong bulk mutation | Confirmation-gated proposal/apply + immutable proposal IDs + receipts |
 
@@ -208,7 +208,7 @@ All data access must respect:
 - Phase 3: `suggest_targets` includes "resource gap" analysis with concrete numbers
 - Phase 4: Aria proactively mentions active events and avoids suggesting locked officers
 - Phase 5: Admiral can upload a battle log and receive round-by-round failure analysis
-- Translator: At least one external source (Ripper's or Command Center) can be ingested without code changes — config only
+- Translator: At least one external source (Command Center or community tools) can be ingested without code changes — config only
 - Safe mutation path: high-impact tool writes require explicit UI accept before apply
 
 ## References

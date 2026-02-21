@@ -46,7 +46,7 @@ Majel is a **five-view single-page application** with an LCARS-inspired UI:
 
 ### Key Features
 
-- **CDN-sourced reference data** — officer and ship catalogs synced from data.stfc.space, with canonical entity IDs (`cdn:officer:<gameId>`, `cdn:ship:<gameId>`)
+- **CDN-sourced reference data** — officer and ship catalogs synced from community game data, with canonical entity IDs (`cdn:officer:<gameId>`, `cdn:ship:<gameId>`)
 - **Personal overlays** — your levels, tiers, notes, and target priorities stored separately from reference data. Never lost on re-sync.
 - **Brute-force context injection** — reference data is injected directly into Gemini's system prompt. No RAG, no vector DB, no retrieval errors.
 - **MicroRunner pipeline** — classifies each message, gates context injection by task type, and validates responses against the authority ladder
@@ -97,7 +97,7 @@ Majel is a **five-view single-page application** with an LCARS-inspired UI:
 
 Majel uses a **reference + overlay** architecture (ADR-016):
 
-- **Reference store** — immutable CDN-sourced data (stats, abilities, faction, rarity). Bulk-synced from data.stfc.space.
+- **Reference store** — immutable CDN-sourced data (stats, abilities, faction, rarity). Bulk-synced from game data snapshot.
 - **Overlay store** — your personal data (level, tier, rank, power, notes, targets). Survives re-syncs. Stored as sparse deltas.
 - **Dock store** — ship loadouts with officer assignments, presets, and tags.
 

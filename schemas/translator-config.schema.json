@@ -8,7 +8,7 @@
   "properties": {
     "name": {
       "type": "string",
-      "description": "Human-readable name for this translator (e.g. 'Ripper Command Center')."
+      "description": "Human-readable name for this translator (e.g. 'STFC Command Center')."
     },
     "version": {
       "type": "string",

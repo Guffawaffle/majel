@@ -4,7 +4,7 @@
  * Endpoints for browsing the reference catalog (officers, ships) and
  * managing the user's overlay state (ownership, targeting).
  *
- * Reference data is sourced from data.stfc.space CDN snapshot (ADR-028).
+ * Reference data is sourced from local game data snapshot (ADR-028).
  * Legacy raw-*.json files are deprecated.
  *
  * Overlay data is full CRUD — the user's personal relationship to each entity.
@@ -319,7 +319,7 @@ export function createCatalogRoutes(appState: AppState): Router {
       sendOk(res, {
         officers: { total: counts.officers, note: "Data seeded externally via scripts/seed-cloud-db.ts" },
         ships: { total: counts.ships, note: "Data seeded externally via scripts/seed-cloud-db.ts" },
-        source: "database (seeded from data.stfc.space CDN)",
+        source: "database (seeded from game data snapshot)",
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -118,7 +118,7 @@ async function main(): Promise<void> {
   // Check snapshot exists
   if (!existsSync(SNAPSHOT_DIR)) {
     console.error("❌ CDN snapshot not found at:", SNAPSHOT_DIR);
-    console.error("   Run: node scripts/stfc-snapshot.mjs");
+    console.error("   Snapshot data not found. Place game data in data/.stfc-snapshot/");
     process.exit(1);
   }
 

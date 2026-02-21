@@ -16,7 +16,7 @@
     },
     "source": {
       "type": "string",
-      "description": "Origin of export (e.g. ripper-cc, manual-json)."
+      "description": "Origin of export (e.g. community-tool, manual-json)."
     },
     "nodes": {
       "type": "array",

@@ -5,7 +5,7 @@
 **Authors:** Guff, Opie (Claude), with legal guidance from Lex
 
 > **⚠️ Superseded:** The wiki ingest pipeline described here has been fully removed.
-> Reference data is now sourced from the STFC CDN (data.stfc.space) via `gamedata-ingest.ts`.
+> Reference data is now sourced from the game data snapshot via `gamedata-ingest.ts`.
 > Legacy `raw:*` IDs have been replaced by `cdn:officer:<gameId>` / `cdn:ship:<gameId>`.
 > This ADR is retained for historical context only.
 

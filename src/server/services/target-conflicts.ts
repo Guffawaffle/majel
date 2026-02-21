@@ -9,7 +9,7 @@
  * 2. Dock contention — multiple crew targets assigned to plan items on the same dock
  * 3. Crew cascade — officer targets whose officer is already in multiple active loadouts
  *
- * Material contention is deferred until cost/material data is imported (stfc.space).
+ * Material contention is deferred until cost/material data is imported (game data).
  *
  * Migrated from LoadoutStore (ADR-022) to CrewStore (ADR-025).
  */

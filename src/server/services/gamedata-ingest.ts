@@ -3,7 +3,7 @@
  *
  * Majel — STFC Fleet Intelligence System
  *
- * Source: data/.stfc-snapshot/ (CDN snapshot from data.stfc.space)
+ * Source: data/.stfc-snapshot/ (local game data snapshot)
  * CDN data is authoritative: hull types, officer bonuses, build costs, tier/level curves,
  * crew slots, trait configs, ability values. Uses `cdn:ship:<gameId>` and `cdn:officer:<gameId>` IDs.
  */
@@ -44,7 +44,7 @@ export async function getCdnVersion(): Promise<string | null> {
 export const toTitleCase = sharedToTitleCase;
 
 // ═══════════════════════════════════════════════════════════
-// CDN Ingest (data.stfc.space snapshot)
+// CDN Ingest (local snapshot)
 // ═══════════════════════════════════════════════════════════
 
 // ─── Enum Maps ──────────────────────────────────────────────
@@ -251,7 +251,7 @@ export async function syncCdnShips(
 
   return {
     ships: { ...result, total: inputs.length },
-    source: "data.stfc.space CDN",
+    source: "game-data-cdn",
   };
 }
 
@@ -332,6 +332,6 @@ export async function syncCdnOfficers(
 
   return {
     officers: { ...result, total: inputs.length },
-    source: "data.stfc.space CDN",
+    source: "game-data-cdn",
   };
 }

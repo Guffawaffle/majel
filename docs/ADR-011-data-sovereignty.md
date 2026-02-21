@@ -52,7 +52,7 @@ This ADR formalizes the shift from "spreadsheet wrapper" to "self-contained flee
 A new `reference-data.ts` module will manage game knowledge that isn't user-specific:
 
 - **Intent catalog** (already exists in dock-store.ts — stays there)
-- **Officer metadata** (group synergies, ability descriptions, position preferences) — seeded from stfc.space or manual curation
+- **Officer metadata** (group synergies, ability descriptions, position preferences) — seeded from community sources or manual curation
 - **Ship specifications** (max crew slots by tier, base stats, class details) — enables the below-deck slot counter
 - **Research tree** (future: full tree structure with costs, prerequisites, unlock paths)
 
@@ -63,8 +63,8 @@ This data is:
 - Version-tracked so updates can be diffed
 
 **Capture strategy for web resources:**
-- Phase 1: Manual curation into seed JSON (officer groups, ship specs from stfc.space)
-- Phase 2: Structured scraper for stfc.space API/pages (if available)
+- Phase 1: Manual curation into seed JSON (officer groups, ship specs from community game data)
+- Phase 2: Structured scraper for community game data API/pages (if available)
 - Phase 3: Community-contributed data packs (JSON import)
 
 ### D4: Import Becomes Upsert-with-Precedence

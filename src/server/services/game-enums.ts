@@ -4,7 +4,7 @@
  * Majel — STFC Fleet Intelligence System
  *
  * Shared numeric ID → human-readable label maps for STFC game data enums.
- * Sourced from stfc.space frontend bundle analysis (index-BwQsOEx7.js).
+ * Sourced from STFC game data analysis.
  *
  * Used by:
  * - gamedata-ingest.ts (CDN snapshot → reference store)
@@ -12,7 +12,7 @@
  * - catalog routes (API responses)
  */
 
-/** Ship hull type ID → label (from stfc.space HullType enum). */
+/** Ship hull type ID → label (from STFC game data). */
 export const HULL_TYPE_LABELS: Record<number, string> = {
   0: "Destroyer",
   1: "Survey",
@@ -29,7 +29,7 @@ export const OFFICER_CLASS_LABELS: Record<number, string> = {
   3: "Engineering",
 };
 
-/** Rarity numeric ID → label (from stfc.space Rarity enum). */
+/** Rarity numeric ID → label (from STFC game data). */
 export const RARITY_LABELS: Record<number, string> = {
   0: "base",
   1: "common",
@@ -38,7 +38,7 @@ export const RARITY_LABELS: Record<number, string> = {
   4: "epic",
 };
 
-/** Faction numeric ID → label (from stfc.space). */
+/** Faction numeric ID → label (from STFC game data). */
 export const FACTION_LABELS: Record<number, string> = {
   2064723306: "Federation",
   4153667145: "Klingon",

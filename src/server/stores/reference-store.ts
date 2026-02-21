@@ -4,7 +4,7 @@
  * Majel — STFC Fleet Intelligence System
  *
  * PostgreSQL-backed store for reference entities (officers, ships).
- * Data is sourced from data.stfc.space CDN snapshot (ADR-028).
+ * Data is sourced from local game data snapshot (ADR-028).
  *
  * User state (ownership, targeting, level) lives in overlay-store.ts.
  * This module is the T2 reference tier in the MicroRunner authority ladder.

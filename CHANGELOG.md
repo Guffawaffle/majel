@@ -103,8 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI composition** — `ci.ts` composes `lint.run()`, `typecheck.run()`, `test.run()` — zero duplication
 
 #### CDN Data Pipeline (#83, ADR-028)
-- **`data.stfc.space` snapshot ingest** — public S3/CloudFront CDN serving complete STFC game data as static JSON
-  - Snapshot script (`scripts/stfc-snapshot.mjs`) fetches all 7 entity types + 15 translation packs (73MB)
+- **Game data snapshot ingest** — public CDN serving complete STFC game data as static JSON
+  - Snapshot pipeline fetches all 7 entity types + 15 translation packs (73MB)
   - `syncCdnShips()` / `syncCdnOfficers()` parse, translate, and upsert 112 ships + 278 officers
   - CDN entities use `cdn:ship:<gameId>` / `cdn:officer:<gameId>` IDs (coexist with legacy `raw:*` entries)
   - CDN snapshot version (`version.txt` UUID) tracked and returned in sync response

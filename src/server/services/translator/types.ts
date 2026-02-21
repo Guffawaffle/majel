@@ -59,7 +59,7 @@ export interface DockMapping {
 
 /** Top-level translator configuration — one per external source. */
 export interface TranslatorConfig {
-  /** Human-readable name (e.g. "Ripper Command Center"). */
+  /** Human-readable name (e.g. "STFC Command Center"). */
   name: string;
   /** Config version string (e.g. "1.0"). */
   version: string;
