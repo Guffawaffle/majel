@@ -330,12 +330,12 @@
 
 <section class="imports">
   <h2 class="imports-title">Imports</h2>
-  <p class="imports-subtitle">Upload CSV/XLSX or paste CSV to get AI-assisted column mapping with editable choices.</p>
+  <p class="imports-subtitle">Upload CSV or paste data to get AI-assisted column mapping with editable choices.</p>
 
   <div class="imports-inputs">
     <label class="imports-upload">
-      <span>Choose CSV/XLSX</span>
-      <input type="file" accept=".csv,.xlsx" onchange={onFileChange} />
+      <span>Choose CSV</span>
+      <input type="file" accept=".csv" onchange={onFileChange} />
     </label>
 
     <div class="imports-paste">

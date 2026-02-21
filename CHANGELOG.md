@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.1] — 2026-02-21
+
+### Added
+
+#### Local-First Data Cache — Phase 1 (ADR-032, #107)
+- **IndexedDB cache engine** (`web/src/lib/cache/idb-cache.ts`, 283 LOC) — generic IDB store with TTL expiration, stale-while-revalidate, `purge()`, `clear()`
+- **Cached fetch wrapper** (`cached-fetch.ts`, 140 LOC) — drop-in replacement for `fetch()` with cache-first strategy, background revalidation, Svelte 5 `$state()` integration
+- **Cache key registry** (`cache-keys.ts`, 87 LOC) — typed key builders + TTL constants per entity type (ships/officers/targets/sessions)
+- **Reactive cache store** (`cache-store.svelte.ts`, 66 LOC) — Svelte 5 rune-based global cache instance with `$effect()` lifecycle
+- **Barrel export** (`index.ts`, 33 LOC) — public API surface
+- **43 tests** across 3 test files — IDB engine, cached fetch, cache keys
+- **Integration** — wired into `catalog.ts`, `App.svelte`, `Sidebar.svelte`
+
+### Fixed
+
+#### Security
+- **minimatch ReDoS (GHSA-3ppc-4f35-3m26)** — 7 high-severity transitive deps via `typescript-eslint` resolved with `overrides` in root `package.json`
+- **ajv moderate vulnerability** — resolved via `npm audit fix`
+- **xlsx prototype pollution (GHSA-4r6h-8v6p-xvw6)** — no upstream fix from SheetJS; feature-flagged at server validation layer (`imports.ts` analyze + validateSourcePayload guards) + UI file picker restricted to CSV-only
+
+---
+
 ## [0.5.0] — 2026-02-20
 
 ### Added

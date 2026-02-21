@@ -89,7 +89,8 @@
   "license": "ISC",
   "overrides": {
     "rimraf": "^6.1.3",
-    "glob": "^13.0.3"
+    "glob": "^13.0.3",
+    "minimatch": "^10.2.1"
   },
   "dependencies": {
     "@google/genai": "^1.41.0",
