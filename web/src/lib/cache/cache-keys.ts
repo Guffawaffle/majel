@@ -63,6 +63,8 @@ export function cacheKey(endpoint: string, filters?: Record<string, unknown>): s
  * Patterns ending with `*` are treated as prefix matches.
  */
 export const INVALIDATION_MAP: Record<string, string[]> = {
+  // ─── Catalog (Phase 1) ──────────────────────────────────────
+
   // Officer overlay changes invalidate merged officer lists + counts
   "officer-overlay": [
     "catalog:officers:merged*",
@@ -83,5 +85,64 @@ export const INVALIDATION_MAP: Record<string, string[]> = {
   "bulk-ship-overlay": [
     "catalog:ships:merged*",
     "catalog:counts",
+  ],
+
+  // ─── Crew Entities (Phase 2) ────────────────────────────────
+
+  // Bridge core CRUD → bridge core list + effective state
+  "bridge-core": [
+    "bridge-cores*",
+    "effective-state",
+  ],
+
+  // Loadout CRUD → loadout lists + effective state
+  "crew-loadout": [
+    "crew:loadouts*",
+    "effective-state",
+  ],
+
+  // Variant CRUD → loadout lists (variants are nested under loadouts)
+  "crew-variant": [
+    "crew:loadouts*",
+  ],
+
+  // Below-deck policy CRUD → policy list
+  "below-deck-policy": [
+    "below-deck-policies*",
+  ],
+
+  // Dock upsert/delete → docks + effective state + plan
+  "crew-dock": [
+    "crew:docks*",
+    "effective-state",
+    "crew:plan*",
+  ],
+
+  // Fleet preset CRUD/activate → presets + effective state
+  "fleet-preset": [
+    "fleet-presets*",
+    "effective-state",
+  ],
+
+  // Plan item CRUD → plan items + effective state
+  "crew-plan": [
+    "crew:plan*",
+    "effective-state",
+  ],
+
+  // Reservation set/delete → reservations
+  "officer-reservation": [
+    "officer-reservations*",
+  ],
+
+  // Import commit → full flush (catalog + crews)
+  "import-commit": [
+    "catalog:*",
+    "bridge-cores*",
+    "crew:*",
+    "below-deck-policies*",
+    "fleet-presets*",
+    "officer-reservations*",
+    "effective-state",
   ],
 };

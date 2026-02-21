@@ -1,4 +1,5 @@
 import { apiPost } from "./fetch.js";
+import { invalidateForMutation } from "../cache/cached-fetch.js";
 import type {
   ImportAnalysis,
   MappedImportRow,
@@ -59,9 +60,11 @@ export async function commitImportRows(input: {
   summary: { added: number; updated: number; unchanged: number; unresolved: number };
   requiresApproval: boolean;
 }> {
-  return apiPost<{
+  const result = await apiPost<{
     receipt: { id: number };
     summary: { added: number; updated: number; unchanged: number; unresolved: number };
     requiresApproval: boolean;
   }>("/api/import/commit", input);
+  await invalidateForMutation("import-commit");
+  return result;
 }
