@@ -19,7 +19,7 @@
  *   PATCH /api/settings     — Update one or more settings
  *   DELETE /api/settings/:key — Reset a setting to default
  *
- * Static files served from src/client/ (dev) or dist/client/ (prod).
+ * Static files: Svelte SPA from dist/web/, landing page from src/landing/.
  */
 
 import express from "express";
@@ -90,19 +90,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ─── Static file paths ──────────────────────────────────────────
-// Landing page (landing.html/css/js) always lives in the original client dir.
+// Landing page (landing.html/css/js) — unauthenticated users see this.
 const landingDir = path.resolve(
   __dirname,
-  bootstrapConfigSync().nodeEnv === "production" ? "../../dist/client" : "../client",
+  bootstrapConfigSync().nodeEnv === "production" ? "../../dist/landing" : "../../src/landing",
 );
 
-// Authenticated SPA served at /app:
-//   Production → Svelte build (dist/web/)
-//   Dev        → vanilla client (src/client/) — developers use Vite at :5173 for Svelte
-const appDir = path.resolve(
-  __dirname,
-  bootstrapConfigSync().nodeEnv === "production" ? "../../dist/web" : "../client",
-);
+// Authenticated SPA served at /app — always Svelte (ADR-031 Phase 8 cutover).
+// Dev: run `npm run dev:web` (Vite at :5173) for hot-reload, or use the prod build.
+const appDir = path.resolve(__dirname, "../../dist/web");
 
 // ─── Module-level state ─────────────────────────────────────────
 const state: AppState = {
@@ -186,12 +182,11 @@ export function createApp(appState: AppState): express.Express {
   // All inline style="" attrs were removed in Phases 2-3.
   // JS `.style.*` (CSSOM) is not affected by style-src.
   // img-src/connect-src 'self' blocks CSS-based data exfiltration vectors.
-  // Import map hash: update if <script type="importmap"> content changes.
-  //   node -e "const c=require('crypto'),f=require('fs'); const m=f.readFileSync('src/client/index.html','utf8').match(/<script type=\"importmap\">(.*?)<\\/script>/s); console.log(\"'sha256-\"+c.createHash('sha256').update(m[1]).digest('base64')+\"'\")"
+  // Svelte/Vite produces external bundles only — no inline scripts needed.
   app.use((_req, res, next) => {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
-      "script-src 'self' 'sha256-kf0G28sHniBY41kxyUe4Fejn93y2TEZaB+UR5cPyof4='",
+      "script-src 'self'",
       "style-src 'self'",
       "img-src 'self' data:",
       "connect-src 'self'",
@@ -225,8 +220,9 @@ export function createApp(appState: AppState): express.Express {
     next();
   });
 
-  // Static files (for /app/* — the authenticated SPA)
-  // Production: Svelte build from dist/web/. Dev: vanilla client from src/client/.
+  // Static files (for /app/* — the authenticated Svelte SPA)
+  // Always serves from dist/web/ (ADR-031 Phase 8 cutover).
+  // Dev: use `npm run dev:web` (Vite at :5173) for hot-reload.
   // Cache headers: 1 day browser cache, etag for conditional revalidation (ADR-023)
   app.use("/app", express.static(appDir, {
     maxAge: '1d',
