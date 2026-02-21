@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-19 | Branch: `main`
+> Updated: 2026-02-20 | Branch: `main`
 
 ---
 
@@ -104,27 +104,27 @@ F1–F3 fixed inline. Remaining items below.
 #### Audit Store
 - [x] **W1:** `String(created_at)` returns non-ISO date — use `.toISOString()` *(fixed 62d9a22)*
 - [x] **W2:** No upper-bound cap on query `limit` param — cap at 1000 *(fixed 62d9a22)*
-- [ ] **W3:** `SELECT *` in audit queries — fragile if schema evolves; use explicit column list
-- [ ] **W4:** Append-only not enforced at DB role level — `majel_app` has DELETE on `auth_audit_log`; revoke or add trigger
+- [x] **W3:** `SELECT *` in audit queries — fragile if schema evolves; use explicit column list *(fixed b936156)*
+- [x] **W4:** Append-only not enforced at DB role level — `majel_app` has DELETE on `auth_audit_log`; revoke or add trigger *(fixed b936156)*
 
 #### Auth Routes
-- [ ] **W5:** `verify-email` and `reset-password` audit events missing `actorId`/`targetId`
-- [ ] **W6:** Verify-email failure (invalid token) not audited
-- [ ] **W7:** Reset-password failure paths not audited
-- [ ] **W8:** Bootstrap middleware uses `admin.role_change` event (misleading) — rename to `admin.bootstrap_auth`
-- [ ] **W9:** Bootstrap middleware constructs IP/UA inline — use `auditMeta(req)` for consistency
-- [ ] **W10:** `GET /api/auth/admiral/users` (list users) not audited — sensitive admin read
+- [x] **W5:** `verify-email` and `reset-password` audit events missing `actorId`/`targetId` *(fixed b936156)*
+- [x] **W6:** Verify-email failure (invalid token) not audited *(fixed b936156)*
+- [x] **W7:** Reset-password failure paths not audited *(fixed b936156)*
+- [x] **W8:** Bootstrap middleware uses `admin.role_change` event (misleading) — rename to `admin.bootstrap_auth` *(fixed b936156)*
+- [x] **W9:** Bootstrap middleware constructs IP/UA inline — use `auditMeta(req)` for consistency *(fixed b936156)*
+- [x] **W10:** `GET /api/auth/admiral/users` (list users) not audited — sensitive admin read *(fixed b936156)*
 
 #### Logger / GCP
-- [ ] **W12:** Redact paths only 1-level deep (`*.token`) — deeper paths like `req.headers.authorization` missed
+- [x] **W12:** Redact paths only 1-level deep (`*.token`) — deeper paths like `req.headers.authorization` missed *(fixed b936156)*
 
 #### IP Allowlist
-- [ ] **W15:** No IP syntax validation in `parseAllowedIps` — garbage entries silently ignored
-- [ ] **W16:** `trust proxy` hardcoded to `1` — needs comment for multi-proxy deployments
-- [ ] **W17:** No dedicated unit tests for `ip-allowlist.ts`
+- [x] **W15:** No IP syntax validation in `parseAllowedIps` — garbage entries silently ignored *(fixed b936156)*
+- [x] **W16:** `trust proxy` hardcoded to `1` — needs comment for multi-proxy deployments *(fixed b936156)*
+- [x] **W17:** No dedicated unit tests for `ip-allowlist.ts` — 13 tests *(fixed b936156)*
 
 #### RUNBOOK
-- [ ] **W18:** Missing query recipes: password reset abuse, signup spikes, 5xx errors, boot events, IP allowlist blocks
+- [x] **W18:** Missing query recipes: password reset abuse, signup spikes, 5xx errors, boot events, IP allowlist blocks *(fixed b936156)*
 
 ---
 
@@ -191,7 +191,7 @@ Decomposed monolithic `scripts/ax.ts` (1,252 lines) into modular `scripts/ax/` d
 
 ---
 
-## In Progress — Svelte 5 + Vite Frontend Migration (ADR-031)
+## Done — Svelte 5 + Vite Frontend Migration (ADR-031)
 
 **Decision:** Migrate vanilla JS client (8,335 LOC, 28 files) to Svelte 5 + Vite. **No SvelteKit** — avoids meta-framework lock-in, SSR not needed (app behind auth). Express API stays 100% untouched.
 
@@ -207,10 +207,9 @@ See [ADR-031](docs/ADR-031-svelte-migration.md) for full decision rationale.
 | #100 | 5 | Workshop + Plan views migration (largest payoff) | ✅ Done |
 | #101 | 6 | Admiral + Diagnostics views | ✅ Done |
 | #102 | 7 | Help panel + confirm dialog + shared components | ✅ Done |
-| #103 | 8 | Production build integration + legacy cleanup | 🚧 Build wired, cleanup blocked on Phases 4–7 |
+| #103 | 8 | Production build integration + legacy cleanup | ✅ Done |
 
-Build pipeline + Express serving + Dockerfile already wired (done during Phase 3 wiring). Legacy cleanup deferred until all views migrated.
-Deferred review items tracked in #104.
+**Migration complete (v0.5.0).** Legacy client deleted (45 files, ~12,691 LOC). Landing page separated to `src/landing/`. Frontend test suite added (54 tests). Deferred review items tracked in #104.
 
 Key decisions:
 - `web/` directory alongside existing `src/` (parallel operation during migration)
@@ -238,4 +237,4 @@ See [ADR-006](docs/ADR-006-open-alpha.md) for the full list. Key items:
 
 ---
 
-*Last updated by PM sweep — 2026-02-19*
+*Last updated by PM sweep — 2026-02-20*

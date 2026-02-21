@@ -4,7 +4,7 @@
 
 A fleet management and AI advisor for **Star Trek Fleet Command**, powered by **Gemini** and **[Lex](https://github.com/Guffawaffle/lex)** episodic memory. The in-character assistant, **Ariadne** ("Aria"), combines CDN-sourced reference data, your personal fleet overlays, and full game/lore knowledge into a conversational interface that actually knows your fleet.
 
-> **Status:** v0.4.0 alpha — functional, cloud-deployed, actively developed.
+> **Status:** v0.5.0 alpha — functional, cloud-deployed, actively developed.
 >
 > **Production:** [majel-bbqfhcihga-uc.a.run.app](https://majel-bbqfhcihga-uc.a.run.app)
 
@@ -135,7 +135,7 @@ Memory is workspace-isolated — Majel's DB lives at `.smartergpt/lex/` and neve
 npm run dev          # Development server with hot reload (tsx watch)
 npm run build        # Compile TypeScript + copy static assets
 npm start            # Production server (from dist/)
-npm test             # Run test suite (738 tests via Vitest)
+npm test             # Run test suite (1,348 server + 54 frontend tests via Vitest)
 npm run typecheck    # Type-check without emitting
 npm run local-ci     # Full CI pipeline: typecheck + coverage + build
 npm run health       # Curl the health endpoint
@@ -198,7 +198,7 @@ majel/
 │       └── styles.css           # LCARS-inspired dark theme
 ├── scripts/
 │   └── cloud.ts                 # Cloud operations CLI (20 commands, AX mode)
-├── test/                        # 18 test files, 738 tests (Vitest)
+├── test/                        # 42 test files, 1,348 tests (Vitest)
 ├── docs/
 │   ├── ADR-001 through ADR-022  # Architecture Decision Records
 │   ├── AX-SCHEMA.md             # AI agent response format reference

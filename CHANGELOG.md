@@ -9,9 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] — arch/loadout-inversion
+## [0.5.0] — 2026-02-20
 
 ### Added
+
+#### Phase 8: Svelte Cutover (ADR-031 complete)
+- **Legacy client deleted** — 45 files (~12,691 lines) removed from `src/client/`
+- **Landing page separated** — `src/landing/` (landing.html, landing.css, landing.js) standalone from SPA
+- **CSP cleaned** — `script-src` simplified from SHA-256 hash to `'self'` (Svelte uses external bundles only)
+- **Dockerfile updated** — multi-stage build now copies landing + Svelte dist
+- **Build pipeline** — `npm run build` wires landing copy + `npm --prefix web run build`
+
+#### Frontend Test Suite (54 tests, 3 files)
+- **fetch.test.ts** (21 tests) — ADR-004 envelope unwrap, CSRF header injection, 5xx sanitization, `qs()`, `pathEncode()`
+- **router.test.ts** (18 tests) — view registry (7 views), redirect aliases (admin→admiral, drydock→crews), navigate, getViewDef
+- **auth.test.ts** (15 tests) — fetchMe, 401 redirect, hasRole hierarchy, logout + redirect
+- **vitest.config.ts (web)** — happy-dom environment + Svelte vite plugin
+- **`npm run test:web`** — convenience script in root package.json
+
+#### GitHub Actions CI
+- **`.github/workflows/ci.yml`** — PostgreSQL 16 service container, lint → typecheck (server + web) → test (server + web) → build
+- **15-minute timeout**, concurrency group, coverage artifact upload
+
+#### Auth Audit Hardening (#91 WARN items)
+- **W3:** Explicit `COLUMNS` constant replaces `SELECT *` in audit queries
+- **W4:** Append-only enforcement — `trg_audit_append_only` trigger + `REVOKE DELETE` on `majel_app` role
+- **W5–W7:** Verify-email success/failure and reset-password failure paths now audited with detail
+- **W8–W9:** Bootstrap event renamed `admin.bootstrap`, uses `auditMeta(req)` helper
+- **W10:** `GET /api/auth/admiral/users` (list users) now audited
+- **W12:** Logger redact paths deepened — `**.token`, `**.password`, `req.headers.authorization`, `req.headers.cookie`
+- **W15:** `parseAllowedIps()` validates IPv4/IPv6 syntax, logs and skips invalid entries
+- **W16:** Trust proxy comment improved for multi-proxy deployments
+- **W17:** 13 dedicated unit tests for `ip-allowlist.ts` (parseAllowedIps + middleware)
+- **W18:** RUNBOOK expanded from 8 to 13 recipes — password reset abuse, signup spikes, 5xx errors, boot events, IP allowlist blocks
 
 #### AX Toolkit Modular Refactor
 - **`scripts/ax/` decomposition** — monolithic `ax.ts` (1,252 lines) split into 10 typed modules + thin router
@@ -175,7 +205,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Limit clamping** — history and recall `limit` params clamped to 1-100
 - **Error logging** — memory save failures logged at `error` level with sessionId context
 - **Discovery fidelity** — route list includes auth tiers and param schemas
-- **Test coverage** — 738 tests across 18 test files
+- **Test coverage** — 1,348 server tests across 42 files + 54 frontend tests (3 files)
 
 ---
 
