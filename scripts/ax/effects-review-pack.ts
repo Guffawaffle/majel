@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { AxCommand, AxResult } from "./types.js";
 import { getFlag, makeResult } from "./runner.js";
 import {
+  buildDecisionTemplate,
   buildReviewPack,
   buildReviewPackMarkdown,
   type EffectsBuildReceipt,
@@ -48,11 +49,14 @@ const command: AxCommand = {
 
     const report = JSON.parse(await readFile(receipt.stochastic.inferenceReportPath, "utf-8")) as InferenceReport;
     const pack = buildReviewPack(report, receipt.snapshotVersion, receipt.generatedAt);
+    const decisionTemplate = buildDecisionTemplate(pack);
 
     const reviewJsonPath = resolve("review", `review-pack.${runId}.json`);
     const reviewMdPath = resolve("review", `review-pack.${runId}.md`);
+    const decisionTemplatePath = resolve("review", `decisions.template.${runId}.json`);
     await writeJsonAt(reviewJsonPath, pack);
     await writeFile(reviewMdPath, buildReviewPackMarkdown(pack), "utf-8");
+    await writeJsonAt(decisionTemplatePath, decisionTemplate);
 
     const reviewReceiptPath = resolve("receipts", `effects-review-pack.${runId}.json`);
     await writeJsonAt(reviewReceiptPath, {
@@ -62,6 +66,7 @@ const command: AxCommand = {
       sourceReceiptPath: receiptPath,
       reviewJsonPath,
       reviewMdPath,
+      decisionTemplatePath,
       candidateCount: pack.candidateCount,
       generatedAt: new Date().toISOString(),
     });
@@ -71,6 +76,7 @@ const command: AxCommand = {
       artifactBase: receipt.artifactBase,
       reviewJsonPath,
       reviewMdPath,
+      decisionTemplatePath,
       reviewReceiptPath,
       candidateCount: pack.candidateCount,
     });

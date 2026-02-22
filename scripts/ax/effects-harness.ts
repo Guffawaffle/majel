@@ -150,7 +150,26 @@ export interface ReviewPack {
   snapshotVersion: string;
   generatedAt: string;
   candidateCount: number;
-  candidates: InferenceCandidate[];
+  candidates: ReviewPackCandidate[];
+}
+
+export type ReviewDecisionAction = "promote" | "reject" | "override" | "rule";
+
+export interface ReviewPackCandidate extends InferenceCandidate {
+  suggestedAction: ReviewDecisionAction;
+  suggestedReason: string;
+}
+
+export interface ReviewDecisionTemplate {
+  schemaVersion: "1.0.0";
+  runId: string;
+  artifactBase: string;
+  decisions: {
+    candidateId: string;
+    action: ReviewDecisionAction;
+    reason: string;
+    ticket?: string;
+  }[];
 }
 
 export async function readEffectsSeedFile(): Promise<EffectsSeedFile> {
@@ -356,6 +375,13 @@ export function buildReviewPack(
   const candidates = report.candidates.filter((candidate) => {
     if (candidate.candidateStatus === "proposed" || candidate.candidateStatus === "gate_failed" || candidate.candidateStatus === "rejected") return true;
     return candidate.confidence.tier !== "high";
+  }).map((candidate) => {
+    const suggestion = suggestDecisionAction(candidate);
+    return {
+      ...candidate,
+      suggestedAction: suggestion.action,
+      suggestedReason: suggestion.reason,
+    };
   });
 
   return {
@@ -366,6 +392,67 @@ export function buildReviewPack(
     generatedAt,
     candidateCount: candidates.length,
     candidates,
+  };
+}
+
+export function suggestDecisionAction(candidate: InferenceCandidate): {
+  action: ReviewDecisionAction;
+  reason: string;
+} {
+  if (candidate.candidateStatus === "rejected") {
+    return {
+      action: "reject",
+      reason: "Contradiction or duplicate signature gate failed",
+    };
+  }
+
+  if (candidate.candidateStatus === "gate_passed") {
+    return {
+      action: "promote",
+      reason: "Candidate passed current deterministic gates and confidence threshold",
+    };
+  }
+
+  const evidenceFailed = candidate.gateResults.some(
+    (gate) => gate.gate === "evidence_presence" && gate.status === "fail",
+  );
+  if (evidenceFailed) {
+    return {
+      action: "rule",
+      reason: "Evidence gap suggests deterministic parsing/rule improvement",
+    };
+  }
+
+  if (candidate.candidateStatus === "gate_failed") {
+    return {
+      action: "override",
+      reason: "Gate failure requires explicit override or manual review before promotion",
+    };
+  }
+
+  if (candidate.confidence.tier === "low") {
+    return {
+      action: "rule",
+      reason: "Low-confidence candidate should drive rule refinement instead of direct promotion",
+    };
+  }
+
+  return {
+    action: "override",
+    reason: "Medium-confidence proposal requires explicit override/manual adjudication",
+  };
+}
+
+export function buildDecisionTemplate(pack: ReviewPack): ReviewDecisionTemplate {
+  return {
+    schemaVersion: "1.0.0",
+    runId: pack.runId,
+    artifactBase: pack.artifactBase,
+    decisions: pack.candidates.map((candidate) => ({
+      candidateId: candidate.candidateId,
+      action: candidate.suggestedAction,
+      reason: `TODO: confirm - ${candidate.suggestedReason}`,
+    })),
   };
 }
 
@@ -393,6 +480,8 @@ export function buildReviewPackMarkdown(pack: ReviewPack): string {
     lines.push(`- rationale: ${candidate.rationale}`);
     lines.push(`- proposedEffects: ${candidate.proposedEffects.length}`);
     lines.push(`- gateResults: ${candidate.gateResults.map((gate) => `${gate.gate}:${gate.status}`).join(", ")}`);
+    lines.push(`- suggestedAction: ${candidate.suggestedAction}`);
+    lines.push(`- suggestedReason: ${candidate.suggestedReason}`);
     if (candidate.evidence[0]) {
       lines.push(`- evidence: ${candidate.evidence[0].sourceRef}`);
       lines.push(`- snippet: ${candidate.evidence[0].snippet}`);

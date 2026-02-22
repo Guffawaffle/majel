@@ -456,6 +456,7 @@ Committed CLI scaffolding is available in `scripts/ax` so local AI operators (in
 - Reads the build receipt + inference report and emits AI review assets:
   - `review/review-pack.<runId>.json`
   - `review/review-pack.<runId>.md`
+- Also emits `review/decisions.template.<runId>.json` with per-candidate suggested actions (`promote|reject|override|rule`) for structured AI-assisted review.
 - Writes receipt: `receipts/effects-review-pack.<runId>.json`.
 
 3) `npm run ax -- effects:apply-decisions --run=<runId> --decisions=<path>`

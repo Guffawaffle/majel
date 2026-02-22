@@ -4,9 +4,11 @@ import {
   type EffectsSeedFile,
 } from "../src/server/services/effects-contract-v3.js";
 import {
+  buildDecisionTemplate,
   buildReviewPack,
   deriveInferenceReport,
   evaluateInferenceCandidate,
+  suggestDecisionAction,
   summarizeCandidateStatuses,
   type InferenceCandidate,
 } from "../scripts/ax/effects-harness.js";
@@ -190,5 +192,50 @@ describe("effects-harness inference + review pack", () => {
     ]);
 
     expect(counts).toEqual({ proposed: 1, gate_passed: 1, gate_failed: 1, rejected: 1 });
+  });
+
+  it("suggests promote for gate_passed and reject for rejected", () => {
+    const promote = suggestDecisionAction({
+      abilityId: "a",
+      candidateId: "p",
+      candidateStatus: "gate_passed",
+      proposedEffects: [],
+      confidence: { score: 0.9, tier: "high" },
+      rationale: "",
+      gateResults: [],
+      evidence: [],
+    });
+    const reject = suggestDecisionAction({
+      abilityId: "a",
+      candidateId: "r",
+      candidateStatus: "rejected",
+      proposedEffects: [],
+      confidence: { score: 0.9, tier: "high" },
+      rationale: "",
+      gateResults: [{ gate: "contradiction_intra_ability", status: "fail" }],
+      evidence: [],
+    });
+
+    expect(promote.action).toBe("promote");
+    expect(reject.action).toBe("reject");
+  });
+
+  it("builds decisions template from review pack suggested actions", () => {
+    const seed = createSeedWithUnmappedAbility();
+    const artifact = buildEffectsContractV3Artifact(seed, {
+      generatedAt: "2026-02-22T00:00:00.000Z",
+      snapshotVersion: "stfc-test",
+      generatorVersion: "0.1.0",
+    });
+    const report = deriveInferenceReport(artifact, "run-123");
+    const pack = buildReviewPack(report, "stfc-test", "2026-02-22T00:00:00.000Z");
+    const template = buildDecisionTemplate(pack);
+
+    expect(template.runId).toBe("run-123");
+    expect(template.artifactBase).toBe(pack.artifactBase);
+    expect(template.decisions).toHaveLength(pack.candidateCount);
+    if (template.decisions[0]) {
+      expect(template.decisions[0].reason.startsWith("TODO: confirm - ")).toBe(true);
+    }
   });
 });
