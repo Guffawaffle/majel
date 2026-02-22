@@ -75,18 +75,18 @@ export interface EffectsContractEffect {
   };
   conditions: { conditionKey: string; params: Record<string, string> | null }[];
   extraction: {
-    method: "deterministic";
+    method: "deterministic" | "inferred";
     ruleId: string;
-    model: null;
-    promptVersion: null;
+    model: string | null;
+    promptVersion: string | null;
     inputDigest: string;
   };
-  inferred: false;
-  promotionReceiptId: null;
+  inferred: boolean;
+  promotionReceiptId: string | null;
   confidence: {
     score: number;
-    tier: "high";
-    forcedByOverride: false;
+    tier: "high" | "medium" | "low";
+    forcedByOverride: boolean;
   };
   evidence: EffectsContractEvidence[];
 }

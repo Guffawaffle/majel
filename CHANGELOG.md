@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Effects Contract v3 — Phase 4 gate runner + promotion receipts (#146)
+- Enabled `effects:apply-decisions` to execute deterministic candidate gates, apply reviewed promotion decisions, and emit audit receipts. (`scripts/ax/effects-apply-decisions.ts`)
+- Added deterministic gate runner coverage for schema/taxonomy/condition validity, ordering checks, confidence threshold, and intra-ability contradiction checks. (`scripts/ax/effects-harness.ts`)
+- Added promotion materialization for approved candidates with explicit inferred metadata:
+  - `extraction.method="inferred"`
+  - `inferred=true`
+  - `promotionReceiptId=<receiptId>`
+  (`scripts/ax/effects-harness.ts`)
+- Added no-overwrite invariant enforcement to block deterministic effect mutation regressions during promotion. (`scripts/ax/effects-harness.ts`)
+- Added gate/promotion tests and command-chain smoke coverage in the harness workflow. (`test/effects-harness.test.ts`)
+
 #### Effects Contract v3 — Phase 3 trigger pipeline + sidecar provenance (#142)
 - Added strict `needs_interpretation` trigger detection in hybrid inference flow:
   - `effects.length === 0 && !isInert`

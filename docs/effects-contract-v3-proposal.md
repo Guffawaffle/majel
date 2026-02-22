@@ -452,7 +452,7 @@ Committed CLI scaffolding is available in `scripts/ax` so local AI operators (in
 
 1) `npm run ax -- effects:build --mode=deterministic|hybrid [--snapshot=<id>]`
 - Produces deterministic artifacts (`manifest`, `taxonomy`, `officers.index`, `effects chunk`, contract file) under `tmp/effects/runs/<runId>/artifacts/`.
-- In `hybrid` mode also produces `inference-report.json` sidecar under the run folder.
+- In `hybrid` mode also produces `inference-report.<hash>.json` sidecar under the run folder.
 - Hybrid inference sidecar now evaluates candidate gates and assigns statuses (`proposed`, `gate_passed`, `gate_failed`, `rejected`) with status counts recorded in the build receipt.
 - Writes build receipt: `receipts/effects-build.<runId>.json`.
 - Always validates the contract first; build fails fast on schema/taxonomy errors.
@@ -465,8 +465,10 @@ Committed CLI scaffolding is available in `scripts/ax` so local AI operators (in
 - Writes receipt: `receipts/effects-review-pack.<runId>.json`.
 
 3) `npm run ax -- effects:apply-decisions --run=<runId> --decisions=<path>`
-- Guarded placeholder in this phase.
-- Intentionally fails with guidance until Phase 3/4 gates + decision application flow are implemented.
+- Executes deterministic promotion gates against sidecar candidates and reviewed decisions.
+- Emits gate receipt: `receipts/effects-gates.<runId>.json` with per-candidate gate outcomes.
+- Materializes promoted artifact snapshot under the run artifacts folder and links inferred effects to `promotionReceiptId`.
+- Enforces no-overwrite invariant: deterministic base effects cannot be removed/rewritten by decision application.
 
 ## Safety constraints
 

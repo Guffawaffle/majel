@@ -4,12 +4,14 @@ import {
   type EffectsSeedFile,
 } from "../src/server/services/effects-contract-v3.js";
 import {
+  applyPromotionDecisions,
   buildInferenceReportPath,
   buildDecisionTemplate,
   buildReviewPack,
   deriveInferenceReport,
   evaluateInferenceCandidate,
   hashInferenceReport,
+  runInferenceCandidateGates,
   suggestDecisionAction,
   summarizeCandidateStatuses,
   type InferenceCandidate,
@@ -220,7 +222,7 @@ describe("effects-harness inference + review pack", () => {
       { abilityId: "a", candidateId: "4", candidateStatus: "rejected", proposedEffects: [], confidence: { score: 0.8, tier: "high" }, rationale: "", gateResults: [], evidence: [], model: null, promptVersion: null, inputDigest: "sha256:4" },
     ]);
 
-    expect(counts).toEqual({ proposed: 1, gate_passed: 1, gate_failed: 1, rejected: 1 });
+    expect(counts).toEqual({ proposed: 1, gate_passed: 1, gate_failed: 1, rejected: 1, promoted: 0 });
   });
 
   it("suggests promote for gate_passed and reject for rejected", () => {
@@ -272,5 +274,68 @@ describe("effects-harness inference + review pack", () => {
     if (template.decisions[0]) {
       expect(template.decisions[0].reason.startsWith("TODO: confirm - ")).toBe(true);
     }
+  });
+
+  it("runs full deterministic gates before promotion", () => {
+    const candidate = evaluateInferenceCandidate({
+      abilityId: "cdn:officer:100:oa",
+      candidateId: "cand-gates",
+      candidateStatus: "proposed",
+      proposedEffects: [createCandidateEffect("effect-a")],
+      confidence: { score: 0.91, tier: "high" },
+      rationale: "test",
+      gateResults: [],
+      evidence: [{
+        sourceRef: "effect-taxonomy.json#/test",
+        snippet: "test",
+        ruleId: "seed_contract_v0",
+        sourceLocale: "en",
+        sourcePath: "effect-taxonomy.json",
+        sourceOffset: 0,
+      }],
+      model: null,
+      promptVersion: null,
+      inputDigest: "sha256:test",
+    });
+
+    const seed = createSeedWithUnmappedAbility();
+    const run = runInferenceCandidateGates(candidate, seed.taxonomy);
+
+    expect(run.allPassed).toBe(true);
+    expect(run.candidate.candidateStatus).toBe("gate_passed");
+    expect(run.candidate.gateResults).toHaveLength(6);
+  });
+
+  it("promotes only gate-passed explicit promote decisions with receipt links", () => {
+    const seed = createSeedWithUnmappedAbility();
+    const artifact = buildEffectsContractV3Artifact(seed, {
+      generatedAt: "2026-02-22T00:00:00.000Z",
+      snapshotVersion: "stfc-test",
+      generatorVersion: "0.1.0",
+    });
+    const report = deriveInferenceReport(artifact, "run-123");
+
+    report.candidates[0] = {
+      ...report.candidates[0]!,
+      proposedEffects: [createCandidateEffect("candidate-promote")],
+      confidence: { score: 0.91, tier: "high" },
+    };
+
+    const promoted = applyPromotionDecisions({
+      artifact,
+      report,
+      taxonomy: seed.taxonomy,
+      receiptId: "receipt:run-123:1",
+      decisions: [{
+        candidateId: report.candidates[0]!.candidateId,
+        action: "promote",
+        reason: "approved",
+      }],
+    });
+
+    const ability = promoted.artifact.officers[0]!.abilities.find((entry) => entry.abilityId === "cdn:officer:100:oa");
+    expect(ability).toBeTruthy();
+    expect(ability!.effects.some((effect) => effect.inferred && effect.promotionReceiptId === "receipt:run-123:1")).toBe(true);
+    expect(promoted.report.candidates[0]!.candidateStatus).toBe("promoted");
   });
 });

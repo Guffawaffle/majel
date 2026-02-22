@@ -40,6 +40,7 @@ export interface EffectsBuildReceipt {
       gate_passed: number;
       gate_failed: number;
       rejected: number;
+      promoted: number;
     };
   };
   summary: ReturnType<typeof summarizeEffectsContractArtifact>;
@@ -48,7 +49,7 @@ export interface EffectsBuildReceipt {
 export interface InferenceCandidate {
   abilityId: string;
   candidateId: string;
-  candidateStatus: "proposed" | "gate_failed" | "gate_passed" | "rejected";
+  candidateStatus: "proposed" | "gate_failed" | "gate_passed" | "rejected" | "promoted";
   proposedEffects: EffectsContractArtifact["officers"][number]["abilities"][number]["effects"];
   confidence: { score: number; tier: "high" | "medium" | "low" };
   rationale: string;
@@ -122,12 +123,14 @@ export function summarizeCandidateStatuses(candidates: InferenceCandidate[]): {
   gate_passed: number;
   gate_failed: number;
   rejected: number;
+  promoted: number;
 } {
   const counts = {
     proposed: 0,
     gate_passed: 0,
     gate_failed: 0,
     rejected: 0,
+    promoted: 0,
   };
 
   for (const candidate of candidates) {
@@ -144,6 +147,30 @@ export interface InferenceReport {
   model: string | null;
   promptVersion: string | null;
   candidates: InferenceCandidate[];
+}
+
+export interface GateRunResult {
+  candidate: InferenceCandidate;
+  allPassed: boolean;
+}
+
+export interface ReviewDecisionInput {
+  candidateId: string;
+  action: ReviewDecisionAction;
+  reason: string;
+  ticket?: string;
+}
+
+export interface PromotionRunResult {
+  artifact: EffectsContractArtifact;
+  report: InferenceReport;
+  gateOutcomes: Array<{
+    candidateId: string;
+    action: ReviewDecisionAction;
+    promoted: boolean;
+    reason: string;
+    gateResults: InferenceCandidate["gateResults"];
+  }>;
 }
 
 const INTERPRETATION_TRIGGER_UNMAPPED_TYPES = new Set<string>([
@@ -398,6 +425,231 @@ export function hashInferenceReport(report: InferenceReport): string {
 export function buildInferenceReportPath(runId: string, reportHash: string): string {
   const shortHash = reportHash.slice(0, 16);
   return resolve("tmp", "effects", "runs", runId, `inference-report.${shortHash}.json`);
+}
+
+function effectSignature(effect: EffectsContractArtifact["officers"][number]["abilities"][number]["effects"][number]): string {
+  return stableJsonStringify({
+    effectKey: effect.effectKey,
+    magnitude: effect.magnitude,
+    unit: effect.unit,
+    stacking: effect.stacking,
+    targets: effect.targets,
+    conditions: effect.conditions,
+  });
+}
+
+export function runInferenceCandidateGates(
+  candidate: InferenceCandidate,
+  taxonomy: EffectsSeedFile["taxonomy"],
+): GateRunResult {
+  const taxonomyEffectKeys = new Set(taxonomy.effectKeys.map((item) => item.id));
+  const taxonomyConditionKeys = new Set(taxonomy.conditionKeys.map((item) => item.id));
+  const taxonomyTargetKinds = new Set(taxonomy.targetKinds);
+  const taxonomyTargetTags = new Set(taxonomy.targetTags);
+  const taxonomyShipClasses = new Set(taxonomy.shipClasses);
+
+  const schemaValid = candidate.proposedEffects.every((effect) => (
+    typeof effect.effectKey === "string"
+    && Array.isArray(effect.targets.targetKinds)
+    && Array.isArray(effect.targets.targetTags)
+    && Array.isArray(effect.conditions)
+  ));
+
+  const taxonomyValid = candidate.proposedEffects.every((effect) => (
+    taxonomyEffectKeys.has(effect.effectKey)
+    && effect.targets.targetKinds.every((value) => taxonomyTargetKinds.has(value))
+    && effect.targets.targetTags.every((value) => taxonomyTargetTags.has(value))
+    && (effect.targets.shipClass === null || taxonomyShipClasses.has(effect.targets.shipClass))
+    && effect.conditions.every((condition) => taxonomyConditionKeys.has(condition.conditionKey))
+  ));
+
+  const conditionSchemaValid = candidate.proposedEffects.every((effect) => (
+    effect.conditions.every((condition) => {
+      if (condition.params === null) return true;
+      return Object.values(condition.params).every((value) => typeof value === "string");
+    })
+  ));
+
+  const deterministicOrdering = candidate.proposedEffects.every((effect) => (
+    effect.conditions.every((condition) => {
+      if (condition.params === null) return true;
+      const keys = Object.keys(condition.params);
+      return keys.every((key, index) => index === 0 || keys[index - 1]!.localeCompare(key) <= 0);
+    })
+  ));
+
+  const confidencePass = candidate.confidence.score >= 0.7 && candidate.confidence.tier === "high";
+  const contradictionIntraAbility = (() => {
+    const signatures = new Set<string>();
+    for (const effect of candidate.proposedEffects) {
+      const signature = effectSignature(effect);
+      if (signatures.has(signature)) return false;
+      signatures.add(signature);
+    }
+    return true;
+  })();
+
+  const gateResults: InferenceCandidate["gateResults"] = [
+    { gate: "schema_validity", status: schemaValid ? "pass" : "fail" },
+    { gate: "taxonomy_validity", status: taxonomyValid ? "pass" : "fail" },
+    { gate: "condition_schema_validity", status: conditionSchemaValid ? "pass" : "fail" },
+    { gate: "ordering_determinism", status: deterministicOrdering ? "pass" : "fail" },
+    { gate: "confidence_threshold", status: confidencePass ? "pass" : "fail" },
+    { gate: "contradiction_intra_ability", status: contradictionIntraAbility ? "pass" : "fail" },
+  ];
+
+  const allPassed = gateResults.every((gate) => gate.status === "pass");
+  const nextStatus: InferenceCandidate["candidateStatus"] = allPassed ? "gate_passed" : "rejected";
+
+  return {
+    allPassed,
+    candidate: {
+      ...candidate,
+      candidateStatus: nextStatus,
+      gateResults,
+    },
+  };
+}
+
+function enforceNoOverwriteInvariant(
+  baseArtifact: EffectsContractArtifact,
+  nextArtifact: EffectsContractArtifact,
+): { ok: boolean; violations: string[] } {
+  const violations: string[] = [];
+
+  const baseAbilityMap = new Map<string, EffectsContractArtifact["officers"][number]["abilities"][number]>();
+  for (const officer of baseArtifact.officers) {
+    for (const ability of officer.abilities) baseAbilityMap.set(ability.abilityId, ability);
+  }
+
+  for (const officer of nextArtifact.officers) {
+    for (const ability of officer.abilities) {
+      const baseAbility = baseAbilityMap.get(ability.abilityId);
+      if (!baseAbility) continue;
+
+      const baseSignatures = new Set(baseAbility.effects.map((effect) => effectSignature(effect)));
+      const nextSignatures = new Set(ability.effects.map((effect) => effectSignature(effect)));
+
+      for (const signature of baseSignatures) {
+        if (!nextSignatures.has(signature)) {
+          violations.push(`${ability.abilityId}: deterministic signature removed`);
+        }
+      }
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    violations,
+  };
+}
+
+export function applyPromotionDecisions(input: {
+  artifact: EffectsContractArtifact;
+  report: InferenceReport;
+  taxonomy: EffectsSeedFile["taxonomy"];
+  decisions: ReviewDecisionInput[];
+  receiptId: string;
+}): PromotionRunResult {
+  const { artifact, report, taxonomy, decisions, receiptId } = input;
+  const decisionByCandidateId = new Map(decisions.map((entry) => [entry.candidateId, entry]));
+  const artifactNext = JSON.parse(JSON.stringify(artifact)) as EffectsContractArtifact;
+  const reportCandidates = [...report.candidates];
+
+  const abilityLookup = new Map<string, EffectsContractArtifact["officers"][number]["abilities"][number]>();
+  for (const officer of artifactNext.officers) {
+    for (const ability of officer.abilities) {
+      abilityLookup.set(ability.abilityId, ability);
+    }
+  }
+
+  const gateOutcomes: PromotionRunResult["gateOutcomes"] = [];
+
+  for (let index = 0; index < reportCandidates.length; index += 1) {
+    const originalCandidate = reportCandidates[index]!;
+    const gateRun = runInferenceCandidateGates(originalCandidate, taxonomy);
+    const decision = decisionByCandidateId.get(originalCandidate.candidateId);
+    const action = decision?.action ?? "reject";
+
+    let promoted = false;
+    let candidateNext = gateRun.candidate;
+    const reason = decision?.reason ?? "Missing explicit decision; default reject";
+
+    if (action === "promote" && gateRun.allPassed) {
+      const ability = abilityLookup.get(originalCandidate.abilityId);
+      if (!ability) {
+        gateOutcomes.push({
+          candidateId: originalCandidate.candidateId,
+          action,
+          promoted: false,
+          reason: `Missing ability target for candidate: ${reason}`,
+          gateResults: gateRun.candidate.gateResults,
+        });
+        reportCandidates[index] = { ...candidateNext, candidateStatus: "rejected" };
+        continue;
+      }
+
+      const existingSignatures = new Set(ability.effects.map((effect) => effectSignature(effect)));
+      const promotedEffects = originalCandidate.proposedEffects.filter((effect) => !existingSignatures.has(effectSignature(effect)));
+      if (promotedEffects.length > 0) {
+        let inferredIndex = ability.effects.filter((effect) => effect.inferred).length;
+        const mappedEffects = promotedEffects.map((effect) => {
+          inferredIndex += 1;
+          return {
+            ...effect,
+            effectId: `${ability.abilityId}:inf:${inferredIndex}`,
+            extraction: {
+              method: "inferred" as const,
+              ruleId: effect.extraction.ruleId,
+              model: originalCandidate.model,
+              promptVersion: originalCandidate.promptVersion,
+              inputDigest: originalCandidate.inputDigest,
+            },
+            inferred: true as const,
+            promotionReceiptId: receiptId,
+          };
+        });
+        ability.effects.push(...mappedEffects);
+        promoted = true;
+        candidateNext = {
+          ...candidateNext,
+          candidateStatus: "promoted",
+        };
+      }
+    }
+
+    if (!promoted && action === "promote") {
+      candidateNext = {
+        ...candidateNext,
+        candidateStatus: "rejected",
+      };
+    }
+
+    reportCandidates[index] = candidateNext;
+    gateOutcomes.push({
+      candidateId: originalCandidate.candidateId,
+      action,
+      promoted,
+      reason,
+      gateResults: candidateNext.gateResults,
+    });
+  }
+
+  const invariant = enforceNoOverwriteInvariant(artifact, artifactNext);
+  if (!invariant.ok) {
+    throw new Error(`No-overwrite invariant violated: ${invariant.violations.join("; ")}`);
+  }
+
+  const reportNext: InferenceReport = {
+    ...report,
+    candidates: reportCandidates.sort((left, right) => left.candidateId.localeCompare(right.candidateId)),
+  };
+
+  return {
+    artifact: artifactNext,
+    report: reportNext,
+    gateOutcomes,
+  };
 }
 
 export function buildReviewPack(

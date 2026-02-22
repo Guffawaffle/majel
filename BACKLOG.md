@@ -171,7 +171,8 @@ Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxono
 | #133 | B | Rewire Recommender (effect-based scoring) | [x] Done (`f98a365`) |
 | #141 | Phase 1 | Effects v3 contract enforcement + dry-run scaffold | [x] Done (`a16fd57`) |
 | #143 | Phase 2 | Deterministic extractor hardening + invariants | [x] Done (`daee915`) |
-| #142 | Phase 3 | Inference sidecar + needs_interpretation trigger pipeline | [~] In progress (2026-02-22) |
+| #142 | Phase 3 | Inference sidecar + needs_interpretation trigger pipeline | [x] Done (`a305118`) |
+| #146 | Phase 4 | Runner gates + promotion/fallback + receipts | [~] In progress (2026-02-22) |
 | Addendum C | Phase 1.5 | AX build/review harness scaffolding | [x] Done (`0d0fb6d` + follow-ups) |
 | #134 | C | Crew Validator (validation matrix) | [~] In progress |
 
@@ -185,7 +186,8 @@ Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxono
 - [x] Effects Contract v3 Phase 1 scaffold: deterministic validator/order/hash + dry-run report
 - [x] AX harness scaffold: `effects:build`, `effects:review-pack`, guarded `effects:apply-decisions`
 - [x] Effects Contract v3 Phase 2 hardening: source-locator semantics, unknown-key unmapped emission, ability invariants
-- [~] Effects Contract v3 Phase 3 trigger + inference sidecar provenance/hashing
+- [x] Effects Contract v3 Phase 3 trigger + inference sidecar provenance/hashing
+- [~] Effects Contract v3 Phase 4 gate runner + promotion receipts + no-overwrite invariant
 - [ ] "Does it work?" validation matrix (Phase C)
 
 See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
