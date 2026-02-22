@@ -12,11 +12,11 @@ import type {
   OfficerEvaluation,
   EvaluationIssue,
   SlotContext,
-  ShipClass,
 } from "./types/effect-types.js";
 import type { EffectBundleData } from "./effect-bundle-adapter.js";
 import type { BridgeSlot } from "./types.js";
 import { evaluateOfficer } from "./effect-evaluator.js";
+import { buildTargetContext, bridgeSlotToSlotContext } from "./effect-context.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -54,30 +54,6 @@ export interface ValidateCrewInput {
 }
 
 // ─── Core Logic ─────────────────────────────────────────────
-
-function bridgeSlotToSlotContext(slot: BridgeSlot): SlotContext {
-  return slot === "captain" ? "captain" : "bridge";
-}
-
-function buildTargetContext(
-  intent: { defaultContext: TargetContext } | undefined,
-  shipClass?: string | null,
-  targetClass?: string | null,
-): TargetContext {
-  const dc = intent?.defaultContext;
-  const ctx: TargetContext = {
-    targetKind: dc?.targetKind ?? "hostile",
-    engagement: dc?.engagement ?? "any",
-    targetTags: [...(dc?.targetTags ?? [])],
-  };
-  if (shipClass) {
-    ctx.shipContext = { shipClass: shipClass as ShipClass };
-  }
-  if (targetClass && targetClass !== "any") {
-    ctx.targetTags.push(`target_${targetClass}`);
-  }
-  return ctx;
-}
 
 function deriveOfficerVerdict(evaluation: OfficerEvaluation): "works" | "partial" | "blocked" | "unknown" {
   const hasBlocker = evaluation.issues.some((i) => i.severity === "blocker");

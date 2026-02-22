@@ -10,7 +10,6 @@ import { validateCrew, type ValidateCrewInput } from "../web/src/lib/crew-valida
 import type {
   EffectTag,
   OfficerAbility,
-  TargetContext,
   IntentDefinition,
 } from "../web/src/lib/types/effect-types.js";
 import type { EffectBundleData } from "../web/src/lib/effect-bundle-adapter.js";
@@ -47,13 +46,17 @@ function makeAbility(overrides: Partial<OfficerAbility> = {}): OfficerAbility {
 
 function makeIntent(overrides: Partial<IntentDefinition> = {}): IntentDefinition {
   return {
-    key: "grinding",
-    label: "Hostile Grinding",
-    category: "combat",
+    id: "grinding",
+    name: "Hostile Grinding",
+    description: "Hostile PvE combat",
     defaultContext: {
       targetKind: "hostile",
       engagement: "attacking",
       targetTags: ["pve"],
+    },
+    effectWeights: {
+      damage_dealt: 1.0,
+      crit_chance: 0.8,
     },
     ...overrides,
   };
@@ -65,10 +68,10 @@ function makeBundle(opts: {
   intentWeights?: Map<string, Record<string, number>>;
 } = {}): EffectBundleData {
   return {
+    schemaVersion: "test-1",
     officerAbilities: opts.officers ?? new Map(),
     intents: opts.intents ?? new Map([["grinding", makeIntent()]]),
     intentWeights: opts.intentWeights ?? new Map([["grinding", { damage_dealt: 1.0, crit_chance: 0.8 }]]),
-    catalogVersion: "test-1",
   };
 }
 

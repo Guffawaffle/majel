@@ -116,7 +116,7 @@ export interface EffectBundleData {
 export async function fetchEffectBundle(): Promise<EffectBundleResponse> {
   const response = await fetch("/api/effects/bundle", {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Accept": "application/json" },
   });
 
   if (!response.ok) {

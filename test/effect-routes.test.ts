@@ -28,6 +28,7 @@ function createMockEffectStore(overrides: Partial<EffectStore> = {}): EffectStor
     getOfficerAbilitiesBulk: vi.fn().mockResolvedValue(new Map()),
     getIntent: vi.fn().mockResolvedValue(null),
     listIntents: vi.fn().mockResolvedValue([]),
+    listIntentsFull: vi.fn().mockResolvedValue([]),
     getIntentWeights: vi.fn().mockResolvedValue({}),
     getIntentDefaultContext: vi.fn().mockResolvedValue(null),
     seedTaxonomy: vi.fn().mockResolvedValue({ inserted: 0, skipped: 0 }),
@@ -107,25 +108,24 @@ describe("GET /api/effects/bundle", () => {
   describe("with populated stores", () => {
     it("returns intents with weights and default context", async () => {
       const effectStore = createMockEffectStore({
-        listIntents: vi.fn().mockResolvedValue([
-          { id: "grinding", name: "Grinding", description: "PvE hostile battles" },
-        ]),
-        getIntent: vi.fn().mockResolvedValue({
-          id: "grinding",
-          name: "Grinding",
-          description: "PvE hostile battles",
-          defaultContext: {
-            intentId: "grinding",
-            targetKind: "hostile",
-            engagement: "attacking",
-            targetTagsJson: JSON.stringify(["pve"]),
-            shipClass: null,
+        listIntentsFull: vi.fn().mockResolvedValue([
+          {
+            id: "grinding",
+            name: "Grinding",
+            description: "PvE hostile battles",
+            defaultContext: {
+              intentId: "grinding",
+              targetKind: "hostile",
+              engagement: "attacking",
+              targetTagsJson: JSON.stringify(["pve"]),
+              shipClass: null,
+            },
+            effectWeights: [
+              { effectKey: "damage_dealt", weight: 3.0 },
+              { effectKey: "weapon_damage", weight: 2.5 },
+            ],
           },
-          effectWeights: [
-            { effectKey: "damage_dealt", weight: 3.0 },
-            { effectKey: "weapon_damage", weight: 2.5 },
-          ],
-        }),
+        ]),
       });
       const referenceStore = createMockReferenceStore();
       app = createApp(makeReadyState({ effectStore, referenceStore }));
@@ -221,16 +221,15 @@ describe("GET /api/effects/bundle", () => {
 
     it("handles intents with null default context", async () => {
       const effectStore = createMockEffectStore({
-        listIntents: vi.fn().mockResolvedValue([
-          { id: "custom", name: "Custom", description: "User-defined" },
+        listIntentsFull: vi.fn().mockResolvedValue([
+          {
+            id: "custom",
+            name: "Custom",
+            description: "User-defined",
+            defaultContext: null,
+            effectWeights: [{ effectKey: "damage_dealt", weight: 1.0 }],
+          },
         ]),
-        getIntent: vi.fn().mockResolvedValue({
-          id: "custom",
-          name: "Custom",
-          description: "User-defined",
-          defaultContext: null,
-          effectWeights: [{ effectKey: "damage_dealt", weight: 1.0 }],
-        }),
       });
       const referenceStore = createMockReferenceStore();
       app = createApp(makeReadyState({ effectStore, referenceStore }));

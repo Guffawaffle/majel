@@ -92,38 +92,32 @@ export function createEffectsRoutes(appState: AppState): Router {
       const effectStore = appState.effectStore!;
       const referenceStore = appState.referenceStore!;
 
-      // 1. Fetch all intents with weights
-      const intentRows = await effectStore.listIntents();
-      const intents = await Promise.all(
-        intentRows.map(async (row) => {
-          const intent = await effectStore.getIntent(row.id);
-          if (!intent) return null;
+      // 1. Fetch all intents with weights and default contexts (3 queries, not N+1)
+      const intentsFull = await effectStore.listIntentsFull();
+      const intents = intentsFull.map((intent) => {
+        const ctx = intent.defaultContext;
+        const defaultContext = ctx
+          ? {
+            targetKind: ctx.targetKind,
+            engagement: ctx.engagement,
+            targetTags: ctx.targetTagsJson ? JSON.parse(ctx.targetTagsJson) : [],
+          }
+          : null;
 
-          // Parse default context
-          const ctx = intent.defaultContext;
-          const defaultContext = ctx
-            ? {
-              targetKind: ctx.targetKind,
-              engagement: ctx.engagement,
-              targetTags: ctx.targetTagsJson ? JSON.parse(ctx.targetTagsJson) : [],
-            }
-            : null;
-
-          return {
-            id: row.id,
-            name: row.name,
-            description: row.description,
-            defaultContext,
-            effectWeights: intent.effectWeights.reduce(
-              (acc, ew) => {
-                acc[ew.effectKey] = ew.weight;
-                return acc;
-              },
-              {} as Record<string, number>,
-            ),
-          };
-        }),
-      );
+        return {
+          id: intent.id,
+          name: intent.name,
+          description: intent.description,
+          defaultContext,
+          effectWeights: intent.effectWeights.reduce(
+            (acc, ew) => {
+              acc[ew.effectKey] = ew.weight;
+              return acc;
+            },
+            {} as Record<string, number>,
+          ),
+        };
+      });
 
       // 2. Fetch all officers from reference store
       const allOfficers = await referenceStore.listOfficers();
@@ -164,14 +158,15 @@ export function createEffectsRoutes(appState: AppState): Router {
 
       const bundle: EffectBundleResponse = {
         schemaVersion: "1.0.0",
-        intents: intents.filter(Boolean) as EffectBundleResponse["intents"],
+        intents,
         officers,
       };
 
       sendOk(res, bundle);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      sendFail(res, ErrorCode.INTERNAL_ERROR, `Failed to fetch effect bundle: ${message}`, 500);
+      console.error("Effect bundle assembly failed:", message);
+      sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch effect bundle", 500);
     }
   });
 

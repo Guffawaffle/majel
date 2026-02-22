@@ -8,7 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adaptEffectBundle, fetchEffectBundle, type EffectBundleResponse } from "../web/src/lib/effect-bundle-adapter.js";
+import { adaptEffectBundle, fetchEffectBundle, EffectBundleManager, type EffectBundleResponse } from "../web/src/lib/effect-bundle-adapter.js";
 
 // Helper to create a minimal valid bundle
 function createMockBundle(): EffectBundleResponse {
@@ -199,5 +199,78 @@ describe("EffectBundleAdapter", () => {
     } as Response);
 
     await expect(fetchEffectBundle()).rejects.toThrow(/malformed effect bundle payload/i);
+  });
+});
+
+// ─── EffectBundleManager lifecycle ──────────────────────────
+
+describe("EffectBundleManager", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function mockFetchSuccess(raw: EffectBundleResponse) {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({ ok: true, data: raw, meta: { requestId: "r1" } }),
+    } as Response);
+  }
+
+  it("load() fetches and caches the bundle", async () => {
+    const raw = createMockBundle();
+    mockFetchSuccess(raw);
+    const mgr = new EffectBundleManager();
+
+    expect(mgr.get()).toBeNull();
+    expect(mgr.isLoading()).toBe(false);
+
+    const result = await mgr.load();
+    expect(result.schemaVersion).toBe("1.0.0");
+    expect(result.intentWeights.size).toBe(1);
+    expect(mgr.get()).toBe(result);
+    expect(mgr.hasError()).toBe(false);
+  });
+
+  it("load() returns cached data on second call without re-fetching", async () => {
+    const raw = createMockBundle();
+    mockFetchSuccess(raw);
+    const mgr = new EffectBundleManager();
+
+    const first = await mgr.load();
+    const second = await mgr.load();
+    expect(first).toBe(second);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("load() surfaces fetch errors via hasError/getError", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
+    const mgr = new EffectBundleManager();
+
+    await expect(mgr.load()).rejects.toThrow("network down");
+    expect(mgr.hasError()).toBe(true);
+    expect(mgr.getError()?.message).toBe("network down");
+    expect(mgr.get()).toBeNull();
+  });
+
+  it("concurrent load() calls share one fetch and resolve together", async () => {
+    const raw = createMockBundle();
+    mockFetchSuccess(raw);
+    const mgr = new EffectBundleManager();
+
+    const [a, b, c] = await Promise.all([mgr.load(), mgr.load(), mgr.load()]);
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("concurrent load() calls all reject on error", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("boom"));
+    const mgr = new EffectBundleManager();
+
+    const results = await Promise.allSettled([mgr.load(), mgr.load(), mgr.load()]);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });

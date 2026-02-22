@@ -135,6 +135,7 @@ export interface EffectStore {
   // ── Intent reads ──
   getIntent(intentId: string): Promise<IntentWithWeights | null>;
   listIntents(): Promise<IntentDefRow[]>;
+  listIntentsFull(): Promise<IntentWithWeights[]>;
   getIntentWeights(intentId: string): Promise<Record<string, number>>;
   getIntentDefaultContext(intentId: string): Promise<IntentDefaultContextRow | null>;
 
@@ -376,6 +377,16 @@ const SQL = {
   // Intent reads
   getIntent: `SELECT id, name, description FROM intent_def WHERE id = $1`,
   listIntents: `SELECT id, name, description FROM intent_def ORDER BY name`,
+  listAllIntentWeights: `
+    SELECT intent_id AS "intentId", effect_key AS "effectKey", weight
+    FROM intent_effect_weight
+    ORDER BY intent_id, weight DESC
+  `,
+  listAllIntentDefaultContexts: `
+    SELECT intent_id AS "intentId", target_kind AS "targetKind", engagement,
+           target_tags_json AS "targetTagsJson", ship_class AS "shipClass"
+    FROM intent_default_context
+  `,
   getIntentWeights: `
     SELECT effect_key AS "effectKey", weight
     FROM intent_effect_weight
@@ -634,6 +645,32 @@ export async function createEffectStore(
     async listIntents() {
       const { rows } = await pool.query<IntentDefRow>(SQL.listIntents);
       return rows;
+    },
+
+    async listIntentsFull() {
+      const [intentResult, weightsResult, contextsResult] = await Promise.all([
+        pool.query<IntentDefRow>(SQL.listIntents),
+        pool.query<IntentEffectWeightRow>(SQL.listAllIntentWeights),
+        pool.query<IntentDefaultContextRow>(SQL.listAllIntentDefaultContexts),
+      ]);
+
+      const weightsByIntent = new Map<string, { effectKey: string; weight: number }[]>();
+      for (const row of weightsResult.rows) {
+        const arr = weightsByIntent.get(row.intentId) ?? [];
+        arr.push({ effectKey: row.effectKey, weight: row.weight });
+        weightsByIntent.set(row.intentId, arr);
+      }
+
+      const contextByIntent = new Map<string, IntentDefaultContextRow>();
+      for (const row of contextsResult.rows) {
+        contextByIntent.set(row.intentId, row);
+      }
+
+      return intentResult.rows.map((intent) => ({
+        ...intent,
+        defaultContext: contextByIntent.get(intent.id) ?? null,
+        effectWeights: weightsByIntent.get(intent.id) ?? [],
+      }));
     },
 
     async getIntentWeights(intentId) {
