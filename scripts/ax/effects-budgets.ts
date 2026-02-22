@@ -105,9 +105,17 @@ const command: AxCommand = {
     const report = deriveInferenceReport(artifactA, "budget-eval");
     const summary = summarizeEffectsContractArtifact(artifactA);
 
+    let totalAbilities = 0;
+    let mappedAbilities = 0;
+
     let inferredEffects = 0;
     for (const officer of artifactA.officers) {
       for (const ability of officer.abilities) {
+        totalAbilities += 1;
+        if (ability.isInert || ability.effects.length > 0) {
+          mappedAbilities += 1;
+        }
+
         for (const effect of ability.effects) {
           if (effect.inferred) inferredEffects += 1;
         }
@@ -118,8 +126,8 @@ const command: AxCommand = {
     const inferredPromotedRatio = totalEffects > 0 ? inferredEffects / totalEffects : 0;
     const lowConfidenceCandidateCount = report.candidates.filter((candidate) => candidate.confidence.tier === "low").length;
 
-    const mappedCoveragePercent = summary.abilities > 0
-      ? ((summary.abilities - summary.unmappedEntries) / summary.abilities) * 100
+    const mappedCoveragePercent = totalAbilities > 0
+      ? (mappedAbilities / totalAbilities) * 100
       : 100;
 
     const blockErrors: string[] = [];

@@ -310,3 +310,98 @@ describe("GET /api/effects/objectives", () => {
     expect(res.body.data.objectives.some((objective: { intentKey: string }) => objective.intentKey === "hostile_grinding")).toBe(true);
   });
 });
+
+describe("GET /api/effects/runtime/*", () => {
+  let app: Express;
+
+  function createRuntimeFixture() {
+    const effectStore = createMockEffectStore({
+      listIntentsFull: vi.fn().mockResolvedValue([
+        {
+          id: "hostile_grinding",
+          name: "Hostile Grinding",
+          description: "PvE hostile battles",
+          defaultContext: {
+            intentId: "hostile_grinding",
+            targetKind: "hostile",
+            engagement: "attacking",
+            targetTagsJson: JSON.stringify(["pve"]),
+            shipClass: null,
+          },
+          effectWeights: [{ effectKey: "damage_dealt", weight: 1 }],
+        },
+      ]),
+      getOfficerAbilitiesBulk: vi.fn().mockResolvedValue(
+        new Map([
+          ["officer-1", [{
+            id: "officer-1-cm",
+            officerId: "officer-1",
+            slot: "cm",
+            name: "CM",
+            rawText: "Increase damage dealt",
+            isInert: false,
+            effects: [{
+              id: "officer-1-cm-ef",
+              abilityId: "officer-1-cm",
+              effectKey: "damage_dealt",
+              magnitude: 0.2,
+              unit: "percent",
+              stacking: "additive",
+              targetKinds: ["hostile"],
+              targetTags: ["pve"],
+              conditions: [],
+            }],
+          }]],
+        ]),
+      ),
+    });
+
+    const referenceStore = createMockReferenceStore({
+      listOfficers: vi.fn().mockResolvedValue([
+        { id: "officer-1", name: "Officer One" },
+      ]),
+    });
+
+    return { effectStore, referenceStore };
+  }
+
+  it("manifest uses short TTL with stable ETag and supports 304 revalidation", async () => {
+    const { effectStore, referenceStore } = createRuntimeFixture();
+    app = createApp(makeReadyState({ effectStore, referenceStore }));
+
+    const first = await testRequest(app).get("/api/effects/runtime/manifest.json");
+    expect(first.status).toBe(200);
+    expect(first.headers["cache-control"]).toContain("max-age=60");
+    expect(first.headers["cache-control"]).toContain("stale-while-revalidate=300");
+    expect(first.headers["etag"]).toBeTruthy();
+
+    const second = await testRequest(app)
+      .get("/api/effects/runtime/manifest.json")
+      .set("If-None-Match", first.headers["etag"] as string);
+
+    expect(second.status).toBe(304);
+  });
+
+  it("taxonomy/index/chunk runtime artifacts are immutable-cached", async () => {
+    const { effectStore, referenceStore } = createRuntimeFixture();
+    app = createApp(makeReadyState({ effectStore, referenceStore }));
+
+    const manifest = await testRequest(app).get("/api/effects/runtime/manifest.json");
+    expect(manifest.status).toBe(200);
+
+    const taxonomyPath = manifest.body.data.paths.taxonomy as string;
+    const officersIndexPath = manifest.body.data.paths.officersIndex as string;
+    const chunkPath = manifest.body.data.paths.chunks[0] as string;
+
+    const taxonomy = await testRequest(app).get(taxonomyPath);
+    const index = await testRequest(app).get(officersIndexPath);
+    const chunk = await testRequest(app).get(chunkPath);
+
+    expect(taxonomy.status).toBe(200);
+    expect(index.status).toBe(200);
+    expect(chunk.status).toBe(200);
+    expect(taxonomy.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+    expect(index.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+    expect(chunk.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+  });
+});

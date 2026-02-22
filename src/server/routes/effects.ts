@@ -100,6 +100,11 @@ interface RuntimeArtifacts {
 
 export function createEffectsRoutes(appState: AppState): Router {
   const router = createSafeRouter();
+  const RUNTIME_ARTIFACT_TTL_MS = 60_000;
+  let runtimeArtifactsCache: {
+    expiresAt: number;
+    artifacts: RuntimeArtifacts;
+  } | null = null;
 
   router.get("/api/effects/objectives", async (_req, res) => {
     try {
@@ -206,6 +211,7 @@ export function createEffectsRoutes(appState: AppState): Router {
   }
 
   function buildRuntimeArtifacts(bundle: EffectBundleResponse): RuntimeArtifacts {
+    const bundleHash = sha256Hex(stableJsonStringify(bundle)).slice(0, 16);
     const taxonomyPayload = {
       schemaVersion: bundle.schemaVersion,
       intents: bundle.intents,
@@ -255,7 +261,7 @@ export function createEffectsRoutes(appState: AppState): Router {
     const manifest: RuntimeManifestResponse = {
       schemaVersion: "1.0.0",
       generatedAt: new Date().toISOString(),
-      bundleHash: sha256Hex(stableJsonStringify(bundle)).slice(0, 16),
+      bundleHash,
       paths: {
         taxonomy: taxonomyPath,
         officersIndex: officersIndexPath,
@@ -263,7 +269,7 @@ export function createEffectsRoutes(appState: AppState): Router {
       },
     };
 
-    const manifestHash = sha256Hex(stableJsonStringify(manifest)).slice(0, 16);
+    const manifestHash = bundleHash;
 
     return {
       manifest,
@@ -276,13 +282,46 @@ export function createEffectsRoutes(appState: AppState): Router {
     };
   }
 
-  async function maybeSendNotModified(req: import("express").Request, res: import("express").Response, etag: string): Promise<boolean> {
+  function maybeSendNotModified(req: import("express").Request, res: import("express").Response, etag: string): boolean {
     res.setHeader("ETag", etag);
-    if (req.headers["if-none-match"] === etag) {
+    const headerValue = req.headers["if-none-match"];
+    const candidates = typeof headerValue === "string"
+      ? headerValue.split(",").map((part) => part.trim())
+      : [];
+
+    if (candidates.includes(etag) || candidates.includes("*")) {
       res.status(304).end();
       return true;
     }
     return false;
+  }
+
+  function sendRuntimeOk(res: import("express").Response, data: unknown): void {
+    const startTime = typeof res.locals._startTime === "number" ? res.locals._startTime : Date.now();
+    res.status(200).json({
+      ok: true,
+      data,
+      meta: {
+        requestId: typeof res.locals._requestId === "string" ? res.locals._requestId : "unknown",
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - startTime,
+      },
+    });
+  }
+
+  async function getRuntimeArtifacts(): Promise<RuntimeArtifacts> {
+    const now = Date.now();
+    if (runtimeArtifactsCache && runtimeArtifactsCache.expiresAt > now) {
+      return runtimeArtifactsCache.artifacts;
+    }
+
+    const bundle = await assembleEffectBundle();
+    const artifacts = buildRuntimeArtifacts(bundle);
+    runtimeArtifactsCache = {
+      artifacts,
+      expiresAt: now + RUNTIME_ARTIFACT_TTL_MS,
+    };
+    return artifacts;
   }
 
   /**
@@ -308,12 +347,11 @@ export function createEffectsRoutes(appState: AppState): Router {
     if (!requireEffectStore(res) || !requireReferenceStore(res)) return;
 
     try {
-      const bundle = await assembleEffectBundle();
-      const runtime = buildRuntimeArtifacts(bundle);
+      const runtime = await getRuntimeArtifacts();
       res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-      const etag = `"effects-manifest-${runtime.manifestHash}"`;
-      if (await maybeSendNotModified(req, res, etag)) return;
-      sendOk(res, runtime.manifest);
+      const etag = `"effects-manifest-${runtime.manifest.bundleHash}"`;
+      if (maybeSendNotModified(req, res, etag)) return;
+      sendRuntimeOk(res, runtime.manifest);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Effects runtime manifest failed:", message);
@@ -325,8 +363,7 @@ export function createEffectsRoutes(appState: AppState): Router {
     if (!requireEffectStore(res) || !requireReferenceStore(res)) return;
 
     try {
-      const bundle = await assembleEffectBundle();
-      const runtime = buildRuntimeArtifacts(bundle);
+      const runtime = await getRuntimeArtifacts();
       const requestedHash = req.params.hash;
       if (requestedHash !== runtime.taxonomyHash) {
         sendFail(res, ErrorCode.NOT_FOUND, "taxonomy artifact hash not found", 404);
@@ -335,8 +372,8 @@ export function createEffectsRoutes(appState: AppState): Router {
 
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       const etag = `"effects-taxonomy-${runtime.taxonomyHash}"`;
-      if (await maybeSendNotModified(req, res, etag)) return;
-      sendOk(res, runtime.taxonomy);
+      if (maybeSendNotModified(req, res, etag)) return;
+      sendRuntimeOk(res, runtime.taxonomy);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Effects runtime taxonomy failed:", message);
@@ -348,8 +385,7 @@ export function createEffectsRoutes(appState: AppState): Router {
     if (!requireEffectStore(res) || !requireReferenceStore(res)) return;
 
     try {
-      const bundle = await assembleEffectBundle();
-      const runtime = buildRuntimeArtifacts(bundle);
+      const runtime = await getRuntimeArtifacts();
       const requestedHash = req.params.hash;
       if (requestedHash !== runtime.officersIndexHash) {
         sendFail(res, ErrorCode.NOT_FOUND, "officers index artifact hash not found", 404);
@@ -358,8 +394,8 @@ export function createEffectsRoutes(appState: AppState): Router {
 
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       const etag = `"effects-index-${runtime.officersIndexHash}"`;
-      if (await maybeSendNotModified(req, res, etag)) return;
-      sendOk(res, runtime.officersIndex);
+      if (maybeSendNotModified(req, res, etag)) return;
+      sendRuntimeOk(res, runtime.officersIndex);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Effects runtime officers index failed:", message);
@@ -371,8 +407,7 @@ export function createEffectsRoutes(appState: AppState): Router {
     if (!requireEffectStore(res) || !requireReferenceStore(res)) return;
 
     try {
-      const bundle = await assembleEffectBundle();
-      const runtime = buildRuntimeArtifacts(bundle);
+      const runtime = await getRuntimeArtifacts();
       const requestedHash = req.params.hash;
       const requestedChunk = req.params.chunkId;
       const chunk = runtime.chunks.find((entry) => {
@@ -387,8 +422,8 @@ export function createEffectsRoutes(appState: AppState): Router {
 
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       const etag = `"effects-chunk-${requestedChunk}-${requestedHash}"`;
-      if (await maybeSendNotModified(req, res, etag)) return;
-      sendOk(res, chunk.payload);
+      if (maybeSendNotModified(req, res, etag)) return;
+      sendRuntimeOk(res, chunk.payload);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Effects runtime chunk failed:", message);
