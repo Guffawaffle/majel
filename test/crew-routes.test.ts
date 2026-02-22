@@ -260,6 +260,33 @@ describe("Crew routes — live store", () => {
       expect(res.status).toBe(400);
     });
 
+    it("POST rejects unknown intentKeys", async () => {
+      const res = await testRequest(app)
+        .post("/api/crew/loadouts")
+        .send({
+          shipId: "enterprise",
+          name: "Bad Intents",
+          intentKeys: ["totally_unknown_intent"],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("INVALID_PARAM");
+      expect(res.body.error.message).toContain("Unknown intentKeys");
+    });
+
+    it("POST accepts canonical intentKeys", async () => {
+      const res = await testRequest(app)
+        .post("/api/crew/loadouts")
+        .send({
+          shipId: "enterprise",
+          name: "Canonical Intents",
+          intentKeys: ["hostile_grinding", "pvp_station_hit"],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.loadout.intentKeys).toEqual(["hostile_grinding", "pvp_station_hit"]);
+    });
+
     it("GET lists loadouts with filters", async () => {
       await crewStore.createLoadout({ shipId: "enterprise", name: "L1" });
       await crewStore.createLoadout({ shipId: "enterprise", name: "L2", isActive: false });
@@ -289,6 +316,18 @@ describe("Crew routes — live store", () => {
       expect(res.status).toBe(200);
       expect(res.body.data.loadout.name).toBe("New");
       expect(res.body.data.loadout.priority).toBe(5);
+    });
+
+    it("PATCH rejects unknown intentKeys", async () => {
+      const loadout = await crewStore.createLoadout({ shipId: "enterprise", name: "Old" });
+
+      const res = await testRequest(app)
+        .patch(`/api/crew/loadouts/${loadout.id}`)
+        .send({ intentKeys: ["unknown_intent_for_patch"] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("INVALID_PARAM");
+      expect(res.body.error.message).toContain("Unknown intentKeys");
     });
 
     it("DELETE removes a loadout", async () => {

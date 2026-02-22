@@ -13,6 +13,7 @@ import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
+import { getCanonicalObjectiveArtifact } from "../services/canonical-objectives.js";
 
 export interface EffectBundleResponse {
   schemaVersion: string;
@@ -58,6 +59,20 @@ export interface EffectBundleResponse {
 
 export function createEffectsRoutes(appState: AppState): Router {
   const router = createSafeRouter();
+
+  router.get("/api/effects/objectives", async (_req, res) => {
+    try {
+      const artifact = await getCanonicalObjectiveArtifact();
+      sendOk(res, {
+        schemaVersion: "1.0.0",
+        objectives: artifact.intents,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Canonical objectives assembly failed:", message);
+      sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch canonical objectives", 500);
+    }
+  });
 
   // ── Helpers ─────────────────────────────────────────────
 

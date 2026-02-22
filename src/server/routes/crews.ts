@@ -18,6 +18,7 @@ import { createSafeRouter } from "../safe-router.js";
 import { VALID_BRIDGE_SLOTS, VALID_BELOW_DECK_MODES } from "../types/crew-types.js";
 import type { BridgeSlot, BelowDeckMode, VariantPatch, PlanSource } from "../types/crew-types.js";
 import { MAX_NAME, MAX_NOTES, MAX_LABEL, getCrewStore } from "../services/route-helpers/crew-route-helpers.js";
+import { getCanonicalObjectiveKeys } from "../services/canonical-objectives.js";
 
 export function createCrewRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -35,6 +36,33 @@ export function createCrewRoutes(appState: AppState): Router {
   router.use("/api/effective-state", visitor);
 
   const getStore = (res: import("express").Response) => getCrewStore(appState, res);
+
+  async function validateIntentKeys(
+    value: unknown,
+  ): Promise<{ valid: true; intentKeys: string[] } | { valid: false; message: string }> {
+    if (value === undefined) {
+      return { valid: true, intentKeys: [] };
+    }
+
+    if (!Array.isArray(value)) {
+      return { valid: false, message: "intentKeys must be an array of canonical objective IDs" };
+    }
+
+    if (!value.every((entry) => typeof entry === "string")) {
+      return { valid: false, message: "intentKeys must contain only strings" };
+    }
+
+    const canonicalKeys = await getCanonicalObjectiveKeys();
+    const unknown = (value as string[]).filter((entry) => !canonicalKeys.has(entry));
+    if (unknown.length > 0) {
+      return {
+        valid: false,
+        message: `Unknown intentKeys: ${unknown.slice(0, 5).join(", ")}`,
+      };
+    }
+
+    return { valid: true, intentKeys: value as string[] };
+  }
 
   // ═══════════════════════════════════════════════════════
   // Bridge Cores
@@ -287,10 +315,16 @@ export function createCrewRoutes(appState: AppState): Router {
     if (notes !== undefined && typeof notes === "string" && notes.length > MAX_NOTES) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `notes must be ${MAX_NOTES} characters or fewer`, 400);
     }
+
+    const validatedIntentKeys = await validateIntentKeys(intentKeys);
+    if (!validatedIntentKeys.valid) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, validatedIntentKeys.message, 400);
+    }
+
     try {
       const loadout = await store.createLoadout({
         shipId, name, bridgeCoreId, belowDeckPolicyId,
-        priority, isActive, intentKeys, tags, notes,
+        priority, isActive, intentKeys: validatedIntentKeys.intentKeys, tags, notes,
       });
       sendOk(res, { loadout }, 201);
     } catch (err: unknown) {
@@ -317,8 +351,25 @@ export function createCrewRoutes(appState: AppState): Router {
     if (notes !== undefined && typeof notes === "string" && notes.length > MAX_NOTES) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `notes must be ${MAX_NOTES} characters or fewer`, 400);
     }
+
+    let normalizedIntentKeys = intentKeys;
+    if (intentKeys !== undefined) {
+      const validatedIntentKeys = await validateIntentKeys(intentKeys);
+      if (!validatedIntentKeys.valid) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, validatedIntentKeys.message, 400);
+      }
+      normalizedIntentKeys = validatedIntentKeys.intentKeys;
+    }
+
     const updated = await store.updateLoadout(id, {
-      name, bridgeCoreId, belowDeckPolicyId, priority, isActive, intentKeys, tags, notes,
+      name,
+      bridgeCoreId,
+      belowDeckPolicyId,
+      priority,
+      isActive,
+      intentKeys: normalizedIntentKeys,
+      tags,
+      notes,
     });
     if (!updated) return sendFail(res, ErrorCode.NOT_FOUND, `Loadout ${id} not found`, 404);
     sendOk(res, { loadout: updated });

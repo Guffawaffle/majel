@@ -291,3 +291,22 @@ describe("GET /api/effects/bundle", () => {
     });
   });
 });
+
+describe("GET /api/effects/objectives", () => {
+  let app: Express;
+
+  beforeEach(() => {
+    app = createApp(makeReadyState());
+  });
+
+  it("returns canonical objectives even when stores are unavailable", async () => {
+    const res = await testRequest(app).get("/api/effects/objectives");
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.data.schemaVersion).toBe("1.0.0");
+    expect(Array.isArray(res.body.data.objectives)).toBe(true);
+    expect(res.body.data.objectives.length).toBeGreaterThan(2);
+    expect(res.body.data.objectives.some((objective: { intentKey: string }) => objective.intentKey === "hostile_grinding")).toBe(true);
+  });
+});
