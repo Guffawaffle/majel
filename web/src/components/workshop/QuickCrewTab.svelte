@@ -326,6 +326,23 @@
     Activation rules: Captain Maneuver (CM) only works in the Captain slot. Officer Ability (OA) applies to all bridge officers (including Captain) but not below decks. Below-Deck Ability (BDA) only applies in below-deck slots.
   </p>
 
+  {#if effectBundle}
+    <div class="qc-telemetry" aria-live="polite">
+      <p>
+        Effect mapping coverage: {effectBundle.mappingTelemetry.mappedAbilities}/{effectBundle.mappingTelemetry.totalAbilities}
+        ({effectBundle.mappingTelemetry.mappedPercent}%).
+      </p>
+      <p>
+        Unknown effect keys: {effectBundle.mappingTelemetry.unknownEffectKeyCount} · Unknown magnitudes: {effectBundle.mappingTelemetry.unknownMagnitudeEffects}
+      </p>
+      {#if effectBundle.mappingTelemetry.topUnmappedAbilityPhrases.length > 0}
+        <p>
+          Top unmapped ability phrases: {effectBundle.mappingTelemetry.topUnmappedAbilityPhrases.slice(0, 3).join(" · ")}
+        </p>
+      {/if}
+    </div>
+  {/if}
+
   <div class="ws-form qc-config">
     <div class="ws-form-grid">
       <label class="ws-field">

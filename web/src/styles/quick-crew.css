@@ -4,6 +4,22 @@
   font-size: 0.88rem;
 }
 
+.qc-telemetry {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  display: grid;
+  gap: 4px;
+}
+
+.qc-telemetry p {
+  margin: 0;
+}
+
 .qc-config { margin-bottom: 12px; }
 
 .qc-grid {
