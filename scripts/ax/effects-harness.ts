@@ -4,13 +4,14 @@ import {
   applyEffectsOverridesToArtifact,
   buildEffectsContractV3Artifact,
   type EffectsOverrideFile,
+  type EffectsSeedFile,
   hashEffectsContractArtifact,
   sha256Hex,
   stableJsonStringify,
   summarizeEffectsContractArtifact,
   type EffectsContractArtifact,
-  type EffectsSeedFile,
 } from "../../src/server/services/effects-contract-v3.js";
+import type { SeedAbilityInput } from "../../src/server/stores/effect-store.js";
 import { ROOT } from "./runner.js";
 
 export type EffectsBuildMode = "deterministic" | "hybrid";
@@ -48,6 +49,14 @@ export interface EffectsBuildReceipt {
   overrides?: {
     path: string;
     operationCount: number;
+  };
+  input?: {
+    source: "seed" | "snapshot-export";
+    inputPath?: string;
+    snapshotId?: string;
+    contentHash?: string;
+    schemaHash?: string;
+    sourceLabel?: string;
   };
   summary: ReturnType<typeof summarizeEffectsContractArtifact>;
 }
@@ -215,6 +224,29 @@ export interface ReviewDecisionTemplate {
   }[];
 }
 
+export interface EffectsSnapshotExportFile {
+  schemaVersion: "1.0.0";
+  snapshot: {
+    snapshotId: string;
+    source: string;
+    sourceVersion: string;
+    generatedAt: string;
+    schemaHash: string;
+    contentHash: string;
+  };
+  officers: Array<{
+    officerId: string;
+    abilities: Array<{
+      abilityId: string;
+      slot: "cm" | "oa" | "bda";
+      name: string | null;
+      rawText: string;
+      isInert: boolean;
+      sourceRef: string;
+    }>;
+  }>;
+}
+
 export async function readEffectsSeedFile(): Promise<EffectsSeedFile> {
   const seedPath = resolve(ROOT, "data", "seed", "effect-taxonomy.json");
   const raw = await readFile(seedPath, "utf-8");
@@ -233,6 +265,32 @@ export async function readEffectsOverridesFile(): Promise<EffectsOverrideFile> {
       operations: [],
     };
   }
+}
+
+export async function readEffectsSnapshotExportFile(path: string): Promise<EffectsSnapshotExportFile> {
+  const absolute = resolve(ROOT, path);
+  const raw = await readFile(absolute, "utf-8");
+  return JSON.parse(raw) as EffectsSnapshotExportFile;
+}
+
+export function abilitiesFromSnapshotExport(snapshot: EffectsSnapshotExportFile): SeedAbilityInput[] {
+  const abilities: SeedAbilityInput[] = [];
+
+  for (const officer of snapshot.officers) {
+    for (const ability of officer.abilities) {
+      abilities.push({
+        id: ability.abilityId,
+        officerId: officer.officerId,
+        slot: ability.slot,
+        name: ability.name,
+        rawText: ability.rawText,
+        isInert: ability.isInert,
+        effects: [],
+      });
+    }
+  }
+
+  return abilities;
 }
 
 export async function writeJsonAt(path: string, data: unknown): Promise<void> {

@@ -82,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added repository data hygiene policy documenting forbidden raw CDN/snapshot paths and guardrail workflow. (`DATA_HYGIENE.md`)
 - Added AX `data:hygiene` command scaffold and integrated it into `ax ci` as an explicit CI gate step. (`scripts/ax/data-hygiene.ts`, `scripts/ax/ci.ts`, `scripts/ax.ts`, `package.json`)
 - Added Phase 1 deterministic scaffold export command `effects:snapshot:export` emitting `snapshotId`, `schemaHash`, `contentHash`, and stable fixture export payloads for hermetic PR workflows. (`scripts/ax/effects-snapshot-export.ts`, `scripts/ax.ts`, `package.json`)
+- Added Phase 2 build input split: `effects:build` now accepts `--input=<snapshot-export.json>` and records input provenance metadata (`snapshotId`, `contentHash`, `schemaHash`) in build output/receipts while preserving deterministic hash behavior. (`scripts/ax/effects-build.ts`, `scripts/ax/effects-harness.ts`)
 
 ### Fixed
 

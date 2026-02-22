@@ -2,11 +2,13 @@ import { resolve } from "node:path";
 import type { AxCommand, AxResult } from "./types.js";
 import { getFlag, makeResult } from "./runner.js";
 import {
+  abilitiesFromSnapshotExport,
   applyOverridesForBuild,
   buildInferenceReportPath,
   buildDeterministicArtifacts,
   createRunId,
   readEffectsOverridesFile,
+  readEffectsSnapshotExportFile,
   deriveInferenceReport,
   hashInferenceReport,
   readEffectsSeedFile,
@@ -39,9 +41,25 @@ const command: AxCommand = {
     }
 
     const snapshotVersion = getFlag(args, "snapshot") ?? "stfc-seed-v0";
+    const inputPath = getFlag(args, "input");
     const runId = createRunId();
     const overridesPath = resolve("data", "seed", "effects-overrides.v1.json");
     const seed = await readEffectsSeedFile();
+    let inputSource: "seed" | "snapshot-export" = "seed";
+    let inputMetadata: Record<string, unknown> | undefined;
+
+    if (inputPath) {
+      const snapshotExport = await readEffectsSnapshotExportFile(inputPath);
+      seed.officers = abilitiesFromSnapshotExport(snapshotExport);
+      inputSource = "snapshot-export";
+      inputMetadata = {
+        inputPath,
+        snapshotId: snapshotExport.snapshot.snapshotId,
+        contentHash: snapshotExport.snapshot.contentHash,
+        schemaHash: snapshotExport.snapshot.schemaHash,
+        sourceLabel: snapshotExport.snapshot.source,
+      };
+    }
 
     const validation = validateEffectsSeedForV3(seed);
     if (!validation.ok) {
@@ -166,6 +184,13 @@ const command: AxCommand = {
       summary,
     };
 
+    if (inputMetadata) {
+      receipt.input = {
+        source: inputSource,
+        ...inputMetadata,
+      };
+    }
+
     if (mode === "hybrid") {
       const report = deriveInferenceReport(built.artifact, runId);
       const reportHash = hashInferenceReport(report);
@@ -185,6 +210,10 @@ const command: AxCommand = {
       runId,
       mode,
       snapshotVersion,
+      input: {
+        source: inputSource,
+        ...(inputMetadata ?? {}),
+      },
       artifactBase: receipt.artifactBase,
       deterministic: receipt.deterministic,
       stochastic: receipt.stochastic ?? null,
