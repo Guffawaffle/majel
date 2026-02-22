@@ -83,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added AX `data:hygiene` command scaffold and integrated it into `ax ci` as an explicit CI gate step. (`scripts/ax/data-hygiene.ts`, `scripts/ax/ci.ts`, `scripts/ax.ts`, `package.json`)
 - Added Phase 1 deterministic scaffold export command `effects:snapshot:export` emitting `snapshotId`, `schemaHash`, `contentHash`, and stable fixture export payloads for hermetic PR workflows. (`scripts/ax/effects-snapshot-export.ts`, `scripts/ax.ts`, `package.json`)
 - Added Phase 2 build input split: `effects:build` now accepts `--input=<snapshot-export.json>` and records input provenance metadata (`snapshotId`, `contentHash`, `schemaHash`) in build output/receipts while preserving deterministic hash behavior. (`scripts/ax/effects-build.ts`, `scripts/ax/effects-harness.ts`)
+- Added Phase 3 pinned snapshot verification command `effects:snapshot:verify` with mismatch-fail behavior for expected `contentHash` and computed integrity checks (`schemaHash`/`contentHash`) to support nightly pinned snapshot gates. (`scripts/ax/effects-snapshot-verify.ts`, `scripts/ax.ts`, `package.json`)
 
 ### Fixed
 

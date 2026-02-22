@@ -37,6 +37,7 @@ import effectsApplyDecisions from "./ax/effects-apply-decisions.js";
 import effectsBudgets from "./ax/effects-budgets.js";
 import dataHygiene from "./ax/data-hygiene.js";
 import effectsSnapshotExport from "./ax/effects-snapshot-export.js";
+import effectsSnapshotVerify from "./ax/effects-snapshot-verify.js";
 
 // ─── Command table ──────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ const COMMANDS: Record<string, AxCommand> = {
   diff:      diff,
   "effects:build": effectsBuild,
   "effects:snapshot:export": effectsSnapshotExport,
+  "effects:snapshot:verify": effectsSnapshotVerify,
   "effects:review-pack": effectsReviewPack,
   "effects:apply-decisions": effectsApplyDecisions,
   "effects:budgets": effectsBudgets,

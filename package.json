@@ -44,6 +44,7 @@
     "ax:diff": "tsx scripts/ax.ts diff",
     "ax:effects:build": "tsx scripts/ax.ts effects:build",
     "ax:effects:snapshot:export": "tsx scripts/ax.ts effects:snapshot:export",
+    "ax:effects:snapshot:verify": "tsx scripts/ax.ts effects:snapshot:verify",
     "ax:effects:review-pack": "tsx scripts/ax.ts effects:review-pack",
     "ax:effects:apply-decisions": "tsx scripts/ax.ts effects:apply-decisions",
     "ax:data:hygiene": "tsx scripts/ax.ts data:hygiene",
