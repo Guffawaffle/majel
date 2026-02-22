@@ -77,6 +77,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `effects:apply-decisions` (guarded placeholder; intentionally disabled pending later gates)
   (`scripts/ax/effects-build.ts`, `scripts/ax/effects-review-pack.ts`, `scripts/ax/effects-apply-decisions.ts`, `scripts/ax/effects-harness.ts`, `scripts/ax.ts`, `package.json`)
 
+#### Effects Officer Data Source v2 planning scaffold (ADR-035)
+- Added ADR-035 proposing hybrid DB-derived officer scaffold flow with seed-minimal contract surface and fixture-only PR CI policy. (`docs/ADR-035-effects-officer-data-source-v2.md`)
+- Added repository data hygiene policy documenting forbidden raw CDN/snapshot paths and guardrail workflow. (`DATA_HYGIENE.md`)
+- Added AX `data:hygiene` command scaffold and integrated it into `ax ci` as an explicit CI gate step. (`scripts/ax/data-hygiene.ts`, `scripts/ax/ci.ts`, `scripts/ax.ts`, `package.json`)
+
 ### Fixed
 
 #### Effects runtime caching + CI budget accuracy (post-review hardening)

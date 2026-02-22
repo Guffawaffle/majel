@@ -45,6 +45,7 @@
     "ax:effects:build": "tsx scripts/ax.ts effects:build",
     "ax:effects:review-pack": "tsx scripts/ax.ts effects:review-pack",
     "ax:effects:apply-decisions": "tsx scripts/ax.ts effects:apply-decisions",
+    "ax:data:hygiene": "tsx scripts/ax.ts data:hygiene",
     "generate:intent-vectors": "tsx scripts/generate-intent-vectors.ts",
     "effects:dry-run": "tsx scripts/effects-contract-dry-run.ts",
     "cloud:deploy": "tsx scripts/cloud.ts deploy",

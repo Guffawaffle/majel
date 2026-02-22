@@ -35,6 +35,7 @@ import effectsBuild from "./ax/effects-build.js";
 import effectsReviewPack from "./ax/effects-review-pack.js";
 import effectsApplyDecisions from "./ax/effects-apply-decisions.js";
 import effectsBudgets from "./ax/effects-budgets.js";
+import dataHygiene from "./ax/data-hygiene.js";
 
 // ─── Command table ──────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ const COMMANDS: Record<string, AxCommand> = {
   "effects:review-pack": effectsReviewPack,
   "effects:apply-decisions": effectsApplyDecisions,
   "effects:budgets": effectsBudgets,
+  "data:hygiene": dataHygiene,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────

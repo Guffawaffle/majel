@@ -197,6 +197,23 @@ Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxono
 
 See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
 
+### Up Next — Effects Officer Data Source v2 (ADR-035)
+
+**Goal:** keep contract surface deterministic in git while moving full officer corpus to DB-derived snapshot exports.
+
+- [x] Phase 0: ADR + policy/guardrail scaffold (`ADR-035`, `DATA_HYGIENE.md`, `ax data:hygiene` in `ax ci`)
+- [ ] Phase 1: Snapshot metadata schema + deterministic `effects:snapshot:export` command
+- [ ] Phase 2: `effects:build` input split (fixture/full export) with stable hash/id policy
+- [ ] Phase 3: Nightly pinned snapshot gate (`contentHash`) + full-data budget regressions
+- [ ] Phase 4: Minimize in-repo officer seed corpus to fixtures only
+- [ ] Phase 5 (optional): value canonicalization table for parser quality improvements
+
+**PM checkpoints (track explicitly):**
+- [ ] PR CI remains hermetic (no live DB dependency)
+- [ ] Nightly reproducibility proven with pinned snapshot `contentHash`
+- [ ] Raw CDN commit guardrails enforced and documented
+- [ ] Coverage/inference budget semantics preserved during migration
+
 ---
 
 ## Done — Timer Overlay (ADR-033, #111)

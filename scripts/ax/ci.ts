@@ -10,6 +10,7 @@ import lint from "./lint.js";
 import typecheck from "./typecheck.js";
 import test from "./test.js";
 import effectsBudgets from "./effects-budgets.js";
+import dataHygiene from "./data-hygiene.js";
 
 const command: AxCommand = {
   name: "ci",
@@ -43,7 +44,29 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 2: Typecheck ─────────────────────────────────────
+    // ── Step 2: Data hygiene ──────────────────────────────────
+    const hygieneResult = await dataHygiene.run(ciArgs);
+    steps.push({
+      step: "data:hygiene",
+      success: hygieneResult.success,
+      durationMs: hygieneResult.durationMs,
+      data: {
+        strict: hygieneResult.data.strict,
+        scannedFiles: hygieneResult.data.scannedFiles,
+        violations: Array.isArray(hygieneResult.data.violations) ? hygieneResult.data.violations.length : 0,
+        warnings: Array.isArray(hygieneResult.data.warnings) ? hygieneResult.data.warnings.length : 0,
+      },
+    });
+
+    if (!hygieneResult.success) {
+      return makeResult("ci", start, { steps, stoppedAt: "data:hygiene" }, {
+        success: false,
+        errors: hygieneResult.errors ?? ["data hygiene checks failed"],
+        hints: ["Run: npm run ax -- data:hygiene"],
+      });
+    }
+
+    // ── Step 3: Typecheck ─────────────────────────────────────
     const typecheckResult = await typecheck.run(ciArgs);
     steps.push({
       step: "typecheck",
@@ -60,7 +83,7 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 3: Effects dry-run ───────────────────────────────
+    // ── Step 4: Effects dry-run ───────────────────────────────
     const effectsDryRunStart = Date.now();
     const effectsDryRun = runCapture("npm", ["run", "effects:dry-run"], { ignoreExit: true });
     const effectsDryRunDuration = Date.now() - effectsDryRunStart;
@@ -81,7 +104,7 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 4: Effects budgets ───────────────────────────────
+    // ── Step 5: Effects budgets ───────────────────────────────
     const budgetsResult = await effectsBudgets.run(ciArgs);
     steps.push({
       step: "effects:budgets",
@@ -104,7 +127,7 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 5: Test ──────────────────────────────────────────
+    // ── Step 6: Test ──────────────────────────────────────────
     const testResult = await test.run(ciArgs);
     steps.push({
       step: "test",
@@ -126,7 +149,7 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 6: Web tests ─────────────────────────────────────
+    // ── Step 7: Web tests ─────────────────────────────────────
     const webTestStart = Date.now();
     const webTest = runCapture("npm", ["--prefix", "web", "run", "test"], { ignoreExit: true });
     const webTestDuration = Date.now() - webTestStart;
