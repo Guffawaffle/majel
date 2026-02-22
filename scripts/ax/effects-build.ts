@@ -12,7 +12,11 @@ import {
   writeDeterministicArtifacts,
   writeJsonAt,
 } from "./effects-harness.js";
-import { validateEffectsSeedForV3 } from "../../src/server/services/effects-contract-v3.js";
+import {
+  buildEffectsContractV3Artifact,
+  hashEffectsContractArtifact,
+  validateEffectsSeedForV3,
+} from "../../src/server/services/effects-contract-v3.js";
 
 const command: AxCommand = {
   name: "effects:build",
@@ -50,6 +54,40 @@ const command: AxCommand = {
     }
 
     const built = buildDeterministicArtifacts(seed, runId, snapshotVersion);
+
+    const determinismProbe = (() => {
+      const fixedGeneratedAt = built.artifact.generatedAt;
+      const a = buildEffectsContractV3Artifact(seed, {
+        snapshotVersion,
+        generatorVersion: "0.1.0",
+        generatedAt: fixedGeneratedAt,
+      });
+      const b = buildEffectsContractV3Artifact(seed, {
+        snapshotVersion,
+        generatorVersion: "0.1.0",
+        generatedAt: fixedGeneratedAt,
+      });
+      const hashA = hashEffectsContractArtifact(a);
+      const hashB = hashEffectsContractArtifact(b);
+      return {
+        stable: hashA === hashB,
+        hashA,
+        hashB,
+      };
+    })();
+
+    if (!determinismProbe.stable) {
+      return makeResult("effects:build", start, {
+        runId,
+        mode,
+        snapshotVersion,
+        determinism: determinismProbe,
+      }, {
+        success: false,
+        errors: ["Determinism gate failed: identical input produced divergent hashes"],
+      });
+    }
+
     await writeDeterministicArtifacts({
       seed,
       runId,
@@ -78,6 +116,7 @@ const command: AxCommand = {
         chunkPaths: built.chunkPaths,
         contractPath: built.contractPath,
       },
+      determinism: determinismProbe,
       summary,
     };
 
@@ -101,6 +140,7 @@ const command: AxCommand = {
       deterministic: receipt.deterministic,
       stochastic: receipt.stochastic ?? null,
       receiptPath,
+      determinism: determinismProbe,
       summary,
     });
   },

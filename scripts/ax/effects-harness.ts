@@ -27,6 +27,11 @@ export interface EffectsBuildReceipt {
     chunkPaths: string[];
     contractPath: string;
   };
+  determinism: {
+    stable: boolean;
+    hashA: string;
+    hashB: string;
+  };
   stochastic?: {
     inferenceReportPath: string;
     candidateCount: number;
