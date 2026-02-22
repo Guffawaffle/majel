@@ -124,17 +124,18 @@
       return;
     }
 
-    const matchesAny = recommendations.some((candidate) => {
+    const matchingRecommendationIndex = recommendations.findIndex((candidate) => {
       const slots = recommendationSlots(candidate);
       return slots.captain === ui.selectedSlots.captain
         && slots.bridge_1 === ui.selectedSlots.bridge_1
         && slots.bridge_2 === ui.selectedSlots.bridge_2;
     });
-    if (!matchesAny) {
+
+    if (matchingRecommendationIndex >= 0 && matchingRecommendationIndex !== ui.selectedRecommendation) {
       send({
         type: "state/sync",
-        slots: recommendationSlots(rec),
-        selectedRecommendation: safeIndex,
+        slots: ui.selectedSlots,
+        selectedRecommendation: matchingRecommendationIndex,
       });
       return;
     }
@@ -346,7 +347,7 @@
         <h4 class="qc-heading">Recommended Trios</h4>
         <div class="ws-list">
           {#each recommendations as rec, index}
-            <button class="qc-rec" class:qc-rec-active={index === ui.selectedRecommendation} onclick={() => chooseRecommendation(index)}>
+            <button type="button" class="qc-rec" class:qc-rec-active={index === ui.selectedRecommendation} onclick={() => chooseRecommendation(index)}>
               <div class="qc-rec-top">
                 <span class="qc-score">Score {rec.totalScore}</span>
                 <span class="qc-confidence">{confidenceLabel(rec.confidence)} confidence</span>

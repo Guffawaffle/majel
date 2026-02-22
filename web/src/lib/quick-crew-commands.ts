@@ -42,7 +42,11 @@ export function routeQuickCrewCommand(
       return {
         ...state,
         selectedRecommendation: command.index,
-        selectedSlots: command.slots,
+        selectedSlots: {
+          ...command.slots,
+        },
+        pickerSlot: null,
+        pickerSearch: "",
         saveSuccess: "",
       };
 
