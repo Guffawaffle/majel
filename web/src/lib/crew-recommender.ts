@@ -47,6 +47,66 @@ interface OfficerScoreBreakdown {
   captainBonus: number;
 }
 
+type IntentGroup = "combat" | "economy";
+
+const CAPTAIN_COMBAT_RELEVANT_KEYS = new Set<string>([
+  "damage_dealt",
+  "weapon_damage",
+  "crit_chance",
+  "crit_damage",
+  "mitigation",
+  "armor",
+  "shield_deflection",
+  "dodge",
+  "shield_health",
+  "hull_health",
+  "damage_taken_reduction",
+  "repair_per_round",
+  "shield_restore_per_round",
+  "piercing",
+  "accuracy",
+]);
+
+const CAPTAIN_ECONOMY_RELEVANT_KEYS = new Set<string>([
+  "loot",
+  "hostile_chest_rewards",
+  "armada_loot",
+  "event_rewards",
+  "mining_rate",
+  "cargo_capacity",
+  "protected_cargo",
+  "mining_safety",
+  "warp_speed",
+  "impulse_speed",
+]);
+
+const CAPTAIN_META_AMPLIFIER_KEYS = new Set<string>([
+  "captain_maneuver_effectiveness",
+  "officer_ability_effectiveness",
+  "below_deck_ability_effectiveness",
+  "effect_duration_bonus",
+  "stack_rate_bonus",
+]);
+
+function deriveIntentGroup(intentKey: string, ctx: TargetContext): IntentGroup {
+  if (
+    ctx.targetKind === "hostile"
+    || ctx.targetKind === "player_ship"
+    || ctx.targetKind === "station"
+    || ctx.targetKind === "armada_target"
+    || ctx.targetKind === "mission_npc"
+  ) {
+    return "combat";
+  }
+
+  const lowerKey = intentKey.toLowerCase();
+  if (/mining|cargo|survey|warp|loot|economy/.test(lowerKey)) {
+    return "economy";
+  }
+
+  return "combat";
+}
+
 function getReservationPenalty(officerId: string, reservations: OfficerReservation[]): number {
   const reservation = reservations.find((r) => r.officerId === officerId);
   if (!reservation) return 0;
@@ -78,16 +138,28 @@ function isCaptainViable(
   abilities: OfficerAbility[],
   ctx: TargetContext,
   intentWeights: Record<string, number>,
+  intentGroup: IntentGroup,
 ): boolean {
   const cmAbilities = abilities.filter((a) => a.slot === "cm" && !a.isInert);
   if (cmAbilities.length === 0) return false;
 
+  const allowlist = intentGroup === "combat"
+    ? CAPTAIN_COMBAT_RELEVANT_KEYS
+    : CAPTAIN_ECONOMY_RELEVANT_KEYS;
+
   for (const ability of cmAbilities) {
     for (const effect of ability.effects) {
-      const weight = intentWeights[effect.effectKey] ?? 0;
-      if (weight <= 0) continue;
       const evalResult = evaluateEffect(effect, { ...ctx, slotContext: "captain" });
-      if (evalResult.status !== "blocked") return true;
+      if (evalResult.status === "blocked") continue;
+
+      const weight = intentWeights[effect.effectKey] ?? 0;
+      const hasNonZeroWeight = Math.abs(weight) > 0;
+      const isAllowlisted = allowlist.has(effect.effectKey);
+      const isMetaAmplifier = CAPTAIN_META_AMPLIFIER_KEYS.has(effect.effectKey);
+
+      if (isAllowlisted || hasNonZeroWeight || isMetaAmplifier) {
+        return true;
+      }
     }
   }
   return false;
@@ -111,6 +183,7 @@ function buildEffectBreakdown(
       const contribution = magnitude * weight * effectEval.applicabilityMultiplier;
       entries.push({
         effectKey: effectEval.effectKey,
+        status: effectEval.status,
         intentWeight: weight,
         magnitude: effect?.magnitude ?? null,
         applicabilityMultiplier: effectEval.applicabilityMultiplier,
@@ -119,6 +192,25 @@ function buildEffectBreakdown(
     }
   }
   return entries.sort((a, b) => b.contribution - a.contribution);
+}
+
+function humanizeEffectKey(effectKey: string): string {
+  return effectKey.replace(/_/g, " ");
+}
+
+function summarizeStatusEvidence(entries: EffectScoreEntry[], status: "works" | "conditional" | "blocked"): string | null {
+  const match = entries
+    .filter((entry) => entry.status === status)
+    .sort((a, b) => b.contribution - a.contribution)
+    .slice(0, status === "works" ? 2 : 1);
+
+  if (match.length === 0) return null;
+
+  const summary = match
+    .map((entry) => `${humanizeEffectKey(entry.effectKey)} (${entry.status})`)
+    .join(", ");
+
+  return summary;
 }
 
 function scoreOfficerForSlotEffect(
@@ -135,6 +227,7 @@ function scoreOfficerForSlotEffect(
 ): OfficerScoreBreakdown {
   const intent = opts.effectBundle.intents.get(opts.intentKey);
   const ctx = buildTargetContext(intent, opts.shipClass, opts.targetClass);
+  const intentGroup = deriveIntentGroup(opts.intentKey, ctx);
   const weights = opts.effectBundle.intentWeights.get(opts.intentKey) ?? {};
   const abilities = opts.effectBundle.officerAbilities.get(officer.id) ?? [];
   const slotCtx = bridgeSlotToSlotContext(opts.slot);
@@ -149,7 +242,7 @@ function scoreOfficerForSlotEffect(
 
   let captainBonus = 0;
   if (opts.slot === "captain") {
-    captainBonus = isCaptainViable(abilities, ctx, weights) ? 2 : -3;
+    captainBonus = isCaptainViable(abilities, ctx, weights, intentGroup) ? 2 : -3;
   }
 
   return {
@@ -185,13 +278,19 @@ function buildEffectReasons(
 ): string[] {
   const reasons: string[] = [];
 
-  const topEffects = captainBreakdown
-    .filter((e) => e.contribution > 0)
-    .slice(0, 2);
-  if (topEffects.length > 0) {
-    reasons.push(
-      `${captainName} contributes ${topEffects.map((e) => e.effectKey.replace(/_/g, " ")).join(", ")}.`,
-    );
+  const worksEvidence = summarizeStatusEvidence(captainBreakdown, "works");
+  if (worksEvidence) {
+    reasons.push(`${captainName} applicable effects: ${worksEvidence}.`);
+  }
+
+  const conditionalEvidence = summarizeStatusEvidence(captainBreakdown, "conditional");
+  if (conditionalEvidence) {
+    reasons.push(`Situational effects: ${conditionalEvidence}.`);
+  }
+
+  const blockedEvidence = summarizeStatusEvidence(captainBreakdown, "blocked");
+  if (blockedEvidence) {
+    reasons.push(`Blocked for current target: ${blockedEvidence}.`);
   }
 
   if (!captainViable) {
@@ -236,6 +335,7 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
 
   const intent = bundle.intents.get(input.intentKey);
   const ctx = buildTargetContext(intent, input.shipClass, input.targetClass);
+  const intentGroup = deriveIntentGroup(input.intentKey, ctx);
   const weights = bundle.intentWeights.get(input.intentKey) ?? {};
 
   // Score all officers for captain slot with gating
@@ -247,7 +347,7 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
       (normalizeLevel(o.userLevel) * 4 + normalizePower(o.userPower, maxPower) * 2) * 10,
     ) / 10;
     const reservation = getReservationPenalty(o.id, input.reservations);
-    const viable = isCaptainViable(abilities, ctx, weights);
+    const viable = isCaptainViable(abilities, ctx, weights, intentGroup);
     const captainBonus = viable ? 2 : -3;
     const total = effectScore + readiness + reservation + captainBonus;
     const breakdown = buildEffectBreakdown(abilities, evaluation, weights);
@@ -268,6 +368,7 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
     : (viableCaptains.length > 0 ? viableCaptains.slice(0, 6) : captainScored.slice(0, 2));
 
   const recs: CrewRecommendation[] = [];
+  let fallbackWarningEmitted = false;
 
   for (const captainInfo of captainCandidates) {
     const captain = captainInfo.officer;
@@ -312,10 +413,14 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
           captain.name,
           captainInfo.breakdown,
           captainInfo.viable,
-          captainFallbackUsed,
+          captainFallbackUsed && !fallbackWarningEmitted,
           synergyPairs,
           captainInfo.reservation + b1.reservation + b2.reservation,
         );
+
+        if (captainFallbackUsed && !fallbackWarningEmitted) {
+          fallbackWarningEmitted = true;
+        }
 
         recs.push({
           captainId: captain.id,

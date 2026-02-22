@@ -188,6 +188,7 @@ export interface ScoredOfficer {
 /** One entry in the effect-score breakdown. */
 export interface EffectScoreEntry {
   effectKey: string;
+  status: EvaluationStatus;
   intentWeight: number;
   magnitude: number | null;
   applicabilityMultiplier: number;
