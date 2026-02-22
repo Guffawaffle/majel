@@ -8,7 +8,7 @@ import type {
   ShipClass,
   EffectScoreEntry,
 } from "./types/effect-types.js";
-import { evaluateOfficer } from "./effect-evaluator.js";
+import { evaluateEffect, evaluateOfficer } from "./effect-evaluator.js";
 
 export interface CrewRecommendInput {
   officers: CatalogOfficer[];
@@ -434,11 +434,8 @@ function isCaptainViable(
     for (const effect of ability.effects) {
       const weight = intentWeights[effect.effectKey] ?? 0;
       if (weight <= 0) continue;
-      if (
-        effect.applicableTargetKinds.length > 0
-        && !effect.applicableTargetKinds.includes(ctx.targetKind)
-      ) continue;
-      return true;
+      const evalResult = evaluateEffect(effect, { ...ctx, slotContext: "captain" });
+      if (evalResult.status !== "blocked") return true;
     }
   }
   return false;
@@ -457,7 +454,7 @@ function buildEffectBreakdown(
     const ability = abilities.find((a) => a.id === abilEval.abilityId);
     for (const effectEval of abilEval.effects) {
       const weight = intentWeights[effectEval.effectKey] ?? 0;
-      const effect = ability?.effects.find((e) => e.effectKey === effectEval.effectKey);
+      const effect = ability?.effects.find((entry) => entry.id === effectEval.effectId);
       const magnitude = effect?.magnitude ?? 1;
       const contribution = magnitude * weight * effectEval.applicabilityMultiplier;
       entries.push({
@@ -530,6 +527,7 @@ function buildEffectReasons(
   captainName: string,
   captainBreakdown: EffectScoreEntry[],
   captainViable: boolean,
+  captainFallbackUsed: boolean,
   synergyPairs: number,
   reservationTotal: number,
 ): string[] {
@@ -546,6 +544,9 @@ function buildEffectReasons(
 
   if (!captainViable) {
     reasons.push(`⚠ ${captainName} has no useful Captain Maneuver for this objective.`);
+  }
+  if (captainFallbackUsed) {
+    reasons.push("No viable captains found; using best available fallback.");
   }
 
   if (synergyPairs > 0) {
@@ -608,9 +609,11 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
   });
 
   const preferredCaptain = input.captainId ? byId.get(input.captainId) : null;
+  const viableCaptains = captainScored.filter((entry) => entry.viable);
+  const captainFallbackUsed = !preferredCaptain && viableCaptains.length === 0;
   const captainCandidates = preferredCaptain
     ? captainScored.filter((s) => s.officer.id === preferredCaptain.id)
-    : captainScored.slice(0, 6);
+    : (viableCaptains.length > 0 ? viableCaptains.slice(0, 6) : captainScored.slice(0, 2));
 
   const recs: CrewRecommendation[] = [];
 
@@ -657,6 +660,7 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
           captain.name,
           captainInfo.breakdown,
           captainInfo.viable,
+          captainFallbackUsed,
           synergyPairs,
           captainInfo.reservation + b1.reservation + b2.reservation,
         );

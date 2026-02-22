@@ -666,6 +666,22 @@ describe("evaluateOfficer", () => {
     // 0.10 × 2.0 × 0.5 = 0.10
     expect(result.totalScore).toBeCloseTo(0.10);
   });
+
+  it("sums distinct effects that share the same effectKey", () => {
+    const ability = makeAbility({
+      slot: "oa",
+      effects: [
+        makeEffect({ id: "dup-1", effectKey: "weapon_damage", magnitude: 0.10 }),
+        makeEffect({ id: "dup-2", effectKey: "weapon_damage", magnitude: 0.25 }),
+      ],
+    });
+
+    const weights = { weapon_damage: 2.0 };
+    const result = evaluateOfficer("dup-test", [ability], makeContext(), weights, "bridge");
+
+    // (0.10 * 2.0) + (0.25 * 2.0) = 0.70
+    expect(result.totalScore).toBeCloseTo(0.70);
+  });
 });
 
 // ─── Golden Tests (ADR-034 Acceptance Criteria) ─────────────

@@ -53,6 +53,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: none;
+  background: transparent;
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -63,6 +65,10 @@
   flex-shrink: 0;
 }
 .cv-slot-remove:hover { color: var(--accent-red, #e55); background: var(--bg-tertiary); }
+.cv-slot-remove:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 1px;
+}
 
 /* ── Verdict Badges ── */
 

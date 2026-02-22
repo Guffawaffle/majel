@@ -78,6 +78,7 @@ export function evaluateEffect(
     status === "works" ? 1.0 : status === "conditional" ? 0.5 : 0.0;
 
   return {
+    effectId: effect.id,
     effectKey: effect.effectKey,
     status,
     issues,
@@ -306,7 +307,7 @@ export function evaluateOfficer(
 
     for (const effectEval of abilityEval.effects) {
       const weight = intentWeights[effectEval.effectKey] ?? 0;
-      const effect = ability.effects.find((e) => e.effectKey === effectEval.effectKey);
+      const effect = ability.effects.find((entry) => entry.id === effectEval.effectId);
       const magnitude = effect?.magnitude ?? 1;
       const contribution = magnitude * weight * effectEval.applicabilityMultiplier;
       totalScore += contribution;

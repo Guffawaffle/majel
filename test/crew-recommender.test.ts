@@ -577,6 +577,101 @@ describe("effect-based captain gating", () => {
     });
     expect(score.captainBonus).toBe(0);
   });
+
+  it("auto-captain selection excludes non-viable captains when viable options exist", () => {
+    const gatingBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { damage_dealt: 3, weapon_damage: 2 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-viable": [
+          makeTestAbility({
+            id: "viable:cm",
+            officerId: "o-viable",
+            slot: "cm",
+            effects: [{ effectKey: "damage_dealt", magnitude: 0.05, applicableTargetKinds: ["hostile"] }],
+          }),
+        ],
+        "o-nonviable": [
+          makeTestAbility({
+            id: "bad:oa",
+            officerId: "o-nonviable",
+            slot: "oa",
+            effects: [{ effectKey: "weapon_damage", magnitude: 0.90, applicableTargetKinds: ["hostile"] }],
+          }),
+        ],
+        "o-b1": [makeTestAbility({
+          id: "b1:oa", officerId: "o-b1", slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.15, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-b2": [makeTestAbility({
+          id: "b2:oa", officerId: "o-b2", slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.12, applicableTargetKinds: ["hostile"] }],
+        })],
+      },
+    });
+
+    const officers = [
+      makeOfficer({ id: "o-viable", name: "Viable", userLevel: 40, userPower: 600 }),
+      makeOfficer({ id: "o-nonviable", name: "Nonviable", userLevel: 60, userPower: 1500 }),
+      makeOfficer({ id: "o-b1", name: "Bridge 1", userLevel: 40, userPower: 700 }),
+      makeOfficer({ id: "o-b2", name: "Bridge 2", userLevel: 40, userPower: 650 }),
+    ];
+
+    const recs = recommendBridgeTrios({
+      officers,
+      reservations: [],
+      intentKey: "grinding",
+      limit: 5,
+      effectBundle: gatingBundle,
+    });
+
+    expect(recs.length).toBeGreaterThan(0);
+    expect(recs.every((r) => r.captainId !== "o-nonviable")).toBe(true);
+  });
+
+  it("uses fallback captains only when no viable captain exists and reports warning", () => {
+    const fallbackBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { weapon_damage: 2.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-a": [makeTestAbility({
+          id: "a:oa", officerId: "o-a", slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.12, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-b": [makeTestAbility({
+          id: "b:oa", officerId: "o-b", slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.10, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-c": [makeTestAbility({
+          id: "c:oa", officerId: "o-c", slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.11, applicableTargetKinds: ["hostile"] }],
+        })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-a", name: "A", userLevel: 40, userPower: 500 }),
+        makeOfficer({ id: "o-b", name: "B", userLevel: 40, userPower: 520 }),
+        makeOfficer({ id: "o-c", name: "C", userLevel: 40, userPower: 510 }),
+      ],
+      reservations: [],
+      intentKey: "grinding",
+      limit: 1,
+      effectBundle: fallbackBundle,
+    });
+
+    expect(recs.length).toBe(1);
+    expect(recs[0]?.reasons.some((line) => line.includes("No viable captains found"))).toBe(true);
+  });
 });
 
 describe("effect-based synergy multiplier", () => {

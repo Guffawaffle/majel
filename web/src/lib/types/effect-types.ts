@@ -129,6 +129,7 @@ export type EvaluationStatus = "works" | "conditional" | "blocked";
 
 /** Result of evaluating a single EffectTag against a TargetContext. */
 export interface EffectEvaluation {
+  effectId: string;
   effectKey: string;
   status: EvaluationStatus;
   issues: EvaluationIssue[];

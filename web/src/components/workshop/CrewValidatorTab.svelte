@@ -44,6 +44,7 @@
 
   let pickerSlot = $state<BridgeSlot | null>(null);
   let pickerSearch = $state("");
+  let pickerSearchInput: HTMLInputElement | null = null;
 
   /** Effect bundle — null until loaded. */
   let effectBundle = $state<EffectBundleData | null>(null);
@@ -53,6 +54,12 @@
     getEffectBundleManager().load()
       .then((bundle) => { effectBundle = bundle; })
       .catch(() => { bundleError = true; });
+  });
+
+  $effect(() => {
+    if (pickerSlot && pickerSearchInput) {
+      pickerSearchInput.focus();
+    }
   });
 
   const ownedOfficers = $derived(
@@ -165,7 +172,7 @@
     return key.replace(/_/g, " ");
   }
 
-  function handleBackdropKeydown(event: KeyboardEvent) {
+  function handleModalKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") pickerSlot = null;
   }
 </script>
@@ -232,15 +239,12 @@
               {selectedSlots[slot] ? officerName(selectedSlots[slot]) : "Unassigned"}
             </span>
             {#if selectedSlots[slot]}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <span
+              <button
+                type="button"
                 class="cv-slot-remove"
-                role="button"
-                tabindex="0"
                 aria-label={`Remove ${officerName(selectedSlots[slot])} from ${SLOT_LABEL[slot]}`}
                 onclick={(e) => { e.stopPropagation(); clearSlot(slot); }}
-                onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); clearSlot(slot); } }}
-              >×</span>
+              >×</button>
             {/if}
           </div>
         </button>
@@ -336,9 +340,15 @@
     <div
       class="cv-backdrop"
       onclick={() => { pickerSlot = null; }}
-      onkeydown={handleBackdropKeydown}
     ></div>
-    <div class="cv-modal" role="dialog" aria-modal="true" aria-label={`Pick ${SLOT_LABEL[pickerSlot]}`}>
+    <div
+      class="cv-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Pick ${SLOT_LABEL[pickerSlot]}`}
+      tabindex="-1"
+      onkeydown={handleModalKeydown}
+    >
       <div class="cv-modal-header">
         <h4>Pick {SLOT_LABEL[pickerSlot]}</h4>
         <button class="ws-btn ws-btn-cancel" onclick={() => { pickerSlot = null; }} aria-label="Close picker">×</button>
@@ -347,6 +357,7 @@
         <span>Search</span>
         <input
           type="text"
+          bind:this={pickerSearchInput}
           value={pickerSearch}
           oninput={(event) => { pickerSearch = (event.currentTarget as HTMLInputElement).value; }}
           placeholder="Search officer"

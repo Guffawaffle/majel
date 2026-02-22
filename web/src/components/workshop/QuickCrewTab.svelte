@@ -53,6 +53,7 @@
   let saveNotes = $state("");
   let saveError = $state("");
   let saveBusy = $state(false);
+  let pickerSearchInput: HTMLInputElement | null = null;
 
   /** Effect bundle for ADR-034 scoring — null until loaded, falls back to keyword scoring. */
   let effectBundle = $state<EffectBundleData | null>(null);
@@ -61,6 +62,12 @@
     getEffectBundleManager().load()
       .then((bundle) => { effectBundle = bundle; })
       .catch(() => { /* bundle unavailable — keyword scoring fallback */ });
+  });
+
+  $effect(() => {
+    if (ui.pickerSlot && pickerSearchInput) {
+      pickerSearchInput.focus();
+    }
   });
 
   function send(command: QuickCrewCommand) {
@@ -206,7 +213,7 @@
     return officerById.get(id)?.groupName ?? null;
   }
 
-  function handleBackdropKeydown(event: KeyboardEvent) {
+  function handleModalKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") send({ type: "picker/close" });
   }
 
@@ -365,15 +372,12 @@
               <div class="qc-slot-value">
                 <span class="qc-slot-name">{ui.selectedSlots[slot] ? findOfficerName(officers, ui.selectedSlots[slot]) : "Unassigned"}</span>
                 {#if ui.selectedSlots[slot]}
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <span
+                  <button
+                    type="button"
                     class="qc-slot-remove"
-                    role="button"
-                    tabindex="0"
                     aria-label={`Remove ${findOfficerName(officers, ui.selectedSlots[slot])} from ${SLOT_LABEL[slot]}`}
                     onclick={(e) => { e.stopPropagation(); clearSlot(slot); }}
-                    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); clearSlot(slot); } }}
-                  >×</span>
+                  >×</button>
                 {/if}
               </div>
             </button>
@@ -423,9 +427,15 @@
     <div
       class="qc-backdrop"
       onclick={() => send({ type: "picker/close" })}
-      onkeydown={handleBackdropKeydown}
     ></div>
-    <div class="qc-modal" role="dialog" aria-modal="true" aria-label={`Pick ${SLOT_LABEL[ui.pickerSlot]}`}>
+    <div
+      class="qc-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Pick ${SLOT_LABEL[ui.pickerSlot]}`}
+      tabindex="-1"
+      onkeydown={handleModalKeydown}
+    >
       <div class="qc-modal-header">
         <h4>Pick {SLOT_LABEL[ui.pickerSlot]}</h4>
         <button class="ws-btn ws-btn-cancel" onclick={() => send({ type: "picker/close" })} aria-label="Close picker">×</button>
@@ -434,6 +444,7 @@
         <span>Search</span>
         <input
           type="text"
+          bind:this={pickerSearchInput}
           value={ui.pickerSearch}
           oninput={(event) => send({ type: "picker/search", value: (event.currentTarget as HTMLInputElement).value })}
           placeholder="Search officer"
