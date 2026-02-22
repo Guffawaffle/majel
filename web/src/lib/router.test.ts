@@ -11,8 +11,8 @@ import { views, getViewDef, navigate, getCurrentView, getCurrentViewDef } from "
 // ─── View Registry ──────────────────────────────────────────
 
 describe("views registry", () => {
-  it("registers 7 views", () => {
-    expect(views).toHaveLength(7);
+  it("registers 8 views", () => {
+    expect(views).toHaveLength(8);
   });
 
   it("has chat as the first view", () => {

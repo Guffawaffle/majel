@@ -5,7 +5,7 @@
  */
 
 import type { AxCommand, AxResult, CiStepResult } from "./types.js";
-import { makeResult } from "./runner.js";
+import { makeResult, runCapture } from "./runner.js";
 import lint from "./lint.js";
 import typecheck from "./typecheck.js";
 import test from "./test.js";
@@ -72,6 +72,35 @@ const command: AxCommand = {
         skipped: testResult.data.skipped,
       },
     });
+
+    if (!testResult.success) {
+      return makeResult("ci", start, { steps, stoppedAt: "test" }, {
+        success: false,
+        errors: ["backend tests failed"],
+        hints: ["Run: npm run ax -- test"],
+      });
+    }
+
+    // ── Step 4: Web tests ─────────────────────────────────────
+    const webTestStart = Date.now();
+    const webTest = runCapture("npm", ["--prefix", "web", "run", "test"], { ignoreExit: true });
+    const webTestDuration = Date.now() - webTestStart;
+    steps.push({
+      step: "test:web",
+      success: webTest.exitCode === 0,
+      durationMs: webTestDuration,
+      data: {
+        exitCode: webTest.exitCode,
+      },
+    });
+
+    if (webTest.exitCode !== 0) {
+      return makeResult("ci", start, { steps, stoppedAt: "test:web" }, {
+        success: false,
+        errors: ["web tests failed"],
+        hints: ["Run: npm --prefix web run test"],
+      });
+    }
 
     const allPassed = steps.every(s => s.success);
 
