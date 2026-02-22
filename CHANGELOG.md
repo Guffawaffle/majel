@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Effects Contract v3 — Phase 5 override engine + precedence checks (#144)
+- Added explicit override seed surface `data/seed/effects-overrides.v1.json` and integrated deterministic precedence: generated base -> overrides -> final artifact in `effects:build`. (`data/seed/effects-overrides.v1.json`, `scripts/ax/effects-build.ts`)
+- Added contract-level override executor for `replace_effect` operations with stable target IDs and forced override metadata (`forcedByOverride=true`). (`src/server/services/effects-contract-v3.ts`)
+- Added contradiction protections for override processing:
+  - taxonomy contradiction checks (invalid refs block)
+  - intra-ability contradiction checks on source-span key conflicts
+  - override contradiction checks for duplicate mutation targets/signatures/effect IDs
+  (`src/server/services/effects-contract-v3.ts`)
+- Added structured override audit/failure reporting in build flow and override metadata in build receipts. (`scripts/ax/effects-build.ts`, `scripts/ax/effects-harness.ts`)
+- Added focused override tests for replace behavior, missing targets, duplicate-target conflicts, and duplicate-signature conflicts. (`test/effects-contract-v3.test.ts`)
+
 #### Effects Contract v3 — Phase 4 gate runner + promotion receipts (#146)
 - Enabled `effects:apply-decisions` to execute deterministic candidate gates, apply reviewed promotion decisions, and emit audit receipts. (`scripts/ax/effects-apply-decisions.ts`)
 - Added deterministic gate runner coverage for schema/taxonomy/condition validity, ordering checks, confidence threshold, and intra-ability contradiction checks. (`scripts/ax/effects-harness.ts`)

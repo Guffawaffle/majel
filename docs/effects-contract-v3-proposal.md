@@ -454,6 +454,8 @@ Committed CLI scaffolding is available in `scripts/ax` so local AI operators (in
 - Produces deterministic artifacts (`manifest`, `taxonomy`, `officers.index`, `effects chunk`, contract file) under `tmp/effects/runs/<runId>/artifacts/`.
 - In `hybrid` mode also produces `inference-report.<hash>.json` sidecar under the run folder.
 - Hybrid inference sidecar now evaluates candidate gates and assigns statuses (`proposed`, `gate_passed`, `gate_failed`, `rejected`) with status counts recorded in the build receipt.
+- Applies explicit override operations from `data/seed/effects-overrides.v1.json` after base generation and before final artifact write.
+- Build fails with structured errors when override targets are missing or contradictions/taxonomy violations are detected.
 - Writes build receipt: `receipts/effects-build.<runId>.json`.
 - Always validates the contract first; build fails fast on schema/taxonomy errors.
 

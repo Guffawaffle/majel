@@ -1,7 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
+  applyEffectsOverridesToArtifact,
   buildEffectsContractV3Artifact,
+  type EffectsOverrideFile,
   hashEffectsContractArtifact,
   sha256Hex,
   stableJsonStringify,
@@ -42,6 +44,10 @@ export interface EffectsBuildReceipt {
       rejected: number;
       promoted: number;
     };
+  };
+  overrides?: {
+    path: string;
+    operationCount: number;
   };
   summary: ReturnType<typeof summarizeEffectsContractArtifact>;
 }
@@ -215,6 +221,20 @@ export async function readEffectsSeedFile(): Promise<EffectsSeedFile> {
   return JSON.parse(raw) as EffectsSeedFile;
 }
 
+export async function readEffectsOverridesFile(): Promise<EffectsOverrideFile> {
+  const path = resolve(ROOT, "data", "seed", "effects-overrides.v1.json");
+  try {
+    const raw = await readFile(path, "utf-8");
+    return JSON.parse(raw) as EffectsOverrideFile;
+  } catch {
+    return {
+      schemaVersion: "1.0.0",
+      artifactBase: "*",
+      operations: [],
+    };
+  }
+}
+
 export async function writeJsonAt(path: string, data: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
@@ -231,6 +251,7 @@ export function buildDeterministicArtifacts(
   seed: EffectsSeedFile,
   runId: string,
   snapshotVersion: string,
+  artifactInput?: EffectsContractArtifact,
 ): {
   artifact: EffectsContractArtifact;
   artifactHash: string;
@@ -240,7 +261,7 @@ export function buildDeterministicArtifacts(
   chunkPaths: string[];
   contractPath: string;
 } {
-  const artifact = buildEffectsContractV3Artifact(seed, { snapshotVersion, generatorVersion: "0.1.0" });
+  const artifact = artifactInput ?? buildEffectsContractV3Artifact(seed, { snapshotVersion, generatorVersion: "0.1.0" });
   const artifactHash = hashEffectsContractArtifact(artifact);
   const shortHash = artifactHash.slice(0, 16);
 
@@ -294,6 +315,14 @@ export function buildDeterministicArtifacts(
     chunkPaths: [chunkPath],
     contractPath,
   };
+}
+
+export function applyOverridesForBuild(
+  artifact: EffectsContractArtifact,
+  overrides: EffectsOverrideFile,
+  seed: EffectsSeedFile,
+): EffectsContractArtifact {
+  return applyEffectsOverridesToArtifact(artifact, overrides, seed.taxonomy);
 }
 
 export async function writeDeterministicArtifacts(input: {

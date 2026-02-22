@@ -2,9 +2,11 @@ import { resolve } from "node:path";
 import type { AxCommand, AxResult } from "./types.js";
 import { getFlag, makeResult } from "./runner.js";
 import {
+  applyOverridesForBuild,
   buildInferenceReportPath,
   buildDeterministicArtifacts,
   createRunId,
+  readEffectsOverridesFile,
   deriveInferenceReport,
   hashInferenceReport,
   readEffectsSeedFile,
@@ -38,6 +40,7 @@ const command: AxCommand = {
 
     const snapshotVersion = getFlag(args, "snapshot") ?? "stfc-seed-v0";
     const runId = createRunId();
+    const overridesPath = resolve("data", "seed", "effects-overrides.v1.json");
     const seed = await readEffectsSeedFile();
 
     const validation = validateEffectsSeedForV3(seed);
@@ -56,28 +59,64 @@ const command: AxCommand = {
       });
     }
 
-    const built = buildDeterministicArtifacts(seed, runId, snapshotVersion);
+    const builtBase = buildDeterministicArtifacts(seed, runId, snapshotVersion);
+    const overrides = await readEffectsOverridesFile();
+    let artifactWithOverrides;
+    try {
+      artifactWithOverrides = applyOverridesForBuild(builtBase.artifact, overrides, seed);
+    } catch (error) {
+      return makeResult("effects:build", start, {
+        runId,
+        mode,
+        snapshotVersion,
+        overridesPath,
+      }, {
+        success: false,
+        errors: [error instanceof Error ? `Override application failed: ${error.message}` : "Override application failed"],
+        hints: ["Validate data/seed/effects-overrides.v1.json targets and taxonomy references"],
+      });
+    }
+    const built = buildDeterministicArtifacts(seed, runId, snapshotVersion, artifactWithOverrides);
 
-    const determinismProbe = (() => {
-      const fixedGeneratedAt = built.artifact.generatedAt;
-      const a = buildEffectsContractV3Artifact(seed, {
+    let determinismProbe: {
+      stable: boolean;
+      hashA: string;
+      hashB: string;
+    };
+    try {
+      determinismProbe = (() => {
+        const fixedGeneratedAt = built.artifact.generatedAt;
+        const aBase = buildEffectsContractV3Artifact(seed, {
+          snapshotVersion,
+          generatorVersion: "0.1.0",
+          generatedAt: fixedGeneratedAt,
+        });
+        const bBase = buildEffectsContractV3Artifact(seed, {
+          snapshotVersion,
+          generatorVersion: "0.1.0",
+          generatedAt: fixedGeneratedAt,
+        });
+        const a = applyOverridesForBuild(aBase, overrides, seed);
+        const b = applyOverridesForBuild(bBase, overrides, seed);
+        const hashA = hashEffectsContractArtifact(a);
+        const hashB = hashEffectsContractArtifact(b);
+        return {
+          stable: hashA === hashB,
+          hashA,
+          hashB,
+        };
+      })();
+    } catch (error) {
+      return makeResult("effects:build", start, {
+        runId,
+        mode,
         snapshotVersion,
-        generatorVersion: "0.1.0",
-        generatedAt: fixedGeneratedAt,
+        overridesPath,
+      }, {
+        success: false,
+        errors: [error instanceof Error ? `Override determinism probe failed: ${error.message}` : "Override determinism probe failed"],
       });
-      const b = buildEffectsContractV3Artifact(seed, {
-        snapshotVersion,
-        generatorVersion: "0.1.0",
-        generatedAt: fixedGeneratedAt,
-      });
-      const hashA = hashEffectsContractArtifact(a);
-      const hashB = hashEffectsContractArtifact(b);
-      return {
-        stable: hashA === hashB,
-        hashA,
-        hashB,
-      };
-    })();
+    }
 
     if (!determinismProbe.stable) {
       return makeResult("effects:build", start, {
@@ -120,6 +159,10 @@ const command: AxCommand = {
         contractPath: built.contractPath,
       },
       determinism: determinismProbe,
+      overrides: {
+        path: overridesPath,
+        operationCount: overrides.operations.length,
+      },
       summary,
     };
 

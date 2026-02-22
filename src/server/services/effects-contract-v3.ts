@@ -75,7 +75,7 @@ export interface EffectsContractEffect {
   };
   conditions: { conditionKey: string; params: Record<string, string> | null }[];
   extraction: {
-    method: "deterministic" | "inferred";
+    method: "deterministic" | "inferred" | "overridden";
     ruleId: string;
     model: string | null;
     promptVersion: string | null;
@@ -89,6 +89,24 @@ export interface EffectsContractEffect {
     forcedByOverride: boolean;
   };
   evidence: EffectsContractEvidence[];
+}
+
+export interface EffectsOverrideFile {
+  schemaVersion: "1.0.0";
+  artifactBase: string;
+  operations: EffectsOverrideOperation[];
+}
+
+export interface EffectsOverrideOperation {
+  op: "replace_effect";
+  target: {
+    abilityId: string;
+    effectId: string;
+  };
+  value: Omit<EffectsContractEffect, "effectId">;
+  reason: string;
+  author: string;
+  ticket?: string;
 }
 
 export interface EffectsContractEvidence {
@@ -659,4 +677,201 @@ export function summarizeEffectsContractArtifact(artifact: EffectsContractArtifa
     inertAbilities,
     unmappedEntries,
   };
+}
+
+function validateOverrideEffectTaxonomy(
+  effect: Omit<EffectsContractEffect, "effectId">,
+  taxonomy: EffectsSeedFile["taxonomy"],
+): string[] {
+  const issues: string[] = [];
+  const effectKeySet = new Set(taxonomy.effectKeys.map((entry) => entry.id));
+  const targetKindSet = new Set(taxonomy.targetKinds);
+  const targetTagSet = new Set(taxonomy.targetTags);
+  const conditionKeySet = new Set(taxonomy.conditionKeys.map((entry) => entry.id));
+  const shipClassSet = new Set(taxonomy.shipClasses);
+
+  if (!effectKeySet.has(effect.effectKey)) {
+    issues.push(`Unknown override effectKey '${effect.effectKey}'`);
+  }
+
+  for (const targetKind of effect.targets.targetKinds) {
+    if (!targetKindSet.has(targetKind)) {
+      issues.push(`Unknown override targetKind '${targetKind}'`);
+    }
+  }
+
+  for (const targetTag of effect.targets.targetTags) {
+    if (!targetTagSet.has(targetTag)) {
+      issues.push(`Unknown override targetTag '${targetTag}'`);
+    }
+  }
+
+  if (effect.targets.shipClass !== null && !shipClassSet.has(effect.targets.shipClass)) {
+    issues.push(`Unknown override shipClass '${effect.targets.shipClass}'`);
+  }
+
+  for (const condition of effect.conditions) {
+    if (!conditionKeySet.has(condition.conditionKey)) {
+      issues.push(`Unknown override conditionKey '${condition.conditionKey}'`);
+    }
+  }
+
+  return issues;
+}
+
+function effectSignature(effect: EffectsContractEffect): string {
+  return stableJsonStringify({
+    effectKey: effect.effectKey,
+    magnitude: effect.magnitude,
+    unit: effect.unit,
+    stacking: effect.stacking,
+    targets: effect.targets,
+    conditions: effect.conditions,
+  });
+}
+
+function inferSpanIndexFromEffectId(effectId: string): string | null {
+  const match = effectId.match(/:ef:src-(\d+)$/);
+  if (!match?.[1]) return null;
+  return match[1];
+}
+
+function assertNoOverrideContradictions(artifact: EffectsContractArtifact): void {
+  const globalEffectIds = new Set<string>();
+
+  for (const officer of artifact.officers) {
+    for (const ability of officer.abilities) {
+      const signatureToEffectId = new Map<string, string>();
+      const sourceSpanToEffect = new Map<string, { effectKey: string; magnitude: number | null }>();
+
+      for (const effect of ability.effects) {
+        if (globalEffectIds.has(effect.effectId)) {
+          throw new Error(`Override contradiction: duplicate effectId '${effect.effectId}'`);
+        }
+        globalEffectIds.add(effect.effectId);
+
+        const signature = effectSignature(effect);
+        const existingEffectId = signatureToEffectId.get(signature);
+        if (existingEffectId && existingEffectId !== effect.effectId) {
+          throw new Error(
+            `Override contradiction: ability '${ability.abilityId}' has duplicate effect signature between '${existingEffectId}' and '${effect.effectId}'`,
+          );
+        }
+        signatureToEffectId.set(signature, effect.effectId);
+
+        const sourceRef = effect.evidence[0]?.sourceRef ?? "unknown";
+        const spanIndex = inferSpanIndexFromEffectId(effect.effectId);
+        if (!spanIndex) continue;
+
+        const spanKey = `${sourceRef}#${spanIndex}`;
+        const prior = sourceSpanToEffect.get(spanKey);
+        if (prior && (prior.effectKey !== effect.effectKey || prior.magnitude !== effect.magnitude)) {
+          throw new Error(
+            `Intra-ability contradiction: ability '${ability.abilityId}' has conflicting override values at source span '${spanKey}'`,
+          );
+        }
+        sourceSpanToEffect.set(spanKey, {
+          effectKey: effect.effectKey,
+          magnitude: effect.magnitude,
+        });
+      }
+    }
+  }
+}
+
+export function applyEffectsOverridesToArtifact(
+  artifactInput: EffectsContractArtifact,
+  overrides: EffectsOverrideFile,
+  taxonomy: EffectsSeedFile["taxonomy"],
+): EffectsContractArtifact {
+  if (overrides.schemaVersion !== "1.0.0") {
+    throw new Error(`Invalid overrides schemaVersion '${overrides.schemaVersion}'`);
+  }
+
+  if (overrides.artifactBase !== "*" && overrides.artifactBase !== artifactInput.artifactVersion) {
+    throw new Error(
+      `Override artifactBase mismatch: expected '${artifactInput.artifactVersion}' or '*', got '${overrides.artifactBase}'`,
+    );
+  }
+
+  const artifact = JSON.parse(JSON.stringify(artifactInput)) as EffectsContractArtifact;
+  const operations = [...overrides.operations].sort((left, right) => {
+    const abilityCmp = left.target.abilityId.localeCompare(right.target.abilityId);
+    if (abilityCmp !== 0) return abilityCmp;
+    return left.target.effectId.localeCompare(right.target.effectId);
+  });
+
+  const seenTargets = new Set<string>();
+
+  for (const operation of operations) {
+    if (operation.op !== "replace_effect") {
+      throw new Error(`Unsupported override op '${operation.op}'`);
+    }
+
+    const targetKey = `${operation.target.abilityId}:${operation.target.effectId}`;
+    if (seenTargets.has(targetKey)) {
+      throw new Error(`Override contradiction: duplicate mutation target '${targetKey}'`);
+    }
+    seenTargets.add(targetKey);
+
+    const taxonomyIssues = validateOverrideEffectTaxonomy(operation.value, taxonomy);
+    if (taxonomyIssues.length > 0) {
+      throw new Error(`Override taxonomy contradiction for '${targetKey}': ${taxonomyIssues.join("; ")}`);
+    }
+
+    if (operation.value.evidence.length === 0) {
+      throw new Error(`Override '${targetKey}' must include at least one evidence item`);
+    }
+
+    const officer = artifact.officers.find((entry) => (
+      entry.abilities.some((ability) => ability.abilityId === operation.target.abilityId)
+    ));
+    const ability = officer?.abilities.find((entry) => entry.abilityId === operation.target.abilityId);
+    if (!ability) {
+      throw new Error(`Override target ability not found: '${operation.target.abilityId}'`);
+    }
+
+    const effectIndex = ability.effects.findIndex((effect) => effect.effectId === operation.target.effectId);
+    if (effectIndex < 0) {
+      throw new Error(
+        `Override target effect not found: ability='${operation.target.abilityId}' effect='${operation.target.effectId}'`,
+      );
+    }
+
+    const inputDigest = operation.value.extraction.inputDigest
+      || `sha256:${sha256Hex(stableJsonStringify({
+        target: operation.target,
+        value: operation.value,
+        reason: operation.reason,
+        author: operation.author,
+        ticket: operation.ticket ?? null,
+      }))}`;
+
+    const valueWithoutEffectId = operation.value as Omit<EffectsContractEffect, "effectId"> & { effectId?: string };
+
+    const replacement: EffectsContractEffect = {
+      ...valueWithoutEffectId,
+      effectId: operation.target.effectId,
+      extraction: {
+        ...operation.value.extraction,
+        method: "overridden",
+        ruleId: operation.value.extraction.ruleId || "override",
+        inputDigest,
+      },
+      inferred: false,
+      promotionReceiptId: null,
+      confidence: {
+        ...operation.value.confidence,
+        forcedByOverride: true,
+      },
+    };
+
+    ability.effects[effectIndex] = replacement;
+  }
+
+  assertNoOverrideContradictions(artifact);
+
+  const hash = hashEffectsContractArtifact(artifact);
+  artifact.artifactVersion = `1.0.0+sha256:${hash.slice(0, 16)}`;
+  return artifact;
 }
