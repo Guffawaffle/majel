@@ -157,7 +157,6 @@ export class EffectBundleManager {
    */
   async load(): Promise<EffectBundleData> {
     if (this.cached) return this.cached;
-    if (this.error) throw this.error;
     if (this.loading) {
       // Wait for loading to complete
       return new Promise((resolve, reject) => {
@@ -169,6 +168,7 @@ export class EffectBundleManager {
     }
 
     this.loading = true;
+    this.error = null;
     try {
       const raw = await fetchEffectBundle();
       this.cached = adaptEffectBundle(raw);
