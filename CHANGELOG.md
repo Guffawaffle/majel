@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Effects Contract v3 — Phase 3 trigger pipeline + sidecar provenance (#142)
+- Added strict `needs_interpretation` trigger detection in hybrid inference flow:
+  - `effects.length === 0 && !isInert`
+  - or `unmapped` contains `unmapped_ability_text|unknown_magnitude|low_confidence_mapping|unknown_effect_key`
+  (`scripts/ax/effects-harness.ts`)
+- Added candidate-level provenance metadata in inference sidecar records: `model`, `promptVersion`, `inputDigest`. (`scripts/ax/effects-harness.ts`)
+- Added deterministic sidecar hashing and hash-scoped filename output: `inference-report.<hash>.json`. (`scripts/ax/effects-harness.ts`, `scripts/ax/effects-build.ts`)
+- Added focused tests for trigger behavior and deterministic sidecar hash/path semantics. (`test/effects-harness.test.ts`)
+
 #### Effects Contract v3 — Phase 1 Scaffold (#141)
 - Added deterministic Effects Contract v3 scaffold service with:
   - seed contract validation (`validateEffectsSeedForV3`)

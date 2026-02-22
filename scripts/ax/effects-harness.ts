@@ -54,6 +54,9 @@ export interface InferenceCandidate {
   rationale: string;
   gateResults: { gate: string; status: "pass" | "fail"; message?: string }[];
   evidence: EffectsContractArtifact["officers"][number]["abilities"][number]["effects"][number]["evidence"];
+  model: string | null;
+  promptVersion: string | null;
+  inputDigest: string;
 }
 
 export function evaluateInferenceCandidate(candidate: InferenceCandidate): InferenceCandidate {
@@ -142,6 +145,13 @@ export interface InferenceReport {
   promptVersion: string | null;
   candidates: InferenceCandidate[];
 }
+
+const INTERPRETATION_TRIGGER_UNMAPPED_TYPES = new Set<string>([
+  "unmapped_ability_text",
+  "unknown_magnitude",
+  "low_confidence_mapping",
+  "unknown_effect_key",
+]);
 
 export interface ReviewPack {
   schemaVersion: "1.0.0";
@@ -329,7 +339,8 @@ export function deriveInferenceReport(
 
   for (const officer of artifact.officers) {
     for (const ability of officer.abilities) {
-      const shouldPropose = !ability.isInert && (ability.unmapped.length > 0 || ability.effects.length === 0);
+      const hasTriggerUnmapped = ability.unmapped.some((entry) => INTERPRETATION_TRIGGER_UNMAPPED_TYPES.has(entry.type));
+      const shouldPropose = (!ability.isInert && ability.effects.length === 0) || hasTriggerUnmapped;
       if (!shouldPropose) continue;
 
       const evidence = ability.effects.flatMap((effect) => effect.evidence);
@@ -342,6 +353,14 @@ export function deriveInferenceReport(
         sourceOffset: 0,
       }];
 
+      const provenanceModel = ability.effects.find((effect) => effect.extraction.model !== null)?.extraction.model ?? null;
+      const provenancePromptVersion = ability.effects.find((effect) => effect.extraction.promptVersion !== null)?.extraction.promptVersion ?? null;
+      const inputDigest = `sha256:${sha256Hex(stableJsonStringify({
+        abilityId: ability.abilityId,
+        rawText: ability.rawText,
+        effectDigests: ability.effects.map((effect) => effect.extraction.inputDigest),
+      }))}`;
+
       rawCandidates.push({
         abilityId: ability.abilityId,
         candidateId: `${ability.abilityId}:cand:0`,
@@ -351,11 +370,16 @@ export function deriveInferenceReport(
         rationale: "Deterministic extraction yielded unmapped/empty effect coverage; candidate queued for review",
         gateResults: [],
         evidence: evidence.length > 0 ? evidence : fallbackEvidence,
+        model: provenanceModel,
+        promptVersion: provenancePromptVersion,
+        inputDigest,
       });
     }
   }
 
-  const candidates = rawCandidates.map((candidate) => evaluateInferenceCandidate(candidate));
+  const candidates = rawCandidates
+    .map((candidate) => evaluateInferenceCandidate(candidate))
+    .sort((left, right) => left.candidateId.localeCompare(right.candidateId));
 
   return {
     schemaVersion: "1.0.0",
@@ -365,6 +389,15 @@ export function deriveInferenceReport(
     promptVersion: null,
     candidates,
   };
+}
+
+export function hashInferenceReport(report: InferenceReport): string {
+  return sha256Hex(stableJsonStringify(report));
+}
+
+export function buildInferenceReportPath(runId: string, reportHash: string): string {
+  const shortHash = reportHash.slice(0, 16);
+  return resolve("tmp", "effects", "runs", runId, `inference-report.${shortHash}.json`);
 }
 
 export function buildReviewPack(

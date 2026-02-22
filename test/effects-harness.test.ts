@@ -4,10 +4,12 @@ import {
   type EffectsSeedFile,
 } from "../src/server/services/effects-contract-v3.js";
 import {
+  buildInferenceReportPath,
   buildDecisionTemplate,
   buildReviewPack,
   deriveInferenceReport,
   evaluateInferenceCandidate,
+  hashInferenceReport,
   suggestDecisionAction,
   summarizeCandidateStatuses,
   type InferenceCandidate,
@@ -106,7 +108,7 @@ function createSeedWithUnmappedAbility(): EffectsSeedFile {
 }
 
 describe("effects-harness inference + review pack", () => {
-  it("derives hybrid inference candidates only for unmapped abilities", () => {
+  it("derives inference candidates for needs_interpretation triggers", () => {
     const seed = createSeedWithUnmappedAbility();
     const artifact = buildEffectsContractV3Artifact(seed, {
       generatedAt: "2026-02-22T00:00:00.000Z",
@@ -119,6 +121,27 @@ describe("effects-harness inference + review pack", () => {
     expect(report.candidates[0].abilityId).toBe("cdn:officer:100:oa");
     expect(report.candidates[0].candidateStatus).toBe("proposed");
     expect(report.candidates[0].gateResults.some((gate) => gate.gate === "confidence_threshold")).toBe(true);
+    expect(report.candidates[0].model).toBeNull();
+    expect(report.candidates[0].promptVersion).toBeNull();
+    expect(report.candidates[0].inputDigest.startsWith("sha256:")).toBe(true);
+  });
+
+  it("hashes and names sidecar report deterministically", () => {
+    const seed = createSeedWithUnmappedAbility();
+    const artifact = buildEffectsContractV3Artifact(seed, {
+      generatedAt: "2026-02-22T00:00:00.000Z",
+      snapshotVersion: "stfc-test",
+      generatorVersion: "0.1.0",
+    });
+
+    const reportA = deriveInferenceReport(artifact, "run-123");
+    const reportB = deriveInferenceReport(artifact, "run-123");
+    const hashA = hashInferenceReport(reportA);
+    const hashB = hashInferenceReport(reportB);
+
+    expect(hashA).toBe(hashB);
+    expect(buildInferenceReportPath("run-123", hashA)).toBe(buildInferenceReportPath("run-123", hashB));
+    expect(buildInferenceReportPath("run-123", hashA)).toMatch(/inference-report\.[a-f0-9]{16}\.json$/);
   });
 
   it("buildReviewPack includes proposed and medium/low confidence candidates", () => {
@@ -153,6 +176,9 @@ describe("effects-harness inference + review pack", () => {
         sourcePath: "effect-taxonomy.json",
         sourceOffset: 0,
       }],
+      model: null,
+      promptVersion: null,
+      inputDigest: "sha256:test",
     });
 
     expect(evaluated.candidateStatus).toBe("gate_passed");
@@ -177,6 +203,9 @@ describe("effects-harness inference + review pack", () => {
         sourcePath: "effect-taxonomy.json",
         sourceOffset: 0,
       }],
+      model: null,
+      promptVersion: null,
+      inputDigest: "sha256:test",
     });
 
     expect(evaluated.candidateStatus).toBe("rejected");
@@ -185,10 +214,10 @@ describe("effects-harness inference + review pack", () => {
 
   it("summarizes candidate status counts", () => {
     const counts = summarizeCandidateStatuses([
-      { abilityId: "a", candidateId: "1", candidateStatus: "proposed", proposedEffects: [], confidence: { score: 0.5, tier: "medium" }, rationale: "", gateResults: [], evidence: [] },
-      { abilityId: "a", candidateId: "2", candidateStatus: "gate_passed", proposedEffects: [], confidence: { score: 0.9, tier: "high" }, rationale: "", gateResults: [], evidence: [] },
-      { abilityId: "a", candidateId: "3", candidateStatus: "gate_failed", proposedEffects: [], confidence: { score: 0.4, tier: "low" }, rationale: "", gateResults: [], evidence: [] },
-      { abilityId: "a", candidateId: "4", candidateStatus: "rejected", proposedEffects: [], confidence: { score: 0.8, tier: "high" }, rationale: "", gateResults: [], evidence: [] },
+      { abilityId: "a", candidateId: "1", candidateStatus: "proposed", proposedEffects: [], confidence: { score: 0.5, tier: "medium" }, rationale: "", gateResults: [], evidence: [], model: null, promptVersion: null, inputDigest: "sha256:1" },
+      { abilityId: "a", candidateId: "2", candidateStatus: "gate_passed", proposedEffects: [], confidence: { score: 0.9, tier: "high" }, rationale: "", gateResults: [], evidence: [], model: null, promptVersion: null, inputDigest: "sha256:2" },
+      { abilityId: "a", candidateId: "3", candidateStatus: "gate_failed", proposedEffects: [], confidence: { score: 0.4, tier: "low" }, rationale: "", gateResults: [], evidence: [], model: null, promptVersion: null, inputDigest: "sha256:3" },
+      { abilityId: "a", candidateId: "4", candidateStatus: "rejected", proposedEffects: [], confidence: { score: 0.8, tier: "high" }, rationale: "", gateResults: [], evidence: [], model: null, promptVersion: null, inputDigest: "sha256:4" },
     ]);
 
     expect(counts).toEqual({ proposed: 1, gate_passed: 1, gate_failed: 1, rejected: 1 });
@@ -204,6 +233,9 @@ describe("effects-harness inference + review pack", () => {
       rationale: "",
       gateResults: [],
       evidence: [],
+      model: null,
+      promptVersion: null,
+      inputDigest: "sha256:p",
     });
     const reject = suggestDecisionAction({
       abilityId: "a",
@@ -214,6 +246,9 @@ describe("effects-harness inference + review pack", () => {
       rationale: "",
       gateResults: [{ gate: "contradiction_intra_ability", status: "fail" }],
       evidence: [],
+      model: null,
+      promptVersion: null,
+      inputDigest: "sha256:r",
     });
 
     expect(promote.action).toBe("promote");

@@ -2,9 +2,11 @@ import { resolve } from "node:path";
 import type { AxCommand, AxResult } from "./types.js";
 import { getFlag, makeResult } from "./runner.js";
 import {
+  buildInferenceReportPath,
   buildDeterministicArtifacts,
   createRunId,
   deriveInferenceReport,
+  hashInferenceReport,
   readEffectsSeedFile,
   summarizeEffectsContractArtifact,
   summarizeCandidateStatuses,
@@ -123,7 +125,8 @@ const command: AxCommand = {
 
     if (mode === "hybrid") {
       const report = deriveInferenceReport(built.artifact, runId);
-      const reportPath = resolve("tmp", "effects", "runs", runId, "inference-report.json");
+      const reportHash = hashInferenceReport(report);
+      const reportPath = buildInferenceReportPath(runId, reportHash);
       await writeJsonAt(reportPath, report);
       const statusCounts = summarizeCandidateStatuses(report.candidates);
       receipt.stochastic = {
