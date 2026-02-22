@@ -87,6 +87,7 @@ import { createReceiptRoutes } from "./routes/receipts.js";
 import { createImportRoutes } from "./routes/imports.js";
 import { createProposalRoutes } from "./routes/proposals.js";
 import { createTranslatorRoutes } from "./routes/translator.js";
+import { createEffectsRoutes } from "./routes/effects.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -280,6 +281,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createUserSettingsRoutes(appState));
   app.use(createSessionRoutes(appState));
   app.use(createCatalogRoutes(appState));
+  app.use(createEffectsRoutes(appState));
   app.use(createDiagnosticQueryRoutes(appState));
   app.use(createTargetRoutes(appState));
   app.use(createCrewRoutes(appState));
