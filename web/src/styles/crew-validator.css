@@ -1,0 +1,301 @@
+/**
+ * crew-validator.css — Styles for the Crew Validator tab (ADR-034 Phase C).
+ * Uses `.cv-` prefix to avoid collisions.
+ */
+
+.cv-intro {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.cv-config { margin-bottom: 12px; }
+
+.cv-crew-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cv-slot-card {
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  font: inherit;
+  transition: border-color 0.15s;
+}
+.cv-slot-card:hover { border-color: var(--accent-gold-dim); }
+
+.cv-slot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.cv-slot-officer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.88rem;
+}
+.cv-slot-officer-name { flex: 1; }
+.cv-slot-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cv-slot-remove:hover { color: var(--accent-red, #e55); background: var(--bg-tertiary); }
+
+/* ── Verdict Badges ── */
+
+.cv-verdict {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.cv-verdict-works { background: rgba(76, 175, 80, 0.2); color: #66bb6a; }
+.cv-verdict-partial { background: rgba(255, 183, 77, 0.2); color: #ffb74d; }
+.cv-verdict-blocked { background: rgba(239, 83, 80, 0.2); color: #ef5350; }
+.cv-verdict-unknown { background: var(--bg-tertiary); color: var(--text-muted); }
+
+/* ── Validation Matrix ── */
+
+.cv-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cv-officer-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.cv-officer-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.cv-officer-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  flex: 1;
+}
+.cv-officer-slot {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.cv-officer-score {
+  font-size: 0.82rem;
+  color: var(--accent-gold);
+  font-weight: 600;
+}
+
+/* ── Ability Row ── */
+
+.cv-abilities {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cv-ability {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+}
+
+.cv-ability-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.cv-ability-slot {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-width: 28px;
+}
+.cv-ability-name {
+  font-size: 0.84rem;
+  flex: 1;
+}
+.cv-ability-inert {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Effect Pills ── */
+
+.cv-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.cv-effect {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.cv-effect-works { background: rgba(76, 175, 80, 0.15); color: #81c784; }
+.cv-effect-conditional { background: rgba(255, 183, 77, 0.15); color: #ffb74d; }
+.cv-effect-blocked { background: rgba(239, 83, 80, 0.15); color: #ef5350; }
+
+.cv-effect-key { font-weight: 600; }
+.cv-effect-magnitude { opacity: 0.8; }
+.cv-effect-status-icon { font-size: 0.68rem; }
+
+/* ── Issues ── */
+
+.cv-issues {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cv-issue {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.cv-issue-icon { font-size: 0.68rem; }
+.cv-issue-blocker { color: #ef5350; }
+.cv-issue-conditional { color: #ffb74d; }
+.cv-issue-info { color: var(--text-muted); }
+
+/* ── Summary ── */
+
+.cv-summary {
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.cv-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.cv-summary h4 {
+  margin: 0;
+  font-size: 0.92rem;
+  flex: 1;
+}
+.cv-summary-lines {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.84rem;
+}
+
+/* ── Picker (reuses quick-crew modal pattern) ── */
+
+.cv-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 900;
+}
+.cv-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(540px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-gold-dim);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 910;
+  padding: 16px;
+  overflow: hidden;
+}
+.cv-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.cv-modal-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+.cv-modal-search { margin-bottom: 10px; }
+.cv-picker-list {
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.cv-pick {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+.cv-pick:hover { border-color: var(--accent-gold-dim); }
+
+/* ── No Bundle Message ── */
+
+.cv-no-bundle {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 30px 0;
+  font-size: 0.88rem;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+  .cv-crew-bar { grid-template-columns: 1fr; }
+}

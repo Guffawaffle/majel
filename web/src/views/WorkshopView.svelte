@@ -28,12 +28,13 @@
   import ReservationsTab from "../components/workshop/ReservationsTab.svelte";
   import ImportsTab from "../components/workshop/ImportsTab.svelte";
   import QuickCrewTab from "../components/workshop/QuickCrewTab.svelte";
+  import CrewValidatorTab from "../components/workshop/CrewValidatorTab.svelte";
   import { consumeWorkshopLaunchIntent } from "../lib/view-intent.svelte.js";
 
   // ── Shared state ──
 
   type ModeId = "basic" | "advanced";
-  type TabId = "quick" | "cores" | "loadouts" | "policies" | "reservations" | "imports";
+  type TabId = "quick" | "validate" | "cores" | "loadouts" | "policies" | "reservations" | "imports";
 
   const MODES: { id: ModeId; label: string }[] = [
     { id: "basic", label: "Basic" },
@@ -42,6 +43,7 @@
 
   const BASIC_TABS: { id: TabId; label: string; icon: string }[] = [
     { id: "quick", label: "Quick Crew", icon: "🧭" },
+    { id: "validate", label: "Crew Check", icon: "🔍" },
   ];
 
   const TABS: { id: TabId; label: string; icon: string }[] = [
@@ -154,10 +156,10 @@
       activeTab = "quick";
       return;
     }
-    if (activeTab === "quick") activeTab = "cores";
+    if (activeTab === "quick" || activeTab === "validate") activeTab = "cores";
   }
 
-  const visibleTabs = $derived(mode === "basic" ? BASIC_TABS : TABS.filter((tab) => tab.id !== "quick"));
+  const visibleTabs = $derived(mode === "basic" ? BASIC_TABS : TABS.filter((tab) => tab.id !== "quick" && tab.id !== "validate"));
 </script>
 
 <div class="workshop">
@@ -198,6 +200,10 @@
           {ships}
           {reservations}
           onRefresh={refreshCoresScope}
+        />
+      {:else if activeTab === "validate"}
+        <CrewValidatorTab
+          {officers}
         />
       {:else if activeTab === "cores"}
         <CoresTab
