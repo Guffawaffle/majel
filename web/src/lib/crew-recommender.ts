@@ -18,8 +18,8 @@ export interface CrewRecommendInput {
   targetClass?: "explorer" | "interceptor" | "battleship" | "any";
   captainId?: string;
   limit?: number;
-  /** When provided, use effect-based scoring (ADR-034). */
-  effectBundle?: EffectBundleData;
+  /** Required: effect-based scoring bundle (ADR-034). */
+  effectBundle: EffectBundleData;
 }
 
 export interface CrewRecommendationFactor {
@@ -688,7 +688,7 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Public API (dispatches based on effectBundle feature flag)
+// Public API (effect-based only)
 // ═══════════════════════════════════════════════════════════════
 
 export function scoreOfficerForSlot(
@@ -700,20 +700,20 @@ export function scoreOfficerForSlot(
     reservations: OfficerReservation[];
     maxPower: number;
     slot: BridgeSlot;
-    effectBundle?: EffectBundleData;
+    effectBundle: EffectBundleData;
   },
 ): OfficerScoreBreakdown {
-  if (opts.effectBundle) {
-    return scoreOfficerForSlotEffect(officer, { ...opts, effectBundle: opts.effectBundle });
+  if (!opts.effectBundle) {
+    throw new Error("Effect bundle is required for scoreOfficerForSlot.");
   }
-  return scoreOfficerForSlotLegacy(officer, opts);
+  return scoreOfficerForSlotEffect(officer, { ...opts, effectBundle: opts.effectBundle });
 }
 
 export function recommendBridgeTrios(input: CrewRecommendInput): CrewRecommendation[] {
-  if (input.effectBundle) {
-    return recommendBridgeTriosEffect(input);
+  if (!input.effectBundle) {
+    throw new Error("Effect bundle is required for recommendBridgeTrios.");
   }
-  return recommendBridgeTriosLegacy(input);
+  return recommendBridgeTriosEffect(input);
 }
 
 // ═══════════════════════════════════════════════════════════════

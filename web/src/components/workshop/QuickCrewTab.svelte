@@ -55,13 +55,24 @@
   let saveBusy = $state(false);
   let pickerSearchInput = $state<HTMLInputElement | null>(null);
 
-  /** Effect bundle for ADR-034 scoring — null until loaded, falls back to keyword scoring. */
+  /** Effect bundle for ADR-034 scoring — required for all recommendation/scoring paths. */
   let effectBundle = $state<EffectBundleData | null>(null);
+  let effectBundleLoading = $state(true);
+  let effectBundleError = $state("");
 
   $effect(() => {
+    effectBundleLoading = true;
+    effectBundleError = "";
     getEffectBundleManager().load()
-      .then((bundle) => { effectBundle = bundle; })
-      .catch(() => { /* bundle unavailable — keyword scoring fallback */ });
+      .then((bundle) => {
+        effectBundle = bundle;
+        effectBundleLoading = false;
+      })
+      .catch((err) => {
+        effectBundle = null;
+        effectBundleLoading = false;
+        effectBundleError = err instanceof Error ? err.message : "Failed to load effect bundle.";
+      });
   });
 
   $effect(() => {
@@ -85,6 +96,7 @@
   const selectedShip = $derived(ships.find((ship) => ship.id === shipId));
 
   const recommendations = $derived.by(() => {
+    if (!effectBundle) return [];
     return recommendBridgeTrios({
       officers: ownedOfficers,
       reservations,
@@ -93,7 +105,7 @@
       targetClass,
       captainId: captainAssist ? captainId || undefined : undefined,
       limit: 5,
-      effectBundle: effectBundle ?? undefined,
+      effectBundle,
     });
   });
 
@@ -155,7 +167,8 @@
 
   const pickerList = $derived.by(() => {
     const slot = ui.pickerSlot;
-    if (!slot) return [];
+    if (!slot || !effectBundle) return [];
+    const bundle = effectBundle;
     const q = ui.pickerSearch.trim().toLowerCase();
     return ownedOfficers
       .filter((officer) => {
@@ -171,7 +184,7 @@
           reservations,
           maxPower,
           slot,
-          effectBundle: effectBundle ?? undefined,
+          effectBundle: bundle,
         });
         const total = Math.round((score.goalFit + score.shipFit + score.counterFit + score.effectScore + score.readiness + score.reservation + score.captainBonus) * 10) / 10;
         const hasSynergy = Boolean(officer.synergyId && selectedSynergyIds.has(officer.synergyId));
@@ -321,7 +334,11 @@
     </div>
   </div>
 
-  {#if recommendations.length === 0}
+  {#if effectBundleLoading}
+    <p class="ws-empty">Loading effect bundle…</p>
+  {:else if effectBundleError}
+    <p class="ws-empty">Effect bundle unavailable: {effectBundleError}</p>
+  {:else if recommendations.length === 0}
     <p class="ws-empty">No recommendations yet. Mark more officers as owned to unlock Quick Crew.</p>
   {:else}
     <div class="qc-grid">
@@ -464,13 +481,7 @@
               {/if}
             </span>
             <span class="qc-pick-score">{item.total}</span>
-            <span class="qc-pick-meta">
-              {#if effectBundle}
-                effect {item.score.effectScore} · ready {item.score.readiness} · res {item.score.reservation}
-              {:else}
-                goal {item.score.goalFit} · ship {item.score.shipFit} · counter {item.score.counterFit} · ready {item.score.readiness} · res {item.score.reservation}
-              {/if}
-            </span>
+              <span class="qc-pick-meta">effect {item.score.effectScore} · ready {item.score.readiness} · res {item.score.reservation}</span>
           </button>
         {/each}
       </div>
