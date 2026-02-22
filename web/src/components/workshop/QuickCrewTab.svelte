@@ -17,6 +17,7 @@
     scoreOfficerForSlot,
     type CrewRecommendation,
   } from "../../lib/crew-recommender.js";
+  import { getEffectBundleManager, type EffectBundleData } from "../../lib/effect-bundle-adapter.js";
 
   interface Props {
     officers: CatalogOfficer[];
@@ -53,6 +54,15 @@
   let saveError = $state("");
   let saveBusy = $state(false);
 
+  /** Effect bundle for ADR-034 scoring — null until loaded, falls back to keyword scoring. */
+  let effectBundle = $state<EffectBundleData | null>(null);
+
+  $effect(() => {
+    getEffectBundleManager().load()
+      .then((bundle) => { effectBundle = bundle; })
+      .catch(() => { /* bundle unavailable — keyword scoring fallback */ });
+  });
+
   function send(command: QuickCrewCommand) {
     ui = routeQuickCrewCommand(ui, command);
   }
@@ -76,6 +86,7 @@
       targetClass,
       captainId: captainAssist ? captainId || undefined : undefined,
       limit: 5,
+      effectBundle: effectBundle ?? undefined,
     });
   });
 
@@ -153,8 +164,9 @@
           reservations,
           maxPower,
           slot,
+          effectBundle: effectBundle ?? undefined,
         });
-        const total = Math.round((score.goalFit + score.shipFit + score.counterFit + score.readiness + score.reservation + score.captainBonus) * 10) / 10;
+        const total = Math.round((score.goalFit + score.shipFit + score.counterFit + score.effectScore + score.readiness + score.reservation + score.captainBonus) * 10) / 10;
         const hasSynergy = Boolean(officer.synergyId && selectedSynergyIds.has(officer.synergyId));
         return { officer, total, score, hasSynergy };
       })
@@ -438,7 +450,11 @@
             </span>
             <span class="qc-pick-score">{item.total}</span>
             <span class="qc-pick-meta">
-              goal {item.score.goalFit} · ship {item.score.shipFit} · counter {item.score.counterFit} · ready {item.score.readiness} · res {item.score.reservation}
+              {#if effectBundle}
+                effect {item.score.effectScore} · ready {item.score.readiness} · res {item.score.reservation}
+              {:else}
+                goal {item.score.goalFit} · ship {item.score.shipFit} · counter {item.score.counterFit} · ready {item.score.readiness} · res {item.score.reservation}
+              {/if}
             </span>
           </button>
         {/each}
