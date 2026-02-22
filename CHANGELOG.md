@@ -90,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Validation
 - `effects:dry-run` now returns `ok: true` with deterministic repeat hash stability on current seed input.
+- Added runtime chunk cache revalidation coverage (`If-None-Match` -> `304`) alongside immutable cache assertions for taxonomy/index/chunk endpoints. (`test/effect-routes.test.ts`)
 
 ## [0.6.1] — 2026-02-21
 

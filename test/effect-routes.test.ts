@@ -410,5 +410,12 @@ describe("GET /api/effects/runtime/*", () => {
     expect(taxonomy.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
     expect(index.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
     expect(chunk.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+    expect(chunk.headers["etag"]).toBeTruthy();
+
+    const chunkRevalidate = await testRequest(app)
+      .get(chunkPath)
+      .set("If-None-Match", chunk.headers["etag"] as string);
+
+    expect(chunkRevalidate.status).toBe(304);
   });
 });

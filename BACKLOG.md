@@ -174,7 +174,7 @@ Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxono
 | #142 | Phase 3 | Inference sidecar + needs_interpretation trigger pipeline | [x] Done (`a305118`) |
 | #146 | Phase 4 | Runner gates + promotion/fallback + receipts | [x] Done (`65f42ab`) |
 | #144 | Phase 5 | Override engine + precedence + contradiction protection | [x] Done (`b03471e`) |
-| #145 | Phase 6 | CI budgets + runtime artifact split/caching rollout | [x] Done (2026-02-22) |
+| #145 | Phase 6 | CI budgets + runtime artifact split/caching rollout | [x] Done (2026-02-22, post-review hardening through `e0fd4ff`) |
 | Addendum C | Phase 1.5 | AX build/review harness scaffolding | [x] Done (`0d0fb6d` + follow-ups) |
 | #134 | C | Crew Validator (validation matrix) | [~] In progress |
 
@@ -192,6 +192,7 @@ Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxono
 - [x] Effects Contract v3 Phase 4 gate runner + promotion receipts + no-overwrite invariant
 - [x] Effects Contract v3 Phase 5 override engine + precedence + contradiction protection
 - [x] Effects Contract v3 Phase 6 CI budgets + runtime split/caching rollout
+- [x] Post-review runtime cache hardening: stable manifest ETag basis, raw JSON cache representation, and chunk `If-None-Match` → `304` coverage
 - [ ] "Does it work?" validation matrix (Phase C)
 
 See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
