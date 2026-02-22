@@ -85,6 +85,8 @@
       { "id": "when_shields_depleted", "paramSchema": null },
       { "id": "when_hull_breached", "paramSchema": null },
       { "id": "when_burning", "paramSchema": null },
+      { "id": "when_target_is_burning", "paramSchema": null },
+      { "id": "when_target_has_hull_breach", "paramSchema": null },
       { "id": "when_target_burning", "paramSchema": null },
       { "id": "when_target_hull_breached", "paramSchema": null },
       { "id": "requires_attacking", "paramSchema": null },
@@ -115,7 +117,10 @@
       { "id": "slot_mismatch", "severity": "blocker", "defaultMessage": "Effect is for a different slot" },
       { "id": "unknown_condition", "severity": "conditional", "defaultMessage": "Parser couldn't classify condition" },
       { "id": "reserved_officer", "severity": "info", "defaultMessage": "Officer is reserved on another loadout" },
-      { "id": "captain_maneuver_missing_or_inert", "severity": "blocker", "defaultMessage": "No usable captain maneuver for this objective" }
+      { "id": "captain_maneuver_missing_or_inert", "severity": "blocker", "defaultMessage": "No usable captain maneuver for this objective" },
+      { "id": "unmapped_ability_text", "severity": "info", "defaultMessage": "Ability text could not be mapped to effect taxonomy" },
+      { "id": "unknown_magnitude", "severity": "info", "defaultMessage": "Effect magnitude could not be parsed" },
+      { "id": "unknown_effect_key", "severity": "info", "defaultMessage": "Effect key is unknown or unmapped" }
     ]
   },
   "intents": [
@@ -134,6 +139,44 @@
         { "effectKey": "officer_attack", "weight": 0.5 },
         { "effectKey": "officer_defense", "weight": 0.5 },
         { "effectKey": "officer_health", "weight": 0.5 }
+      ]
+    },
+    {
+      "id": "hostile_grinding",
+      "name": "Hostile Grinding (v0)",
+      "description": "Starter vector for deterministic hostile PvE grinding",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": ["pve"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 1.0 },
+        { "effectKey": "weapon_damage", "weight": 0.8 },
+        { "effectKey": "crit_chance", "weight": 0.6 },
+        { "effectKey": "crit_damage", "weight": 0.6 },
+        { "effectKey": "mitigation", "weight": 0.9 },
+        { "effectKey": "hull_health", "weight": 0.4 },
+        { "effectKey": "shield_health", "weight": 0.4 },
+        { "effectKey": "dodge", "weight": 0.2 }
+      ]
+    },
+    {
+      "id": "pvp_station_hit",
+      "name": "PvP Station Hit (v0)",
+      "description": "Starter vector for deterministic PvP station assault",
+      "defaultContext": {
+        "targetKind": "station",
+        "engagement": "attacking",
+        "targetTags": ["pvp", "station_assault"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 1.0 },
+        { "effectKey": "weapon_damage", "weight": 0.9 },
+        { "effectKey": "crit_chance", "weight": 0.7 },
+        { "effectKey": "crit_damage", "weight": 0.7 },
+        { "effectKey": "penetration", "weight": 0.8 },
+        { "effectKey": "mitigation", "weight": 0.4 }
       ]
     },
     {

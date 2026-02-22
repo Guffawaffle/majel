@@ -8,6 +8,8 @@ import type {
 } from "./types/effect-types.js";
 import { evaluateEffect, evaluateOfficer } from "./effect-evaluator.js";
 import { buildTargetContext, bridgeSlotToSlotContext } from "./effect-context.js";
+import captainViabilityKeysV0 from "./data/captain-viability-keys.v0.json";
+import scoringContractV0 from "./data/scoring-contract.v0.json";
 
 export interface CrewRecommendInput {
   officers: CatalogOfficer[];
@@ -49,46 +51,24 @@ interface OfficerScoreBreakdown {
 
 type IntentGroup = "combat" | "economy";
 
-const CAPTAIN_COMBAT_RELEVANT_KEYS = new Set<string>([
-  "damage_dealt",
-  "weapon_damage",
-  "crit_chance",
-  "crit_damage",
-  "mitigation",
-  "armor",
-  "shield_deflection",
-  "dodge",
-  "shield_health",
-  "hull_health",
-  "damage_taken_reduction",
-  "repair_per_round",
-  "shield_restore_per_round",
-  "piercing",
-  "accuracy",
-]);
+interface CaptainViabilityKeyConfig {
+  version: string;
+  combatRelevantKeys: string[];
+  economyRelevantKeys: string[];
+  metaAmplifierKeys: string[];
+}
 
-const CAPTAIN_ECONOMY_RELEVANT_KEYS = new Set<string>([
-  "loot",
-  "hostile_chest_rewards",
-  "armada_loot",
-  "event_rewards",
-  "mining_rate",
-  "cargo_capacity",
-  "protected_cargo",
-  "mining_safety",
-  "warp_speed",
-  "impulse_speed",
-]);
-
-const CAPTAIN_META_AMPLIFIER_KEYS = new Set<string>([
-  "captain_maneuver_effectiveness",
-  "officer_ability_effectiveness",
-  "below_deck_ability_effectiveness",
-  "effect_duration_bonus",
-  "stack_rate_bonus",
-]);
+const captainViabilityConfig = captainViabilityKeysV0 as CaptainViabilityKeyConfig;
+const CAPTAIN_COMBAT_RELEVANT_KEYS = new Set<string>(captainViabilityConfig.combatRelevantKeys);
+const CAPTAIN_ECONOMY_RELEVANT_KEYS = new Set<string>(captainViabilityConfig.economyRelevantKeys);
+const CAPTAIN_META_AMPLIFIER_KEYS = new Set<string>(captainViabilityConfig.metaAmplifierKeys);
 
 function deriveIntentGroup(intentKey: string, ctx: TargetContext): IntentGroup {
+  const lowerKey = intentKey.toLowerCase();
+  if (/mining|cargo|survey|warp|loot|economy/.test(lowerKey)) {
+    return "economy";
+  }
+
   if (
     ctx.targetKind === "hostile"
     || ctx.targetKind === "player_ship"
@@ -97,11 +77,6 @@ function deriveIntentGroup(intentKey: string, ctx: TargetContext): IntentGroup {
     || ctx.targetKind === "mission_npc"
   ) {
     return "combat";
-  }
-
-  const lowerKey = intentKey.toLowerCase();
-  if (/mining|cargo|survey|warp|loot|economy/.test(lowerKey)) {
-    return "economy";
   }
 
   return "combat";
@@ -128,7 +103,14 @@ function normalizePower(value: number | null, maxPower: number): number {
 // ═══════════════════════════════════════════════════════════════
 
 /** Effect evaluator scores are small decimals (0–2). Scale to match keyword score range. */
-const EFFECT_SCALE = 10;
+const EFFECT_SCALE = scoringContractV0.effectScale;
+const UNKNOWN_EFFECT_PENALTY = scoringContractV0.uncertainty.unknownEffectPenalty;
+const UNKNOWN_MAGNITUDE_PENALTY = scoringContractV0.uncertainty.unknownMagnitudePenalty;
+const UNKNOWN_MAGNITUDE_CONTRIBUTION_FACTOR = scoringContractV0.uncertainty.unknownMagnitudeContributionFactor;
+const CONFIDENCE_TOP_EFFECTS_WINDOW = scoringContractV0.confidence.topEffectsWindow;
+const SYNERGY_PAIR_BONUS = scoringContractV0.synergyPairBonus;
+const READINESS_LEVEL_WEIGHT = scoringContractV0.readiness.levelWeight;
+const READINESS_POWER_WEIGHT = scoringContractV0.readiness.powerWeight;
 
 /**
  * Check whether an officer has a useful Captain Maneuver for the given context.
@@ -177,10 +159,15 @@ function buildEffectBreakdown(
   for (const abilEval of evaluation.abilities) {
     const ability = abilities.find((a) => a.id === abilEval.abilityId);
     for (const effectEval of abilEval.effects) {
-      const weight = intentWeights[effectEval.effectKey] ?? 0;
+      const hasKnownWeight = Object.hasOwn(intentWeights, effectEval.effectKey);
+      const weight = hasKnownWeight ? intentWeights[effectEval.effectKey] ?? 0 : 0;
       const effect = ability?.effects.find((entry) => entry.id === effectEval.effectId);
-      const magnitude = effect?.magnitude ?? 1;
-      const contribution = magnitude * weight * effectEval.applicabilityMultiplier;
+      const hasUnknownMagnitude = effect?.magnitude == null;
+      const magnitude = hasUnknownMagnitude ? 1 : effect.magnitude;
+      const baseContribution = magnitude * weight * effectEval.applicabilityMultiplier;
+      const contribution = hasUnknownMagnitude
+        ? baseContribution * UNKNOWN_MAGNITUDE_CONTRIBUTION_FACTOR
+        : baseContribution;
       entries.push({
         effectKey: effectEval.effectKey,
         status: effectEval.status,
@@ -188,10 +175,41 @@ function buildEffectBreakdown(
         magnitude: effect?.magnitude ?? null,
         applicabilityMultiplier: effectEval.applicabilityMultiplier,
         contribution,
+        isUnknownEffectKey: !hasKnownWeight,
+        hasUnknownMagnitude,
       });
     }
   }
   return entries.sort((a, b) => b.contribution - a.contribution);
+}
+
+function summarizeUncertainty(entries: EffectScoreEntry[]): {
+  unknownEffectCount: number;
+  unknownMagnitudeCount: number;
+  conditionalTopCount: number;
+} {
+  const unknownEffectCount = entries.filter((entry) => entry.isUnknownEffectKey).length;
+  const unknownMagnitudeCount = entries.filter((entry) => entry.hasUnknownMagnitude).length;
+
+  const topContributing = [...entries]
+    .filter((entry) => entry.contribution > 0)
+    .sort((a, b) => b.contribution - a.contribution)
+    .slice(0, CONFIDENCE_TOP_EFFECTS_WINDOW);
+
+  const conditionalTopCount = topContributing
+    .filter((entry) => entry.status === "conditional")
+    .length;
+
+  return { unknownEffectCount, unknownMagnitudeCount, conditionalTopCount };
+}
+
+function scoreFromBreakdown(entries: EffectScoreEntry[]): number {
+  const rawScore = entries.reduce((sum, entry) => sum + entry.contribution, 0);
+  const uncertainty = summarizeUncertainty(entries);
+  const penalty =
+    uncertainty.unknownEffectCount * UNKNOWN_EFFECT_PENALTY
+    + uncertainty.unknownMagnitudeCount * UNKNOWN_MAGNITUDE_PENALTY;
+  return Math.round((rawScore - penalty) * EFFECT_SCALE * 10) / 10;
 }
 
 function humanizeEffectKey(effectKey: string): string {
@@ -233,10 +251,14 @@ function scoreOfficerForSlotEffect(
   const slotCtx = bridgeSlotToSlotContext(opts.slot);
 
   const evaluation = evaluateOfficer(officer.id, abilities, ctx, weights, slotCtx);
-  const effectScore = Math.round(evaluation.totalScore * EFFECT_SCALE * 10) / 10;
+  const breakdown = buildEffectBreakdown(abilities, evaluation, weights);
+  const effectScore = scoreFromBreakdown(breakdown);
 
   const readiness = Math.round(
-    (normalizeLevel(officer.userLevel) * 4 + normalizePower(officer.userPower, opts.maxPower) * 2) * 10,
+    (
+      normalizeLevel(officer.userLevel) * READINESS_LEVEL_WEIGHT
+      + normalizePower(officer.userPower, opts.maxPower) * READINESS_POWER_WEIGHT
+    ) * 10,
   ) / 10;
   const reservation = getReservationPenalty(officer.id, opts.reservations);
 
@@ -259,12 +281,18 @@ function scoreOfficerForSlotEffect(
 // ─── Effect-Based Recommender ───────────────────────────────
 
 /**
- * Confidence thresholds calibrated for effect-based scoring.
- * Strong trio: ~40+, average trio: ~20, weak: <18.
+ * Confidence buckets penalize uncertainty and conditional concentration.
  */
-function effectConfidenceFromScore(score: number): "high" | "medium" | "low" {
-  if (score >= 30) return "high";
-  if (score >= 18) return "medium";
+function effectConfidenceFromBreakdowns(entries: EffectScoreEntry[]): "high" | "medium" | "low" {
+  const uncertainty = summarizeUncertainty(entries);
+  const confidenceValue =
+    scoringContractV0.confidence.base
+    - uncertainty.unknownEffectCount * scoringContractV0.confidence.unknownEffectPenalty
+    - uncertainty.unknownMagnitudeCount * scoringContractV0.confidence.unknownMagnitudePenalty
+    - uncertainty.conditionalTopCount * scoringContractV0.confidence.conditionalTopPenalty;
+
+  if (confidenceValue >= scoringContractV0.confidence.highMin) return "high";
+  if (confidenceValue >= scoringContractV0.confidence.mediumMin) return "medium";
   return "low";
 }
 
@@ -302,7 +330,7 @@ function buildEffectReasons(
 
   if (synergyPairs > 0) {
     reasons.push(
-      `Synergy group overlap (${synergyPairs} pair${synergyPairs > 1 ? "s" : ""}, +${Math.round(synergyPairs * 3)}% bonus).`,
+      `Synergy group overlap (${synergyPairs} pair${synergyPairs > 1 ? "s" : ""}, +${Math.round(synergyPairs * SYNERGY_PAIR_BONUS * 100)}% bonus).`,
     );
   }
 
@@ -342,15 +370,18 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
   const captainScored = pool.map((o) => {
     const abilities = bundle.officerAbilities.get(o.id) ?? [];
     const evaluation = evaluateOfficer(o.id, abilities, ctx, weights, "captain");
-    const effectScore = Math.round(evaluation.totalScore * EFFECT_SCALE * 10) / 10;
+    const breakdown = buildEffectBreakdown(abilities, evaluation, weights);
+    const effectScore = scoreFromBreakdown(breakdown);
     const readiness = Math.round(
-      (normalizeLevel(o.userLevel) * 4 + normalizePower(o.userPower, maxPower) * 2) * 10,
+      (
+        normalizeLevel(o.userLevel) * READINESS_LEVEL_WEIGHT
+        + normalizePower(o.userPower, maxPower) * READINESS_POWER_WEIGHT
+      ) * 10,
     ) / 10;
     const reservation = getReservationPenalty(o.id, input.reservations);
     const viable = isCaptainViable(abilities, ctx, weights, intentGroup);
     const captainBonus = viable ? 2 : -3;
     const total = effectScore + readiness + reservation + captainBonus;
-    const breakdown = buildEffectBreakdown(abilities, evaluation, weights);
     return { officer: o, effectScore, readiness, reservation, captainBonus, total, viable, breakdown };
   });
 
@@ -379,13 +410,17 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
       .map((o) => {
         const abilities = bundle.officerAbilities.get(o.id) ?? [];
         const evaluation = evaluateOfficer(o.id, abilities, ctx, weights, "bridge");
-        const effectScore = Math.round(evaluation.totalScore * EFFECT_SCALE * 10) / 10;
+        const breakdown = buildEffectBreakdown(abilities, evaluation, weights);
+        const effectScore = scoreFromBreakdown(breakdown);
         const readiness = Math.round(
-          (normalizeLevel(o.userLevel) * 4 + normalizePower(o.userPower, maxPower) * 2) * 10,
+          (
+            normalizeLevel(o.userLevel) * READINESS_LEVEL_WEIGHT
+            + normalizePower(o.userPower, maxPower) * READINESS_POWER_WEIGHT
+          ) * 10,
         ) / 10;
         const reservation = getReservationPenalty(o.id, input.reservations);
         const total = effectScore + readiness + reservation;
-        return { officer: o, effectScore, readiness, reservation, total };
+        return { officer: o, effectScore, readiness, reservation, total, breakdown };
       })
       .sort((a, b) => b.total - a.total)
       .slice(0, 14);
@@ -396,10 +431,15 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
         const b2 = bridgeScored[j];
 
         const synergyPairs = countSynergyPairs(captain, b1.officer, b2.officer);
-        const synergyMultiplier = 1 + synergyPairs * 0.03;
+        const synergyMultiplier = 1 + synergyPairs * SYNERGY_PAIR_BONUS;
 
         const baseScore = captainInfo.total + b1.total + b2.total;
         const totalScore = Math.round(baseScore * synergyMultiplier * 10) / 10;
+        const confidence = effectConfidenceFromBreakdowns([
+          ...captainInfo.breakdown,
+          ...b1.breakdown,
+          ...b2.breakdown,
+        ]);
 
         const factors: CrewRecommendationFactor[] = [
           { key: "effectScore", label: "Effect Score", score: Math.round((captainInfo.effectScore + b1.effectScore + b2.effectScore) * 10) / 10 },
@@ -427,7 +467,7 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
           bridge1Id: b1.officer.id,
           bridge2Id: b2.officer.id,
           totalScore,
-          confidence: effectConfidenceFromScore(totalScore),
+          confidence,
           reasons,
           factors,
         });

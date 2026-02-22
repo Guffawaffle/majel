@@ -12,6 +12,64 @@ import type {
   StackingMode,
   TargetContext,
 } from "./types/effect-types.js";
+import phraseMapV0 from "./data/phrase-map.v0.json";
+import intentVectorsV0 from "./data/intent-vectors.v0.json";
+
+export type MappingIssueType = "unmapped_ability_text" | "unknown_magnitude";
+
+export interface EffectMappingIssue {
+  type: MappingIssueType;
+  abilityId: string;
+  officerId: string;
+  detail: string;
+}
+
+export interface EffectMappingTelemetry {
+  totalAbilities: number;
+  mappedAbilities: number;
+  mappedPercent: number;
+  unknownMagnitudeEffects: number;
+  topUnmappedAbilityPhrases: string[];
+}
+
+export interface PhraseMapCoverage {
+  totalPhrases: number;
+  mappedPhrases: number;
+  mappedPercent: number;
+  topUnmappedPhrases: string[];
+}
+
+interface PhraseMapRule {
+  id: string;
+  match_any: string[];
+}
+
+interface PhraseMapEffect {
+  id: string;
+  match_any: string[];
+  effectKey: string;
+  unit?: string;
+}
+
+interface PhraseMapArtifact {
+  rules: PhraseMapRule[];
+  effects: PhraseMapEffect[];
+  meta_effects?: PhraseMapEffect[];
+}
+
+interface IntentVectorDef {
+  intentKey: string;
+  label: string;
+  defaultTargetContext: TargetContext;
+  weights: Record<string, number>;
+}
+
+interface IntentVectorArtifact {
+  intents: IntentVectorDef[];
+}
+
+const PHRASE_MAP = phraseMapV0 as PhraseMapArtifact;
+const INTENT_VECTORS = intentVectorsV0 as IntentVectorArtifact;
 
 /**
  * Bundle response from /api/effects/bundle (matches server type EffectBundleResponse)
@@ -108,6 +166,78 @@ export interface EffectBundleData {
   intentWeights: Map<string, Record<string, number>>;
   officerAbilities: Map<string, OfficerAbility[]>;
   intents: Map<string, IntentDefinition>;
+  mappingIssues: EffectMappingIssue[];
+  mappingTelemetry: EffectMappingTelemetry;
+}
+
+export function normalizePhrase(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/non\s+player/g, "non-player")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function phraseMatchesAny(normalized: string, candidates: string[]): boolean {
+  return candidates.some((candidate) => normalized.includes(normalizePhrase(candidate)));
+}
+
+function hasPhraseMapMatch(phrase: string): boolean {
+  const normalized = normalizePhrase(phrase);
+  if (!normalized) return false;
+  if (PHRASE_MAP.rules.some((rule) => phraseMatchesAny(normalized, rule.match_any))) return true;
+  if (PHRASE_MAP.effects.some((effect) => phraseMatchesAny(normalized, effect.match_any))) return true;
+  if ((PHRASE_MAP.meta_effects ?? []).some((effect) => phraseMatchesAny(normalized, effect.match_any))) return true;
+  return false;
+}
+
+export function getPhraseMapCoverage(
+  phrases: string[],
+): PhraseMapCoverage {
+  const unmappedCounts = new Map<string, number>();
+  let mappedPhrases = 0;
+
+  for (const phrase of phrases) {
+    const normalized = normalizePhrase(phrase);
+    if (!normalized) continue;
+    if (hasPhraseMapMatch(normalized)) {
+      mappedPhrases += 1;
+      continue;
+    }
+    unmappedCounts.set(normalized, (unmappedCounts.get(normalized) ?? 0) + 1);
+  }
+
+  const topUnmappedPhrases = [...unmappedCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([phrase]) => phrase);
+
+  const totalPhrases = phrases.length;
+  const mappedPercent = totalPhrases > 0 ? Math.round((mappedPhrases / totalPhrases) * 1000) / 10 : 100;
+
+  return {
+    totalPhrases,
+    mappedPhrases,
+    mappedPercent,
+    topUnmappedPhrases,
+  };
+}
+
+function applyCanonicalIntentVectors(
+  intentWeights: Map<string, Record<string, number>>,
+  intents: Map<string, IntentDefinition>,
+): void {
+  for (const vector of INTENT_VECTORS.intents) {
+    intentWeights.set(vector.intentKey, vector.weights);
+    intents.set(vector.intentKey, {
+      id: vector.intentKey,
+      name: vector.label,
+      description: vector.label,
+      defaultContext: vector.defaultTargetContext,
+      effectWeights: vector.weights,
+    });
+  }
 }
 
 /**
@@ -134,6 +264,11 @@ export function adaptEffectBundle(raw: EffectBundleResponse): EffectBundleData {
   const intentWeights = new Map<string, Record<string, number>>();
   const officerAbilities = new Map<string, OfficerAbility[]>();
   const intents = new Map<string, IntentDefinition>();
+  const mappingIssues: EffectMappingIssue[] = [];
+  let totalAbilities = 0;
+  let mappedAbilities = 0;
+  let unknownMagnitudeEffects = 0;
+  const unmappedAbilityPhraseCounts = new Map<string, number>();
 
   // Index intents and their weights
   for (const intent of raw.intents) {
@@ -153,36 +288,86 @@ export function adaptEffectBundle(raw: EffectBundleResponse): EffectBundleData {
 
   // Index officer abilities and effects
   for (const [officerId, officerData] of Object.entries(raw.officers)) {
-    const abilities: OfficerAbility[] = officerData.abilities.map((ab) => ({
-      id: ab.id,
-      officerId,
-      slot: ab.slot as "cm" | "oa" | "bda",
-      name: ab.name,
-      rawText: ab.rawText,
-      isInert: ab.isInert,
-      effects: ab.effects.map((ef) => ({
-        id: ef.id,
-        abilityId: ab.id,
-        effectKey: ef.effectKey,
-        magnitude: ef.magnitude,
-        unit: (ef.unit ?? null) as MagnitudeUnit | null,
-        stacking: (ef.stacking ?? null) as StackingMode | null,
-        applicableTargetKinds: ef.applicableTargetKinds,
-        applicableTargetTags: ef.applicableTargetTags,
-        conditions: ef.conditions.map((cond) => ({
-          conditionKey: cond.conditionKey,
-          params: cond.params,
+    const abilities: OfficerAbility[] = officerData.abilities.map((ab) => {
+      totalAbilities += 1;
+      return {
+        id: ab.id,
+        officerId,
+        slot: ab.slot as "cm" | "oa" | "bda",
+        name: ab.name,
+        rawText: ab.rawText,
+        isInert: ab.isInert,
+        effects: ab.effects.map((ef) => ({
+          id: ef.id,
+          abilityId: ab.id,
+          effectKey: ef.effectKey,
+          magnitude: ef.magnitude,
+          unit: (ef.unit ?? null) as MagnitudeUnit | null,
+          stacking: (ef.stacking ?? null) as StackingMode | null,
+          applicableTargetKinds: ef.applicableTargetKinds,
+          applicableTargetTags: ef.applicableTargetTags,
+          conditions: ef.conditions.map((cond) => ({
+            conditionKey: cond.conditionKey,
+            params: cond.params,
+          })),
         })),
-      })),
-    }));
+      };
+    });
+
+    for (const ability of abilities) {
+      if (ability.effects.length > 0) {
+        mappedAbilities += 1;
+      } else {
+        const phrase = normalizePhrase(ability.rawText ?? "");
+        if (phrase && !hasPhraseMapMatch(phrase)) {
+          unmappedAbilityPhraseCounts.set(phrase, (unmappedAbilityPhraseCounts.get(phrase) ?? 0) + 1);
+          mappingIssues.push({
+            type: "unmapped_ability_text",
+            abilityId: ability.id,
+            officerId,
+            detail: ability.rawText ?? "",
+          });
+        }
+      }
+
+      for (const effect of ability.effects) {
+        if (effect.magnitude == null) {
+          unknownMagnitudeEffects += 1;
+          mappingIssues.push({
+            type: "unknown_magnitude",
+            abilityId: ability.id,
+            officerId,
+            detail: effect.effectKey,
+          });
+        }
+      }
+    }
+
     officerAbilities.set(officerId, abilities);
   }
+
+  applyCanonicalIntentVectors(intentWeights, intents);
+
+  const topUnmappedAbilityPhrases = [...unmappedAbilityPhraseCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([phrase]) => phrase);
+
+  const mappingTelemetry: EffectMappingTelemetry = {
+    totalAbilities,
+    mappedAbilities,
+    mappedPercent: totalAbilities > 0 ? Math.round((mappedAbilities / totalAbilities) * 1000) / 10 : 100,
+    unknownMagnitudeEffects,
+    topUnmappedAbilityPhrases,
+  };
 
   return {
     schemaVersion: raw.schemaVersion,
     intentWeights,
     officerAbilities,
     intents,
+    mappingIssues,
+    mappingTelemetry,
   };
 }
 

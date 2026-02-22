@@ -684,6 +684,107 @@ describe("evaluateOfficer", () => {
   });
 });
 
+describe("issue #138 golden regression suite (evaluator status counts)", () => {
+  function statusCountsForOfficer(
+    abilities: OfficerAbility[],
+    ctx: TargetContext,
+    intentWeights: Record<string, number>,
+  ): Record<"works" | "conditional" | "blocked", number> {
+    const evaluation = evaluateOfficer("golden-officer", abilities, ctx, intentWeights, "captain");
+    const counts: Record<"works" | "conditional" | "blocked", number> = {
+      works: 0,
+      conditional: 0,
+      blocked: 0,
+    };
+
+    for (const ability of evaluation.abilities) {
+      for (const effect of ability.effects) {
+        counts[effect.status] += 1;
+      }
+    }
+
+    return counts;
+  }
+
+  it("PvP station context blocks hostile-only effects and allows station/pvp effects", () => {
+    const abilities: OfficerAbility[] = [
+      makeAbility({
+        id: "pvp-station-golden",
+        slot: "cm",
+        effects: [
+          makeEffect({
+            id: "hostile-only",
+            effectKey: "damage_dealt",
+            magnitude: 0.2,
+            applicableTargetKinds: ["hostile"],
+          }),
+          makeEffect({
+            id: "station-only",
+            effectKey: "weapon_damage",
+            magnitude: 0.2,
+            conditions: [{ conditionKey: "requires_station_target", params: null }],
+          }),
+          makeEffect({
+            id: "pvp-conditional",
+            effectKey: "crit_chance",
+            magnitude: 0.2,
+            conditions: [{ conditionKey: "requires_pvp", params: null }],
+          }),
+        ],
+      }),
+    ];
+
+    const counts = statusCountsForOfficer(
+      abilities,
+      makeContext({ targetKind: "station", targetTags: ["pvp"] }),
+      { damage_dealt: 2, weapon_damage: 2, crit_chance: 1 },
+    );
+
+    expect(counts.blocked).toBe(1);
+    expect(counts.works).toBe(2);
+    expect(counts.conditional).toBe(0);
+  });
+
+  it("armada loot context prefers armada effects and blocks PvP-only effects", () => {
+    const abilities: OfficerAbility[] = [
+      makeAbility({
+        id: "armada-golden",
+        slot: "cm",
+        effects: [
+          makeEffect({
+            id: "armada-loot",
+            effectKey: "armada_loot",
+            magnitude: 0.3,
+            conditions: [{ conditionKey: "requires_armada_target", params: null }],
+          }),
+          makeEffect({
+            id: "hostile-only",
+            effectKey: "damage_dealt",
+            magnitude: 0.2,
+            applicableTargetKinds: ["hostile"],
+          }),
+          makeEffect({
+            id: "pvp-only",
+            effectKey: "weapon_damage",
+            magnitude: 0.2,
+            conditions: [{ conditionKey: "requires_pvp", params: null }],
+          }),
+        ],
+      }),
+    ];
+
+    const counts = statusCountsForOfficer(
+      abilities,
+      makeContext({ targetKind: "armada_target", targetTags: ["pve"] }),
+      { armada_loot: 2, damage_dealt: 2, weapon_damage: 1 },
+    );
+
+    expect(counts.works).toBe(1);
+    expect(counts.blocked).toBe(1);
+    expect(counts.conditional).toBe(1);
+  });
+});
+
 // ─── Golden Tests (ADR-034 Acceptance Criteria) ─────────────
 
 describe("golden tests: Kirk/Spock/McCoy vs Sulu/Spock/Ivanov for grinding", () => {

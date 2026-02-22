@@ -8,7 +8,14 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adaptEffectBundle, fetchEffectBundle, EffectBundleManager, type EffectBundleResponse } from "../web/src/lib/effect-bundle-adapter.js";
+import {
+  adaptEffectBundle,
+  fetchEffectBundle,
+  EffectBundleManager,
+  getPhraseMapCoverage,
+  normalizePhrase,
+  type EffectBundleResponse,
+} from "../web/src/lib/effect-bundle-adapter.js";
 
 // Helper to create a minimal valid bundle
 function createMockBundle(): EffectBundleResponse {
@@ -90,9 +97,9 @@ describe("EffectBundleAdapter", () => {
     const adapted = adaptEffectBundle(raw);
 
     expect(adapted.schemaVersion).toBe("1.0.0");
-    expect(adapted.intentWeights.size).toBe(1);
+    expect(adapted.intentWeights.size).toBe(3);
     expect(adapted.officerAbilities.size).toBe(1);
-    expect(adapted.intents.size).toBe(1);
+    expect(adapted.intents.size).toBe(3);
   });
 
   it("indexes intent weights correctly", () => {
@@ -105,6 +112,25 @@ describe("EffectBundleAdapter", () => {
       weapon_damage: 2.5,
       crit_chance: 2.0,
     });
+  });
+
+  it("applies canonical starter intent vectors from data artifacts", () => {
+    const raw = createMockBundle();
+    const adapted = adaptEffectBundle(raw);
+
+    expect(adapted.intentWeights.get("hostile_grinding")).toEqual({
+      damage_dealt: 1,
+      weapon_damage: 0.8,
+      crit_chance: 0.6,
+      crit_damage: 0.6,
+      mitigation: 0.9,
+      hull_health: 0.4,
+      shield_health: 0.4,
+      dodge: 0.2,
+    });
+
+    expect(adapted.intents.get("pvp_station_hit")?.defaultContext.targetKind).toBe("station");
+    expect(adapted.intents.get("pvp_station_hit")?.defaultContext.targetTags).toContain("station");
   });
 
   it("indexes officer abilities with effects", () => {
@@ -176,6 +202,34 @@ describe("EffectBundleAdapter", () => {
     expect(effect.conditions[0].params).toBeNull();
   });
 
+  it("tracks mapping telemetry and issues for unmapped ability text", () => {
+    const raw = createMockBundle();
+    raw.officers["kirk-001"].abilities.push({
+      id: "kirk-unmapped",
+      slot: "oa",
+      name: "Unknown",
+      rawText: "Does mysterious things under odd moonlight",
+      isInert: false,
+      effects: [],
+    });
+
+    const adapted = adaptEffectBundle(raw);
+
+    expect(adapted.mappingTelemetry.totalAbilities).toBe(3);
+    expect(adapted.mappingTelemetry.mappedAbilities).toBe(2);
+    expect(adapted.mappingTelemetry.topUnmappedAbilityPhrases[0]).toContain("mysterious things");
+    expect(adapted.mappingIssues.some((issue) => issue.type === "unmapped_ability_text")).toBe(true);
+  });
+
+  it("emits unknown_magnitude mapping issues and counts", () => {
+    const raw = createMockBundle();
+    raw.officers["kirk-001"].abilities[0].effects[0].magnitude = null;
+
+    const adapted = adaptEffectBundle(raw);
+    expect(adapted.mappingTelemetry.unknownMagnitudeEffects).toBe(1);
+    expect(adapted.mappingIssues.some((issue) => issue.type === "unknown_magnitude")).toBe(true);
+  });
+
   it("fetchEffectBundle unwraps AX success envelope", async () => {
     const raw = createMockBundle();
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
@@ -199,6 +253,27 @@ describe("EffectBundleAdapter", () => {
     } as Response);
 
     await expect(fetchEffectBundle()).rejects.toThrow(/malformed effect bundle payload/i);
+  });
+});
+
+describe("#139 phrase-map coverage", () => {
+  it("normalizes punctuation and spacing deterministically", () => {
+    expect(normalizePhrase("  Non Player,   Station-Hit!! ")).toBe("non-player station-hit");
+  });
+
+  it("reports mapped/unmapped coverage from canonical phrase-map artifact", () => {
+    const coverage = getPhraseMapCoverage(
+      [
+        "when fighting hostiles",
+        "against players",
+        "maximize anomaly scans",
+      ],
+    );
+
+    expect(coverage.totalPhrases).toBe(3);
+    expect(coverage.mappedPhrases).toBe(2);
+    expect(coverage.mappedPercent).toBeCloseTo(66.7, 1);
+    expect(coverage.topUnmappedPhrases[0]).toContain("maximize anomaly scans");
   });
 });
 
@@ -228,7 +303,7 @@ describe("EffectBundleManager", () => {
 
     const result = await mgr.load();
     expect(result.schemaVersion).toBe("1.0.0");
-    expect(result.intentWeights.size).toBe(1);
+    expect(result.intentWeights.size).toBe(3);
     expect(mgr.get()).toBe(result);
     expect(mgr.hasError()).toBe(false);
   });

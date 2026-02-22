@@ -1,0 +1,45 @@
+{
+  "intents": [
+    {
+      "intentKey": "hostile_grinding",
+      "label": "Hostile grinding (PvE)",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": [
+          "pve"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 1.0,
+        "weapon_damage": 0.8,
+        "crit_chance": 0.6,
+        "crit_damage": 0.6,
+        "mitigation": 0.9,
+        "hull_health": 0.4,
+        "shield_health": 0.4,
+        "dodge": 0.2
+      }
+    },
+    {
+      "intentKey": "pvp_station_hit",
+      "label": "PvP station hit",
+      "defaultTargetContext": {
+        "targetKind": "station",
+        "engagement": "attacking",
+        "targetTags": [
+          "pvp",
+          "station"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 1.0,
+        "weapon_damage": 0.9,
+        "crit_chance": 0.7,
+        "crit_damage": 0.7,
+        "piercing": 0.8,
+        "mitigation": 0.4
+      }
+    }
+  ]
+}

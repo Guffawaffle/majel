@@ -1,0 +1,23 @@
+{
+  "version": "v0",
+  "effectScale": 10,
+  "synergyPairBonus": 0.03,
+  "readiness": {
+    "levelWeight": 4,
+    "powerWeight": 2
+  },
+  "uncertainty": {
+    "unknownEffectPenalty": 0.5,
+    "unknownMagnitudePenalty": 0.25,
+    "unknownMagnitudeContributionFactor": 1
+  },
+  "confidence": {
+    "base": 1,
+    "unknownEffectPenalty": 0.05,
+    "unknownMagnitudePenalty": 0.03,
+    "conditionalTopPenalty": 0.02,
+    "highMin": 0.75,
+    "mediumMin": 0.55,
+    "topEffectsWindow": 6
+  }
+}

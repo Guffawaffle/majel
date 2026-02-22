@@ -1,0 +1,131 @@
+{
+  "rules": [
+    {
+      "id": "hostile_gate",
+      "match_any": [
+        "when fighting hostiles",
+        "against hostiles"
+      ],
+      "applies": {
+        "applicableTargetKinds": ["hostile"],
+        "applicableTargetTags": ["pve"]
+      }
+    },
+    {
+      "id": "pvp_gate_players",
+      "match_any": [
+        "against players",
+        "when fighting players"
+      ],
+      "applies": {
+        "applicableTargetKinds": ["player_ship"],
+        "applicableTargetTags": ["pvp"]
+      }
+    },
+    {
+      "id": "station_gate",
+      "match_any": [
+        "against stations",
+        "station"
+      ],
+      "applies": {
+        "applicableTargetKinds": ["station"]
+      }
+    },
+    {
+      "id": "armada_gate",
+      "match_any": [
+        "armada",
+        "armadas"
+      ],
+      "applies": {
+        "applicableTargetKinds": ["armada_target"]
+      }
+    },
+    {
+      "id": "requires_attacking",
+      "match_any": [
+        "when attacking"
+      ],
+      "condition": {
+        "conditionKey": "requires_attacking",
+        "params": null
+      }
+    },
+    {
+      "id": "requires_defending",
+      "match_any": [
+        "when defending"
+      ],
+      "condition": {
+        "conditionKey": "requires_defending",
+        "params": null
+      }
+    }
+  ],
+  "effects": [
+    {
+      "id": "crit_chance",
+      "match_any": [
+        "critical hit chance",
+        "critical chance"
+      ],
+      "effectKey": "crit_chance",
+      "unit": "percent"
+    },
+    {
+      "id": "crit_damage",
+      "match_any": [
+        "critical damage"
+      ],
+      "effectKey": "crit_damage",
+      "unit": "percent"
+    },
+    {
+      "id": "mitigation",
+      "match_any": [
+        "mitigation",
+        "damage taken",
+        "reduces damage"
+      ],
+      "effectKey": "mitigation",
+      "unit": "percent"
+    },
+    {
+      "id": "hull_health",
+      "match_any": [
+        "hull health"
+      ],
+      "effectKey": "hull_health",
+      "unit": "percent"
+    },
+    {
+      "id": "shield_health",
+      "match_any": [
+        "shield health",
+        "shield capacity"
+      ],
+      "effectKey": "shield_health",
+      "unit": "percent"
+    },
+    {
+      "id": "loot",
+      "match_any": [
+        "loot gained"
+      ],
+      "effectKey": "loot",
+      "unit": "percent"
+    }
+  ],
+  "meta_effects": [
+    {
+      "id": "cm_effectiveness",
+      "match_any": [
+        "captain maneuver effectiveness",
+        "captain's maneuver effectiveness"
+      ],
+      "effectKey": "captain_maneuver_effectiveness",
+      "unit": "percent"
+    }
+  ]
+}

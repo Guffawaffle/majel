@@ -193,6 +193,8 @@ export interface EffectScoreEntry {
   magnitude: number | null;
   applicabilityMultiplier: number;
   contribution: number;
+  isUnknownEffectKey?: boolean;
+  hasUnknownMagnitude?: boolean;
 }
 
 // ─── Issue Type Catalog (for seed data typing) ──────────────
@@ -280,5 +282,20 @@ export const ISSUE_TYPES: Record<string, IssueTypeDef> = {
     id: "captain_maneuver_missing_or_inert",
     severity: "blocker",
     defaultMessage: "No usable captain maneuver for this objective",
+  },
+  unmapped_ability_text: {
+    id: "unmapped_ability_text",
+    severity: "info",
+    defaultMessage: "Ability text could not be mapped to effect taxonomy",
+  },
+  unknown_magnitude: {
+    id: "unknown_magnitude",
+    severity: "info",
+    defaultMessage: "Effect magnitude could not be parsed",
+  },
+  unknown_effect_key: {
+    id: "unknown_effect_key",
+    severity: "info",
+    defaultMessage: "Effect key is unknown or unmapped",
   },
 };

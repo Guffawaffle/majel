@@ -1,0 +1,39 @@
+{
+  "version": "v0",
+  "combatRelevantKeys": [
+    "damage_dealt",
+    "weapon_damage",
+    "crit_chance",
+    "crit_damage",
+    "mitigation",
+    "armor",
+    "shield_deflection",
+    "dodge",
+    "shield_health",
+    "hull_health",
+    "damage_taken_reduction",
+    "repair_per_round",
+    "shield_restore_per_round",
+    "piercing",
+    "accuracy"
+  ],
+  "economyRelevantKeys": [
+    "loot",
+    "hostile_chest_rewards",
+    "armada_loot",
+    "event_rewards",
+    "mining_rate",
+    "cargo_capacity",
+    "protected_cargo",
+    "mining_safety",
+    "warp_speed",
+    "impulse_speed"
+  ],
+  "metaAmplifierKeys": [
+    "captain_maneuver_effectiveness",
+    "officer_ability_effectiveness",
+    "below_deck_ability_effectiveness",
+    "effect_duration_bonus",
+    "stack_rate_bonus"
+  ]
+}

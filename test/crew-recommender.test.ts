@@ -637,6 +637,35 @@ describe("effect-based captain gating", () => {
     expect(score.captainBonus).toBeLessThan(0);
   });
 
+  it("treats economy CM keys as viable for economy intents even on armada targets", () => {
+    const economyBundle = makeEffectBundle({
+      intents: {
+        armada_loot: {
+          weights: { mitigation: 0.1 },
+          ctx: { targetKind: "armada_target", engagement: "attacking", targetTags: ["pve", "armada"] },
+        },
+      },
+      officers: {
+        "o-loot": [makeTestAbility({
+          id: "loot:cm",
+          officerId: "o-loot",
+          slot: "cm",
+          effects: [{ effectKey: "loot", magnitude: 0.5, applicableTargetKinds: ["armada_target"] }],
+        })],
+      },
+    });
+
+    const score = scoreOfficerForSlot(makeOfficer({ id: "o-loot", name: "Looter", userLevel: 1, userPower: 1 }), {
+      intentKey: "armada_loot",
+      reservations: [],
+      maxPower: 1,
+      slot: "captain",
+      effectBundle: economyBundle,
+    });
+
+    expect(score.captainBonus).toBeGreaterThan(0);
+  });
+
   it("emits fallback warning once per recommendation run", () => {
     const fallbackBundle = makeEffectBundle({
       intents: {
@@ -853,5 +882,261 @@ describe("golden trio regression: Kirk/Spock/McCoy > Sulu/Spock/Ivanov for grind
 
     expect(recs.length).toBeGreaterThan(0);
     expect(recs.every((r) => r.captainId === "o-sulu")).toBe(true);
+  });
+});
+
+describe("issue #136 uncertainty penalties + confidence buckets", () => {
+  it("unknown-key-heavy officer cannot dominate ranking on readiness alone", () => {
+    const bundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { damage_dealt: 3 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-known": [makeTestAbility({
+          id: "known:cm",
+          officerId: "o-known",
+          slot: "cm",
+          effects: [{ effectKey: "damage_dealt", magnitude: 1.2, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-uk1": [makeTestAbility({
+          id: "uk1:cm",
+          officerId: "o-uk1",
+          slot: "cm",
+          effects: [{ effectKey: "mystery_alpha", magnitude: 2.0, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-b1": [makeTestAbility({
+          id: "b1:oa",
+          officerId: "o-b1",
+          slot: "oa",
+          effects: [{ effectKey: "damage_dealt", magnitude: 0.2, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-b2": [makeTestAbility({
+          id: "b2:oa",
+          officerId: "o-b2",
+          slot: "oa",
+          effects: [{ effectKey: "damage_dealt", magnitude: 0.2, applicableTargetKinds: ["hostile"] }],
+        })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-known", name: "Known", userLevel: 20, userPower: 300 }),
+        makeOfficer({ id: "o-uk1", name: "UnknownKey", userLevel: 60, userPower: 3000 }),
+        makeOfficer({ id: "o-b1", name: "Bridge 1", userLevel: 30, userPower: 600 }),
+        makeOfficer({ id: "o-b2", name: "Bridge 2", userLevel: 30, userPower: 600 }),
+      ],
+      reservations: [],
+      intentKey: "grinding",
+      captainId: "o-known",
+      limit: 1,
+      effectBundle: bundle,
+    });
+
+    expect(recs.length).toBe(1);
+    expect(recs[0]?.captainId).toBe("o-known");
+    expect([recs[0]?.bridge1Id, recs[0]?.bridge2Id]).not.toContain("o-uk1");
+  });
+
+  it("unknown magnitude is conservative versus known magnitude", () => {
+    const bundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { damage_dealt: 4 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-known-mag": [makeTestAbility({
+          id: "known-mag:oa",
+          officerId: "o-known-mag",
+          slot: "oa",
+          effects: [{ effectKey: "damage_dealt", magnitude: 1.0, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-unknown-mag": [makeTestAbility({
+          id: "unknown-mag:oa",
+          officerId: "o-unknown-mag",
+          slot: "oa",
+          effects: [{ effectKey: "damage_dealt", magnitude: null, applicableTargetKinds: ["hostile"] }],
+        })],
+      },
+    });
+
+    const known = scoreOfficerForSlot(makeOfficer({ id: "o-known-mag", name: "KnownMag", userLevel: 1, userPower: 1 }), {
+      intentKey: "grinding",
+      reservations: [],
+      maxPower: 1,
+      slot: "bridge_1",
+      effectBundle: bundle,
+    });
+    const unknown = scoreOfficerForSlot(makeOfficer({ id: "o-unknown-mag", name: "UnknownMag", userLevel: 1, userPower: 1 }), {
+      intentKey: "grinding",
+      reservations: [],
+      maxPower: 1,
+      slot: "bridge_1",
+      effectBundle: bundle,
+    });
+
+    expect(known.effectScore).toBeGreaterThan(unknown.effectScore);
+  });
+
+  it("confidence buckets drop with uncertainty and conditional concentration", () => {
+    const bundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { damage_dealt: 3 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-safe-cap": [makeTestAbility({
+          id: "safe-cap:cm",
+          officerId: "o-safe-cap",
+          slot: "cm",
+          effects: [{ effectKey: "damage_dealt", magnitude: 0.4, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-safe-b1": [makeTestAbility({
+          id: "safe-b1:oa",
+          officerId: "o-safe-b1",
+          slot: "oa",
+          effects: [{ effectKey: "damage_dealt", magnitude: 0.25, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-safe-b2": [makeTestAbility({
+          id: "safe-b2:oa",
+          officerId: "o-safe-b2",
+          slot: "oa",
+          effects: [{ effectKey: "damage_dealt", magnitude: 0.25, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-risk-cap": [makeTestAbility({
+          id: "risk-cap:cm",
+          officerId: "o-risk-cap",
+          slot: "cm",
+          effects: [
+            { effectKey: "damage_dealt", magnitude: null, applicableTargetKinds: ["hostile"], conditions: [{ conditionKey: "requires_defending", params: null }] },
+            { effectKey: "unknown_1", magnitude: null, applicableTargetKinds: ["hostile"] },
+            { effectKey: "unknown_2", magnitude: null, applicableTargetKinds: ["hostile"] },
+          ],
+        })],
+        "o-risk-b1": [makeTestAbility({
+          id: "risk-b1:oa",
+          officerId: "o-risk-b1",
+          slot: "oa",
+          effects: [
+            { effectKey: "damage_dealt", magnitude: null, applicableTargetKinds: ["hostile"], conditions: [{ conditionKey: "requires_defending", params: null }] },
+            { effectKey: "unknown_3", magnitude: null, applicableTargetKinds: ["hostile"] },
+            { effectKey: "unknown_4", magnitude: null, applicableTargetKinds: ["hostile"] },
+          ],
+        })],
+        "o-risk-b2": [makeTestAbility({
+          id: "risk-b2:oa",
+          officerId: "o-risk-b2",
+          slot: "oa",
+          effects: [
+            { effectKey: "damage_dealt", magnitude: null, applicableTargetKinds: ["hostile"], conditions: [{ conditionKey: "requires_defending", params: null }] },
+            { effectKey: "unknown_5", magnitude: null, applicableTargetKinds: ["hostile"] },
+            { effectKey: "unknown_6", magnitude: null, applicableTargetKinds: ["hostile"] },
+          ],
+        })],
+      },
+    });
+
+    const safe = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-safe-cap", name: "Safe Cap", userLevel: 40, userPower: 900 }),
+        makeOfficer({ id: "o-safe-b1", name: "Safe B1", userLevel: 40, userPower: 900 }),
+        makeOfficer({ id: "o-safe-b2", name: "Safe B2", userLevel: 40, userPower: 900 }),
+      ],
+      reservations: [],
+      intentKey: "grinding",
+      captainId: "o-safe-cap",
+      limit: 1,
+      effectBundle: bundle,
+    });
+
+    const risky = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-risk-cap", name: "Risk Cap", userLevel: 40, userPower: 900 }),
+        makeOfficer({ id: "o-risk-b1", name: "Risk B1", userLevel: 40, userPower: 900 }),
+        makeOfficer({ id: "o-risk-b2", name: "Risk B2", userLevel: 40, userPower: 900 }),
+      ],
+      reservations: [],
+      intentKey: "grinding",
+      captainId: "o-risk-cap",
+      limit: 1,
+      effectBundle: bundle,
+    });
+
+    expect(safe.length).toBe(1);
+    expect(risky.length).toBe(1);
+    expect(safe[0]?.confidence).toBe("high");
+    expect(risky[0]?.confidence).toBe("low");
+  });
+});
+
+describe("issue #138 golden regression suite (recommender)", () => {
+  it("hostile grinding keeps Kirk/Spock/McCoy ahead of accidental alternatives", () => {
+    const bundle = makeGrindingBundle();
+    const officers = [
+      makeOfficer({ id: "o-kirk", name: "Kirk", userLevel: 60, userPower: 1000 }),
+      makeOfficer({ id: "o-spock", name: "Spock", userLevel: 60, userPower: 1000 }),
+      makeOfficer({ id: "o-mccoy", name: "McCoy", userLevel: 60, userPower: 1000 }),
+      makeOfficer({ id: "o-sulu", name: "Sulu", userLevel: 60, userPower: 1000 }),
+      makeOfficer({ id: "o-ivanov", name: "Ivanov", userLevel: 60, userPower: 1000 }),
+    ];
+
+    const recs = recommendBridgeTrios({
+      officers,
+      reservations: [],
+      intentKey: "grinding",
+      limit: 10,
+      effectBundle: bundle,
+    });
+
+    expect(recs[0]?.captainId).toBe("o-kirk");
+    const kirkTrio = recs.find((r) =>
+      r.captainId === "o-kirk"
+      && [r.bridge1Id, r.bridge2Id].sort().join(",") === ["o-mccoy", "o-spock"].sort().join(","),
+    );
+    expect(kirkTrio).toBeDefined();
+  });
+
+  it("fallback warning remains deduped when no viable captains exist", () => {
+    const fallbackBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { weapon_damage: 2.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-a": [makeTestAbility({ id: "a:oa", officerId: "o-a", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.10, applicableTargetKinds: ["hostile"] }] })],
+        "o-b": [makeTestAbility({ id: "b:oa", officerId: "o-b", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.11, applicableTargetKinds: ["hostile"] }] })],
+        "o-c": [makeTestAbility({ id: "c:oa", officerId: "o-c", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.12, applicableTargetKinds: ["hostile"] }] })],
+        "o-d": [makeTestAbility({ id: "d:oa", officerId: "o-d", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.09, applicableTargetKinds: ["hostile"] }] })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-a", name: "A", userLevel: 40, userPower: 500 }),
+        makeOfficer({ id: "o-b", name: "B", userLevel: 40, userPower: 520 }),
+        makeOfficer({ id: "o-c", name: "C", userLevel: 40, userPower: 510 }),
+        makeOfficer({ id: "o-d", name: "D", userLevel: 40, userPower: 515 }),
+      ],
+      reservations: [],
+      intentKey: "grinding",
+      limit: 3,
+      effectBundle: fallbackBundle,
+    });
+
+    const warningCount = recs
+      .flatMap((r) => r.reasons)
+      .filter((line) => line.includes("No viable captains found"))
+      .length;
+
+    expect(warningCount).toBe(1);
   });
 });

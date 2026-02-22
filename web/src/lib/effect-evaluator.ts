@@ -210,6 +210,7 @@ function evaluateCondition(
         "Only activates when your ship is burning",
       );
 
+    case "when_target_is_burning":
     case "when_target_burning":
       if (ctx.targetTags.includes("target_burning")) return null;
       return makeIssue(
@@ -218,6 +219,7 @@ function evaluateCondition(
         "Only activates when target is burning",
       );
 
+    case "when_target_has_hull_breach":
     case "when_target_hull_breached":
       if (ctx.targetTags.includes("target_hull_breached")) return null;
       return makeIssue(
