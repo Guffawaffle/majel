@@ -159,7 +159,32 @@ Implement IndexedDB cache with stale-while-revalidate strategy. Eliminates redun
 
 ---
 
-## Up Next — Timer Overlay (ADR-033, #111)
+## Up Next — Effect Taxonomy for Crew Recommendation (ADR-034, #131)
+
+**Priority: Next major feature.** Fixes fundamentally broken crew recommender scoring.
+
+Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxonomy. Abilities are decomposed into typed `EffectTag` rows evaluated against a `TargetContext`. Scoring becomes `baseScore × synergyMultiplier` instead of additive keyword hits. Captain slot gets a hard CM gate. "Why this crew" becomes per-officer evidence.
+
+| Issue | Phase | Title | Status |
+|---|---|---|---|
+| #132 | A | Schema + Seed + Evaluator (foundation) | [ ] Not started |
+| #133 | B | Rewire Recommender (effect-based scoring) | [ ] Not started |
+| #134 | C | Crew Validator (validation matrix) | [ ] Not started |
+
+**Key deliverables:**
+- 15 PostgreSQL tables (7 taxonomy, 5 ability catalog, 3 intent)
+- `evaluateEffect()` pure function (works / conditional / blocked)
+- Intent definitions as DB-backed weighted feature vectors
+- CM hard gate for captain slot (replaces soft +3/-2 bonus)
+- Synergy as multiplier: `finalScore = baseScore × (1 + 0.03 × synergyPairs)`
+- Per-officer "Why" evidence with effect tags + issue types
+- "Does it work?" validation matrix (Phase C)
+
+See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
+
+---
+
+## Done — Timer Overlay (ADR-033, #111)
 
 **Priority: After cache Phase 1 (#107).** Small, self-contained feature (~500 LOC).
 
@@ -308,4 +333,4 @@ See [ADR-006](docs/ADR-006-open-alpha.md) for the full list. Key items:
 
 ---
 
-*Last updated by PM sweep — 2026-02-21*
+*Last updated by PM sweep — 2026-02-22*
