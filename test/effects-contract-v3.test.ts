@@ -142,4 +142,73 @@ describe("effects-contract-v3 determinism", () => {
 
     expect(hashA).toBe(hashB);
   });
+
+  it("uses source-span ordering for stable span-based effect IDs when spans exist", () => {
+    const seed = createValidSeed();
+    const abilityWithSpans = seed.officers[1] as typeof seed.officers[1] & {
+      effects: Array<typeof seed.officers[1]["effects"][number] & { sourceSpan?: { start: number; end: number } }>;
+    };
+
+    abilityWithSpans.effects[0] = {
+      ...abilityWithSpans.effects[0],
+      sourceSpan: { start: 20, end: 29 },
+    };
+    abilityWithSpans.effects[1] = {
+      ...abilityWithSpans.effects[1],
+      sourceSpan: { start: 5, end: 11 },
+    };
+
+    const artifact = buildEffectsContractV3Artifact(seed, {
+      generatedAt: "2026-02-22T00:00:00.000Z",
+      snapshotVersion: "stfc-test",
+      generatorVersion: "0.1.0",
+    });
+
+    const cmEffects = artifact.officers[0].abilities[0].effects;
+    expect(cmEffects[0].evidence[0].sourceRef).toContain("/spans/5-11");
+    expect(cmEffects[0].effectId).toBe("cdn:officer:100:cm:ef:src-0");
+    expect(cmEffects[1].evidence[0].sourceRef).toContain("/spans/20-29");
+    expect(cmEffects[1].effectId).toBe("cdn:officer:100:cm:ef:src-1");
+  });
+
+  it("emits unknown_effect_key unmapped entries with evidence sourceRef", () => {
+    const seed = createValidSeed();
+    const invalidAbility = seed.officers[1] as typeof seed.officers[1] & {
+      effects: Array<typeof seed.officers[1]["effects"][number] & { sourceRef?: string }>;
+    };
+
+    invalidAbility.effects = [{
+      ...invalidAbility.effects[0],
+      id: "ef-unknown",
+      effectKey: "unknown_effect_key",
+      sourceRef: "seed://ability/alpha/span/1",
+    }];
+
+    const artifact = buildEffectsContractV3Artifact(seed, {
+      generatedAt: "2026-02-22T00:00:00.000Z",
+      snapshotVersion: "stfc-test",
+      generatorVersion: "0.1.0",
+    });
+
+    const ability = artifact.officers[0].abilities[0];
+    expect(ability.effects).toHaveLength(0);
+    expect(ability.unmapped.some((entry) => entry.type === "unknown_effect_key")).toBe(true);
+    expect(ability.unmapped[0].evidence[0].sourceRef).toBe("seed://ability/alpha/span/1");
+  });
+
+  it("enforces ability invariant effects>0 OR isInert OR unmapped>0", () => {
+    const seed = createValidSeed();
+    seed.officers[1].effects = [];
+    seed.officers[1].isInert = false;
+
+    const artifact = buildEffectsContractV3Artifact(seed, {
+      generatedAt: "2026-02-22T00:00:00.000Z",
+      snapshotVersion: "stfc-test",
+      generatorVersion: "0.1.0",
+    });
+
+    const ability = artifact.officers[0].abilities[0];
+    expect(ability.effects.length > 0 || ability.isInert || ability.unmapped.length > 0).toBe(true);
+    expect(ability.unmapped.length).toBeGreaterThan(0);
+  });
 });

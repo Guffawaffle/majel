@@ -101,7 +101,7 @@ export interface EffectsContractEvidence {
 }
 
 export interface EffectsContractUnmapped {
-  type: "unmapped_ability_text";
+  type: "unmapped_ability_text" | "unknown_effect_key";
   severity: "warn";
   reason: string;
   confidence: number;
@@ -112,6 +112,25 @@ export interface BuildEffectsContractOptions {
   generatedAt?: string;
   snapshotVersion?: string;
   generatorVersion?: string;
+}
+
+interface SeedSourceSpan {
+  start: number;
+  end: number;
+}
+
+interface SeedEffectWithSourceMeta {
+  id: string;
+  effectKey: string;
+  magnitude?: number | null;
+  unit?: string | null;
+  stacking?: string | null;
+  targetKinds?: string[];
+  targetTags?: string[];
+  conditions?: { conditionKey: string; params?: Record<string, string> | null }[];
+  sourceRef?: string;
+  sourceSpan?: SeedSourceSpan;
+  sourceSegment?: string;
 }
 
 function stableNormalize(value: unknown): unknown {
@@ -143,6 +162,58 @@ function digestTaxonomyPart(value: unknown): string {
 
 function sortedUniqueStrings(values: string[] | undefined): string[] {
   return [...new Set(values ?? [])].sort((a, b) => a.localeCompare(b));
+}
+
+function buildEffectSourceLocator(abilitySeedId: string, effect: SeedEffectWithSourceMeta): {
+  sourceRef: string;
+  sortKey: string;
+  sourceOffset: number;
+} {
+  if (effect.sourceRef && effect.sourceRef.trim().length > 0) {
+    return {
+      sourceRef: effect.sourceRef,
+      sortKey: `ref:${effect.sourceRef}`,
+      sourceOffset: 0,
+    };
+  }
+
+  if (
+    effect.sourceSpan
+    && Number.isInteger(effect.sourceSpan.start)
+    && Number.isInteger(effect.sourceSpan.end)
+    && effect.sourceSpan.start >= 0
+    && effect.sourceSpan.end >= effect.sourceSpan.start
+  ) {
+    const { start, end } = effect.sourceSpan;
+    return {
+      sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${abilitySeedId}/rawText/spans/${start}-${end}`,
+      sortKey: `span:${String(start).padStart(8, "0")}:${String(end).padStart(8, "0")}`,
+      sourceOffset: start,
+    };
+  }
+
+  if (effect.sourceSegment && effect.sourceSegment.trim().length > 0) {
+    const seg = effect.sourceSegment.trim();
+    return {
+      sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${abilitySeedId}/rawText/segments/${encodeURIComponent(seg)}`,
+      sortKey: `seg:${seg}`,
+      sourceOffset: 0,
+    };
+  }
+
+  return {
+    sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${abilitySeedId}/effects/${effect.id}`,
+    sortKey: `fallback:${effect.id}`,
+    sourceOffset: 0,
+  };
+}
+
+function deriveInertReason(isInert: boolean, rawText: string): "no_effect" | "not_applicable" | "unknown" | null {
+  if (!isInert) return null;
+  const normalized = rawText.toLowerCase();
+  if (normalized.includes("not applicable") || normalized.includes("cannot be used")) return "not_applicable";
+  if (normalized.includes("no effect") || normalized.includes("does nothing") || normalized.includes("inert")) return "no_effect";
+  return "unknown";
 }
 
 export function orderSeedForDeterminism(seed: EffectsSeedFile): EffectsSeedFile {
@@ -392,6 +463,7 @@ export function buildEffectsContractV3Artifact(
   options: BuildEffectsContractOptions = {},
 ): EffectsContractArtifact {
   const seed = orderSeedForDeterminism(seedInput);
+  const effectKeySet = new Set(seed.taxonomy.effectKeys.map((effectKey) => effectKey.id));
 
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const snapshotVersion = options.snapshotVersion ?? "stfc-seed-v0";
@@ -418,19 +490,45 @@ export function buildEffectsContractV3Artifact(
         .map((ability) => {
           const abilityId = `${officerId}:${ability.slot}`;
           const rawText = ability.rawText ?? "";
-          const sortedEffects = [...ability.effects].sort((a, b) => {
-            const aSource = `effect-taxonomy.json#/officers/byAbilityId/${ability.id}/effects/${a.id}`;
-            const bSource = `effect-taxonomy.json#/officers/byAbilityId/${ability.id}/effects/${b.id}`;
-            const sourceCmp = aSource.localeCompare(bSource);
+          const effectsWithLocator = (ability.effects as SeedEffectWithSourceMeta[]).map((effect) => ({
+            effect,
+            locator: buildEffectSourceLocator(ability.id, effect),
+          }));
+
+          const sortedEffects = effectsWithLocator.sort((a, b) => {
+            const sourceCmp = a.locator.sortKey.localeCompare(b.locator.sortKey);
             if (sourceCmp !== 0) return sourceCmp;
-            return a.id.localeCompare(b.id);
+            return a.effect.id.localeCompare(b.effect.id);
           });
 
-          const effects: EffectsContractEffect[] = sortedEffects.map((effect, effectIndex) => {
-            const sourceRef = `effect-taxonomy.json#/officers/byAbilityId/${ability.id}/effects/${effect.id}`;
-            const inputDigest = `sha256:${sha256Hex(`${rawText}:${effect.id}`)}`;
-            return {
-              effectId: `${abilityId}:ef:src-${effectIndex}`,
+          const effects: EffectsContractEffect[] = [];
+          const unmapped: EffectsContractUnmapped[] = [];
+
+          for (let sourceSpanIndex = 0; sourceSpanIndex < sortedEffects.length; sourceSpanIndex++) {
+            const { effect, locator } = sortedEffects[sourceSpanIndex];
+            const sourceRef = locator.sourceRef;
+
+            if (!effectKeySet.has(effect.effectKey)) {
+              unmapped.push({
+                type: "unknown_effect_key",
+                severity: "warn",
+                reason: `Unknown taxonomy effectKey '${effect.effectKey}'`,
+                confidence: 0,
+                evidence: [{
+                  sourceRef,
+                  snippet: rawText,
+                  ruleId: "seed_contract_v0",
+                  sourceLocale: "en",
+                  sourcePath: "effect-taxonomy.json",
+                  sourceOffset: locator.sourceOffset,
+                }],
+              });
+              continue;
+            }
+
+            const inputDigest = `sha256:${sha256Hex(`${rawText}:${sourceRef}:${effect.id}`)}`;
+            effects.push({
+              effectId: `${abilityId}:ef:src-${sourceSpanIndex}`,
               effectKey: effect.effectKey,
               magnitude: effect.magnitude ?? null,
               unit: effect.unit ?? null,
@@ -466,34 +564,33 @@ export function buildEffectsContractV3Artifact(
                 ruleId: "seed_contract_v0",
                 sourceLocale: "en",
                 sourcePath: "effect-taxonomy.json",
-                sourceOffset: effectIndex,
+                sourceOffset: locator.sourceOffset,
               }],
-            };
-          });
+            });
+          }
 
-          const unmapped: EffectsContractUnmapped[] =
-            !ability.isInert && effects.length === 0
-              ? [{
-                type: "unmapped_ability_text",
-                severity: "warn",
-                reason: "No deterministic mapping was present in the seed effects list",
-                confidence: 0,
-                evidence: [{
-                  sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${ability.id}`,
-                  snippet: rawText,
-                  ruleId: "seed_contract_v0",
-                  sourceLocale: "en",
-                  sourcePath: "effect-taxonomy.json",
-                  sourceOffset: 0,
-                }],
-              }]
-              : [];
+          if (!ability.isInert && effects.length === 0 && unmapped.length === 0) {
+            unmapped.push({
+              type: "unmapped_ability_text",
+              severity: "warn",
+              reason: "No deterministic mapping was present in the seed effects list",
+              confidence: 0,
+              evidence: [{
+                sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${ability.id}`,
+                snippet: rawText,
+                ruleId: "seed_contract_v0",
+                sourceLocale: "en",
+                sourcePath: "effect-taxonomy.json",
+                sourceOffset: 0,
+              }],
+            });
+          }
 
           return {
             abilityId,
             slot: ability.slot,
             isInert: ability.isInert,
-            inertReason: ability.isInert ? "no_effect" : null,
+            inertReason: deriveInertReason(ability.isInert, rawText),
             name: ability.name,
             rawText,
             effects,

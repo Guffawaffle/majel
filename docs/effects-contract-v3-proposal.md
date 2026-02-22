@@ -179,6 +179,8 @@ When extraction fails or is uncertain, emit under `ability.unmapped[]`:
 
 Note: `unknown_effect_key` is explicitly included in the "needs interpretation" trigger (see addendum).
 
+Implementation note (Phase 2 hardening): deterministic generation emits `unmapped` entries with `type="unknown_effect_key"` and required evidence/sourceRef when extraction encounters unknown keys; strict validation gates still fail unknown taxonomy refs.
+
 ### Versioning policy
 
 - `schemaVersion` (SemVer): contract shape version.
@@ -201,7 +203,10 @@ Note: `unknown_effect_key` is explicitly included in the "needs interpretation" 
 - `abilityId`: `officerId:slot` (example `cdn:officer:988947581:cm`).
 - `effectId`: stable to source span, not normalized payload.
   - Format: `abilityId + ":ef:src-" + spanIndex`
-  - spanIndex is deterministic within ability after sorting by (primary `sourceRef`, parser span start if available; otherwise stable parse order).
+  - spanIndex is deterministic within ability after sorting by source locator semantics:
+    - primary: explicit parser span boundaries (`start/end`) when present
+    - secondary: explicit `sourceRef` when present
+    - fallback: stable parse order over deterministic source segments/effect IDs
   - Effect IDs survive override payload changes (critical for `replace_effect`).
 
 ## 3) Runtime Artifact Plan (Delivery Format)
