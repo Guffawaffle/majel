@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+#### Effects Contract v3 — Phase 1 Scaffold (#141)
+- Added deterministic Effects Contract v3 scaffold service with:
+  - seed contract validation (`validateEffectsSeedForV3`)
+  - deterministic ordering helpers (`orderSeedForDeterminism`)
+  - stable canonical hashing + artifact summary helpers
+  - draft artifact generator with stable `abilityId`/`effectId` semantics
+  (`src/server/services/effects-contract-v3.ts`)
+- Added dry-run diagnostics command `npm run effects:dry-run` that validates seed data, checks deterministic hash stability, and prints a JSON report suitable for CI/PM review. (`scripts/effects-contract-dry-run.ts`, `package.json`)
+- Added focused tests for validation failures and determinism invariants. (`test/effects-contract-v3.test.ts`)
+
+### Fixed
+
+#### Effect taxonomy seed contract parity
+- Seed taxonomy now includes `targetTag: station` and `effectKey: penetration` so existing intent/ability references pass strict contract validation. (`data/seed/effect-taxonomy.json`)
+
+### Validation
+- `effects:dry-run` now returns `ok: true` with deterministic repeat hash stability on current seed input.
+
 ## [0.6.1] — 2026-02-21
 
 ### Security

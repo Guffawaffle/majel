@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-21 | Branch: `main`
+> Updated: 2026-02-22 | Branch: `main`
 
 ---
 
@@ -169,6 +169,7 @@ Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxono
 |---|---|---|---|
 | #132 | A | Schema + Seed + Evaluator (foundation) | [x] Done (`4d29fa6`) |
 | #133 | B | Rewire Recommender (effect-based scoring) | [x] Done (`f98a365`) |
+| #141 | Phase 1 | Effects v3 contract enforcement + dry-run scaffold | [x] Done (2026-02-22, pending commit) |
 | #134 | C | Crew Validator (validation matrix) | [~] In progress |
 
 **Key deliverables:**
@@ -178,6 +179,7 @@ Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxono
 - [x] CM hard gate for captain slot (replaces soft +3/-2 bonus)
 - [x] Synergy as multiplier: `finalScore = baseScore × (1 + 0.03 × synergyPairs)`
 - [x] Per-officer "Why" evidence with effect tags + issue types
+- [x] Effects Contract v3 Phase 1 scaffold: deterministic validator/order/hash + dry-run report
 - [ ] "Does it work?" validation matrix (Phase C)
 
 See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.

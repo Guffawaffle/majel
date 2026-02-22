@@ -43,6 +43,7 @@
     "ax:coverage": "tsx scripts/ax.ts coverage",
     "ax:diff": "tsx scripts/ax.ts diff",
     "generate:intent-vectors": "tsx scripts/generate-intent-vectors.ts",
+    "effects:dry-run": "tsx scripts/effects-contract-dry-run.ts",
     "cloud:deploy": "tsx scripts/cloud.ts deploy",
     "cloud:build": "tsx scripts/cloud.ts build",
     "cloud:push": "tsx scripts/cloud.ts push",

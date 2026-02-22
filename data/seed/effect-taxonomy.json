@@ -29,6 +29,7 @@
       "target_cloaked",
       "pvp",
       "pve",
+      "station",
       "station_assault",
       "armada"
     ],
@@ -49,6 +50,7 @@
       { "id": "crit_chance", "category": "damage" },
       { "id": "crit_damage", "category": "damage" },
       { "id": "accuracy", "category": "damage" },
+      { "id": "penetration", "category": "damage" },
       { "id": "piercing", "category": "damage" },
       { "id": "shield_piercing", "category": "damage" },
       { "id": "damage_taken", "category": "survivability" },
@@ -575,7 +577,7 @@
     {
       "_comment": "Kirk — classic grinding captain. CM boosts all damage to hostiles.",
       "id": "kirk:cm",
-      "officerId": "cdn:officer:kirk",
+      "officerId": "cdn:officer:988947581",
       "slot": "cm",
       "name": "Inspirational",
       "rawText": "Kirk increases all damage dealt against hostiles.",
@@ -595,7 +597,7 @@
     },
     {
       "id": "kirk:oa",
-      "officerId": "cdn:officer:kirk",
+      "officerId": "cdn:officer:988947581",
       "slot": "oa",
       "name": "Bold Leadership",
       "rawText": "Kirk increases weapon damage against hostiles by 20% each round.",
@@ -618,7 +620,7 @@
     {
       "_comment": "Spock — science officer, bridge crew for grinding/armada.",
       "id": "spock:cm",
-      "officerId": "cdn:officer:spock",
+      "officerId": "cdn:officer:766809588",
       "slot": "cm",
       "name": "Logical Approach",
       "rawText": "Spock increases the critical hit chance against hostiles.",
@@ -638,7 +640,7 @@
     },
     {
       "id": "spock:oa",
-      "officerId": "cdn:officer:spock",
+      "officerId": "cdn:officer:766809588",
       "slot": "oa",
       "name": "Science Officer",
       "rawText": "Spock increases all officer stats on the ship when fighting hostiles.",
@@ -679,7 +681,7 @@
     {
       "_comment": "McCoy — medic officer, survivability for grinding.",
       "id": "mccoy:cm",
-      "officerId": "cdn:officer:mccoy",
+      "officerId": "cdn:officer:3923643019",
       "slot": "cm",
       "name": "Doctor's Orders",
       "rawText": "McCoy increases hull health of the ship when fighting hostiles.",
@@ -699,7 +701,7 @@
     },
     {
       "id": "mccoy:oa",
-      "officerId": "cdn:officer:mccoy",
+      "officerId": "cdn:officer:3923643019",
       "slot": "oa",
       "name": "Field Medic",
       "rawText": "McCoy reduces damage taken from hostiles at the start of each round.",
@@ -722,7 +724,7 @@
     {
       "_comment": "Sulu — helmsman. CM boosts dodge (player_ship defense), not damage to hostiles.",
       "id": "sulu:cm",
-      "officerId": "cdn:officer:sulu",
+      "officerId": "cdn:officer:2520801863",
       "slot": "cm",
       "name": "Evasive Maneuvers",
       "rawText": "Sulu increases dodge chance at the start of combat.",
@@ -744,7 +746,7 @@
     },
     {
       "id": "sulu:oa",
-      "officerId": "cdn:officer:sulu",
+      "officerId": "cdn:officer:2520801863",
       "slot": "oa",
       "name": "Precision Targeting",
       "rawText": "Sulu increases weapon damage when attacking.",
@@ -767,7 +769,7 @@
     {
       "_comment": "Uhura — comms officer. Can be useful but CM is non-combat focused.",
       "id": "uhura:cm",
-      "officerId": "cdn:officer:uhura",
+      "officerId": "cdn:officer:2695272429",
       "slot": "cm",
       "name": "Communications Expert",
       "rawText": "Uhura increases the ship's warp range.",
@@ -787,7 +789,7 @@
     },
     {
       "id": "uhura:oa",
-      "officerId": "cdn:officer:uhura",
+      "officerId": "cdn:officer:2695272429",
       "slot": "oa",
       "name": "Signal Boost",
       "rawText": "Uhura increases the accuracy of the ship's weapons.",
@@ -808,7 +810,7 @@
     {
       "_comment": "Scotty — engineer, survivability officer.",
       "id": "scotty:cm",
-      "officerId": "cdn:officer:scotty",
+      "officerId": "cdn:officer:3155244352",
       "slot": "cm",
       "name": "Engineering Excellence",
       "rawText": "Scotty increases the ship's shield health.",
@@ -828,7 +830,7 @@
     },
     {
       "id": "scotty:oa",
-      "officerId": "cdn:officer:scotty",
+      "officerId": "cdn:officer:3155244352",
       "slot": "oa",
       "name": "Miracle Worker",
       "rawText": "Scotty repairs hull when shields are depleted.",
@@ -851,7 +853,7 @@
     {
       "_comment": "Ivanov — generic combat officer. Some damage but no hostile specialization.",
       "id": "ivanov:cm",
-      "officerId": "cdn:officer:ivanov",
+      "officerId": "cdn:officer:282462507",
       "slot": "cm",
       "name": "Tactical Coordination",
       "rawText": "Ivanov increases weapon damage at the start of each round.",
@@ -873,7 +875,7 @@
     },
     {
       "id": "ivanov:oa",
-      "officerId": "cdn:officer:ivanov",
+      "officerId": "cdn:officer:282462507",
       "slot": "oa",
       "name": "Armor Boost",
       "rawText": "Ivanov increases armor rating when defending.",
@@ -896,7 +898,7 @@
     {
       "_comment": "T'Pring — gas mining specialist captain.",
       "id": "tpring:cm",
-      "officerId": "cdn:officer:tpring",
+      "officerId": "cdn:officer:1556052341",
       "slot": "cm",
       "name": "Gas Miner",
       "rawText": "T'Pring increases the Mining Rate of the ship when mining Gas.",
@@ -916,7 +918,7 @@
     },
     {
       "id": "tpring:oa",
-      "officerId": "cdn:officer:tpring",
+      "officerId": "cdn:officer:1556052341",
       "slot": "oa",
       "name": "Protected Cargo",
       "rawText": "T'Pring increases protected cargo capacity.",
@@ -937,7 +939,7 @@
     {
       "_comment": "Chang — Klingon warrior, PvP oriented.",
       "id": "chang:cm",
-      "officerId": "cdn:officer:chang",
+      "officerId": "cdn:officer:1730335425",
       "slot": "cm",
       "name": "Warrior's Strike",
       "rawText": "Chang increases critical damage against player ships.",
@@ -957,7 +959,7 @@
     },
     {
       "id": "chang:oa",
-      "officerId": "cdn:officer:chang",
+      "officerId": "cdn:officer:1730335425",
       "slot": "oa",
       "name": "Klingon Honor",
       "rawText": "Chang increases penetration when attacking player ships.",
@@ -980,7 +982,7 @@
     {
       "_comment": "Khan — augmented warrior, armada specialist.",
       "id": "khan:cm",
-      "officerId": "cdn:officer:khan",
+      "officerId": "cdn:officer:2822661458",
       "slot": "cm",
       "name": "Superior Intellect",
       "rawText": "Khan increases all damage against armada targets.",
@@ -1000,7 +1002,7 @@
     },
     {
       "id": "khan:oa",
-      "officerId": "cdn:officer:khan",
+      "officerId": "cdn:officer:2822661458",
       "slot": "oa",
       "name": "Augmented Fury",
       "rawText": "Khan increases critical chance and critical damage against armada targets.",
@@ -1031,7 +1033,7 @@
     {
       "_comment": "Nero — swarm specialist. Anti-swarm abilities.",
       "id": "nero:cm",
-      "officerId": "cdn:officer:nero",
+      "officerId": "cdn:officer:656972203",
       "slot": "cm",
       "name": "Vengeance",
       "rawText": "Nero increases all damage against Swarm hostiles.",
@@ -1051,7 +1053,7 @@
     },
     {
       "id": "nero:oa",
-      "officerId": "cdn:officer:nero",
+      "officerId": "cdn:officer:656972203",
       "slot": "oa",
       "name": "Rage",
       "rawText": "Nero increases armor against Swarm hostiles.",
