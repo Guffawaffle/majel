@@ -173,7 +173,7 @@ function evaluateCondition(
       const shipTag = cond.params?.tag;
       if (shipTag && !ctx.shipContext?.shipTags?.includes(shipTag)) {
         return makeIssue(
-          "missing_required_ship_class",
+          "missing_required_ship_tag",
           "blocker",
           `Ship missing required tag: ${shipTag}`,
         );

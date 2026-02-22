@@ -316,6 +316,7 @@ describe("evaluateEffect", () => {
       });
       const result = evaluateEffect(effect, ctx);
       expect(result.status).toBe("blocked");
+      expect(result.issues[0]?.type).toBe("missing_required_ship_tag");
     });
   });
 

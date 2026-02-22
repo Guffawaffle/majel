@@ -1195,4 +1195,108 @@ describe("issue #138 golden regression suite (recommender)", () => {
 
     expect(warningCount).toBe(1);
   });
+
+  it("pvp station context ranks player/station captain over hostile-only captain", () => {
+    const bundle = makeEffectBundle({
+      intents: {
+        pvp_station_hit: {
+          weights: { damage_dealt: 1, weapon_damage: 1 },
+          ctx: { targetKind: "station", engagement: "attacking", targetTags: ["pvp", "station"] },
+        },
+      },
+      officers: {
+        "o-pvp": [makeTestAbility({
+          id: "pvp:cm",
+          officerId: "o-pvp",
+          slot: "cm",
+          effects: [{ effectKey: "damage_dealt", magnitude: 0.4, conditions: [{ conditionKey: "requires_pvp", params: null }] }],
+        })],
+        "o-hostile": [makeTestAbility({
+          id: "hostile:cm",
+          officerId: "o-hostile",
+          slot: "cm",
+          effects: [{ effectKey: "damage_dealt", magnitude: 0.4, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-b1": [makeTestAbility({
+          id: "b1:oa",
+          officerId: "o-b1",
+          slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.2 }],
+        })],
+        "o-b2": [makeTestAbility({
+          id: "b2:oa",
+          officerId: "o-b2",
+          slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.2 }],
+        })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-pvp", name: "PvP Captain", userLevel: 50, userPower: 900 }),
+        makeOfficer({ id: "o-hostile", name: "Hostile Captain", userLevel: 50, userPower: 900 }),
+        makeOfficer({ id: "o-b1", name: "Bridge One", userLevel: 50, userPower: 900 }),
+        makeOfficer({ id: "o-b2", name: "Bridge Two", userLevel: 50, userPower: 900 }),
+      ],
+      reservations: [],
+      intentKey: "pvp_station_hit",
+      limit: 3,
+      effectBundle: bundle,
+    });
+
+    expect(recs[0]?.captainId).toBe("o-pvp");
+  });
+
+  it("armada context ranks armada-only captain over pvp-only captain", () => {
+    const bundle = makeEffectBundle({
+      intents: {
+        armada_loot: {
+          weights: { armada_loot: 1, weapon_damage: 1 },
+          ctx: { targetKind: "armada_target", engagement: "attacking", targetTags: ["pve", "armada"] },
+        },
+      },
+      officers: {
+        "o-armada": [makeTestAbility({
+          id: "armada:cm",
+          officerId: "o-armada",
+          slot: "cm",
+          effects: [{ effectKey: "armada_loot", magnitude: 0.4, conditions: [{ conditionKey: "requires_armada_target", params: null }] }],
+        })],
+        "o-pvp": [makeTestAbility({
+          id: "pvp:cm",
+          officerId: "o-pvp",
+          slot: "cm",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.4, conditions: [{ conditionKey: "requires_pvp", params: null }] }],
+        })],
+        "o-b1": [makeTestAbility({
+          id: "b1:oa",
+          officerId: "o-b1",
+          slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.2 }],
+        })],
+        "o-b2": [makeTestAbility({
+          id: "b2:oa",
+          officerId: "o-b2",
+          slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.2 }],
+        })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-armada", name: "Armada Captain", userLevel: 50, userPower: 900 }),
+        makeOfficer({ id: "o-pvp", name: "PvP Captain", userLevel: 50, userPower: 900 }),
+        makeOfficer({ id: "o-b1", name: "Bridge One", userLevel: 50, userPower: 900 }),
+        makeOfficer({ id: "o-b2", name: "Bridge Two", userLevel: 50, userPower: 900 }),
+      ],
+      reservations: [],
+      intentKey: "armada_loot",
+      limit: 3,
+      effectBundle: bundle,
+    });
+
+    expect(recs[0]?.captainId).toBe("o-armada");
+  });
 });

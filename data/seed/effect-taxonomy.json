@@ -76,7 +76,12 @@
       { "id": "repair_cost_reduction", "category": "mining" },
       { "id": "officer_attack", "category": "officer_stats" },
       { "id": "officer_defense", "category": "officer_stats" },
-      { "id": "officer_health", "category": "officer_stats" }
+      { "id": "officer_health", "category": "officer_stats" },
+      { "id": "captain_maneuver_effectiveness", "category": "control" },
+      { "id": "officer_ability_effectiveness", "category": "control" },
+      { "id": "below_deck_ability_effectiveness", "category": "control" },
+      { "id": "effect_duration_bonus", "category": "control" },
+      { "id": "stack_rate_bonus", "category": "control" }
     ],
     "conditionKeys": [
       { "id": "at_combat_start", "paramSchema": null },
@@ -105,6 +110,7 @@
       { "id": "missing_required_target_tag", "severity": "blocker", "defaultMessage": "Target doesn't have the required tag" },
       { "id": "missing_required_target_ship_class", "severity": "blocker", "defaultMessage": "Target isn't the required ship class" },
       { "id": "missing_required_ship_class", "severity": "blocker", "defaultMessage": "Your ship isn't the required class" },
+      { "id": "missing_required_ship_tag", "severity": "blocker", "defaultMessage": "Your ship is missing the required tag" },
       { "id": "requires_attacking", "severity": "blocker", "defaultMessage": "Only works when attacking" },
       { "id": "requires_defending", "severity": "blocker", "defaultMessage": "Only works when defending" },
       { "id": "requires_pvp", "severity": "blocker", "defaultMessage": "PvP only" },

@@ -228,6 +228,11 @@ export const ISSUE_TYPES: Record<string, IssueTypeDef> = {
     severity: "blocker",
     defaultMessage: "Your ship isn't the required class",
   },
+  missing_required_ship_tag: {
+    id: "missing_required_ship_tag",
+    severity: "blocker",
+    defaultMessage: "Your ship is missing the required tag",
+  },
   requires_attacking: {
     id: "requires_attacking",
     severity: "blocker",
