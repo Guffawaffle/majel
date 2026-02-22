@@ -722,7 +722,7 @@ describe("effect-based captain gating", () => {
     expect(score.captainBonus).toBeGreaterThan(0);
   });
 
-  it("emits fallback warning once per recommendation run", () => {
+  it("emits fallback warning on each fallback recommendation", () => {
     const fallbackBundle = makeEffectBundle({
       intents: {
         grinding: {
@@ -768,7 +768,117 @@ describe("effect-based captain gating", () => {
       .filter((line) => line.includes("No viable captains found"))
       .length;
 
-    expect(warningCount).toBe(1);
+    expect(warningCount).toBe(recs.length);
+  });
+
+  it("supports scenario overrides for engagement", () => {
+    const defendingBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { armor: 2 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-defender": [makeTestAbility({
+          id: "defender:cm",
+          officerId: "o-defender",
+          slot: "cm",
+          effects: [{
+            effectKey: "armor",
+            magnitude: 0.4,
+            conditions: [{ conditionKey: "requires_defending", params: null }],
+          }],
+        })],
+      },
+    });
+
+    const officer = makeOfficer({ id: "o-defender", name: "Defender", userLevel: 30, userPower: 100 });
+
+    const attackingScore = scoreOfficerForSlot(officer, {
+      intentKey: "grinding",
+      reservations: [],
+      maxPower: 100,
+      slot: "captain",
+      effectBundle: defendingBundle,
+    });
+
+    const defendingScore = scoreOfficerForSlot(officer, {
+      intentKey: "grinding",
+      reservations: [],
+      maxPower: 100,
+      slot: "captain",
+      contextOverrides: { engagement: "defending" },
+      effectBundle: defendingBundle,
+    });
+
+    expect(defendingScore.effectScore).toBeGreaterThan(attackingScore.effectScore);
+  });
+
+  it("filters out low-confidence recommendations when minConfidence is high", () => {
+    const uncertainBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { damage_dealt: 2 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-a": [makeTestAbility({
+          id: "a:cm",
+          officerId: "o-a",
+          slot: "cm",
+          effects: [
+            { effectKey: "mystery_alpha", magnitude: null, applicableTargetKinds: ["hostile"] },
+            { effectKey: "mystery_beta", magnitude: null, applicableTargetKinds: ["hostile"] },
+            { effectKey: "mystery_gamma", magnitude: null, applicableTargetKinds: ["hostile"] },
+          ],
+        })],
+        "o-b": [makeTestAbility({
+          id: "b:oa",
+          officerId: "o-b",
+          slot: "oa",
+          effects: [
+            { effectKey: "mystery_beta", magnitude: null, applicableTargetKinds: ["hostile"] },
+            { effectKey: "mystery_delta", magnitude: null, applicableTargetKinds: ["hostile"] },
+          ],
+        })],
+        "o-c": [makeTestAbility({
+          id: "c:oa",
+          officerId: "o-c",
+          slot: "oa",
+          effects: [
+            { effectKey: "mystery_gamma", magnitude: null, applicableTargetKinds: ["hostile"] },
+            { effectKey: "mystery_epsilon", magnitude: null, applicableTargetKinds: ["hostile"] },
+          ],
+        })],
+      },
+    });
+
+    const officers = [
+      makeOfficer({ id: "o-a", name: "A", userLevel: 30, userPower: 100 }),
+      makeOfficer({ id: "o-b", name: "B", userLevel: 30, userPower: 100 }),
+      makeOfficer({ id: "o-c", name: "C", userLevel: 30, userPower: 100 }),
+    ];
+
+    const withoutFilter = recommendBridgeTrios({
+      officers,
+      reservations: [],
+      intentKey: "grinding",
+      limit: 5,
+      effectBundle: uncertainBundle,
+    });
+    const highOnly = recommendBridgeTrios({
+      officers,
+      reservations: [],
+      intentKey: "grinding",
+      minConfidence: "high",
+      limit: 5,
+      effectBundle: uncertainBundle,
+    });
+
+    expect(withoutFilter.length).toBeGreaterThan(0);
+    expect(highOnly.length).toBe(0);
   });
 });
 
@@ -1159,7 +1269,7 @@ describe("issue #138 golden regression suite (recommender)", () => {
     expect(kirkTrio).toBeDefined();
   });
 
-  it("fallback warning remains deduped when no viable captains exist", () => {
+  it("fallback warning appears on each fallback recommendation when no viable captains exist", () => {
     const fallbackBundle = makeEffectBundle({
       intents: {
         grinding: {
@@ -1193,7 +1303,7 @@ describe("issue #138 golden regression suite (recommender)", () => {
       .filter((line) => line.includes("No viable captains found"))
       .length;
 
-    expect(warningCount).toBe(1);
+    expect(warningCount).toBe(recs.length);
   });
 
   it("pvp station context ranks player/station captain over hostile-only captain", () => {

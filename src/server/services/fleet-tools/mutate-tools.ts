@@ -20,7 +20,6 @@ import type { TargetStatus, TargetType, UpdateTargetInput } from "../../stores/t
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES } from "../../stores/target-store.js";
 import type { OwnershipState, SetShipOverlayInput, SetOfficerOverlayInput } from "../../stores/overlay-store.js";
 import { VALID_OWNERSHIP_STATES } from "../../stores/overlay-store.js";
-import type { ReceiptSourceType } from "../../stores/receipt-store.js";
 import type {
   ResearchBuff,
   ResearchNodeInput,

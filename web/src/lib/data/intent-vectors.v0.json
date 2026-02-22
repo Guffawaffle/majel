@@ -1,8 +1,26 @@
 {
   "intents": [
     {
+      "intentKey": "general",
+      "label": "General",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 1,
+        "mitigation": 1,
+        "officer_attack": 0.5,
+        "officer_defense": 0.5,
+        "officer_health": 0.5
+      }
+    },
+    {
       "intentKey": "hostile_grinding",
-      "label": "Hostile grinding (PvE)",
+      "label": "Hostile Grinding (v0)",
       "defaultTargetContext": {
         "targetKind": "hostile",
         "engagement": "attacking",
@@ -11,7 +29,7 @@
         ]
       },
       "weights": {
-        "damage_dealt": 1.0,
+        "damage_dealt": 1,
         "weapon_damage": 0.8,
         "crit_chance": 0.6,
         "crit_damage": 0.6,
@@ -23,7 +41,7 @@
     },
     {
       "intentKey": "pvp_station_hit",
-      "label": "PvP station hit",
+      "label": "PvP Station Hit (v0)",
       "defaultTargetContext": {
         "targetKind": "station",
         "engagement": "attacking",
@@ -33,12 +51,441 @@
         ]
       },
       "weights": {
-        "damage_dealt": 1.0,
+        "damage_dealt": 1,
         "weapon_damage": 0.9,
         "crit_chance": 0.7,
         "crit_damage": 0.7,
         "piercing": 0.8,
         "mitigation": 0.4
+      }
+    },
+    {
+      "intentKey": "mining-gas",
+      "label": "Gas Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "mining-crystal",
+      "label": "Crystal Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "mining-ore",
+      "label": "Ore Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "mining-tri",
+      "label": "Tritanium Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "mining-dil",
+      "label": "Dilithium Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "mining-para",
+      "label": "Parsteel Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "mining-lat",
+      "label": "Latinum Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "mining-iso",
+      "label": "Isogen Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "mining-data",
+      "label": "Data Mining",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ],
+        "shipContext": {
+          "shipClass": "survey"
+        }
+      },
+      "weights": {
+        "mining_rate": 3,
+        "mining_protection": 1.5,
+        "cargo_capacity": 1
+      }
+    },
+    {
+      "intentKey": "grinding",
+      "label": "Hostile Grinding",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": [
+          "pve"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 3,
+        "weapon_damage": 2.5,
+        "crit_chance": 2,
+        "crit_damage": 2,
+        "armor": 1.5,
+        "shield_health": 1,
+        "hull_health": 1,
+        "mitigation": 1.5,
+        "penetration": 1.5,
+        "accuracy": 1,
+        "loot_bonus": 0.5,
+        "officer_attack": 1,
+        "officer_defense": 0.8,
+        "officer_health": 0.8
+      }
+    },
+    {
+      "intentKey": "grinding-swarm",
+      "label": "Swarm Grinding",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": [
+          "pve",
+          "swarm"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 3,
+        "weapon_damage": 2.5,
+        "crit_chance": 2,
+        "crit_damage": 2,
+        "armor": 1.5,
+        "mitigation": 1.5,
+        "penetration": 1.5,
+        "officer_attack": 1,
+        "officer_defense": 0.8,
+        "officer_health": 0.8
+      }
+    },
+    {
+      "intentKey": "grinding-eclipse",
+      "label": "Eclipse Grinding",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": [
+          "pve",
+          "eclipse"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 3,
+        "weapon_damage": 2.5,
+        "crit_chance": 2,
+        "crit_damage": 2,
+        "armor": 1.5,
+        "mitigation": 1.5,
+        "penetration": 1.5,
+        "officer_attack": 1,
+        "officer_defense": 0.8,
+        "officer_health": 0.8
+      }
+    },
+    {
+      "intentKey": "armada",
+      "label": "Armada",
+      "defaultTargetContext": {
+        "targetKind": "armada_target",
+        "engagement": "attacking",
+        "targetTags": [
+          "armada"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 3,
+        "weapon_damage": 2.5,
+        "crit_chance": 2.5,
+        "crit_damage": 2.5,
+        "penetration": 2,
+        "accuracy": 1.5,
+        "mitigation": 1,
+        "armor": 1,
+        "officer_attack": 1,
+        "officer_defense": 0.5,
+        "officer_health": 0.5
+      }
+    },
+    {
+      "intentKey": "armada-solo",
+      "label": "Solo Armada",
+      "defaultTargetContext": {
+        "targetKind": "armada_target",
+        "engagement": "attacking",
+        "targetTags": [
+          "armada"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 3,
+        "weapon_damage": 2.5,
+        "crit_chance": 2,
+        "crit_damage": 2,
+        "penetration": 2,
+        "mitigation": 2,
+        "armor": 1.5,
+        "hull_health": 1,
+        "shield_health": 1,
+        "officer_attack": 1,
+        "officer_defense": 1,
+        "officer_health": 0.8
+      }
+    },
+    {
+      "intentKey": "pvp",
+      "label": "PvP/Raiding",
+      "defaultTargetContext": {
+        "targetKind": "player_ship",
+        "engagement": "attacking",
+        "targetTags": [
+          "pvp"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 2.5,
+        "weapon_damage": 2.5,
+        "crit_chance": 2.5,
+        "crit_damage": 2.5,
+        "penetration": 2,
+        "shield_piercing": 2,
+        "mitigation": 2,
+        "armor": 1.5,
+        "dodge": 1.5,
+        "accuracy": 1.5,
+        "officer_attack": 1,
+        "officer_defense": 1,
+        "officer_health": 0.8
+      }
+    },
+    {
+      "intentKey": "base-defense",
+      "label": "Base Defense",
+      "defaultTargetContext": {
+        "targetKind": "player_ship",
+        "engagement": "defending",
+        "targetTags": [
+          "pvp",
+          "station_assault"
+        ]
+      },
+      "weights": {
+        "mitigation": 3,
+        "armor": 2.5,
+        "shield_health": 2.5,
+        "hull_health": 2,
+        "shield_repair": 1.5,
+        "hull_repair": 1.5,
+        "dodge": 1.5,
+        "damage_dealt": 1,
+        "officer_defense": 1,
+        "officer_health": 1,
+        "officer_attack": 0.5
+      }
+    },
+    {
+      "intentKey": "exploration",
+      "label": "Exploration",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ]
+      },
+      "weights": {
+        "warp_range": 3,
+        "dodge": 1,
+        "mitigation": 1
+      }
+    },
+    {
+      "intentKey": "cargo-run",
+      "label": "Cargo Run",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ]
+      },
+      "weights": {
+        "cargo_capacity": 3,
+        "mining_protection": 2,
+        "warp_range": 1.5
+      }
+    },
+    {
+      "intentKey": "events",
+      "label": "Events",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": [
+          "pve"
+        ]
+      },
+      "weights": {
+        "damage_dealt": 2,
+        "loot_bonus": 2,
+        "xp_bonus": 1.5,
+        "mitigation": 1,
+        "officer_attack": 0.5,
+        "officer_defense": 0.5
+      }
+    },
+    {
+      "intentKey": "voyages",
+      "label": "Voyages",
+      "defaultTargetContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ]
+      },
+      "weights": {
+        "warp_range": 3,
+        "cargo_capacity": 1.5,
+        "mitigation": 1
+      }
+    },
+    {
+      "intentKey": "away-team",
+      "label": "Away Team",
+      "defaultTargetContext": {
+        "targetKind": "mission_npc",
+        "engagement": "any",
+        "targetTags": [
+          "pve"
+        ]
+      },
+      "weights": {
+        "officer_attack": 2,
+        "officer_defense": 2,
+        "officer_health": 2
       }
     }
   ]

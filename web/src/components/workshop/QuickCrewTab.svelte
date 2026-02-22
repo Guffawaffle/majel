@@ -18,6 +18,7 @@
     type CrewRecommendation,
   } from "../../lib/crew-recommender.js";
   import { getEffectBundleManager, type EffectBundleData } from "../../lib/effect-bundle-adapter.js";
+  import type { Engagement, TargetKind } from "../../lib/types/effect-types.js";
 
   interface Props {
     officers: CatalogOfficer[];
@@ -40,10 +41,38 @@
     { key: "interceptor", label: "Vs Interceptor" },
     { key: "battleship", label: "Vs Battleship" },
   ] as const;
+  const MODE_OPTS = [
+    { key: "auto", label: "Auto Mode" },
+    { key: "pve", label: "PvE" },
+    { key: "pvp", label: "PvP" },
+  ] as const;
+  const ENGAGEMENT_OPTS = [
+    { key: "auto", label: "Auto Engagement" },
+    { key: "attacking", label: "Attacking" },
+    { key: "defending", label: "Defending" },
+    { key: "any", label: "Any" },
+  ] as const;
+  const TARGET_KIND_OPTS = [
+    { key: "auto", label: "Auto Target Kind" },
+    { key: "hostile", label: "Hostile" },
+    { key: "player_ship", label: "Player Ship" },
+    { key: "station", label: "Station" },
+    { key: "armada_target", label: "Armada" },
+    { key: "mission_npc", label: "Mission NPC" },
+  ] as const;
+  const MIN_CONFIDENCE_OPTS = [
+    { key: "low", label: "Any confidence" },
+    { key: "medium", label: "Medium+" },
+    { key: "high", label: "High only" },
+  ] as const;
 
   let intentKey = $state("hostile_grinding");
   let shipId = $state("");
   let targetClass = $state<"any" | "explorer" | "interceptor" | "battleship">("any");
+  let engagement = $state<Engagement | "auto">("auto");
+  let modeTag = $state<"auto" | "pve" | "pvp">("auto");
+  let targetKind = $state<TargetKind | "auto">("auto");
+  let minConfidence = $state<"low" | "medium" | "high">("low");
   let captainAssist = $state(false);
   let captainId = $state("");
 
@@ -103,6 +132,12 @@
       intentKey,
       shipClass: selectedShip?.shipClass ?? null,
       targetClass,
+      contextOverrides: {
+        engagement,
+        modeTag,
+        targetKind,
+      },
+      minConfidence,
       captainId: captainAssist ? captainId || undefined : undefined,
       limit: 5,
       effectBundle,
@@ -182,6 +217,11 @@
           intentKey,
           shipClass: selectedShip?.shipClass ?? null,
           targetClass,
+          contextOverrides: {
+            engagement,
+            modeTag,
+            targetKind,
+          },
           reservations,
           maxPower,
           slot,
@@ -311,6 +351,42 @@
         <span>Target Profile</span>
         <select bind:value={targetClass}>
           {#each TARGET_CLASS_OPTS as opt}
+            <option value={opt.key}>{opt.label}</option>
+          {/each}
+        </select>
+      </label>
+
+      <label class="ws-field">
+        <span>Mode</span>
+        <select bind:value={modeTag}>
+          {#each MODE_OPTS as opt}
+            <option value={opt.key}>{opt.label}</option>
+          {/each}
+        </select>
+      </label>
+
+      <label class="ws-field">
+        <span>Engagement</span>
+        <select bind:value={engagement}>
+          {#each ENGAGEMENT_OPTS as opt}
+            <option value={opt.key}>{opt.label}</option>
+          {/each}
+        </select>
+      </label>
+
+      <label class="ws-field">
+        <span>Target Kind</span>
+        <select bind:value={targetKind}>
+          {#each TARGET_KIND_OPTS as opt}
+            <option value={opt.key}>{opt.label}</option>
+          {/each}
+        </select>
+      </label>
+
+      <label class="ws-field">
+        <span>Confidence Filter</span>
+        <select bind:value={minConfidence}>
+          {#each MIN_CONFIDENCE_OPTS as opt}
             <option value={opt.key}>{opt.label}</option>
           {/each}
         </select>

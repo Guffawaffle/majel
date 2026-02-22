@@ -120,6 +120,12 @@ function parseTargetContext(value: unknown): TargetContext | null {
   const targetKind = typeof value.targetKind === "string" ? value.targetKind : null;
   const engagement = typeof value.engagement === "string" ? value.engagement : null;
   const targetTags = Array.isArray(value.targetTags) ? value.targetTags.filter((tag): tag is string => typeof tag === "string") : [];
+  const shipContext = isObject(value.shipContext)
+    && typeof value.shipContext.shipClass === "string"
+    ? {
+      shipClass: value.shipContext.shipClass as TargetContext["shipContext"]["shipClass"],
+    }
+    : undefined;
 
   if (!targetKind || !engagement) return null;
 
@@ -127,6 +133,7 @@ function parseTargetContext(value: unknown): TargetContext | null {
     targetKind: targetKind as TargetContext["targetKind"],
     engagement: engagement as TargetContext["engagement"],
     targetTags,
+    shipContext,
   };
 }
 

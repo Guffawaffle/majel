@@ -16,7 +16,11 @@ import type {
 import type { EffectBundleData } from "./effect-bundle-adapter.js";
 import type { BridgeSlot } from "./types.js";
 import { evaluateOfficer } from "./effect-evaluator.js";
-import { buildTargetContext, bridgeSlotToSlotContext } from "./effect-context.js";
+import {
+  buildTargetContext,
+  bridgeSlotToSlotContext,
+  type TargetContextOverrides,
+} from "./effect-context.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -50,6 +54,7 @@ export interface ValidateCrewInput {
   intentKey: string;
   shipClass?: string | null;
   targetClass?: string | null;
+  contextOverrides?: Omit<TargetContextOverrides, "shipClass" | "targetClass">;
   effectBundle: EffectBundleData;
 }
 
@@ -114,14 +119,26 @@ function buildSummary(officers: ValidatedOfficer[], intentKey: string): string[]
 const SLOTS_ORDERED: BridgeSlot[] = ["captain", "bridge_1", "bridge_2"];
 
 export function validateCrew(input: ValidateCrewInput): CrewValidation {
-  const { slots, officerNames, intentKey, shipClass, targetClass, effectBundle } = input;
+  const {
+    slots,
+    officerNames,
+    intentKey,
+    shipClass,
+    targetClass,
+    contextOverrides,
+    effectBundle,
+  } = input;
   const intent = effectBundle.intents.get(intentKey);
   const weights = effectBundle.intentWeights.get(intentKey);
   if (!intent || !weights) {
     throw new Error(`Unknown intent key: ${intentKey}`);
   }
 
-  const ctx = buildTargetContext(intent, shipClass, targetClass);
+  const ctx = buildTargetContext(intent, {
+    shipClass,
+    targetClass,
+    ...contextOverrides,
+  });
 
   const officers: ValidatedOfficer[] = [];
 

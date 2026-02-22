@@ -7,7 +7,11 @@ import type {
   EffectScoreEntry,
 } from "./types/effect-types.js";
 import { evaluateEffect, evaluateOfficer } from "./effect-evaluator.js";
-import { buildTargetContext, bridgeSlotToSlotContext } from "./effect-context.js";
+import {
+  buildTargetContext,
+  bridgeSlotToSlotContext,
+  type TargetContextOverrides,
+} from "./effect-context.js";
 import captainViabilityKeysV0 from "./data/captain-viability-keys.v0.json";
 import scoringContractV0 from "./data/scoring-contract.v0.json";
 
@@ -17,7 +21,9 @@ export interface CrewRecommendInput {
   intentKey: string;
   shipClass?: string | null;
   targetClass?: "explorer" | "interceptor" | "battleship" | "any";
+  contextOverrides?: Omit<TargetContextOverrides, "shipClass" | "targetClass">;
   captainId?: string;
+  minConfidence?: "low" | "medium" | "high";
   limit?: number;
   /** Required: effect-based scoring bundle (ADR-034). */
   effectBundle: EffectBundleData;
@@ -252,11 +258,16 @@ function scoreOfficerForSlotEffect(
     reservations: OfficerReservation[];
     maxPower: number;
     slot: BridgeSlot;
+    contextOverrides?: Omit<TargetContextOverrides, "shipClass" | "targetClass">;
     effectBundle: EffectBundleData;
   },
 ): OfficerScoreBreakdown {
   const resolved = resolveIntentOrThrow(opts.effectBundle, opts.intentKey);
-  const ctx = buildTargetContext(resolved.intent, opts.shipClass, opts.targetClass);
+  const ctx = buildTargetContext(resolved.intent, {
+    shipClass: opts.shipClass,
+    targetClass: opts.targetClass,
+    ...opts.contextOverrides,
+  });
   const intentGroup = deriveIntentGroup(opts.intentKey, ctx);
   const weights = resolved.weights;
   const abilities = opts.effectBundle.officerAbilities.get(officer.id) ?? [];
@@ -311,6 +322,10 @@ function effectConfidenceFromBreakdowns(entries: EffectScoreEntry[]): "high" | "
 function buildEffectReasons(
   captainName: string,
   captainBreakdown: EffectScoreEntry[],
+  bridge1Name: string,
+  bridge1Breakdown: EffectScoreEntry[],
+  bridge2Name: string,
+  bridge2Breakdown: EffectScoreEntry[],
   captainViable: boolean,
   captainFallbackUsed: boolean,
   synergyPairs: number,
@@ -320,17 +335,27 @@ function buildEffectReasons(
 
   const worksEvidence = summarizeStatusEvidence(captainBreakdown, "works");
   if (worksEvidence) {
-    reasons.push(`${captainName} applicable effects: ${worksEvidence}.`);
+    reasons.push(`${captainName} (Captain): ${worksEvidence}.`);
   }
 
   const conditionalEvidence = summarizeStatusEvidence(captainBreakdown, "conditional");
   if (conditionalEvidence) {
-    reasons.push(`Situational effects: ${conditionalEvidence}.`);
+    reasons.push(`${captainName} situational effects: ${conditionalEvidence}.`);
   }
 
   const blockedEvidence = summarizeStatusEvidence(captainBreakdown, "blocked");
   if (blockedEvidence) {
-    reasons.push(`Blocked for current target: ${blockedEvidence}.`);
+    reasons.push(`${captainName} blocked for current target: ${blockedEvidence}.`);
+  }
+
+  const bridge1Works = summarizeStatusEvidence(bridge1Breakdown, "works");
+  if (bridge1Works) {
+    reasons.push(`${bridge1Name} (Bridge): ${bridge1Works}.`);
+  }
+
+  const bridge2Works = summarizeStatusEvidence(bridge2Breakdown, "works");
+  if (bridge2Works) {
+    reasons.push(`${bridge2Name} (Bridge): ${bridge2Works}.`);
   }
 
   if (!captainViable && !captainFallbackUsed) {
@@ -374,7 +399,11 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
   const byId = new Map(pool.map((o) => [o.id, o]));
 
   const resolved = resolveIntentOrThrow(bundle, input.intentKey);
-  const ctx = buildTargetContext(resolved.intent, input.shipClass, input.targetClass);
+  const ctx = buildTargetContext(resolved.intent, {
+    shipClass: input.shipClass,
+    targetClass: input.targetClass,
+    ...input.contextOverrides,
+  });
   const intentGroup = deriveIntentGroup(input.intentKey, ctx);
   const weights = resolved.weights;
 
@@ -411,8 +440,6 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
     : (viableCaptains.length > 0 ? viableCaptains.slice(0, 6) : captainScored.slice(0, 2));
 
   const recs: CrewRecommendation[] = [];
-  let fallbackWarningEmitted = false;
-
   for (const captainInfo of captainCandidates) {
     const captain = captainInfo.officer;
 
@@ -464,15 +491,15 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
         const reasons = buildEffectReasons(
           captain.name,
           captainInfo.breakdown,
+          b1.officer.name,
+          b1.breakdown,
+          b2.officer.name,
+          b2.breakdown,
           captainInfo.viable,
-          captainFallbackUsed && !fallbackWarningEmitted,
+          captainFallbackUsed,
           synergyPairs,
           captainInfo.reservation + b1.reservation + b2.reservation,
         );
-
-        if (captainFallbackUsed && !fallbackWarningEmitted) {
-          fallbackWarningEmitted = true;
-        }
 
         recs.push({
           captainId: captain.id,
@@ -493,7 +520,17 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
     if (!deduped.has(key)) deduped.set(key, rec);
   }
 
-  return Array.from(deduped.values()).slice(0, input.limit ?? 5);
+  const minimumConfidence = input.minConfidence ?? "low";
+  const threshold = minimumConfidence === "high" ? 3 : minimumConfidence === "medium" ? 2 : 1;
+  const confidenceRank = (value: CrewRecommendation["confidence"]): number => {
+    if (value === "high") return 3;
+    if (value === "medium") return 2;
+    return 1;
+  };
+
+  return Array.from(deduped.values())
+    .filter((rec) => confidenceRank(rec.confidence) >= threshold)
+    .slice(0, input.limit ?? 5);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -506,6 +543,7 @@ export function scoreOfficerForSlot(
     intentKey: string;
     shipClass?: string | null;
     targetClass?: "explorer" | "interceptor" | "battleship" | "any";
+    contextOverrides?: Omit<TargetContextOverrides, "shipClass" | "targetClass">;
     reservations: OfficerReservation[];
     maxPower: number;
     slot: BridgeSlot;
