@@ -53,7 +53,7 @@
   let saveNotes = $state("");
   let saveError = $state("");
   let saveBusy = $state(false);
-  let pickerSearchInput: HTMLInputElement | null = null;
+  let pickerSearchInput = $state<HTMLInputElement | null>(null);
 
   /** Effect bundle for ADR-034 scoring — null until loaded, falls back to keyword scoring. */
   let effectBundle = $state<EffectBundleData | null>(null);
@@ -372,12 +372,15 @@
               <div class="qc-slot-value">
                 <span class="qc-slot-name">{ui.selectedSlots[slot] ? findOfficerName(officers, ui.selectedSlots[slot]) : "Unassigned"}</span>
                 {#if ui.selectedSlots[slot]}
-                  <button
-                    type="button"
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <span
                     class="qc-slot-remove"
+                    role="button"
+                    tabindex="0"
                     aria-label={`Remove ${findOfficerName(officers, ui.selectedSlots[slot])} from ${SLOT_LABEL[slot]}`}
                     onclick={(e) => { e.stopPropagation(); clearSlot(slot); }}
-                  >×</button>
+                    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); clearSlot(slot); } }}
+                  >×</span>
                 {/if}
               </div>
             </button>
@@ -423,11 +426,12 @@
   {/if}
 
   {#if ui.pickerSlot}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
+    <button
+      type="button"
       class="qc-backdrop"
+      aria-label="Close picker"
       onclick={() => send({ type: "picker/close" })}
-    ></div>
+    ></button>
     <div
       class="qc-modal"
       role="dialog"

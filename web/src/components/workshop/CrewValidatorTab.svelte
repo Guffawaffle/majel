@@ -44,7 +44,7 @@
 
   let pickerSlot = $state<BridgeSlot | null>(null);
   let pickerSearch = $state("");
-  let pickerSearchInput: HTMLInputElement | null = null;
+  let pickerSearchInput = $state<HTMLInputElement | null>(null);
 
   /** Effect bundle — null until loaded. */
   let effectBundle = $state<EffectBundleData | null>(null);
@@ -239,12 +239,15 @@
               {selectedSlots[slot] ? officerName(selectedSlots[slot]) : "Unassigned"}
             </span>
             {#if selectedSlots[slot]}
-              <button
-                type="button"
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span
                 class="cv-slot-remove"
+                role="button"
+                tabindex="0"
                 aria-label={`Remove ${officerName(selectedSlots[slot])} from ${SLOT_LABEL[slot]}`}
                 onclick={(e) => { e.stopPropagation(); clearSlot(slot); }}
-              >×</button>
+                onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); clearSlot(slot); } }}
+              >×</span>
             {/if}
           </div>
         </button>
@@ -336,11 +339,12 @@
 
   <!-- Officer picker modal -->
   {#if pickerSlot}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
+    <button
+      type="button"
       class="cv-backdrop"
+      aria-label="Close picker"
       onclick={() => { pickerSlot = null; }}
-    ></div>
+    ></button>
     <div
       class="cv-modal"
       role="dialog"
