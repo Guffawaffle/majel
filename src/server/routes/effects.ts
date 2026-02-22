@@ -63,7 +63,7 @@ export function createEffectsRoutes(appState: AppState): Router {
 
   function requireEffectStore(res: import("express").Response): boolean {
     if (!appState.effectStore) {
-      sendFail(res, ErrorCode.REFERENCE_STORE_NOT_AVAILABLE, "Effect store not available", 503);
+      sendFail(res, ErrorCode.EFFECT_STORE_NOT_AVAILABLE, "Effect store not available", 503);
       return false;
     }
     return true;

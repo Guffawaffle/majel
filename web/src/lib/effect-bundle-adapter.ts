@@ -5,7 +5,13 @@
  * Maps and interfaces that the effect evaluator + recommender can use.
  */
 
-import type { IntentDefinition, OfficerAbility, TargetContext } from "./types/effect-types.js";
+import type {
+  IntentDefinition,
+  MagnitudeUnit,
+  OfficerAbility,
+  StackingMode,
+  TargetContext,
+} from "./types/effect-types.js";
 
 /**
  * Bundle response from /api/effects/bundle (matches server type EffectBundleResponse)
@@ -93,7 +99,11 @@ export function adaptEffectBundle(raw: EffectBundleResponse): EffectBundleData {
       id: intent.id,
       name: intent.name,
       description: intent.description,
-      defaultContext: intent.defaultContext as TargetContext | undefined,
+      defaultContext: (intent.defaultContext ?? {
+        targetKind: "hostile",
+        engagement: "any",
+        targetTags: [],
+      }) as TargetContext,
       effectWeights: intent.effectWeights,
     });
   }
@@ -112,8 +122,8 @@ export function adaptEffectBundle(raw: EffectBundleResponse): EffectBundleData {
         abilityId: ab.id,
         effectKey: ef.effectKey,
         magnitude: ef.magnitude,
-        unit: ef.unit as any,
-        stacking: ef.stacking as any,
+        unit: (ef.unit ?? null) as MagnitudeUnit | null,
+        stacking: (ef.stacking ?? null) as StackingMode | null,
         applicableTargetKinds: ef.applicableTargetKinds,
         applicableTargetTags: ef.applicableTargetTags,
         conditions: ef.conditions.map((cond) => ({
