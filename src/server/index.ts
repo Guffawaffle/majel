@@ -48,6 +48,8 @@ import { createTargetStoreFactory } from "./stores/target-store.js";
 import { createResearchStoreFactory } from "./stores/research-store.js";
 import { createInventoryStoreFactory } from "./stores/inventory-store.js";
 import { createProposalStoreFactory } from "./stores/proposal-store.js";
+import { createEffectStore } from "./stores/effect-store.js";
+import { loadEffectSeedData } from "./services/effect-seed-loader.js";
 import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
@@ -133,6 +135,7 @@ const state: AppState = {
   proposalStore: null,
   proposalStoreFactory: null,
   toolContextFactory: null,
+  effectStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -496,6 +499,16 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "proposal store init failed");
   }
 
+  // 2n. Initialize effect store (ADR-034 #132 — must follow reference store for FK deps)
+  try {
+    state.effectStore = await createEffectStore(adminPool, pool);
+    await loadEffectSeedData(state.effectStore);
+    const effectCounts = await state.effectStore.counts();
+    log.boot.info({ effects: effectCounts.taxonomyEffectKeys, abilities: effectCounts.catalogAbilities, intents: effectCounts.intentDefs }, "effect store online (ADR-034)");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "effect store init failed");
+  }
+
   // Resolve config from settings store
   const { geminiApiKey } = state.config;
 
@@ -616,6 +629,7 @@ async function shutdown(): Promise<void> {
   state.userStore?.close();
   state.targetStore?.close();
   state.referenceStore?.close();
+  state.effectStore?.close();
   if (state.memoryService) {
     await state.memoryService.close();
   }

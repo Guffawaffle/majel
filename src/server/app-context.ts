@@ -23,6 +23,7 @@ import type { UserSettingsStore } from "./stores/user-settings-store.js";
 import type { ResearchStore, ResearchStoreFactory } from "./stores/research-store.js";
 import type { InventoryStore, InventoryStoreFactory } from "./stores/inventory-store.js";
 import type { ProposalStore, ProposalStoreFactory } from "./stores/proposal-store.js";
+import type { EffectStore } from "./stores/effect-store.js";
 import type { ToolContextFactory } from "./services/fleet-tools/index.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
@@ -81,6 +82,8 @@ export interface AppState {
   proposalStoreFactory: ProposalStoreFactory | null;
   /** #93: Factory for per-user tool contexts. */
   toolContextFactory: ToolContextFactory | null;
+  /** ADR-034 #132: Effect taxonomy + ability catalog store. */
+  effectStore: EffectStore | null;
   startupComplete: boolean;
   config: AppConfig;
 }

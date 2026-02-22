@@ -1,0 +1,1026 @@
+{
+  "taxonomy": {
+    "targetKinds": [
+      "hostile",
+      "player_ship",
+      "station",
+      "armada_target",
+      "mission_npc"
+    ],
+    "targetTags": [
+      "borg",
+      "swarm",
+      "augment",
+      "rogue",
+      "dominion",
+      "xindi",
+      "mirror",
+      "klingon",
+      "romulan",
+      "federation",
+      "eclipse",
+      "target_explorer",
+      "target_interceptor",
+      "target_battleship",
+      "target_survey",
+      "target_burning",
+      "target_hull_breached",
+      "target_morale",
+      "target_cloaked",
+      "pvp",
+      "pve",
+      "station_assault",
+      "armada"
+    ],
+    "shipClasses": [
+      "explorer",
+      "interceptor",
+      "battleship",
+      "survey"
+    ],
+    "slots": [
+      "cm",
+      "oa",
+      "bda"
+    ],
+    "effectKeys": [
+      { "id": "damage_dealt", "category": "damage" },
+      { "id": "weapon_damage", "category": "damage" },
+      { "id": "crit_chance", "category": "damage" },
+      { "id": "crit_damage", "category": "damage" },
+      { "id": "accuracy", "category": "damage" },
+      { "id": "penetration", "category": "damage" },
+      { "id": "shield_piercing", "category": "damage" },
+      { "id": "damage_taken", "category": "survivability" },
+      { "id": "mitigation", "category": "survivability" },
+      { "id": "armor", "category": "survivability" },
+      { "id": "shield_deflection", "category": "survivability" },
+      { "id": "dodge", "category": "survivability" },
+      { "id": "shield_health", "category": "survivability" },
+      { "id": "hull_health", "category": "survivability" },
+      { "id": "shield_repair", "category": "survivability" },
+      { "id": "hull_repair", "category": "survivability" },
+      { "id": "apply_burning", "category": "control" },
+      { "id": "apply_hull_breach", "category": "control" },
+      { "id": "apply_morale", "category": "control" },
+      { "id": "resist_burning", "category": "control" },
+      { "id": "resist_hull_breach", "category": "control" },
+      { "id": "resist_morale", "category": "control" },
+      { "id": "loot_bonus", "category": "loot" },
+      { "id": "resource_drop_bonus", "category": "loot" },
+      { "id": "xp_bonus", "category": "loot" },
+      { "id": "mining_rate", "category": "mining" },
+      { "id": "mining_protection", "category": "mining" },
+      { "id": "cargo_capacity", "category": "mining" },
+      { "id": "warp_range", "category": "mining" },
+      { "id": "repair_cost_reduction", "category": "mining" },
+      { "id": "officer_attack", "category": "officer_stats" },
+      { "id": "officer_defense", "category": "officer_stats" },
+      { "id": "officer_health", "category": "officer_stats" }
+    ],
+    "conditionKeys": [
+      { "id": "at_combat_start", "paramSchema": null },
+      { "id": "at_round_start", "paramSchema": null },
+      { "id": "when_weapons_fire", "paramSchema": null },
+      { "id": "when_shields_depleted", "paramSchema": null },
+      { "id": "when_hull_breached", "paramSchema": null },
+      { "id": "when_burning", "paramSchema": null },
+      { "id": "when_target_burning", "paramSchema": null },
+      { "id": "when_target_hull_breached", "paramSchema": null },
+      { "id": "requires_attacking", "paramSchema": null },
+      { "id": "requires_defending", "paramSchema": null },
+      { "id": "requires_target_ship_class", "paramSchema": "{\"class\": \"string\"}" },
+      { "id": "requires_ship_class", "paramSchema": "{\"class\": \"string\"}" },
+      { "id": "requires_target_tag", "paramSchema": "{\"tag\": \"string\"}" },
+      { "id": "requires_ship_tag", "paramSchema": "{\"tag\": \"string\"}" },
+      { "id": "requires_pvp", "paramSchema": null },
+      { "id": "requires_pve", "paramSchema": null },
+      { "id": "requires_station_target", "paramSchema": null },
+      { "id": "requires_armada_target", "paramSchema": null },
+      { "id": "per_round_stacking", "paramSchema": "{\"maxStacks\": \"number\"}" },
+      { "id": "below_health_threshold", "paramSchema": "{\"threshold\": \"number\"}" }
+    ],
+    "issueTypes": [
+      { "id": "not_applicable_to_target_kind", "severity": "blocker", "defaultMessage": "Effect targets a different target kind" },
+      { "id": "missing_required_target_tag", "severity": "blocker", "defaultMessage": "Target doesn't have the required tag" },
+      { "id": "missing_required_target_ship_class", "severity": "blocker", "defaultMessage": "Target isn't the required ship class" },
+      { "id": "missing_required_ship_class", "severity": "blocker", "defaultMessage": "Your ship isn't the required class" },
+      { "id": "requires_attacking", "severity": "conditional", "defaultMessage": "Only works when attacking" },
+      { "id": "requires_defending", "severity": "conditional", "defaultMessage": "Only works when defending" },
+      { "id": "requires_pvp", "severity": "conditional", "defaultMessage": "PvP only" },
+      { "id": "requires_pve", "severity": "conditional", "defaultMessage": "PvE only" },
+      { "id": "requires_station_target", "severity": "conditional", "defaultMessage": "Station combat only" },
+      { "id": "requires_armada_target", "severity": "conditional", "defaultMessage": "Armada only" },
+      { "id": "missing_required_status", "severity": "conditional", "defaultMessage": "Requires specific combat state" },
+      { "id": "slot_mismatch", "severity": "blocker", "defaultMessage": "Effect is for a different slot" },
+      { "id": "unknown_condition", "severity": "conditional", "defaultMessage": "Parser couldn't classify condition" },
+      { "id": "reserved_officer", "severity": "info", "defaultMessage": "Officer is reserved on another loadout" },
+      { "id": "captain_maneuver_missing_or_inert", "severity": "blocker", "defaultMessage": "No usable captain maneuver for this objective" }
+    ]
+  },
+  "intents": [
+    {
+      "id": "general",
+      "name": "General",
+      "description": "General-purpose crew configuration",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 1.0 },
+        { "effectKey": "mitigation", "weight": 1.0 },
+        { "effectKey": "officer_attack", "weight": 0.5 },
+        { "effectKey": "officer_defense", "weight": 0.5 },
+        { "effectKey": "officer_health", "weight": 0.5 }
+      ]
+    },
+    {
+      "id": "mining-gas",
+      "name": "Gas Mining",
+      "description": "Collecting raw gas from nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "mining-crystal",
+      "name": "Crystal Mining",
+      "description": "Collecting raw crystal from nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "mining-ore",
+      "name": "Ore Mining",
+      "description": "Collecting raw ore from nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "mining-tri",
+      "name": "Tritanium Mining",
+      "description": "Collecting tritanium from refined nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "mining-dil",
+      "name": "Dilithium Mining",
+      "description": "Collecting dilithium from refined nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "mining-para",
+      "name": "Parsteel Mining",
+      "description": "Collecting parsteel from refined nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "mining-lat",
+      "name": "Latinum Mining",
+      "description": "Collecting latinum from nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "mining-iso",
+      "name": "Isogen Mining",
+      "description": "Collecting isogen from nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "mining-data",
+      "name": "Data Mining",
+      "description": "Collecting data from nodes",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"],
+        "shipClass": "survey"
+      },
+      "effectWeights": [
+        { "effectKey": "mining_rate", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 1.5 },
+        { "effectKey": "cargo_capacity", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "grinding",
+      "name": "Hostile Grinding",
+      "description": "Grinding hostile NPCs for dailies and events",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": ["pve"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 3.0 },
+        { "effectKey": "weapon_damage", "weight": 2.5 },
+        { "effectKey": "crit_chance", "weight": 2.0 },
+        { "effectKey": "crit_damage", "weight": 2.0 },
+        { "effectKey": "armor", "weight": 1.5 },
+        { "effectKey": "shield_health", "weight": 1.0 },
+        { "effectKey": "hull_health", "weight": 1.0 },
+        { "effectKey": "mitigation", "weight": 1.5 },
+        { "effectKey": "penetration", "weight": 1.5 },
+        { "effectKey": "accuracy", "weight": 1.0 },
+        { "effectKey": "loot_bonus", "weight": 0.5 },
+        { "effectKey": "officer_attack", "weight": 1.0 },
+        { "effectKey": "officer_defense", "weight": 0.8 },
+        { "effectKey": "officer_health", "weight": 0.8 }
+      ]
+    },
+    {
+      "id": "grinding-swarm",
+      "name": "Swarm Grinding",
+      "description": "Grinding swarm hostiles specifically",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": ["pve", "swarm"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 3.0 },
+        { "effectKey": "weapon_damage", "weight": 2.5 },
+        { "effectKey": "crit_chance", "weight": 2.0 },
+        { "effectKey": "crit_damage", "weight": 2.0 },
+        { "effectKey": "armor", "weight": 1.5 },
+        { "effectKey": "mitigation", "weight": 1.5 },
+        { "effectKey": "penetration", "weight": 1.5 },
+        { "effectKey": "officer_attack", "weight": 1.0 },
+        { "effectKey": "officer_defense", "weight": 0.8 },
+        { "effectKey": "officer_health", "weight": 0.8 }
+      ]
+    },
+    {
+      "id": "grinding-eclipse",
+      "name": "Eclipse Grinding",
+      "description": "Grinding eclipse hostiles specifically",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": ["pve", "eclipse"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 3.0 },
+        { "effectKey": "weapon_damage", "weight": 2.5 },
+        { "effectKey": "crit_chance", "weight": 2.0 },
+        { "effectKey": "crit_damage", "weight": 2.0 },
+        { "effectKey": "armor", "weight": 1.5 },
+        { "effectKey": "mitigation", "weight": 1.5 },
+        { "effectKey": "penetration", "weight": 1.5 },
+        { "effectKey": "officer_attack", "weight": 1.0 },
+        { "effectKey": "officer_defense", "weight": 0.8 },
+        { "effectKey": "officer_health", "weight": 0.8 }
+      ]
+    },
+    {
+      "id": "armada",
+      "name": "Armada",
+      "description": "Group armada operations",
+      "defaultContext": {
+        "targetKind": "armada_target",
+        "engagement": "attacking",
+        "targetTags": ["armada"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 3.0 },
+        { "effectKey": "weapon_damage", "weight": 2.5 },
+        { "effectKey": "crit_chance", "weight": 2.5 },
+        { "effectKey": "crit_damage", "weight": 2.5 },
+        { "effectKey": "penetration", "weight": 2.0 },
+        { "effectKey": "accuracy", "weight": 1.5 },
+        { "effectKey": "mitigation", "weight": 1.0 },
+        { "effectKey": "armor", "weight": 1.0 },
+        { "effectKey": "officer_attack", "weight": 1.0 },
+        { "effectKey": "officer_defense", "weight": 0.5 },
+        { "effectKey": "officer_health", "weight": 0.5 }
+      ]
+    },
+    {
+      "id": "armada-solo",
+      "name": "Solo Armada",
+      "description": "Solo armada takedowns",
+      "defaultContext": {
+        "targetKind": "armada_target",
+        "engagement": "attacking",
+        "targetTags": ["armada"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 3.0 },
+        { "effectKey": "weapon_damage", "weight": 2.5 },
+        { "effectKey": "crit_chance", "weight": 2.0 },
+        { "effectKey": "crit_damage", "weight": 2.0 },
+        { "effectKey": "penetration", "weight": 2.0 },
+        { "effectKey": "mitigation", "weight": 2.0 },
+        { "effectKey": "armor", "weight": 1.5 },
+        { "effectKey": "hull_health", "weight": 1.0 },
+        { "effectKey": "shield_health", "weight": 1.0 },
+        { "effectKey": "officer_attack", "weight": 1.0 },
+        { "effectKey": "officer_defense", "weight": 1.0 },
+        { "effectKey": "officer_health", "weight": 0.8 }
+      ]
+    },
+    {
+      "id": "pvp",
+      "name": "PvP/Raiding",
+      "description": "Player vs player combat and raiding",
+      "defaultContext": {
+        "targetKind": "player_ship",
+        "engagement": "attacking",
+        "targetTags": ["pvp"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 2.5 },
+        { "effectKey": "weapon_damage", "weight": 2.5 },
+        { "effectKey": "crit_chance", "weight": 2.5 },
+        { "effectKey": "crit_damage", "weight": 2.5 },
+        { "effectKey": "penetration", "weight": 2.0 },
+        { "effectKey": "shield_piercing", "weight": 2.0 },
+        { "effectKey": "mitigation", "weight": 2.0 },
+        { "effectKey": "armor", "weight": 1.5 },
+        { "effectKey": "dodge", "weight": 1.5 },
+        { "effectKey": "accuracy", "weight": 1.5 },
+        { "effectKey": "officer_attack", "weight": 1.0 },
+        { "effectKey": "officer_defense", "weight": 1.0 },
+        { "effectKey": "officer_health", "weight": 0.8 }
+      ]
+    },
+    {
+      "id": "base-defense",
+      "name": "Base Defense",
+      "description": "Defending your starbase",
+      "defaultContext": {
+        "targetKind": "player_ship",
+        "engagement": "defending",
+        "targetTags": ["pvp", "station_assault"]
+      },
+      "effectWeights": [
+        { "effectKey": "mitigation", "weight": 3.0 },
+        { "effectKey": "armor", "weight": 2.5 },
+        { "effectKey": "shield_health", "weight": 2.5 },
+        { "effectKey": "hull_health", "weight": 2.0 },
+        { "effectKey": "shield_repair", "weight": 1.5 },
+        { "effectKey": "hull_repair", "weight": 1.5 },
+        { "effectKey": "dodge", "weight": 1.5 },
+        { "effectKey": "damage_dealt", "weight": 1.0 },
+        { "effectKey": "officer_defense", "weight": 1.0 },
+        { "effectKey": "officer_health", "weight": 1.0 },
+        { "effectKey": "officer_attack", "weight": 0.5 }
+      ]
+    },
+    {
+      "id": "exploration",
+      "name": "Exploration",
+      "description": "Exploring new systems and sectors",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"]
+      },
+      "effectWeights": [
+        { "effectKey": "warp_range", "weight": 3.0 },
+        { "effectKey": "dodge", "weight": 1.0 },
+        { "effectKey": "mitigation", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "cargo-run",
+      "name": "Cargo Run",
+      "description": "Transporting cargo between stations",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"]
+      },
+      "effectWeights": [
+        { "effectKey": "cargo_capacity", "weight": 3.0 },
+        { "effectKey": "mining_protection", "weight": 2.0 },
+        { "effectKey": "warp_range", "weight": 1.5 }
+      ]
+    },
+    {
+      "id": "events",
+      "name": "Events",
+      "description": "Special timed event activities",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "attacking",
+        "targetTags": ["pve"]
+      },
+      "effectWeights": [
+        { "effectKey": "damage_dealt", "weight": 2.0 },
+        { "effectKey": "loot_bonus", "weight": 2.0 },
+        { "effectKey": "xp_bonus", "weight": 1.5 },
+        { "effectKey": "mitigation", "weight": 1.0 },
+        { "effectKey": "officer_attack", "weight": 0.5 },
+        { "effectKey": "officer_defense", "weight": 0.5 }
+      ]
+    },
+    {
+      "id": "voyages",
+      "name": "Voyages",
+      "description": "Long-range autonomous voyages",
+      "defaultContext": {
+        "targetKind": "hostile",
+        "engagement": "any",
+        "targetTags": ["pve"]
+      },
+      "effectWeights": [
+        { "effectKey": "warp_range", "weight": 3.0 },
+        { "effectKey": "cargo_capacity", "weight": 1.5 },
+        { "effectKey": "mitigation", "weight": 1.0 }
+      ]
+    },
+    {
+      "id": "away-team",
+      "name": "Away Team",
+      "description": "Ground-based away team missions",
+      "defaultContext": {
+        "targetKind": "mission_npc",
+        "engagement": "any",
+        "targetTags": ["pve"]
+      },
+      "effectWeights": [
+        { "effectKey": "officer_attack", "weight": 2.0 },
+        { "effectKey": "officer_defense", "weight": 2.0 },
+        { "effectKey": "officer_health", "weight": 2.0 }
+      ]
+    }
+  ],
+  "officers": [
+    {
+      "_comment": "Kirk — classic grinding captain. CM boosts all damage to hostiles.",
+      "id": "kirk:cm",
+      "officerId": "cdn:officer:kirk",
+      "slot": "cm",
+      "name": "Inspirational",
+      "rawText": "Kirk increases all damage dealt against hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "kirk:cm:damage",
+          "effectKey": "damage_dealt",
+          "magnitude": 0.30,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "kirk:oa",
+      "officerId": "cdn:officer:kirk",
+      "slot": "oa",
+      "name": "Bold Leadership",
+      "rawText": "Kirk increases weapon damage against hostiles by 20% each round.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "kirk:oa:weapdmg",
+          "effectKey": "weapon_damage",
+          "magnitude": 0.20,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": [],
+          "conditions": [
+            { "conditionKey": "per_round_stacking", "params": { "maxStacks": "5" } }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Spock — science officer, bridge crew for grinding/armada.",
+      "id": "spock:cm",
+      "officerId": "cdn:officer:spock",
+      "slot": "cm",
+      "name": "Logical Approach",
+      "rawText": "Spock increases the critical hit chance against hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "spock:cm:crit",
+          "effectKey": "crit_chance",
+          "magnitude": 0.25,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "spock:oa",
+      "officerId": "cdn:officer:spock",
+      "slot": "oa",
+      "name": "Science Officer",
+      "rawText": "Spock increases all officer stats on the ship when fighting hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "spock:oa:attack",
+          "effectKey": "officer_attack",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": [],
+          "conditions": []
+        },
+        {
+          "id": "spock:oa:defense",
+          "effectKey": "officer_defense",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": [],
+          "conditions": []
+        },
+        {
+          "id": "spock:oa:health",
+          "effectKey": "officer_health",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "_comment": "McCoy — medic officer, survivability for grinding.",
+      "id": "mccoy:cm",
+      "officerId": "cdn:officer:mccoy",
+      "slot": "cm",
+      "name": "Doctor's Orders",
+      "rawText": "McCoy increases hull health of the ship when fighting hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "mccoy:cm:hull",
+          "effectKey": "hull_health",
+          "magnitude": 0.25,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "mccoy:oa",
+      "officerId": "cdn:officer:mccoy",
+      "slot": "oa",
+      "name": "Field Medic",
+      "rawText": "McCoy reduces damage taken from hostiles at the start of each round.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "mccoy:oa:mitigation",
+          "effectKey": "mitigation",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": [],
+          "conditions": [
+            { "conditionKey": "at_round_start" }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Sulu — helmsman. CM boosts dodge (player_ship defense), not damage to hostiles.",
+      "id": "sulu:cm",
+      "officerId": "cdn:officer:sulu",
+      "slot": "cm",
+      "name": "Evasive Maneuvers",
+      "rawText": "Sulu increases dodge chance at the start of combat.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "sulu:cm:dodge",
+          "effectKey": "dodge",
+          "magnitude": 0.20,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            { "conditionKey": "at_combat_start" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sulu:oa",
+      "officerId": "cdn:officer:sulu",
+      "slot": "oa",
+      "name": "Precision Targeting",
+      "rawText": "Sulu increases weapon damage when attacking.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "sulu:oa:weapdmg",
+          "effectKey": "weapon_damage",
+          "magnitude": 0.10,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            { "conditionKey": "requires_attacking" }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Uhura — comms officer. Can be useful but CM is non-combat focused.",
+      "id": "uhura:cm",
+      "officerId": "cdn:officer:uhura",
+      "slot": "cm",
+      "name": "Communications Expert",
+      "rawText": "Uhura increases the ship's warp range.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "uhura:cm:warp",
+          "effectKey": "warp_range",
+          "magnitude": 0.30,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "uhura:oa",
+      "officerId": "cdn:officer:uhura",
+      "slot": "oa",
+      "name": "Signal Boost",
+      "rawText": "Uhura increases the accuracy of the ship's weapons.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "uhura:oa:accuracy",
+          "effectKey": "accuracy",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "_comment": "Scotty — engineer, survivability officer.",
+      "id": "scotty:cm",
+      "officerId": "cdn:officer:scotty",
+      "slot": "cm",
+      "name": "Engineering Excellence",
+      "rawText": "Scotty increases the ship's shield health.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "scotty:cm:shield",
+          "effectKey": "shield_health",
+          "magnitude": 0.25,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "scotty:oa",
+      "officerId": "cdn:officer:scotty",
+      "slot": "oa",
+      "name": "Miracle Worker",
+      "rawText": "Scotty repairs hull when shields are depleted.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "scotty:oa:repair",
+          "effectKey": "hull_repair",
+          "magnitude": 0.10,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            { "conditionKey": "when_shields_depleted" }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Ivanov — generic combat officer. Some damage but no hostile specialization.",
+      "id": "ivanov:cm",
+      "officerId": "cdn:officer:ivanov",
+      "slot": "cm",
+      "name": "Tactical Coordination",
+      "rawText": "Ivanov increases weapon damage at the start of each round.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "ivanov:cm:weapdmg",
+          "effectKey": "weapon_damage",
+          "magnitude": 0.10,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            { "conditionKey": "at_round_start" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ivanov:oa",
+      "officerId": "cdn:officer:ivanov",
+      "slot": "oa",
+      "name": "Armor Boost",
+      "rawText": "Ivanov increases armor rating when defending.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "ivanov:oa:armor",
+          "effectKey": "armor",
+          "magnitude": 0.10,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            { "conditionKey": "requires_defending" }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "T'Pring — gas mining specialist captain.",
+      "id": "tpring:cm",
+      "officerId": "cdn:officer:tpring",
+      "slot": "cm",
+      "name": "Gas Miner",
+      "rawText": "T'Pring increases the Mining Rate of the ship when mining Gas.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "tpring:cm:mining",
+          "effectKey": "mining_rate",
+          "magnitude": 0.30,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "tpring:oa",
+      "officerId": "cdn:officer:tpring",
+      "slot": "oa",
+      "name": "Protected Cargo",
+      "rawText": "T'Pring increases protected cargo capacity.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "tpring:oa:cargo",
+          "effectKey": "cargo_capacity",
+          "magnitude": 0.20,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "_comment": "Chang — Klingon warrior, PvP oriented.",
+      "id": "chang:cm",
+      "officerId": "cdn:officer:chang",
+      "slot": "cm",
+      "name": "Warrior's Strike",
+      "rawText": "Chang increases critical damage against player ships.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "chang:cm:critdmg",
+          "effectKey": "crit_damage",
+          "magnitude": 0.30,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["player_ship"],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "chang:oa",
+      "officerId": "cdn:officer:chang",
+      "slot": "oa",
+      "name": "Klingon Honor",
+      "rawText": "Chang increases penetration when attacking player ships.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "chang:oa:pen",
+          "effectKey": "penetration",
+          "magnitude": 0.20,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["player_ship"],
+          "targetTags": [],
+          "conditions": [
+            { "conditionKey": "requires_attacking" }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Khan — augmented warrior, armada specialist.",
+      "id": "khan:cm",
+      "officerId": "cdn:officer:khan",
+      "slot": "cm",
+      "name": "Superior Intellect",
+      "rawText": "Khan increases all damage against armada targets.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "khan:cm:damage",
+          "effectKey": "damage_dealt",
+          "magnitude": 0.35,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["armada_target"],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "khan:oa",
+      "officerId": "cdn:officer:khan",
+      "slot": "oa",
+      "name": "Augmented Fury",
+      "rawText": "Khan increases critical chance and critical damage against armada targets.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "khan:oa:crit",
+          "effectKey": "crit_chance",
+          "magnitude": 0.20,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["armada_target"],
+          "targetTags": [],
+          "conditions": []
+        },
+        {
+          "id": "khan:oa:critdmg",
+          "effectKey": "crit_damage",
+          "magnitude": 0.20,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["armada_target"],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "_comment": "Nero — swarm specialist. Anti-swarm abilities.",
+      "id": "nero:cm",
+      "officerId": "cdn:officer:nero",
+      "slot": "cm",
+      "name": "Vengeance",
+      "rawText": "Nero increases all damage against Swarm hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "nero:cm:damage",
+          "effectKey": "damage_dealt",
+          "magnitude": 0.30,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": ["swarm"],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "nero:oa",
+      "officerId": "cdn:officer:nero",
+      "slot": "oa",
+      "name": "Rage",
+      "rawText": "Nero increases armor against Swarm hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "nero:oa:armor",
+          "effectKey": "armor",
+          "magnitude": 0.25,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": ["hostile"],
+          "targetTags": ["swarm"],
+          "conditions": []
+        }
+      ]
+    }
+  ]
+}
