@@ -31,6 +31,9 @@ import affected from "./ax/affected.js";
 import status from "./ax/status.js";
 import coverage from "./ax/coverage.js";
 import diff from "./ax/diff.js";
+import effectsBuild from "./ax/effects-build.js";
+import effectsReviewPack from "./ax/effects-review-pack.js";
+import effectsApplyDecisions from "./ax/effects-apply-decisions.js";
 
 // ─── Command table ──────────────────────────────────────────────
 
@@ -43,12 +46,16 @@ const COMMANDS: Record<string, AxCommand> = {
   status:    status,
   coverage:  coverage,
   diff:      diff,
+  "effects:build": effectsBuild,
+  "effects:review-pack": effectsReviewPack,
+  "effects:apply-decisions": effectsApplyDecisions,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
-const commandName = args.find(a => !a.startsWith("--"));
+const positionalArgs = args.filter(a => !a.startsWith("--"));
+const commandName = positionalArgs[0] === "majel" ? positionalArgs[1] : positionalArgs[0];
 
 // ─── Router ─────────────────────────────────────────────────────
 

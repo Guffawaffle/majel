@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added dry-run diagnostics command `npm run effects:dry-run` that validates seed data, checks deterministic hash stability, and prints a JSON report suitable for CI/PM review. (`scripts/effects-contract-dry-run.ts`, `package.json`)
 - Added focused tests for validation failures and determinism invariants. (`test/effects-contract-v3.test.ts`)
 
+#### Effects AX build/review harness (Addendum C)
+- Added committed AX harness commands for local snapshot review loops:
+  - `effects:build` (deterministic + optional hybrid sidecar inference report)
+  - `effects:review-pack` (AI-readable review JSON/Markdown pack)
+  - `effects:apply-decisions` (guarded placeholder; intentionally disabled pending later gates)
+  (`scripts/ax/effects-build.ts`, `scripts/ax/effects-review-pack.ts`, `scripts/ax/effects-apply-decisions.ts`, `scripts/ax/effects-harness.ts`, `scripts/ax.ts`, `package.json`)
+
 ### Fixed
 
 #### Effect taxonomy seed contract parity

@@ -24,7 +24,15 @@ export const ROOT = resolve(__dirname, "../..");
 /** Extract a --name=value flag from args. */
 export function getFlag(args: string[], name: string): string | undefined {
   const flag = args.find(a => a.startsWith(`--${name}=`));
-  return flag?.split("=").slice(1).join("=");
+  if (flag) return flag.split("=").slice(1).join("=");
+
+  const exactIndex = args.findIndex(a => a === `--${name}`);
+  if (exactIndex >= 0) {
+    const next = args[exactIndex + 1];
+    if (next && !next.startsWith("--")) return next;
+  }
+
+  return undefined;
 }
 
 /** Check for a boolean --name flag in args. */

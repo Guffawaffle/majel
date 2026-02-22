@@ -436,3 +436,33 @@ Example file: `inference-report.<hash>.json` (not fetched by default web UI)
 - Inferred candidates may not overwrite a deterministic effect record directly.
 - The only allowed mutation of an existing effect record is via an explicit override op that targets (abilityId, effectId).
 - If inference proposes an effect that collides with an existing deterministic effect signature, the candidate must be rejected or remain in sidecar.
+
+---
+
+# Addendum C: AX Build-and-Review Harness (Cody-operable)
+
+Committed CLI scaffolding is available in `scripts/ax` so local AI operators (including Cody) can run snapshot build/review loops without private machine-only setup.
+
+## Commands
+
+1) `npm run ax -- effects:build --mode=deterministic|hybrid [--snapshot=<id>]`
+- Produces deterministic artifacts (`manifest`, `taxonomy`, `officers.index`, `effects chunk`, contract file) under `tmp/effects/runs/<runId>/artifacts/`.
+- In `hybrid` mode also produces `inference-report.json` sidecar under the run folder.
+- Writes build receipt: `receipts/effects-build.<runId>.json`.
+- Always validates the contract first; build fails fast on schema/taxonomy errors.
+
+2) `npm run ax -- effects:review-pack --run=<runId>`
+- Reads the build receipt + inference report and emits AI review assets:
+  - `review/review-pack.<runId>.json`
+  - `review/review-pack.<runId>.md`
+- Writes receipt: `receipts/effects-review-pack.<runId>.json`.
+
+3) `npm run ax -- effects:apply-decisions --run=<runId> --decisions=<path>`
+- Guarded placeholder in this phase.
+- Intentionally fails with guidance until Phase 3/4 gates + decision application flow are implemented.
+
+## Safety constraints
+
+- AI review artifacts are derived sidecar outputs; they are not runtime web artifacts.
+- Canonical artifacts are never directly mutated by AI review outputs in this phase.
+- Future apply path must remain: decisions -> deterministic gates/validators -> receipt.
