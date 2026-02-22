@@ -40,3 +40,6 @@ logs/
 
 # Game data snapshots (local-only, never committed)
 data/.stfc-snapshot/
+
+# Local Copilot agent guidance (workspace-local, not repo policy)
+.github/copilot-instructions.md
