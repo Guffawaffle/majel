@@ -69,7 +69,61 @@ interface IntentVectorArtifact {
 }
 
 const PHRASE_MAP = phraseMapV0 as PhraseMapArtifact;
-const INTENT_VECTORS = intentVectorsV0 as IntentVectorArtifact;
+
+function parseIntentVectorArtifact(value: unknown): IntentVectorArtifact {
+  if (!isObject(value) || !Array.isArray(value.intents)) {
+    return { intents: [] };
+  }
+
+  const intents: IntentVectorDef[] = [];
+  for (const rawIntent of value.intents) {
+    if (!isObject(rawIntent)) continue;
+
+    const intentKey = typeof rawIntent.intentKey === "string" ? rawIntent.intentKey : null;
+    const label = typeof rawIntent.label === "string" ? rawIntent.label : null;
+    const defaultTargetContext = parseTargetContext(rawIntent.defaultTargetContext);
+    const weights = parseNumericRecord(rawIntent.weights);
+
+    if (!intentKey || !label || !defaultTargetContext) continue;
+
+    intents.push({
+      intentKey,
+      label,
+      defaultTargetContext,
+      weights,
+    });
+  }
+
+  return { intents };
+}
+
+function parseNumericRecord(value: unknown): Record<string, number> {
+  if (!isObject(value)) return {};
+  const parsed: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      parsed[key] = raw;
+    }
+  }
+  return parsed;
+}
+
+function parseTargetContext(value: unknown): TargetContext | null {
+  if (!isObject(value)) return null;
+  const targetKind = typeof value.targetKind === "string" ? value.targetKind : null;
+  const engagement = typeof value.engagement === "string" ? value.engagement : null;
+  const targetTags = Array.isArray(value.targetTags) ? value.targetTags.filter((tag): tag is string => typeof tag === "string") : [];
+
+  if (!targetKind || !engagement) return null;
+
+  return {
+    targetKind: targetKind as TargetContext["targetKind"],
+    engagement: engagement as TargetContext["engagement"],
+    targetTags,
+  };
+}
+
+const INTENT_VECTORS = parseIntentVectorArtifact(intentVectorsV0);
 
 /**
  * Bundle response from /api/effects/bundle (matches server type EffectBundleResponse)
@@ -137,21 +191,29 @@ function isEffectBundleResponse(value: unknown): value is EffectBundleResponse {
   return Array.isArray(value.intents) && isObject(value.officers);
 }
 
+function isApiSuccessEnvelope(value: unknown): value is ApiSuccessEnvelope<unknown> {
+  return isObject(value) && value.ok === true && "data" in value;
+}
+
+function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
+  return isObject(value) && value.ok === false;
+}
+
 function unwrapEffectBundlePayload(payload: unknown): EffectBundleResponse {
   if (isEffectBundleResponse(payload)) {
     return payload;
   }
 
-  if (isObject(payload) && payload.ok === true && "data" in payload) {
-    const data = (payload as ApiSuccessEnvelope<unknown>).data;
+  if (isApiSuccessEnvelope(payload)) {
+    const data = payload.data;
     if (isEffectBundleResponse(data)) {
       return data;
     }
     throw new Error("Malformed effect bundle payload in envelope: expected data.intents[] and data.officers{}");
   }
 
-  if (isObject(payload) && payload.ok === false) {
-    const errorMessage = (payload as ApiErrorEnvelope).error?.message ?? "Unknown API error";
+  if (isApiErrorEnvelope(payload)) {
+    const errorMessage = payload.error?.message ?? "Unknown API error";
     throw new Error(`Effect bundle request failed: ${errorMessage}`);
   }
 

@@ -163,7 +163,7 @@ function buildEffectBreakdown(
       const weight = hasKnownWeight ? intentWeights[effectEval.effectKey] ?? 0 : 0;
       const effect = ability?.effects.find((entry) => entry.id === effectEval.effectId);
       const hasUnknownMagnitude = effect?.magnitude == null;
-      const magnitude = hasUnknownMagnitude ? 1 : effect.magnitude;
+      const magnitude = effect?.magnitude ?? 1;
       const baseContribution = magnitude * weight * effectEval.applicabilityMultiplier;
       const contribution = hasUnknownMagnitude
         ? baseContribution * UNKNOWN_MAGNITUDE_CONTRIBUTION_FACTOR
