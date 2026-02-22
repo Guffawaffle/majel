@@ -459,6 +459,11 @@ Committed CLI scaffolding is available in `scripts/ax` so local AI operators (in
 - Writes build receipt: `receipts/effects-build.<runId>.json`.
 - Always validates the contract first; build fails fast on schema/taxonomy errors.
 
+1.5) `npm run ax -- effects:budgets`
+- Evaluates configured drift/inference budgets from `data/seed/effects-ci-budget.v1.json`.
+- Blocks on deterministic drift and hard thresholds; surfaces soft-budget warnings for operator visibility.
+- Included in default `npm run ax -- ci` gate.
+
 2) `npm run ax -- effects:review-pack --run=<runId>`
 - Reads the build receipt + inference report and emits AI review assets:
   - `review/review-pack.<runId>.json`

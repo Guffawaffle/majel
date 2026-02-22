@@ -268,6 +268,74 @@ describe("EffectBundleAdapter", () => {
 
     await expect(fetchEffectBundle()).rejects.toThrow(/malformed effect bundle payload/i);
   });
+
+  it("fetchEffectBundle assembles runtime split artifacts via manifest/taxonomy/index/chunks", async () => {
+    const raw = createMockBundle();
+    const manifest = {
+      schemaVersion: "1.0.0",
+      generatedAt: "2026-02-22T00:00:00.000Z",
+      bundleHash: "abc123",
+      paths: {
+        taxonomy: "/api/effects/runtime/taxonomy.aaaa.json",
+        officersIndex: "/api/effects/runtime/officers.index.bbbb.json",
+        chunks: ["/api/effects/runtime/chunk-0001.cccc.json"],
+      },
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/api/effects/runtime/manifest.json")) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: async () => ({ ok: true, data: manifest }),
+        } as Response;
+      }
+      if (url.includes("taxonomy.aaaa.json")) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: async () => ({ ok: true, data: { schemaVersion: "1.0.0", intents: raw.intents } }),
+        } as Response;
+      }
+      if (url.includes("officers.index.bbbb.json")) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: async () => ({
+            ok: true,
+            data: {
+              schemaVersion: "1.0.0",
+              officers: [{ officerId: "kirk-001", officerName: "Kirk", abilityCount: 2, chunkPath: manifest.paths.chunks[0] }],
+              chunkPaths: manifest.paths.chunks,
+            },
+          }),
+        } as Response;
+      }
+      if (url.includes("chunk-0001.cccc.json")) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: async () => ({ ok: true, data: { schemaVersion: "1.0.0", officers: raw.officers } }),
+        } as Response;
+      }
+
+      return {
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        json: async () => ({ ok: false, error: { message: "not found" } }),
+      } as Response;
+    });
+
+    const result = await fetchEffectBundle();
+    expect(result.intents[0]?.id).toBe("grinding");
+    expect(result.officers["kirk-001"]?.abilities).toHaveLength(2);
+  });
 });
 
 describe("#139 phrase-map coverage", () => {
@@ -341,6 +409,7 @@ describe("EffectBundleManager", () => {
     expect(mgr.hasError()).toBe(true);
     expect(mgr.getError()?.message).toBe("network down");
     expect(mgr.get()).toBeNull();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 
   it("concurrent load() calls share one fetch and resolve together", async () => {
@@ -360,6 +429,6 @@ describe("EffectBundleManager", () => {
 
     const results = await Promise.allSettled([mgr.load(), mgr.load(), mgr.load()]);
     expect(results.every((r) => r.status === "rejected")).toBe(true);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 });

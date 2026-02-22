@@ -9,6 +9,7 @@ import { makeResult, runCapture } from "./runner.js";
 import lint from "./lint.js";
 import typecheck from "./typecheck.js";
 import test from "./test.js";
+import effectsBudgets from "./effects-budgets.js";
 
 const command: AxCommand = {
   name: "ci",
@@ -80,7 +81,30 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 4: Test ──────────────────────────────────────────
+    // ── Step 4: Effects budgets ───────────────────────────────
+    const budgetsResult = await effectsBudgets.run(ciArgs);
+    steps.push({
+      step: "effects:budgets",
+      success: budgetsResult.success,
+      durationMs: budgetsResult.durationMs,
+      data: {
+        deterministic: budgetsResult.data.deterministic,
+        inferredPromotedRatio: budgetsResult.data.inferredPromotedRatio,
+        lowConfidenceCandidateCount: budgetsResult.data.lowConfidenceCandidateCount,
+        mappedCoveragePercent: budgetsResult.data.mappedCoveragePercent,
+        warnings: budgetsResult.data.warnings,
+      },
+    });
+
+    if (!budgetsResult.success) {
+      return makeResult("ci", start, { steps, stoppedAt: "effects:budgets" }, {
+        success: false,
+        errors: budgetsResult.errors ?? ["effects budget gate failed"],
+        hints: ["Run: npm run ax -- effects:budgets"],
+      });
+    }
+
+    // ── Step 5: Test ──────────────────────────────────────────
     const testResult = await test.run(ciArgs);
     steps.push({
       step: "test",
@@ -102,7 +126,7 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 5: Web tests ─────────────────────────────────────
+    // ── Step 6: Web tests ─────────────────────────────────────
     const webTestStart = Date.now();
     const webTest = runCapture("npm", ["--prefix", "web", "run", "test"], { ignoreExit: true });
     const webTestDuration = Date.now() - webTestStart;

@@ -34,6 +34,7 @@ import diff from "./ax/diff.js";
 import effectsBuild from "./ax/effects-build.js";
 import effectsReviewPack from "./ax/effects-review-pack.js";
 import effectsApplyDecisions from "./ax/effects-apply-decisions.js";
+import effectsBudgets from "./ax/effects-budgets.js";
 
 // ─── Command table ──────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ const COMMANDS: Record<string, AxCommand> = {
   "effects:build": effectsBuild,
   "effects:review-pack": effectsReviewPack,
   "effects:apply-decisions": effectsApplyDecisions,
+  "effects:budgets": effectsBudgets,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────

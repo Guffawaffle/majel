@@ -205,6 +205,38 @@ interface ApiErrorEnvelope {
   meta?: unknown;
 }
 
+interface RuntimeManifestResponse {
+  schemaVersion: "1.0.0";
+  generatedAt: string;
+  bundleHash: string;
+  paths: {
+    taxonomy: string;
+    officersIndex: string;
+    chunks: string[];
+  };
+}
+
+interface RuntimeTaxonomyResponse {
+  schemaVersion: string;
+  intents: EffectBundleResponse["intents"];
+}
+
+interface RuntimeOfficersIndexResponse {
+  schemaVersion: string;
+  officers: Array<{
+    officerId: string;
+    officerName: string;
+    abilityCount: number;
+    chunkPath: string;
+  }>;
+  chunkPaths: string[];
+}
+
+interface RuntimeChunkResponse {
+  schemaVersion: string;
+  officers: EffectBundleResponse["officers"];
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -241,6 +273,114 @@ function unwrapEffectBundlePayload(payload: unknown): EffectBundleResponse {
   }
 
   throw new Error("Malformed effect bundle response: expected bundle object or AX envelope");
+}
+
+function unwrapApiData(payload: unknown): unknown {
+  if (isApiSuccessEnvelope(payload)) return payload.data;
+  if (isApiErrorEnvelope(payload)) {
+    throw new Error(payload.error?.message ?? "Unknown API error");
+  }
+  return payload;
+}
+
+function isRuntimeManifestResponse(value: unknown): value is RuntimeManifestResponse {
+  if (!isObject(value)) return false;
+  if (value.schemaVersion !== "1.0.0") return false;
+  if (!isObject(value.paths)) return false;
+  return typeof value.paths.taxonomy === "string"
+    && typeof value.paths.officersIndex === "string"
+    && Array.isArray(value.paths.chunks);
+}
+
+function isRuntimeTaxonomyResponse(value: unknown): value is RuntimeTaxonomyResponse {
+  return isObject(value) && typeof value.schemaVersion === "string" && Array.isArray(value.intents);
+}
+
+function isRuntimeOfficersIndexResponse(value: unknown): value is RuntimeOfficersIndexResponse {
+  return isObject(value)
+    && typeof value.schemaVersion === "string"
+    && Array.isArray(value.officers)
+    && Array.isArray(value.chunkPaths);
+}
+
+function isRuntimeChunkResponse(value: unknown): value is RuntimeChunkResponse {
+  return isObject(value) && typeof value.schemaVersion === "string" && isObject(value.officers);
+}
+
+async function fetchEffectBundleFromRuntimeArtifacts(): Promise<EffectBundleResponse> {
+  const manifestResponse = await fetch("/api/effects/runtime/manifest.json", {
+    method: "GET",
+    headers: { "Accept": "application/json" },
+  });
+
+  if (!manifestResponse.ok) {
+    throw new Error(`Runtime manifest unavailable: ${manifestResponse.status}`);
+  }
+
+  const manifestPayload = await manifestResponse.json();
+
+  try {
+    return unwrapEffectBundlePayload(manifestPayload);
+  } catch {
+    // Continue runtime-path parsing
+  }
+
+  const manifestData = unwrapApiData(manifestPayload);
+  if (!isRuntimeManifestResponse(manifestData)) {
+    throw new Error("Malformed runtime manifest payload");
+  }
+
+  const [taxonomyResponse, indexResponse] = await Promise.all([
+    fetch(manifestData.paths.taxonomy, { method: "GET", headers: { "Accept": "application/json" } }),
+    fetch(manifestData.paths.officersIndex, { method: "GET", headers: { "Accept": "application/json" } }),
+  ]);
+
+  if (!taxonomyResponse.ok) {
+    throw new Error(`Runtime taxonomy fetch failed: ${taxonomyResponse.status}`);
+  }
+
+  if (!indexResponse.ok) {
+    throw new Error(`Runtime officers index fetch failed: ${indexResponse.status}`);
+  }
+
+  const taxonomyPayload = unwrapApiData(await taxonomyResponse.json());
+  const indexPayload = unwrapApiData(await indexResponse.json());
+
+  if (!isRuntimeTaxonomyResponse(taxonomyPayload)) {
+    throw new Error("Malformed runtime taxonomy payload");
+  }
+
+  if (!isRuntimeOfficersIndexResponse(indexPayload)) {
+    throw new Error("Malformed runtime officers index payload");
+  }
+
+  const chunkResponses = await Promise.all(
+    manifestData.paths.chunks.map((path) => fetch(path, { method: "GET", headers: { "Accept": "application/json" } })),
+  );
+
+  const chunkPayloads = await Promise.all(chunkResponses.map(async (response) => {
+    if (!response.ok) {
+      throw new Error(`Runtime chunk fetch failed: ${response.status}`);
+    }
+    const payload = unwrapApiData(await response.json());
+    if (!isRuntimeChunkResponse(payload)) {
+      throw new Error("Malformed runtime chunk payload");
+    }
+    return payload;
+  }));
+
+  const officers: EffectBundleResponse["officers"] = {};
+  for (const chunk of chunkPayloads) {
+    for (const [officerId, officer] of Object.entries(chunk.officers)) {
+      officers[officerId] = officer;
+    }
+  }
+
+  return {
+    schemaVersion: taxonomyPayload.schemaVersion,
+    intents: taxonomyPayload.intents,
+    officers,
+  };
 }
 
 /**
@@ -329,17 +469,21 @@ function applyCanonicalIntentVectors(
  * Fetch and parse the effect bundle from the server.
  */
 export async function fetchEffectBundle(): Promise<EffectBundleResponse> {
-  const response = await fetch("/api/effects/bundle", {
-    method: "GET",
-    headers: { "Accept": "application/json" },
-  });
+  try {
+    return await fetchEffectBundleFromRuntimeArtifacts();
+  } catch {
+    const response = await fetch("/api/effects/bundle", {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+    });
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch effect bundle: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch effect bundle: ${response.status} ${response.statusText}`);
+    }
+
+    const payload = await response.json();
+    return unwrapEffectBundlePayload(payload);
   }
-
-  const payload = await response.json();
-  return unwrapEffectBundlePayload(payload);
 }
 
 /**

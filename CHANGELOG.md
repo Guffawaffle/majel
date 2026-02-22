@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Effects Contract v3 — Phase 6 CI budgets + runtime split/caching rollout (#145)
+- Added `effects:budgets` AX command with configurable thresholds in `data/seed/effects-ci-budget.v1.json`.
+  - Block gates: deterministic hash stability, inferred promoted ratio, mapped coverage floor.
+  - Warn budget: low-confidence candidate count.
+  (`scripts/ax/effects-budgets.ts`, `data/seed/effects-ci-budget.v1.json`)
+- Integrated `effects:budgets` into default `ax ci` pipeline as an explicit gate step with surfaced warning metrics. (`scripts/ax/ci.ts`, `scripts/ax.ts`)
+- Added runtime split artifact delivery endpoints with deterministic hash-addressed paths and cache headers:
+  - `/api/effects/runtime/manifest.json`
+  - `/api/effects/runtime/taxonomy.<hash>.json`
+  - `/api/effects/runtime/officers.index.<hash>.json`
+  - `/api/effects/runtime/chunk-<id>.<hash>.json`
+  (`src/server/routes/effects.ts`)
+- Updated web fetch strategy to load effect data via manifest/taxonomy/index/chunks with fallback to legacy `/api/effects/bundle`. (`web/src/lib/effect-bundle-adapter.ts`)
+- Added runtime split fetch coverage in effect bundle tests. (`test/effect-bundle.test.ts`)
+
 #### Effects Contract v3 — Phase 5 override engine + precedence checks (#144)
 - Added explicit override seed surface `data/seed/effects-overrides.v1.json` and integrated deterministic precedence: generated base -> overrides -> final artifact in `effects:build`. (`data/seed/effects-overrides.v1.json`, `scripts/ax/effects-build.ts`)
 - Added contract-level override executor for `replace_effect` operations with stable target IDs and forced override metadata (`forcedByOverride=true`). (`src/server/services/effects-contract-v3.ts`)
