@@ -32,7 +32,7 @@
     { key: "battleship", label: "Vs Battleship" },
   ] as const;
 
-  let intentKey = $state("grinding");
+  let intentKey = $state("hostile_grinding");
   let shipClass = $state("");
   let targetClass = $state<"any" | "explorer" | "interceptor" | "battleship">("any");
 

@@ -154,13 +154,13 @@ describe("evaluateEffect", () => {
       expect(result.status).toBe("works");
     });
 
-    it("requires_attacking is conditional when defending", () => {
+    it("requires_attacking is blocked when defending", () => {
       const effect = makeEffect({
         conditions: [{ conditionKey: "requires_attacking", params: null }],
       });
       const result = evaluateEffect(effect, makeContext({ engagement: "defending" }));
-      expect(result.status).toBe("conditional");
-      expect(result.applicabilityMultiplier).toBe(0.5);
+      expect(result.status).toBe("blocked");
+      expect(result.applicabilityMultiplier).toBe(0);
     });
 
     it("requires_defending passes when defending", () => {
@@ -179,12 +179,12 @@ describe("evaluateEffect", () => {
       expect(result.status).toBe("works");
     });
 
-    it("requires_defending is conditional when attacking", () => {
+    it("requires_defending is blocked when attacking", () => {
       const effect = makeEffect({
         conditions: [{ conditionKey: "requires_defending", params: null }],
       });
       const result = evaluateEffect(effect, makeContext({ engagement: "attacking" }));
-      expect(result.status).toBe("conditional");
+      expect(result.status).toBe("blocked");
     });
   });
 
@@ -197,12 +197,12 @@ describe("evaluateEffect", () => {
       expect(result.status).toBe("works");
     });
 
-    it("requires_pvp is conditional without pvp tag", () => {
+    it("requires_pvp is blocked without pvp tag", () => {
       const effect = makeEffect({
         conditions: [{ conditionKey: "requires_pvp", params: null }],
       });
       const result = evaluateEffect(effect, makeContext({ targetTags: ["pve"] }));
-      expect(result.status).toBe("conditional");
+      expect(result.status).toBe("blocked");
     });
 
     it("requires_pve passes with pve tag", () => {
@@ -221,12 +221,12 @@ describe("evaluateEffect", () => {
       expect(result.status).toBe("works");
     });
 
-    it("requires_station_target is conditional for non-station", () => {
+    it("requires_station_target is blocked for non-station", () => {
       const effect = makeEffect({
         conditions: [{ conditionKey: "requires_station_target", params: null }],
       });
       const result = evaluateEffect(effect, makeContext({ targetKind: "hostile" }));
-      expect(result.status).toBe("conditional");
+      expect(result.status).toBe("blocked");
     });
 
     it("requires_armada_target passes for armada_target", () => {
@@ -377,25 +377,25 @@ describe("evaluateEffect", () => {
       expect(result.status).toBe("conditional");
     });
 
-    it("when_target_burning is works if target_burning tag present", () => {
+    it("when_target_is_burning is works if target_burning tag present", () => {
       const effect = makeEffect({
-        conditions: [{ conditionKey: "when_target_burning", params: null }],
+        conditions: [{ conditionKey: "when_target_is_burning", params: null }],
       });
       const result = evaluateEffect(effect, makeContext({ targetTags: ["pve", "target_burning"] }));
       expect(result.status).toBe("works");
     });
 
-    it("when_target_burning is conditional if target_burning tag absent", () => {
+    it("when_target_is_burning is conditional if target_burning tag absent", () => {
       const effect = makeEffect({
-        conditions: [{ conditionKey: "when_target_burning", params: null }],
+        conditions: [{ conditionKey: "when_target_is_burning", params: null }],
       });
       const result = evaluateEffect(effect, makeContext({ targetTags: ["pve"] }));
       expect(result.status).toBe("conditional");
     });
 
-    it("when_target_hull_breached is works if tag present", () => {
+    it("when_target_has_hull_breach is works if tag present", () => {
       const effect = makeEffect({
-        conditions: [{ conditionKey: "when_target_hull_breached", params: null }],
+        conditions: [{ conditionKey: "when_target_has_hull_breach", params: null }],
       });
       const result = evaluateEffect(effect, makeContext({ targetTags: ["pve", "target_hull_breached"] }));
       expect(result.status).toBe("works");
@@ -780,8 +780,8 @@ describe("issue #138 golden regression suite (evaluator status counts)", () => {
     );
 
     expect(counts.works).toBe(1);
-    expect(counts.blocked).toBe(1);
-    expect(counts.conditional).toBe(1);
+    expect(counts.blocked).toBe(2);
+    expect(counts.conditional).toBe(0);
   });
 });
 

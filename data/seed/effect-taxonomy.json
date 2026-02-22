@@ -49,7 +49,7 @@
       { "id": "crit_chance", "category": "damage" },
       { "id": "crit_damage", "category": "damage" },
       { "id": "accuracy", "category": "damage" },
-      { "id": "penetration", "category": "damage" },
+      { "id": "piercing", "category": "damage" },
       { "id": "shield_piercing", "category": "damage" },
       { "id": "damage_taken", "category": "survivability" },
       { "id": "mitigation", "category": "survivability" },
@@ -87,8 +87,6 @@
       { "id": "when_burning", "paramSchema": null },
       { "id": "when_target_is_burning", "paramSchema": null },
       { "id": "when_target_has_hull_breach", "paramSchema": null },
-      { "id": "when_target_burning", "paramSchema": null },
-      { "id": "when_target_hull_breached", "paramSchema": null },
       { "id": "requires_attacking", "paramSchema": null },
       { "id": "requires_defending", "paramSchema": null },
       { "id": "requires_target_ship_class", "paramSchema": "{\"class\": \"string\"}" },
@@ -107,12 +105,12 @@
       { "id": "missing_required_target_tag", "severity": "blocker", "defaultMessage": "Target doesn't have the required tag" },
       { "id": "missing_required_target_ship_class", "severity": "blocker", "defaultMessage": "Target isn't the required ship class" },
       { "id": "missing_required_ship_class", "severity": "blocker", "defaultMessage": "Your ship isn't the required class" },
-      { "id": "requires_attacking", "severity": "conditional", "defaultMessage": "Only works when attacking" },
-      { "id": "requires_defending", "severity": "conditional", "defaultMessage": "Only works when defending" },
-      { "id": "requires_pvp", "severity": "conditional", "defaultMessage": "PvP only" },
-      { "id": "requires_pve", "severity": "conditional", "defaultMessage": "PvE only" },
-      { "id": "requires_station_target", "severity": "conditional", "defaultMessage": "Station combat only" },
-      { "id": "requires_armada_target", "severity": "conditional", "defaultMessage": "Armada only" },
+      { "id": "requires_attacking", "severity": "blocker", "defaultMessage": "Only works when attacking" },
+      { "id": "requires_defending", "severity": "blocker", "defaultMessage": "Only works when defending" },
+      { "id": "requires_pvp", "severity": "blocker", "defaultMessage": "PvP only" },
+      { "id": "requires_pve", "severity": "blocker", "defaultMessage": "PvE only" },
+      { "id": "requires_station_target", "severity": "blocker", "defaultMessage": "Station combat only" },
+      { "id": "requires_armada_target", "severity": "blocker", "defaultMessage": "Armada only" },
       { "id": "missing_required_status", "severity": "conditional", "defaultMessage": "Requires specific combat state" },
       { "id": "slot_mismatch", "severity": "blocker", "defaultMessage": "Effect is for a different slot" },
       { "id": "unknown_condition", "severity": "conditional", "defaultMessage": "Parser couldn't classify condition" },
@@ -168,14 +166,14 @@
       "defaultContext": {
         "targetKind": "station",
         "engagement": "attacking",
-        "targetTags": ["pvp", "station_assault"]
+        "targetTags": ["pvp", "station"]
       },
       "effectWeights": [
         { "effectKey": "damage_dealt", "weight": 1.0 },
         { "effectKey": "weapon_damage", "weight": 0.9 },
         { "effectKey": "crit_chance", "weight": 0.7 },
         { "effectKey": "crit_damage", "weight": 0.7 },
-        { "effectKey": "penetration", "weight": 0.8 },
+        { "effectKey": "piercing", "weight": 0.8 },
         { "effectKey": "mitigation", "weight": 0.4 }
       ]
     },

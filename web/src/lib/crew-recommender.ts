@@ -112,6 +112,18 @@ const SYNERGY_PAIR_BONUS = scoringContractV0.synergyPairBonus;
 const READINESS_LEVEL_WEIGHT = scoringContractV0.readiness.levelWeight;
 const READINESS_POWER_WEIGHT = scoringContractV0.readiness.powerWeight;
 
+function resolveIntentOrThrow(
+  effectBundle: EffectBundleData,
+  intentKey: string,
+) {
+  const intent = effectBundle.intents.get(intentKey);
+  const weights = effectBundle.intentWeights.get(intentKey);
+  if (!intent || !weights) {
+    throw new Error(`Unknown intent key: ${intentKey}`);
+  }
+  return { intent, weights };
+}
+
 /**
  * Check whether an officer has a useful Captain Maneuver for the given context.
  * Returns true if at least one CM effect has a positive intent weight and isn't blocked.
@@ -243,10 +255,10 @@ function scoreOfficerForSlotEffect(
     effectBundle: EffectBundleData;
   },
 ): OfficerScoreBreakdown {
-  const intent = opts.effectBundle.intents.get(opts.intentKey);
-  const ctx = buildTargetContext(intent, opts.shipClass, opts.targetClass);
+  const resolved = resolveIntentOrThrow(opts.effectBundle, opts.intentKey);
+  const ctx = buildTargetContext(resolved.intent, opts.shipClass, opts.targetClass);
   const intentGroup = deriveIntentGroup(opts.intentKey, ctx);
-  const weights = opts.effectBundle.intentWeights.get(opts.intentKey) ?? {};
+  const weights = resolved.weights;
   const abilities = opts.effectBundle.officerAbilities.get(officer.id) ?? [];
   const slotCtx = bridgeSlotToSlotContext(opts.slot);
 
@@ -321,7 +333,7 @@ function buildEffectReasons(
     reasons.push(`Blocked for current target: ${blockedEvidence}.`);
   }
 
-  if (!captainViable) {
+  if (!captainViable && !captainFallbackUsed) {
     reasons.push(`⚠ ${captainName} has no useful Captain Maneuver for this objective.`);
   }
   if (captainFallbackUsed) {
@@ -361,10 +373,10 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
   const maxPower = Math.max(...pool.map((o) => o.userPower ?? 0), 1);
   const byId = new Map(pool.map((o) => [o.id, o]));
 
-  const intent = bundle.intents.get(input.intentKey);
-  const ctx = buildTargetContext(intent, input.shipClass, input.targetClass);
+  const resolved = resolveIntentOrThrow(bundle, input.intentKey);
+  const ctx = buildTargetContext(resolved.intent, input.shipClass, input.targetClass);
   const intentGroup = deriveIntentGroup(input.intentKey, ctx);
-  const weights = bundle.intentWeights.get(input.intentKey) ?? {};
+  const weights = resolved.weights;
 
   // Score all officers for captain slot with gating
   const captainScored = pool.map((o) => {

@@ -308,7 +308,7 @@ describe("validateCrew", () => {
       }
     });
 
-    it("handles missing intent gracefully (no crash)", () => {
+    it("throws on missing intent key", () => {
       const bundle = makeBundle({
         officers: new Map([
           ["kirk", [makeAbility({ officerId: "kirk" })]],
@@ -316,13 +316,10 @@ describe("validateCrew", () => {
           ["mccoy", [makeAbility({ officerId: "mccoy" })]],
         ]),
       });
-      const result = validateCrew(makeInput({
+      expect(() => validateCrew(makeInput({
         effectBundle: bundle,
         intentKey: "nonexistent_intent",
-      }));
-      expect(result.officers).toHaveLength(3);
-      // Should not throw; returns some verdict
-      expect(["works", "partial", "blocked", "unknown"]).toContain(result.verdict);
+      }))).toThrow(/unknown intent key/i);
     });
 
     it("rounds totalScore to 2 decimal places", () => {

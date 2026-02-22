@@ -26,7 +26,7 @@ export const GUIDED_SETUP_TEMPLATES: GuidedSetupTemplate[] = [
   {
     key: "swarm",
     title: "Swarm",
-    description: "Daily and event swarm grinding.",
+    description: "Daily and event hostile farming.",
     officerNames: ["Pike", "Moreau", "T'Laan", "Jaylah", "Cadet Uhura"],
     shipNames: ["Franklin", "Franklin-A"],
   },

@@ -14,8 +14,9 @@ import type {
 } from "./types/effect-types.js";
 import phraseMapV0 from "./data/phrase-map.v0.json";
 import intentVectorsV0 from "./data/intent-vectors.v0.json";
+import captainViabilityKeysV0 from "./data/captain-viability-keys.v0.json";
 
-export type MappingIssueType = "unmapped_ability_text" | "unknown_magnitude";
+export type MappingIssueType = "unmapped_ability_text" | "unknown_magnitude" | "unknown_effect_key";
 
 export interface EffectMappingIssue {
   type: MappingIssueType;
@@ -29,6 +30,7 @@ export interface EffectMappingTelemetry {
   mappedAbilities: number;
   mappedPercent: number;
   unknownMagnitudeEffects: number;
+  unknownEffectKeyCount: number;
   topUnmappedAbilityPhrases: string[];
 }
 
@@ -69,6 +71,11 @@ interface IntentVectorArtifact {
 }
 
 const PHRASE_MAP = phraseMapV0 as PhraseMapArtifact;
+const CAPTAIN_KEYS = captainViabilityKeysV0 as {
+  combatRelevantKeys: string[];
+  economyRelevantKeys: string[];
+  metaAmplifierKeys: string[];
+};
 
 function parseIntentVectorArtifact(value: unknown): IntentVectorArtifact {
   if (!isObject(value) || !Array.isArray(value.intents)) {
@@ -124,6 +131,15 @@ function parseTargetContext(value: unknown): TargetContext | null {
 }
 
 const INTENT_VECTORS = parseIntentVectorArtifact(intentVectorsV0);
+
+const KNOWN_EFFECT_KEYS = new Set<string>([
+  ...INTENT_VECTORS.intents.flatMap((intent) => Object.keys(intent.weights)),
+  ...PHRASE_MAP.effects.map((effect) => effect.effectKey),
+  ...(PHRASE_MAP.meta_effects ?? []).map((effect) => effect.effectKey),
+  ...CAPTAIN_KEYS.combatRelevantKeys,
+  ...CAPTAIN_KEYS.economyRelevantKeys,
+  ...CAPTAIN_KEYS.metaAmplifierKeys,
+]);
 
 /**
  * Bundle response from /api/effects/bundle (matches server type EffectBundleResponse)
@@ -330,23 +346,11 @@ export function adaptEffectBundle(raw: EffectBundleResponse): EffectBundleData {
   let totalAbilities = 0;
   let mappedAbilities = 0;
   let unknownMagnitudeEffects = 0;
+  let unknownEffectKeyCount = 0;
   const unmappedAbilityPhraseCounts = new Map<string, number>();
 
-  // Index intents and their weights
-  for (const intent of raw.intents) {
-    intentWeights.set(intent.id, intent.effectWeights);
-    intents.set(intent.id, {
-      id: intent.id,
-      name: intent.name,
-      description: intent.description,
-      defaultContext: (intent.defaultContext ?? {
-        targetKind: "hostile",
-        engagement: "any",
-        targetTags: [],
-      }) as TargetContext,
-      effectWeights: intent.effectWeights,
-    });
-  }
+  // Intents are finite and canonical: ignore dynamic server intent definitions.
+  // We still consume server officer/effect data below.
 
   // Index officer abilities and effects
   for (const [officerId, officerData] of Object.entries(raw.officers)) {
@@ -393,6 +397,16 @@ export function adaptEffectBundle(raw: EffectBundleResponse): EffectBundleData {
       }
 
       for (const effect of ability.effects) {
+        if (!KNOWN_EFFECT_KEYS.has(effect.effectKey)) {
+          unknownEffectKeyCount += 1;
+          mappingIssues.push({
+            type: "unknown_effect_key",
+            abilityId: ability.id,
+            officerId,
+            detail: effect.effectKey,
+          });
+        }
+
         if (effect.magnitude == null) {
           unknownMagnitudeEffects += 1;
           mappingIssues.push({
@@ -420,6 +434,7 @@ export function adaptEffectBundle(raw: EffectBundleResponse): EffectBundleData {
     mappedAbilities,
     mappedPercent: totalAbilities > 0 ? Math.round((mappedAbilities / totalAbilities) * 1000) / 10 : 100,
     unknownMagnitudeEffects,
+    unknownEffectKeyCount,
     topUnmappedAbilityPhrases,
   };
 

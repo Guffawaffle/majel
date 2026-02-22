@@ -146,7 +146,7 @@
         </label>
         <label class="ws-field">
           <span>Reserved For</span>
-          <input type="text" bind:value={formReservedFor} maxlength="100" placeholder="e.g. Swarm Grinding, PvP" />
+          <input type="text" bind:value={formReservedFor} maxlength="100" placeholder="e.g. hostile_grinding, pvp_station_hit" />
         </label>
         <label class="ws-field ws-field-checkbox">
           <input type="checkbox" bind:checked={formLocked} />

@@ -116,8 +116,12 @@ const SLOTS_ORDERED: BridgeSlot[] = ["captain", "bridge_1", "bridge_2"];
 export function validateCrew(input: ValidateCrewInput): CrewValidation {
   const { slots, officerNames, intentKey, shipClass, targetClass, effectBundle } = input;
   const intent = effectBundle.intents.get(intentKey);
+  const weights = effectBundle.intentWeights.get(intentKey);
+  if (!intent || !weights) {
+    throw new Error(`Unknown intent key: ${intentKey}`);
+  }
+
   const ctx = buildTargetContext(intent, shipClass, targetClass);
-  const weights = effectBundle.intentWeights.get(intentKey) ?? {};
 
   const officers: ValidatedOfficer[] = [];
 

@@ -263,6 +263,33 @@ describe("effect-based scoring (ADR-034)", () => {
     })).toThrow(/effect bundle is required/i);
   });
 
+  it("throws when scoreOfficerForSlot is invoked with unknown intent key", () => {
+    const kirk = makeOfficer({ id: "o-kirk", name: "Kirk", userLevel: 60, userPower: 1000 });
+    expect(() => scoreOfficerForSlot(kirk, {
+      intentKey: "nonexistent_intent",
+      reservations: [],
+      maxPower: 1000,
+      slot: "captain",
+      effectBundle: bundle,
+    })).toThrow(/unknown intent key/i);
+  });
+
+  it("throws when recommendBridgeTrios is invoked with unknown intent key", () => {
+    const officers = [
+      makeOfficer({ id: "o-kirk", name: "Kirk", userLevel: 60, userPower: 1000 }),
+      makeOfficer({ id: "o-spock", name: "Spock", userLevel: 60, userPower: 1000 }),
+      makeOfficer({ id: "o-mccoy", name: "McCoy", userLevel: 60, userPower: 1000 }),
+    ];
+
+    expect(() => recommendBridgeTrios({
+      officers,
+      reservations: [],
+      intentKey: "nonexistent_intent",
+      limit: 1,
+      effectBundle: bundle,
+    })).toThrow(/unknown intent key/i);
+  });
+
   it("Kirk scores higher than Sulu as captain for grinding", () => {
     const kirk = makeOfficer({ id: "o-kirk", name: "Kirk", userLevel: 60, userPower: 1000 });
     const sulu = makeOfficer({ id: "o-sulu", name: "Sulu", userLevel: 60, userPower: 1000 });
@@ -322,7 +349,7 @@ describe("phase-1 scoring contract: applicability drives contribution", () => {
           effectKey: "damage_dealt",
           magnitude: 1.0,
           applicableTargetKinds: ["hostile"],
-          conditions: [{ conditionKey: "requires_defending", params: null }],
+          conditions: [{ conditionKey: "when_shields_depleted", params: null }],
         }],
       })],
       "o-blocked": [makeTestAbility({
@@ -374,12 +401,12 @@ describe("phase-1 scoring contract: applicability drives contribution", () => {
       },
       officers: {
         "o-captain": [makeTestAbility({
-          id: "captain:oa",
+          id: "captain:cm",
           officerId: "o-captain",
-          slot: "oa",
+          slot: "cm",
           effects: [
             { effectKey: "damage_dealt", magnitude: 1.0, applicableTargetKinds: ["hostile"] },
-            { effectKey: "weapon_damage", magnitude: 1.0, conditions: [{ conditionKey: "requires_defending", params: null }] },
+            { effectKey: "weapon_damage", magnitude: 1.0, conditions: [{ conditionKey: "when_shields_depleted", params: null }] },
           ],
         })],
         "o-b1": [makeTestAbility({
@@ -635,6 +662,35 @@ describe("effect-based captain gating", () => {
     });
 
     expect(score.captainBonus).toBeLessThan(0);
+  });
+
+  it("treats officer stat CM keys as viable for combat intents", () => {
+    const officerStatCmBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { damage_dealt: 1.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-doc": [makeTestAbility({
+          id: "doc:cm",
+          officerId: "o-doc",
+          slot: "cm",
+          effects: [{ effectKey: "officer_health", magnitude: 0.35, applicableTargetKinds: ["hostile"] }],
+        })],
+      },
+    });
+
+    const score = scoreOfficerForSlot(makeOfficer({ id: "o-doc", name: "Doc", userLevel: 1, userPower: 1 }), {
+      intentKey: "grinding",
+      reservations: [],
+      maxPower: 1,
+      slot: "captain",
+      effectBundle: officerStatCmBundle,
+    });
+
+    expect(score.captainBonus).toBeGreaterThan(0);
   });
 
   it("treats economy CM keys as viable for economy intents even on armada targets", () => {

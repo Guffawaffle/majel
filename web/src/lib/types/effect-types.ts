@@ -230,32 +230,32 @@ export const ISSUE_TYPES: Record<string, IssueTypeDef> = {
   },
   requires_attacking: {
     id: "requires_attacking",
-    severity: "conditional",
+    severity: "blocker",
     defaultMessage: "Only works when attacking",
   },
   requires_defending: {
     id: "requires_defending",
-    severity: "conditional",
+    severity: "blocker",
     defaultMessage: "Only works when defending",
   },
   requires_pvp: {
     id: "requires_pvp",
-    severity: "conditional",
+    severity: "blocker",
     defaultMessage: "PvP only",
   },
   requires_pve: {
     id: "requires_pve",
-    severity: "conditional",
+    severity: "blocker",
     defaultMessage: "PvE only",
   },
   requires_station_target: {
     id: "requires_station_target",
-    severity: "conditional",
+    severity: "blocker",
     defaultMessage: "Station combat only",
   },
   requires_armada_target: {
     id: "requires_armada_target",
-    severity: "conditional",
+    severity: "blocker",
     defaultMessage: "Armada only",
   },
   missing_required_status: {

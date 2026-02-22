@@ -96,38 +96,38 @@ function evaluateCondition(
     // ── Engagement conditions ──
     case "requires_attacking":
       if (ctx.engagement !== "attacking" && ctx.engagement !== "any") {
-        return makeIssue("requires_attacking", "conditional", "Only works when attacking");
+        return makeIssue("requires_attacking", "blocker", "Only works when attacking");
       }
       return null;
 
     case "requires_defending":
       if (ctx.engagement !== "defending" && ctx.engagement !== "any") {
-        return makeIssue("requires_defending", "conditional", "Only works when defending");
+        return makeIssue("requires_defending", "blocker", "Only works when defending");
       }
       return null;
 
     // ── Mode conditions ──
     case "requires_pvp":
       if (!ctx.targetTags.includes("pvp")) {
-        return makeIssue("requires_pvp", "conditional", "PvP only");
+        return makeIssue("requires_pvp", "blocker", "PvP only");
       }
       return null;
 
     case "requires_pve":
       if (!ctx.targetTags.includes("pve")) {
-        return makeIssue("requires_pve", "conditional", "PvE only");
+        return makeIssue("requires_pve", "blocker", "PvE only");
       }
       return null;
 
     case "requires_station_target":
       if (ctx.targetKind !== "station") {
-        return makeIssue("requires_station_target", "conditional", "Station combat only");
+        return makeIssue("requires_station_target", "blocker", "Station combat only");
       }
       return null;
 
     case "requires_armada_target":
       if (ctx.targetKind !== "armada_target") {
-        return makeIssue("requires_armada_target", "conditional", "Armada only");
+        return makeIssue("requires_armada_target", "blocker", "Armada only");
       }
       return null;
 
@@ -211,7 +211,6 @@ function evaluateCondition(
       );
 
     case "when_target_is_burning":
-    case "when_target_burning":
       if (ctx.targetTags.includes("target_burning")) return null;
       return makeIssue(
         "missing_required_status",
@@ -220,7 +219,6 @@ function evaluateCondition(
       );
 
     case "when_target_has_hull_breach":
-    case "when_target_hull_breached":
       if (ctx.targetTags.includes("target_hull_breached")) return null;
       return makeIssue(
         "missing_required_status",

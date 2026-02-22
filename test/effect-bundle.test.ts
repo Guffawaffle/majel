@@ -97,20 +97,25 @@ describe("EffectBundleAdapter", () => {
     const adapted = adaptEffectBundle(raw);
 
     expect(adapted.schemaVersion).toBe("1.0.0");
-    expect(adapted.intentWeights.size).toBe(3);
+    expect(adapted.intentWeights.size).toBe(2);
     expect(adapted.officerAbilities.size).toBe(1);
-    expect(adapted.intents.size).toBe(3);
+    expect(adapted.intents.size).toBe(2);
   });
 
-  it("indexes intent weights correctly", () => {
+  it("uses canonical finite intent weights", () => {
     const raw = createMockBundle();
     const adapted = adaptEffectBundle(raw);
 
-    const weights = adapted.intentWeights.get("grinding");
+    const weights = adapted.intentWeights.get("hostile_grinding");
     expect(weights).toEqual({
-      damage_dealt: 3.0,
-      weapon_damage: 2.5,
-      crit_chance: 2.0,
+      damage_dealt: 1,
+      weapon_damage: 0.8,
+      crit_chance: 0.6,
+      crit_damage: 0.6,
+      mitigation: 0.9,
+      hull_health: 0.4,
+      shield_health: 0.4,
+      dodge: 0.2,
     });
   });
 
@@ -149,13 +154,13 @@ describe("EffectBundleAdapter", () => {
     expect(cm.effects[0].magnitude).toBe(0.3);
   });
 
-  it("indexes intents with default context", () => {
+  it("indexes canonical intents with default context", () => {
     const raw = createMockBundle();
     const adapted = adaptEffectBundle(raw);
 
-    const intent = adapted.intents.get("grinding");
+    const intent = adapted.intents.get("hostile_grinding");
     expect(intent).toBeDefined();
-    expect(intent!.name).toBe("Grinding");
+    expect(intent!.name).toBe("Hostile grinding (PvE)");
     expect(intent!.defaultContext?.targetKind).toBe("hostile");
     expect(intent!.defaultContext?.targetTags).toEqual(["pve"]);
   });
@@ -228,6 +233,15 @@ describe("EffectBundleAdapter", () => {
     const adapted = adaptEffectBundle(raw);
     expect(adapted.mappingTelemetry.unknownMagnitudeEffects).toBe(1);
     expect(adapted.mappingIssues.some((issue) => issue.type === "unknown_magnitude")).toBe(true);
+  });
+
+  it("emits unknown_effect_key mapping issues and counts", () => {
+    const raw = createMockBundle();
+    raw.officers["kirk-001"].abilities[0].effects[0].effectKey = "mystery_effect_key";
+
+    const adapted = adaptEffectBundle(raw);
+    expect(adapted.mappingTelemetry.unknownEffectKeyCount).toBe(1);
+    expect(adapted.mappingIssues.some((issue) => issue.type === "unknown_effect_key")).toBe(true);
   });
 
   it("fetchEffectBundle unwraps AX success envelope", async () => {
@@ -303,7 +317,7 @@ describe("EffectBundleManager", () => {
 
     const result = await mgr.load();
     expect(result.schemaVersion).toBe("1.0.0");
-    expect(result.intentWeights.size).toBe(3);
+    expect(result.intentWeights.size).toBe(2);
     expect(mgr.get()).toBe(result);
     expect(mgr.hasError()).toBe(false);
   });

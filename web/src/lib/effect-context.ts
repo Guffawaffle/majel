@@ -11,15 +11,15 @@ import type { TargetContext, SlotContext, ShipClass } from "./types/effect-types
  * Build a TargetContext from an intent's default context plus user overrides.
  */
 export function buildTargetContext(
-  intent: { defaultContext: TargetContext } | undefined,
+  intent: { defaultContext: TargetContext },
   shipClass?: string | null,
   targetClass?: string | null,
 ): TargetContext {
-  const dc = intent?.defaultContext;
+  const dc = intent.defaultContext;
   const ctx: TargetContext = {
-    targetKind: dc?.targetKind ?? "hostile",
-    engagement: dc?.engagement ?? "any",
-    targetTags: [...(dc?.targetTags ?? [])],
+    targetKind: dc.targetKind,
+    engagement: dc.engagement,
+    targetTags: [...dc.targetTags],
   };
 
   if (shipClass) {
