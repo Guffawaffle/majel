@@ -6,7 +6,48 @@ import {
 import {
   buildReviewPack,
   deriveInferenceReport,
+  evaluateInferenceCandidate,
+  summarizeCandidateStatuses,
+  type InferenceCandidate,
 } from "../scripts/ax/effects-harness.js";
+
+function createCandidateEffect(effectId: string): InferenceCandidate["proposedEffects"][number] {
+  return {
+    effectId,
+    effectKey: "damage_dealt",
+    magnitude: 0.2,
+    unit: "percent",
+    stacking: "additive",
+    targets: {
+      targetKinds: ["hostile"],
+      targetTags: ["pve"],
+      shipClass: null,
+    },
+    conditions: [],
+    extraction: {
+      method: "deterministic",
+      ruleId: "seed_contract_v0",
+      model: null,
+      promptVersion: null,
+      inputDigest: "sha256:test",
+    },
+    inferred: false,
+    promotionReceiptId: null,
+    confidence: {
+      score: 1,
+      tier: "high",
+      forcedByOverride: false,
+    },
+    evidence: [{
+      sourceRef: "effect-taxonomy.json#/officers/byAbilityId/test/effects/0",
+      snippet: "Increase damage dealt",
+      ruleId: "seed_contract_v0",
+      sourceLocale: "en",
+      sourcePath: "effect-taxonomy.json",
+      sourceOffset: 0,
+    }],
+  };
+}
 
 function createSeedWithUnmappedAbility(): EffectsSeedFile {
   return {
@@ -91,5 +132,63 @@ describe("effects-harness inference + review pack", () => {
     expect(pack.runId).toBe("run-123");
     expect(pack.candidateCount).toBe(1);
     expect(pack.candidates[0].confidence.tier).toBe("medium");
+  });
+
+  it("marks high-confidence valid candidates as gate_passed", () => {
+    const evaluated = evaluateInferenceCandidate({
+      abilityId: "cdn:officer:100:oa",
+      candidateId: "cand-pass",
+      candidateStatus: "proposed",
+      proposedEffects: [createCandidateEffect("effect-a")],
+      confidence: { score: 0.91, tier: "high" },
+      rationale: "test",
+      gateResults: [],
+      evidence: [{
+        sourceRef: "effect-taxonomy.json#/test",
+        snippet: "test",
+        ruleId: "seed_contract_v0",
+        sourceLocale: "en",
+        sourcePath: "effect-taxonomy.json",
+        sourceOffset: 0,
+      }],
+    });
+
+    expect(evaluated.candidateStatus).toBe("gate_passed");
+    expect(evaluated.gateResults.every((gate) => gate.status === "pass")).toBe(true);
+  });
+
+  it("rejects candidates with duplicate effect signatures", () => {
+    const duplicated = createCandidateEffect("effect-a");
+    const evaluated = evaluateInferenceCandidate({
+      abilityId: "cdn:officer:100:oa",
+      candidateId: "cand-reject",
+      candidateStatus: "proposed",
+      proposedEffects: [duplicated, { ...duplicated, effectId: "effect-b" }],
+      confidence: { score: 0.95, tier: "high" },
+      rationale: "test",
+      gateResults: [],
+      evidence: [{
+        sourceRef: "effect-taxonomy.json#/test",
+        snippet: "test",
+        ruleId: "seed_contract_v0",
+        sourceLocale: "en",
+        sourcePath: "effect-taxonomy.json",
+        sourceOffset: 0,
+      }],
+    });
+
+    expect(evaluated.candidateStatus).toBe("rejected");
+    expect(evaluated.gateResults.some((gate) => gate.gate === "contradiction_intra_ability" && gate.status === "fail")).toBe(true);
+  });
+
+  it("summarizes candidate status counts", () => {
+    const counts = summarizeCandidateStatuses([
+      { abilityId: "a", candidateId: "1", candidateStatus: "proposed", proposedEffects: [], confidence: { score: 0.5, tier: "medium" }, rationale: "", gateResults: [], evidence: [] },
+      { abilityId: "a", candidateId: "2", candidateStatus: "gate_passed", proposedEffects: [], confidence: { score: 0.9, tier: "high" }, rationale: "", gateResults: [], evidence: [] },
+      { abilityId: "a", candidateId: "3", candidateStatus: "gate_failed", proposedEffects: [], confidence: { score: 0.4, tier: "low" }, rationale: "", gateResults: [], evidence: [] },
+      { abilityId: "a", candidateId: "4", candidateStatus: "rejected", proposedEffects: [], confidence: { score: 0.8, tier: "high" }, rationale: "", gateResults: [], evidence: [] },
+    ]);
+
+    expect(counts).toEqual({ proposed: 1, gate_passed: 1, gate_failed: 1, rejected: 1 });
   });
 });

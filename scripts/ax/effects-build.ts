@@ -7,6 +7,7 @@ import {
   deriveInferenceReport,
   readEffectsSeedFile,
   summarizeEffectsContractArtifact,
+  summarizeCandidateStatuses,
   type EffectsBuildMode,
   type EffectsBuildReceipt,
   writeDeterministicArtifacts,
@@ -124,9 +125,11 @@ const command: AxCommand = {
       const report = deriveInferenceReport(built.artifact, runId);
       const reportPath = resolve("tmp", "effects", "runs", runId, "inference-report.json");
       await writeJsonAt(reportPath, report);
+      const statusCounts = summarizeCandidateStatuses(report.candidates);
       receipt.stochastic = {
         inferenceReportPath: reportPath,
         candidateCount: report.candidates.length,
+        statusCounts,
       };
     }
 

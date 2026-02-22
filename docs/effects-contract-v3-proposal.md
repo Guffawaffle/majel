@@ -448,6 +448,7 @@ Committed CLI scaffolding is available in `scripts/ax` so local AI operators (in
 1) `npm run ax -- effects:build --mode=deterministic|hybrid [--snapshot=<id>]`
 - Produces deterministic artifacts (`manifest`, `taxonomy`, `officers.index`, `effects chunk`, contract file) under `tmp/effects/runs/<runId>/artifacts/`.
 - In `hybrid` mode also produces `inference-report.json` sidecar under the run folder.
+- Hybrid inference sidecar now evaluates candidate gates and assigns statuses (`proposed`, `gate_passed`, `gate_failed`, `rejected`) with status counts recorded in the build receipt.
 - Writes build receipt: `receipts/effects-build.<runId>.json`.
 - Always validates the contract first; build fails fast on schema/taxonomy errors.
 

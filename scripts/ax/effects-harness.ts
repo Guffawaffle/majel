@@ -35,6 +35,12 @@ export interface EffectsBuildReceipt {
   stochastic?: {
     inferenceReportPath: string;
     candidateCount: number;
+    statusCounts: {
+      proposed: number;
+      gate_passed: number;
+      gate_failed: number;
+      rejected: number;
+    };
   };
   summary: ReturnType<typeof summarizeEffectsContractArtifact>;
 }
@@ -48,6 +54,84 @@ export interface InferenceCandidate {
   rationale: string;
   gateResults: { gate: string; status: "pass" | "fail"; message?: string }[];
   evidence: EffectsContractArtifact["officers"][number]["abilities"][number]["effects"][number]["evidence"];
+}
+
+export function evaluateInferenceCandidate(candidate: InferenceCandidate): InferenceCandidate {
+  const signatureSet = new Set<string>();
+  let duplicateFound = false;
+
+  for (const effect of candidate.proposedEffects) {
+    const signature = stableJsonStringify({
+      effectKey: effect.effectKey,
+      magnitude: effect.magnitude,
+      unit: effect.unit,
+      stacking: effect.stacking,
+      targets: effect.targets,
+      conditions: effect.conditions,
+    });
+    if (signatureSet.has(signature)) {
+      duplicateFound = true;
+      break;
+    }
+    signatureSet.add(signature);
+  }
+
+  const gateResults: InferenceCandidate["gateResults"] = [
+    {
+      gate: "evidence_presence",
+      status: candidate.evidence.length > 0 ? "pass" : "fail",
+      message: candidate.evidence.length > 0 ? undefined : "Candidate has no evidence entries",
+    },
+    {
+      gate: "contradiction_intra_ability",
+      status: duplicateFound ? "fail" : "pass",
+      message: duplicateFound ? "Duplicate proposed effect signatures detected" : undefined,
+    },
+    {
+      gate: "confidence_threshold",
+      status: candidate.confidence.score >= 0.7 ? "pass" : "fail",
+      message: candidate.confidence.score >= 0.7 ? undefined : "Below promotion confidence threshold (0.70)",
+    },
+  ];
+
+  const evidenceGateFailed = gateResults[0].status === "fail";
+  const contradictionGateFailed = gateResults[1].status === "fail";
+  const confidenceGatePassed = gateResults[2].status === "pass";
+
+  let candidateStatus: InferenceCandidate["candidateStatus"] = "proposed";
+  if (contradictionGateFailed) {
+    candidateStatus = "rejected";
+  } else if (evidenceGateFailed) {
+    candidateStatus = "gate_failed";
+  } else if (confidenceGatePassed) {
+    candidateStatus = "gate_passed";
+  }
+
+  return {
+    ...candidate,
+    candidateStatus,
+    gateResults,
+  };
+}
+
+export function summarizeCandidateStatuses(candidates: InferenceCandidate[]): {
+  proposed: number;
+  gate_passed: number;
+  gate_failed: number;
+  rejected: number;
+} {
+  const counts = {
+    proposed: 0,
+    gate_passed: 0,
+    gate_failed: 0,
+    rejected: 0,
+  };
+
+  for (const candidate of candidates) {
+    counts[candidate.candidateStatus]++;
+  }
+
+  return counts;
 }
 
 export interface InferenceReport {
@@ -222,7 +306,7 @@ export function deriveInferenceReport(
   artifact: EffectsContractArtifact,
   runId: string,
 ): InferenceReport {
-  const candidates: InferenceCandidate[] = [];
+  const rawCandidates: InferenceCandidate[] = [];
 
   for (const officer of artifact.officers) {
     for (const ability of officer.abilities) {
@@ -239,22 +323,20 @@ export function deriveInferenceReport(
         sourceOffset: 0,
       }];
 
-      candidates.push({
+      rawCandidates.push({
         abilityId: ability.abilityId,
         candidateId: `${ability.abilityId}:cand:0`,
         candidateStatus: "proposed",
         proposedEffects: ability.effects,
         confidence: { score: 0.55, tier: "medium" },
         rationale: "Deterministic extraction yielded unmapped/empty effect coverage; candidate queued for review",
-        gateResults: [
-          { gate: "schema_validity", status: "pass" },
-          { gate: "taxonomy_validity", status: "pass" },
-          { gate: "confidence_threshold", status: "fail", message: "Below promotion threshold" },
-        ],
+        gateResults: [],
         evidence: evidence.length > 0 ? evidence : fallbackEvidence,
       });
     }
   }
+
+  const candidates = rawCandidates.map((candidate) => evaluateInferenceCandidate(candidate));
 
   return {
     schemaVersion: "1.0.0",
@@ -272,7 +354,7 @@ export function buildReviewPack(
   generatedAt: string,
 ): ReviewPack {
   const candidates = report.candidates.filter((candidate) => {
-    if (candidate.candidateStatus === "proposed" || candidate.candidateStatus === "gate_failed") return true;
+    if (candidate.candidateStatus === "proposed" || candidate.candidateStatus === "gate_failed" || candidate.candidateStatus === "rejected") return true;
     return candidate.confidence.tier !== "high";
   });
 
