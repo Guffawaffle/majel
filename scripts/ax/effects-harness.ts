@@ -249,8 +249,21 @@ export interface EffectsSnapshotExportFile {
 
 export async function readEffectsSeedFile(): Promise<EffectsSeedFile> {
   const seedPath = resolve(ROOT, "data", "seed", "effect-taxonomy.json");
+  const fixturePath = resolve(ROOT, "data", "seed", "effect-taxonomy.officer-fixture.v1.json");
   const raw = await readFile(seedPath, "utf-8");
-  return JSON.parse(raw) as EffectsSeedFile;
+  const parsed = JSON.parse(raw) as EffectsSeedFile;
+
+  try {
+    const fixtureRaw = await readFile(fixturePath, "utf-8");
+    const fixture = JSON.parse(fixtureRaw) as { officers?: EffectsSeedFile["officers"] };
+    if (Array.isArray(fixture.officers)) {
+      parsed.officers = fixture.officers;
+    }
+  } catch {
+    parsed.officers = parsed.officers ?? [];
+  }
+
+  return parsed;
 }
 
 export async function readEffectsOverridesFile(): Promise<EffectsOverrideFile> {

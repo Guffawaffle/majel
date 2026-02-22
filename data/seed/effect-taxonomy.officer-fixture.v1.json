@@ -1,0 +1,556 @@
+{
+  "schemaVersion": "1.0.0",
+  "source": "effect-taxonomy.json",
+  "officers": [
+    {
+      "_comment": "Kirk — classic grinding captain. CM boosts all damage to hostiles.",
+      "id": "kirk:cm",
+      "officerId": "cdn:officer:988947581",
+      "slot": "cm",
+      "name": "Inspirational",
+      "rawText": "Kirk increases all damage dealt against hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "kirk:cm:damage",
+          "effectKey": "damage_dealt",
+          "magnitude": 0.3,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "kirk:oa",
+      "officerId": "cdn:officer:988947581",
+      "slot": "oa",
+      "name": "Bold Leadership",
+      "rawText": "Kirk increases weapon damage against hostiles by 20% each round.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "kirk:oa:weapdmg",
+          "effectKey": "weapon_damage",
+          "magnitude": 0.2,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [],
+          "conditions": [
+            {
+              "conditionKey": "per_round_stacking",
+              "params": {
+                "maxStacks": "5"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Spock — science officer, bridge crew for grinding/armada.",
+      "id": "spock:cm",
+      "officerId": "cdn:officer:766809588",
+      "slot": "cm",
+      "name": "Logical Approach",
+      "rawText": "Spock increases the critical hit chance against hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "spock:cm:crit",
+          "effectKey": "crit_chance",
+          "magnitude": 0.25,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "spock:oa",
+      "officerId": "cdn:officer:766809588",
+      "slot": "oa",
+      "name": "Science Officer",
+      "rawText": "Spock increases all officer stats on the ship when fighting hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "spock:oa:attack",
+          "effectKey": "officer_attack",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [],
+          "conditions": []
+        },
+        {
+          "id": "spock:oa:defense",
+          "effectKey": "officer_defense",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [],
+          "conditions": []
+        },
+        {
+          "id": "spock:oa:health",
+          "effectKey": "officer_health",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "_comment": "McCoy — medic officer, survivability for grinding.",
+      "id": "mccoy:cm",
+      "officerId": "cdn:officer:3923643019",
+      "slot": "cm",
+      "name": "Doctor's Orders",
+      "rawText": "McCoy increases hull health of the ship when fighting hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "mccoy:cm:hull",
+          "effectKey": "hull_health",
+          "magnitude": 0.25,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "mccoy:oa",
+      "officerId": "cdn:officer:3923643019",
+      "slot": "oa",
+      "name": "Field Medic",
+      "rawText": "McCoy reduces damage taken from hostiles at the start of each round.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "mccoy:oa:mitigation",
+          "effectKey": "mitigation",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [],
+          "conditions": [
+            {
+              "conditionKey": "at_round_start"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Sulu — helmsman. CM boosts dodge (player_ship defense), not damage to hostiles.",
+      "id": "sulu:cm",
+      "officerId": "cdn:officer:2520801863",
+      "slot": "cm",
+      "name": "Evasive Maneuvers",
+      "rawText": "Sulu increases dodge chance at the start of combat.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "sulu:cm:dodge",
+          "effectKey": "dodge",
+          "magnitude": 0.2,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            {
+              "conditionKey": "at_combat_start"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sulu:oa",
+      "officerId": "cdn:officer:2520801863",
+      "slot": "oa",
+      "name": "Precision Targeting",
+      "rawText": "Sulu increases weapon damage when attacking.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "sulu:oa:weapdmg",
+          "effectKey": "weapon_damage",
+          "magnitude": 0.1,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            {
+              "conditionKey": "requires_attacking"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Uhura — comms officer. Can be useful but CM is non-combat focused.",
+      "id": "uhura:cm",
+      "officerId": "cdn:officer:2695272429",
+      "slot": "cm",
+      "name": "Communications Expert",
+      "rawText": "Uhura increases the ship's warp range.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "uhura:cm:warp",
+          "effectKey": "warp_range",
+          "magnitude": 0.3,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "uhura:oa",
+      "officerId": "cdn:officer:2695272429",
+      "slot": "oa",
+      "name": "Signal Boost",
+      "rawText": "Uhura increases the accuracy of the ship's weapons.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "uhura:oa:accuracy",
+          "effectKey": "accuracy",
+          "magnitude": 0.15,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "_comment": "Scotty — engineer, survivability officer.",
+      "id": "scotty:cm",
+      "officerId": "cdn:officer:3155244352",
+      "slot": "cm",
+      "name": "Engineering Excellence",
+      "rawText": "Scotty increases the ship's shield health.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "scotty:cm:shield",
+          "effectKey": "shield_health",
+          "magnitude": 0.25,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "scotty:oa",
+      "officerId": "cdn:officer:3155244352",
+      "slot": "oa",
+      "name": "Miracle Worker",
+      "rawText": "Scotty repairs hull when shields are depleted.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "scotty:oa:repair",
+          "effectKey": "hull_repair",
+          "magnitude": 0.1,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            {
+              "conditionKey": "when_shields_depleted"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Ivanov — generic combat officer. Some damage but no hostile specialization.",
+      "id": "ivanov:cm",
+      "officerId": "cdn:officer:282462507",
+      "slot": "cm",
+      "name": "Tactical Coordination",
+      "rawText": "Ivanov increases weapon damage at the start of each round.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "ivanov:cm:weapdmg",
+          "effectKey": "weapon_damage",
+          "magnitude": 0.1,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            {
+              "conditionKey": "at_round_start"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ivanov:oa",
+      "officerId": "cdn:officer:282462507",
+      "slot": "oa",
+      "name": "Armor Boost",
+      "rawText": "Ivanov increases armor rating when defending.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "ivanov:oa:armor",
+          "effectKey": "armor",
+          "magnitude": 0.1,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": [
+            {
+              "conditionKey": "requires_defending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "T'Pring — gas mining specialist captain.",
+      "id": "tpring:cm",
+      "officerId": "cdn:officer:1556052341",
+      "slot": "cm",
+      "name": "Gas Miner",
+      "rawText": "T'Pring increases the Mining Rate of the ship when mining Gas.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "tpring:cm:mining",
+          "effectKey": "mining_rate",
+          "magnitude": 0.3,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "tpring:oa",
+      "officerId": "cdn:officer:1556052341",
+      "slot": "oa",
+      "name": "Protected Cargo",
+      "rawText": "T'Pring increases protected cargo capacity.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "tpring:oa:cargo",
+          "effectKey": "cargo_capacity",
+          "magnitude": 0.2,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "_comment": "Chang — Klingon warrior, PvP oriented.",
+      "id": "chang:cm",
+      "officerId": "cdn:officer:1730335425",
+      "slot": "cm",
+      "name": "Warrior's Strike",
+      "rawText": "Chang increases critical damage against player ships.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "chang:cm:critdmg",
+          "effectKey": "crit_damage",
+          "magnitude": 0.3,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "player_ship"
+          ],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "chang:oa",
+      "officerId": "cdn:officer:1730335425",
+      "slot": "oa",
+      "name": "Klingon Honor",
+      "rawText": "Chang increases penetration when attacking player ships.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "chang:oa:pen",
+          "effectKey": "penetration",
+          "magnitude": 0.2,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "player_ship"
+          ],
+          "targetTags": [],
+          "conditions": [
+            {
+              "conditionKey": "requires_attacking"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment": "Khan — augmented warrior, armada specialist.",
+      "id": "khan:cm",
+      "officerId": "cdn:officer:2822661458",
+      "slot": "cm",
+      "name": "Superior Intellect",
+      "rawText": "Khan increases all damage against armada targets.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "khan:cm:damage",
+          "effectKey": "damage_dealt",
+          "magnitude": 0.35,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "armada_target"
+          ],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "khan:oa",
+      "officerId": "cdn:officer:2822661458",
+      "slot": "oa",
+      "name": "Augmented Fury",
+      "rawText": "Khan increases critical chance and critical damage against armada targets.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "khan:oa:crit",
+          "effectKey": "crit_chance",
+          "magnitude": 0.2,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "armada_target"
+          ],
+          "targetTags": [],
+          "conditions": []
+        },
+        {
+          "id": "khan:oa:critdmg",
+          "effectKey": "crit_damage",
+          "magnitude": 0.2,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "armada_target"
+          ],
+          "targetTags": [],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "_comment": "Nero — swarm specialist. Anti-swarm abilities.",
+      "id": "nero:cm",
+      "officerId": "cdn:officer:656972203",
+      "slot": "cm",
+      "name": "Vengeance",
+      "rawText": "Nero increases all damage against Swarm hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "nero:cm:damage",
+          "effectKey": "damage_dealt",
+          "magnitude": 0.3,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [
+            "swarm"
+          ],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "id": "nero:oa",
+      "officerId": "cdn:officer:656972203",
+      "slot": "oa",
+      "name": "Rage",
+      "rawText": "Nero increases armor against Swarm hostiles.",
+      "isInert": false,
+      "effects": [
+        {
+          "id": "nero:oa:armor",
+          "effectKey": "armor",
+          "magnitude": 0.25,
+          "unit": "percent",
+          "stacking": "additive",
+          "targetKinds": [
+            "hostile"
+          ],
+          "targetTags": [
+            "swarm"
+          ],
+          "conditions": []
+        }
+      ]
+    }
+  ]
+}

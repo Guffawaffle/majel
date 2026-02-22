@@ -27,6 +27,7 @@ const DATA_JSON_SIZE_BLOCK_BYTES = 1_000_000;
 
 const DATA_JSON_ALLOWLIST = new Set([
   "data/seed/effect-taxonomy.json",
+  "data/seed/effect-taxonomy.officer-fixture.v1.json",
   "data/seed/effects-overrides.v1.json",
   "data/seed/effects-ci-budget.v1.json",
 ]);

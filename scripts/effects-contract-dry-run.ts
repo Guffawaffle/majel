@@ -12,10 +12,21 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const seedPath = resolve(repoRoot, "data", "seed", "effect-taxonomy.json");
+const officerFixturePath = resolve(repoRoot, "data", "seed", "effect-taxonomy.officer-fixture.v1.json");
 
 async function main(): Promise<void> {
   const raw = await readFile(seedPath, "utf-8");
   const seed = JSON.parse(raw) as EffectsSeedFile;
+
+  try {
+    const fixtureRaw = await readFile(officerFixturePath, "utf-8");
+    const fixture = JSON.parse(fixtureRaw) as { officers?: EffectsSeedFile["officers"] };
+    if (Array.isArray(fixture.officers)) {
+      seed.officers = fixture.officers;
+    }
+  } catch {
+    seed.officers = seed.officers ?? [];
+  }
 
   const validation = validateEffectsSeedForV3(seed);
   const artifact = buildEffectsContractV3Artifact(seed);
@@ -32,6 +43,7 @@ async function main(): Promise<void> {
   const report = {
     ok: validation.ok && hash === repeatedHash,
     seedPath,
+    officerFixturePath,
     validation,
     determinism: {
       hash,

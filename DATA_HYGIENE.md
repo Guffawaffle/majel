@@ -11,6 +11,7 @@ This repository intentionally avoids committing raw CDN/game snapshot payloads.
 ## Allowed in Git
 
 - Contract primitives and small deterministic fixtures (taxonomy/intents/overrides/budget config)
+- Officer fixture seed corpus only at `data/seed/effect-taxonomy.officer-fixture.v1.json`
 - Generated artifacts that are explicitly approved for commit in an ADR/process update
 
 ## Forbidden in Git

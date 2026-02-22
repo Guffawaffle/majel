@@ -16,10 +16,17 @@ import { log } from "../logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SEED_PATH = resolve(__dirname, "..", "..", "..", "data", "seed", "effect-taxonomy.json");
+const OFFICER_FIXTURE_PATH = resolve(__dirname, "..", "..", "..", "data", "seed", "effect-taxonomy.officer-fixture.v1.json");
 
 interface SeedFile {
   taxonomy: SeedTaxonomyData;
   intents: SeedIntentInput[];
+  officers: (SeedAbilityInput & { _comment?: string })[];
+}
+
+interface OfficerFixtureFile {
+  schemaVersion: "1.0.0";
+  source: "effect-taxonomy.json";
   officers: (SeedAbilityInput & { _comment?: string })[];
 }
 
@@ -40,6 +47,16 @@ export async function loadEffectSeedData(store: EffectStore): Promise<{
 }> {
   const raw = await readFile(SEED_PATH, "utf-8");
   const data: SeedFile = JSON.parse(raw);
+
+  try {
+    const fixtureRaw = await readFile(OFFICER_FIXTURE_PATH, "utf-8");
+    const fixture = JSON.parse(fixtureRaw) as OfficerFixtureFile;
+    if (Array.isArray(fixture.officers)) {
+      data.officers = fixture.officers;
+    }
+  } catch {
+    data.officers = data.officers ?? [];
+  }
 
   // 1. Seed taxonomy (must go first — FK dependencies)
   const taxonomy = await store.seedTaxonomy(data.taxonomy);
