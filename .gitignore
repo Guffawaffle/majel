@@ -43,3 +43,6 @@ data/.stfc-snapshot/
 
 # Local Copilot agent guidance (workspace-local, not repo policy)
 .github/copilot-instructions.md
+
+# Temporary files
+tmp/
