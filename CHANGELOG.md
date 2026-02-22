@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - draft artifact generator with stable `abilityId`/`effectId` semantics
   (`src/server/services/effects-contract-v3.ts`)
 - Added dry-run diagnostics command `npm run effects:dry-run` that validates seed data, checks deterministic hash stability, and prints a JSON report suitable for CI/PM review. (`scripts/effects-contract-dry-run.ts`, `package.json`)
+- Added CI enforcement for effects dry-run via `ax ci` so contract validation executes in the default quality gate. (`scripts/ax/ci.ts`)
 - Added focused tests for validation failures and determinism invariants. (`test/effects-contract-v3.test.ts`)
 
 #### Effects AX build/review harness (Addendum C)

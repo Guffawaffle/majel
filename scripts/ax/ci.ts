@@ -59,7 +59,28 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 3: Test ──────────────────────────────────────────
+    // ── Step 3: Effects dry-run ───────────────────────────────
+    const effectsDryRunStart = Date.now();
+    const effectsDryRun = runCapture("npm", ["run", "effects:dry-run"], { ignoreExit: true });
+    const effectsDryRunDuration = Date.now() - effectsDryRunStart;
+    steps.push({
+      step: "effects:dry-run",
+      success: effectsDryRun.exitCode === 0,
+      durationMs: effectsDryRunDuration,
+      data: {
+        exitCode: effectsDryRun.exitCode,
+      },
+    });
+
+    if (effectsDryRun.exitCode !== 0) {
+      return makeResult("ci", start, { steps, stoppedAt: "effects:dry-run" }, {
+        success: false,
+        errors: ["effects dry-run failed"],
+        hints: ["Run: npm run effects:dry-run"],
+      });
+    }
+
+    // ── Step 4: Test ──────────────────────────────────────────
     const testResult = await test.run(ciArgs);
     steps.push({
       step: "test",
@@ -81,7 +102,7 @@ const command: AxCommand = {
       });
     }
 
-    // ── Step 4: Web tests ─────────────────────────────────────
+    // ── Step 5: Web tests ─────────────────────────────────────
     const webTestStart = Date.now();
     const webTest = runCapture("npm", ["--prefix", "web", "run", "test"], { ignoreExit: true });
     const webTestDuration = Date.now() - webTestStart;
