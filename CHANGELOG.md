@@ -83,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runtime split endpoints now preserve route-owned cache headers/ETag behavior instead of default envelope cache overrides, enabling manifest/hash asset caching semantics as designed. (`src/server/routes/effects.ts`)
 - Manifest revalidation now uses stable bundle-hash ETag basis and supports 304 conditional responses with short-lived in-memory runtime artifact coherence window. (`src/server/routes/effects.ts`, `test/effect-routes.test.ts`)
 - `mappedCoveragePercent` in effects budgets now measures mapped abilities directly (`isInert || effects.length>0`) instead of subtracting unmapped entry counts. (`scripts/ax/effects-budgets.ts`)
+- Runtime artifact endpoints now return raw stable JSON representations (no per-request envelope meta), removing ETag/body representation drift risk for cacheable responses; manifest `generatedAt` remains stable for unchanged `bundleHash`. (`src/server/routes/effects.ts`, `test/effect-routes.test.ts`)
 
 #### Effect taxonomy seed contract parity
 - Seed taxonomy now includes `targetTag: station` and `effectKey: penetration` so existing intent/ability references pass strict contract validation. (`data/seed/effect-taxonomy.json`)

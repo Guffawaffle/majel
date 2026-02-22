@@ -371,9 +371,16 @@ describe("GET /api/effects/runtime/*", () => {
 
     const first = await testRequest(app).get("/api/effects/runtime/manifest.json");
     expect(first.status).toBe(200);
+    expect(first.body.schemaVersion).toBe("1.0.0");
     expect(first.headers["cache-control"]).toContain("max-age=60");
     expect(first.headers["cache-control"]).toContain("stale-while-revalidate=300");
     expect(first.headers["etag"]).toBeTruthy();
+
+    const firstGeneratedAt = first.body.generatedAt;
+
+    const third = await testRequest(app).get("/api/effects/runtime/manifest.json");
+    expect(third.status).toBe(200);
+    expect(third.body.generatedAt).toBe(firstGeneratedAt);
 
     const second = await testRequest(app)
       .get("/api/effects/runtime/manifest.json")
@@ -389,9 +396,9 @@ describe("GET /api/effects/runtime/*", () => {
     const manifest = await testRequest(app).get("/api/effects/runtime/manifest.json");
     expect(manifest.status).toBe(200);
 
-    const taxonomyPath = manifest.body.data.paths.taxonomy as string;
-    const officersIndexPath = manifest.body.data.paths.officersIndex as string;
-    const chunkPath = manifest.body.data.paths.chunks[0] as string;
+    const taxonomyPath = manifest.body.paths.taxonomy as string;
+    const officersIndexPath = manifest.body.paths.officersIndex as string;
+    const chunkPath = manifest.body.paths.chunks[0] as string;
 
     const taxonomy = await testRequest(app).get(taxonomyPath);
     const index = await testRequest(app).get(officersIndexPath);
