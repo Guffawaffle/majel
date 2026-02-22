@@ -58,6 +58,48 @@ export interface EffectBundleResponse {
   >;
 }
 
+interface ApiSuccessEnvelope<T> {
+  ok: true;
+  data: T;
+  meta?: unknown;
+}
+
+interface ApiErrorEnvelope {
+  ok: false;
+  error?: { message?: string };
+  meta?: unknown;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isEffectBundleResponse(value: unknown): value is EffectBundleResponse {
+  if (!isObject(value)) return false;
+  return Array.isArray(value.intents) && isObject(value.officers);
+}
+
+function unwrapEffectBundlePayload(payload: unknown): EffectBundleResponse {
+  if (isEffectBundleResponse(payload)) {
+    return payload;
+  }
+
+  if (isObject(payload) && payload.ok === true && "data" in payload) {
+    const data = (payload as ApiSuccessEnvelope<unknown>).data;
+    if (isEffectBundleResponse(data)) {
+      return data;
+    }
+    throw new Error("Malformed effect bundle payload in envelope: expected data.intents[] and data.officers{}");
+  }
+
+  if (isObject(payload) && payload.ok === false) {
+    const errorMessage = (payload as ApiErrorEnvelope).error?.message ?? "Unknown API error";
+    throw new Error(`Effect bundle request failed: ${errorMessage}`);
+  }
+
+  throw new Error("Malformed effect bundle response: expected bundle object or AX envelope");
+}
+
 /**
  * Parsed bundle with intent weights and officer abilities indexed for easy lookup.
  */
@@ -81,7 +123,8 @@ export async function fetchEffectBundle(): Promise<EffectBundleResponse> {
     throw new Error(`Failed to fetch effect bundle: ${response.status} ${response.statusText}`);
   }
 
-  return response.json();
+  const payload = await response.json();
+  return unwrapEffectBundlePayload(payload);
 }
 
 /**

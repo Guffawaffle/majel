@@ -7,8 +7,8 @@
  * - Adapter converts bundle to Maps correctly
  */
 
-import { describe, it, expect } from "vitest";
-import { adaptEffectBundle, type EffectBundleResponse } from "../web/src/lib/effect-bundle-adapter.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { adaptEffectBundle, fetchEffectBundle, type EffectBundleResponse } from "../web/src/lib/effect-bundle-adapter.js";
 
 // Helper to create a minimal valid bundle
 function createMockBundle(): EffectBundleResponse {
@@ -81,6 +81,10 @@ function createMockBundle(): EffectBundleResponse {
 }
 
 describe("EffectBundleAdapter", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("adapts a valid bundle to indexed Maps", () => {
     const raw = createMockBundle();
     const adapted = adaptEffectBundle(raw);
@@ -170,5 +174,30 @@ describe("EffectBundleAdapter", () => {
     expect(effect.conditions).toHaveLength(1);
     expect(effect.conditions[0].conditionKey).toBe("requires_attacking");
     expect(effect.conditions[0].params).toBeNull();
+  });
+
+  it("fetchEffectBundle unwraps AX success envelope", async () => {
+    const raw = createMockBundle();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({ ok: true, data: raw, meta: { requestId: "r1" } }),
+    } as Response);
+
+    const result = await fetchEffectBundle();
+    expect(result.intents[0]?.id).toBe("grinding");
+    expect(result.officers["kirk-001"]?.name).toBe("Kirk");
+  });
+
+  it("fetchEffectBundle throws for malformed envelope data", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({ ok: true, data: { schemaVersion: "1.0.0", intents: null, officers: {} } }),
+    } as Response);
+
+    await expect(fetchEffectBundle()).rejects.toThrow(/malformed effect bundle payload/i);
   });
 });
