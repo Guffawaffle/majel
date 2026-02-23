@@ -91,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ax ci` now runs `data:hygiene` in strict mode.
   - snapshot `contentHash` policy now excludes `generatedAt` so timestamp-only export changes do not invalidate pinned hash checks.
   (`scripts/ax/effects-snapshot-export.ts`, `scripts/ax/effects-snapshot-verify.ts`, `scripts/ax/ci.ts`, `scripts/ax/effects-harness.ts`, `src/server/services/effects-contract-v3.ts`, `docs/ADR-035-effects-officer-data-source-v2.md`, `DATA_HYGIENE.md`)
+- ADR-035 rollout marked complete for current scope in PM tracking (phases 0-5 delivered; review follow-ups closed). (`BACKLOG.md`, issue #147)
 
 ### Fixed
 

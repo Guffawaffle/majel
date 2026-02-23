@@ -201,6 +201,8 @@ See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
 
 **Goal:** keep contract surface deterministic in git while moving full officer corpus to DB-derived snapshot exports.
 
+**Status:** Completed for current scope (Phases 0-5 + Lex follow-up decisions A/B/C)
+
 - [x] Phase 0: ADR + policy/guardrail scaffold (`ADR-035`, `DATA_HYGIENE.md`, `ax data:hygiene` in `ax ci`)
 - [x] Phase 1: Snapshot metadata schema + deterministic `effects:snapshot:export` command
 - [x] Phase 2: `effects:build` input split (fixture/full export) with stable hash/id policy
@@ -209,10 +211,10 @@ See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
 - [x] Phase 5 (optional): value canonicalization table scaffold for parser quality improvements
 
 **PM checkpoints (track explicitly):**
-- [ ] PR CI remains hermetic (no live DB dependency)
-- [ ] Nightly reproducibility proven with pinned snapshot `contentHash`
-- [ ] Raw CDN commit guardrails enforced and documented
-- [ ] Coverage/inference budget semantics preserved during migration
+- [x] PR CI remains hermetic (no live DB dependency)
+- [x] Nightly reproducibility proven with pinned snapshot `contentHash`
+- [x] Raw CDN commit guardrails enforced and documented
+- [x] Coverage/inference budget semantics preserved during migration
 
 ---
 
