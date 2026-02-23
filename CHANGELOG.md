@@ -85,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added Phase 2 build input split: `effects:build` now accepts `--input=<snapshot-export.json>` and records input provenance metadata (`snapshotId`, `contentHash`, `schemaHash`) in build output/receipts while preserving deterministic hash behavior. (`scripts/ax/effects-build.ts`, `scripts/ax/effects-harness.ts`)
 - Added Phase 3 pinned snapshot verification command `effects:snapshot:verify` with mismatch-fail behavior for expected `contentHash` and computed integrity checks (`schemaHash`/`contentHash`) to support nightly pinned snapshot gates. (`scripts/ax/effects-snapshot-verify.ts`, `scripts/ax.ts`, `package.json`)
 - Added Phase 4 fixture-only seed split: moved officer rows from `effect-taxonomy.json` into `effect-taxonomy.officer-fixture.v1.json` and updated loaders/dry-run to merge fixture officers at build time while keeping contract primitives in the main seed file. (`data/seed/effect-taxonomy.json`, `data/seed/effect-taxonomy.officer-fixture.v1.json`, `scripts/ax/effects-harness.ts`, `src/server/services/effect-seed-loader.ts`, `scripts/effects-contract-dry-run.ts`)
+- Added optional Phase 5 schema scaffold `catalog_effect_value` for future value canonicalization semantics (`comparator`, `scale`, `raw_span_ref`) without changing current extractor/runtime behavior. (`src/server/stores/effect-store.ts`)
 
 ### Fixed
 

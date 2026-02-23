@@ -272,8 +272,20 @@ const SCHEMA_STATEMENTS = [
     stacking TEXT
   )`,
 
+  `CREATE TABLE IF NOT EXISTS catalog_effect_value (
+    id TEXT PRIMARY KEY,
+    ability_effect_id TEXT NOT NULL REFERENCES catalog_ability_effect(id) ON DELETE CASCADE UNIQUE,
+    magnitude REAL,
+    unit TEXT,
+    stacking TEXT,
+    comparator TEXT,
+    scale TEXT,
+    raw_span_ref TEXT
+  )`,
+
   `CREATE INDEX IF NOT EXISTS idx_catalog_ability_effect_ability ON catalog_ability_effect(ability_id)`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_ability_effect_key ON catalog_ability_effect(effect_key)`,
+  `CREATE INDEX IF NOT EXISTS idx_catalog_effect_value_effect ON catalog_effect_value(ability_effect_id)`,
 
   `CREATE TABLE IF NOT EXISTS catalog_ability_effect_target_kind (
     ability_effect_id TEXT NOT NULL REFERENCES catalog_ability_effect(id) ON DELETE CASCADE,

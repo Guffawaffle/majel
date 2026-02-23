@@ -206,7 +206,7 @@ See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
 - [x] Phase 2: `effects:build` input split (fixture/full export) with stable hash/id policy
 - [x] Phase 3: Nightly pinned snapshot gate (`contentHash`) + full-data budget regressions
 - [x] Phase 4: Minimize in-repo officer seed corpus to fixtures only
-- [ ] Phase 5 (optional): value canonicalization table for parser quality improvements
+- [x] Phase 5 (optional): value canonicalization table scaffold for parser quality improvements
 
 **PM checkpoints (track explicitly):**
 - [ ] PR CI remains hermetic (no live DB dependency)
