@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "1.0.0",
+  "defaultProfile": "local_dev",
+  "profiles": {
+    "local_dev": {
+      "allowedDatasetKinds": [
+        "fixture",
+        "deterministic",
+        "hybrid"
+      ],
+      "requireDeterministicGates": true,
+      "requireDeterministicOrdering": true,
+      "baseline": "active_run",
+      "minimumViability": {
+        "mappedThresholdMode": "OR",
+        "minMappedAbilitiesPercent": 10,
+        "minMappedAbilitiesCount": 50,
+        "minOfficerCount": 50,
+        "minAbilityCount": 100
+      },
+      "nonRegression": {
+        "maxMappedPercentDropPoints": 20,
+        "maxUnmappedCountIncrease": 300,
+        "maxOfficerCountDrop": 50,
+        "maxAbilityCountDrop": 200,
+        "maxInferredPromotedRatioIncreasePoints": 0.2
+      },
+      "caps": {
+        "maxInferredPromotedRatio": 0.6
+      }
+    },
+    "cloud_activation": {
+      "allowedDatasetKinds": [
+        "deterministic",
+        "hybrid"
+      ],
+      "requireDeterministicGates": true,
+      "requireDeterministicOrdering": true,
+      "baseline": "active_run",
+      "minimumViability": {
+        "mappedThresholdMode": "OR",
+        "minMappedAbilitiesPercent": 20,
+        "minMappedAbilitiesCount": 120,
+        "minOfficerCount": 250,
+        "minAbilityCount": 500
+      },
+      "nonRegression": {
+        "maxMappedPercentDropPoints": 5,
+        "maxUnmappedCountIncrease": 75,
+        "maxOfficerCountDrop": 0,
+        "maxAbilityCountDrop": 0,
+        "maxInferredPromotedRatioIncreasePoints": 0.05
+      },
+      "caps": {
+        "maxInferredPromotedRatio": 0.25
+      }
+    }
+  }
+}

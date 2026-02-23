@@ -216,6 +216,24 @@ See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
 - [x] Raw CDN commit guardrails enforced and documented
 - [x] Coverage/inference budget semantics preserved during migration
 
+### Planned — Effects Runtime DB Activation Model (Cross-Repo Program)
+
+**Priority:** Next program slice after current Effects v3 hardening.  
+**Naming policy:** In Majel, keep terminology generic/source-neutral (use “data ingestion”, “dataset promotion”, “runtime dataset”).
+
+| Issue | Scope | Status |
+|---|---|---|
+| #150 | Effects runtime: dataset run metadata + active pointer tables | [ ] Not started |
+| #151 | Run-scoped catalog model + active-run runtime reads | [ ] Not started |
+| #152 | `ax effects:promote:db` with full-replace ingestion semantics | [ ] Not started |
+| #153 | Runtime health endpoint for activation smoke checks | [ ] Not started |
+| #154 | Policy-driven activation gates + CI hygiene for generated datasets | [ ] Not started |
+
+**Program outcomes:**
+- Runtime reads only DB active-run data (no serving dependency on seed JSON).
+- Promotion and rollback are metadata-driven (`run_id` pointer flip).
+- Activation is policy-gated (viability + non-regression + cardinality) via config.
+
 ---
 
 ## Done — Timer Overlay (ADR-033, #111)
