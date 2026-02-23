@@ -32,7 +32,7 @@ const EXPORT_SCHEMA_DESCRIPTOR = {
   snapshot: {
     snapshotId: "string",
     source: "fixture-seed",
-    sourceVersion: "effect-taxonomy.json",
+    sourceVersion: "effect-taxonomy.officer-fixture.v1.json",
     generatedAt: "iso8601",
     schemaHash: "sha256",
     contentHash: "sha256",
@@ -81,7 +81,6 @@ const command: AxCommand = {
         snapshotId: parsed.snapshot.snapshotId,
         source: parsed.snapshot.source,
         sourceVersion: parsed.snapshot.sourceVersion,
-        generatedAt: parsed.snapshot.generatedAt,
         schemaHash: parsed.snapshot.schemaHash,
       },
       officers: parsed.officers,

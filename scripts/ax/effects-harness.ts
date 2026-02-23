@@ -472,7 +472,7 @@ export function deriveInferenceReport(
 
       const evidence = ability.effects.flatMap((effect) => effect.evidence);
       const fallbackEvidence = [{
-        sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${ability.abilityId}`,
+        sourceRef: `effect-taxonomy.officer-fixture.v1.json#/officers/byAbilityId/${ability.abilityId}`,
         snippet: ability.rawText,
         ruleId: "seed_contract_v0",
         sourceLocale: "en" as const,

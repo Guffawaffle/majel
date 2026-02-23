@@ -31,6 +31,7 @@ This repository intentionally avoids committing raw CDN/game snapshot payloads.
 
 - Command: `npm run ax -- data:hygiene`
 - Included in: `npm run ax -- ci`
+- CI execution mode: strict (`--strict`) so warnings also fail the gate
 - Behavior:
   - Blocks known forbidden path prefixes
   - Blocks suspicious oversized JSON under `data/` (unless explicitly allowlisted)

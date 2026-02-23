@@ -204,7 +204,7 @@ function buildEffectSourceLocator(abilitySeedId: string, effect: SeedEffectWithS
   ) {
     const { start, end } = effect.sourceSpan;
     return {
-      sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${abilitySeedId}/rawText/spans/${start}-${end}`,
+      sourceRef: `effect-taxonomy.officer-fixture.v1.json#/officers/byAbilityId/${abilitySeedId}/rawText/spans/${start}-${end}`,
       sortKey: `span:${String(start).padStart(8, "0")}:${String(end).padStart(8, "0")}`,
       sourceOffset: start,
     };
@@ -213,14 +213,14 @@ function buildEffectSourceLocator(abilitySeedId: string, effect: SeedEffectWithS
   if (effect.sourceSegment && effect.sourceSegment.trim().length > 0) {
     const seg = effect.sourceSegment.trim();
     return {
-      sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${abilitySeedId}/rawText/segments/${encodeURIComponent(seg)}`,
+      sourceRef: `effect-taxonomy.officer-fixture.v1.json#/officers/byAbilityId/${abilitySeedId}/rawText/segments/${encodeURIComponent(seg)}`,
       sortKey: `seg:${seg}`,
       sourceOffset: 0,
     };
   }
 
   return {
-    sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${abilitySeedId}/effects/${effect.id}`,
+    sourceRef: `effect-taxonomy.officer-fixture.v1.json#/officers/byAbilityId/${abilitySeedId}/effects/${effect.id}`,
     sortKey: `fallback:${effect.id}`,
     sourceOffset: 0,
   };
@@ -594,7 +594,7 @@ export function buildEffectsContractV3Artifact(
               reason: "No deterministic mapping was present in the seed effects list",
               confidence: 0,
               evidence: [{
-                sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${ability.id}`,
+                sourceRef: `effect-taxonomy.officer-fixture.v1.json#/officers/byAbilityId/${ability.id}`,
                 snippet: rawText,
                 ruleId: "seed_contract_v0",
                 sourceLocale: "en",

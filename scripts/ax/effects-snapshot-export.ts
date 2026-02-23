@@ -25,7 +25,7 @@ interface SnapshotExport {
   snapshot: {
     snapshotId: string;
     source: "fixture-seed";
-    sourceVersion: "effect-taxonomy.json";
+    sourceVersion: "effect-taxonomy.officer-fixture.v1.json";
     generatedAt: string;
     schemaHash: string;
     contentHash: string;
@@ -44,7 +44,7 @@ const EXPORT_SCHEMA_DESCRIPTOR = {
   snapshot: {
     snapshotId: "string",
     source: "fixture-seed",
-    sourceVersion: "effect-taxonomy.json",
+    sourceVersion: "effect-taxonomy.officer-fixture.v1.json",
     generatedAt: "iso8601",
     schemaHash: "sha256",
     contentHash: "sha256",
@@ -84,7 +84,7 @@ function canonicalize(seedAbilities: Awaited<ReturnType<typeof readEffectsSeedFi
       name: ability.name,
       rawText: ability.rawText ?? "",
       isInert: ability.isInert,
-      sourceRef: `effect-taxonomy.json#/officers/byAbilityId/${ability.id}`,
+      sourceRef: `effect-taxonomy.officer-fixture.v1.json#/officers/byAbilityId/${ability.id}`,
     });
 
     grouped.set(ability.officerId, officer);
@@ -113,14 +113,23 @@ const command: AxCommand = {
       snapshot: {
         snapshotId,
         source: "fixture-seed" as const,
-        sourceVersion: "effect-taxonomy.json" as const,
+        sourceVersion: "effect-taxonomy.officer-fixture.v1.json" as const,
         generatedAt,
         schemaHash,
       },
       officers,
     };
 
-    const contentHash = sha256Hex(stableJsonStringify(withoutContentHash));
+    const contentHash = sha256Hex(stableJsonStringify({
+      schemaVersion: withoutContentHash.schemaVersion,
+      snapshot: {
+        snapshotId: withoutContentHash.snapshot.snapshotId,
+        source: withoutContentHash.snapshot.source,
+        sourceVersion: withoutContentHash.snapshot.sourceVersion,
+        schemaHash: withoutContentHash.snapshot.schemaHash,
+      },
+      officers: withoutContentHash.officers,
+    }));
     const payload: SnapshotExport = {
       schemaVersion: "1.0.0",
       snapshot: {

@@ -81,6 +81,8 @@ Adopt **Option A (Hybrid)**.
 
 - Canonical JSON bytes must use existing stable serialization primitives in `src/server/services/effects-contract-v3.ts` (`stableJsonStringify` + `sha256Hex`).
 - `generatedAt` in snapshot/export metadata is lifecycle-bound (snapshot/export creation time), never request-time jitter.
+- Snapshot `contentHash` excludes `generatedAt` so timestamp-only changes do not invalidate pinned hash workflows.
+- Officer provenance locators in snapshot exports/evidence must resolve against the fixture corpus namespace (`effect-taxonomy.officer-fixture.v1.json#/officers/byAbilityId/...`).
 - Effect ID stability and override safety rules remain unchanged from Effects Contract v3.
 
 ---
@@ -108,6 +110,7 @@ Adopt **Option A (Hybrid)**.
 ## Guardrails
 
 - Add CI data-hygiene gate to block known raw CDN paths/signatures.
+- CI runs data-hygiene in strict mode so warnings fail the gate.
 - Document forbidden data patterns in `DATA_HYGIENE.md`.
 - Optional local pre-commit hook mirrors CI checks.
 

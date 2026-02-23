@@ -45,7 +45,7 @@ const command: AxCommand = {
     }
 
     // ── Step 2: Data hygiene ──────────────────────────────────
-    const hygieneResult = await dataHygiene.run(ciArgs);
+    const hygieneResult = await dataHygiene.run([...ciArgs, "--strict"]);
     steps.push({
       step: "data:hygiene",
       success: hygieneResult.success,
