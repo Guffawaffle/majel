@@ -9,6 +9,7 @@ import type {
   IntentDefinition,
   MagnitudeUnit,
   OfficerAbility,
+  ShipClass,
   StackingMode,
   TargetContext,
 } from "./types/effect-types.js";
@@ -123,7 +124,7 @@ function parseTargetContext(value: unknown): TargetContext | null {
   const shipContext = isObject(value.shipContext)
     && typeof value.shipContext.shipClass === "string"
     ? {
-      shipClass: value.shipContext.shipClass as TargetContext["shipContext"]["shipClass"],
+      shipClass: value.shipContext.shipClass as ShipClass,
     }
     : undefined;
 
