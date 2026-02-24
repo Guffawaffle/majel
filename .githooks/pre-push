@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# .githooks/pre-push — Strict pre-push gate for Majel
+#
+# Runs the full AX CI suite to prevent pushes that would fail in GitHub Actions.
+# Install: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+echo "⟐ pre-push: ax ci"
+npm run ax -- ci
+
+echo "✅ pre-push passed"
