@@ -147,7 +147,7 @@ npm run health       # Curl the health endpoint
 ```bash
 npm run cloud                    # Show all commands, tiers, and usage
 npm run cloud:status             # Service status, URL, revision, scaling
-npm run cloud:deploy             # Full pipeline: local-ci → build → deploy → health
+npm run cloud:deploy             # Full pipeline: local-ci → build → deploy → health → post-deploy checklist
 npm run cloud:logs               # Tail production logs
 npm run cloud:metrics            # Log-based metrics (latency, errors, 1h window)
 npm run cloud:costs              # Estimated monthly costs

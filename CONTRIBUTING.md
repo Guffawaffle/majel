@@ -100,10 +100,12 @@ git checkout -b feature/your-feature
 
 ### Code Style
 
-ESLint is configured and enforced in pre-commit. Run:
+ESLint plus server/web type checks are enforced in pre-commit. Run:
 
 ```bash
 npm run lint
+npm run typecheck
+npm run check:web
 ```
 
 Follow these conventions:

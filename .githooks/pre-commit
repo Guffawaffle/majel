@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # .githooks/pre-commit — Fast pre-commit gate for Majel
 #
-# Runs: lint (ESLint) + typecheck (tsc --noEmit)
+# Runs: lint (ESLint) + server typecheck + web typecheck
 # Install: git config core.hooksPath .githooks
 
 set -euo pipefail
@@ -14,5 +14,8 @@ npm run lint --silent
 
 echo "⟐ pre-commit: typecheck"
 npm run typecheck --silent
+
+echo "⟐ pre-commit: check:web"
+npm run check:web --silent
 
 echo "✅ pre-commit passed"
