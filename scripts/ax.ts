@@ -18,6 +18,17 @@
  *   status     Project health: git, postgres, server, build
  *   coverage   Per-file coverage sorted by lowest
  *   diff       Uncommitted changes with structured summary
+ *   data:ingestion  Feed ingestion validate/load/diff wrapper
+ *   feed:validate   Validate ingestion feed package
+ *   feed:load       Load ingestion feed package
+ *   feed:diff       Compare two ingestion feed packages
+ *   effects:gates   Evaluate activation gates against artifact
+ *   effects:activation:smoke Runtime activation smoke checks (local/cloud)
+ *   effects:promote:db Promote effects contract artifact into DB
+ *   canonical:preflight Validate canonical feed before apply
+ *   canonical:postcheck Verify runtime canonical status after apply
+ *   effects:coverage Full-feed effects coverage threshold check
+ *   tmp        Workspace temp-file helper (stdin/content/read)
  */
 
 import type { AxCommand } from "./ax/types.js";
@@ -38,6 +49,61 @@ import effectsBudgets from "./ax/effects-budgets.js";
 import dataHygiene from "./ax/data-hygiene.js";
 import effectsSnapshotExport from "./ax/effects-snapshot-export.js";
 import effectsSnapshotVerify from "./ax/effects-snapshot-verify.js";
+import effectsCoverage from "./ax/effects-coverage.js";
+import effectsGates from "./ax/effects-gates.js";
+import effectsActivationSmoke from "./ax/effects-activation-smoke.js";
+import dataIngestion from "./ax/data-ingestion.js";
+import effectsPromoteDb from "./ax/effects-promote-db.js";
+import tmp from "./ax/tmp.js";
+import { runCapture } from "./ax/runner.js";
+
+const feedValidate: AxCommand = {
+  name: "feed:validate",
+  description: "Validate ingestion feed package",
+  run: async (args) => dataIngestion.run([...args, "--mode", "validate"]),
+};
+
+const feedLoad: AxCommand = {
+  name: "feed:load",
+  description: "Load ingestion feed package",
+  run: async (args) => dataIngestion.run([...args, "--mode", "load"]),
+};
+
+const feedDiff: AxCommand = {
+  name: "feed:diff",
+  description: "Compare ingestion feed packages",
+  run: async (args) => dataIngestion.run([...args, "--mode", "diff"]),
+};
+
+const canonicalPreflight: AxCommand = {
+  name: "canonical:preflight",
+  description: "Preflight canonical feed validation before production apply",
+  run: async (args) => dataIngestion.run([...args, "--mode", "validate"]),
+};
+
+const canonicalPostcheck: AxCommand = {
+  name: "canonical:postcheck",
+  description: "Post-apply canonical runtime verification",
+  run: async (args) => dataIngestion.run([...args, "--mode", "status"]),
+};
+
+const canonicalMigrate: AxCommand = {
+  name: "canonical:migrate",
+  description: "Apply canonical schema migrations",
+  run: async (args) => {
+    const start = Date.now();
+    const exec = runCapture("tsx", ["scripts/canonical-migrate.ts", ...args], { ignoreExit: true });
+    return makeResult("canonical:migrate", start, {
+      command: `tsx scripts/canonical-migrate.ts ${args.join(" ")}`.trim(),
+      exitCode: exec.exitCode,
+      stdout: exec.stdout.trim(),
+      stderr: exec.stderr.trim(),
+    }, {
+      success: exec.exitCode === 0,
+      errors: exec.exitCode === 0 ? undefined : ["canonical migration failed"],
+    });
+  },
+};
 
 // ─── Command table ──────────────────────────────────────────────
 
@@ -53,10 +119,22 @@ const COMMANDS: Record<string, AxCommand> = {
   "effects:build": effectsBuild,
   "effects:snapshot:export": effectsSnapshotExport,
   "effects:snapshot:verify": effectsSnapshotVerify,
+  "effects:coverage": effectsCoverage,
+  "effects:gates": effectsGates,
+  "effects:activation:smoke": effectsActivationSmoke,
+  "effects:promote:db": effectsPromoteDb,
   "effects:review-pack": effectsReviewPack,
   "effects:apply-decisions": effectsApplyDecisions,
   "effects:budgets": effectsBudgets,
   "data:hygiene": dataHygiene,
+  "data:ingestion": dataIngestion,
+  "feed:validate": feedValidate,
+  "feed:load": feedLoad,
+  "feed:diff": feedDiff,
+  "canonical:preflight": canonicalPreflight,
+  "canonical:postcheck": canonicalPostcheck,
+  "canonical:migrate": canonicalMigrate,
+  "tmp": tmp,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────

@@ -469,21 +469,7 @@ function applyCanonicalIntentVectors(
  * Fetch and parse the effect bundle from the server.
  */
 export async function fetchEffectBundle(): Promise<EffectBundleResponse> {
-  try {
-    return await fetchEffectBundleFromRuntimeArtifacts();
-  } catch {
-    const response = await fetch("/api/effects/bundle", {
-      method: "GET",
-      headers: { "Accept": "application/json" },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch effect bundle: ${response.status} ${response.statusText}`);
-    }
-
-    const payload = await response.json();
-    return unwrapEffectBundlePayload(payload);
-  }
+  return await fetchEffectBundleFromRuntimeArtifacts();
 }
 
 /**
@@ -583,7 +569,7 @@ export function adaptEffectBundle(raw: EffectBundleResponse): EffectBundleData {
   const mappingTelemetry: EffectMappingTelemetry = {
     totalAbilities,
     mappedAbilities,
-    mappedPercent: totalAbilities > 0 ? Math.round((mappedAbilities / totalAbilities) * 1000) / 10 : 100,
+    mappedPercent: totalAbilities > 0 ? Math.round((mappedAbilities / totalAbilities) * 1000) / 10 : 0,
     unknownMagnitudeEffects,
     unknownEffectKeyCount,
     topUnmappedAbilityPhrases,

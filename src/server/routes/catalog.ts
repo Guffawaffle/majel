@@ -18,7 +18,6 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
-import { syncRateLimiter } from "../rate-limit.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -302,29 +301,6 @@ export function createCatalogRoutes(appState: AppState): Router {
     const ship = await appState.referenceStore!.getShip(req.params.id as string);
     if (!ship) return sendFail(res, ErrorCode.NOT_FOUND, "Ship not found", 404);
     sendOk(res, ship);
-  });
-
-  // ═══════════════════════════════════════════════════════════
-  // Game Data Sync (Deprecated — ADR-028)
-  // ═══════════════════════════════════════════════════════════
-
-  // CDN data is seeded externally via scripts/seed-cloud-db.ts.
-  // This endpoint returns current counts; actual sync is done via the seed script.
-  router.post("/api/catalog/sync", syncRateLimiter, requireAdmiral(appState), async (req, res) => {
-    if (!requireReferenceStore(res)) return;
-    const store = appState.referenceStore!;
-
-    try {
-      const counts = await store.counts();
-      sendOk(res, {
-        officers: { total: counts.officers, note: "Data seeded externally via scripts/seed-cloud-db.ts" },
-        ships: { total: counts.ships, note: "Data seeded externally via scripts/seed-cloud-db.ts" },
-        source: "database (seeded from game data snapshot)",
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      sendFail(res, ErrorCode.INTERNAL_ERROR, `Catalog query failed: ${msg}`, 502);
-    }
   });
 
   // ═══════════════════════════════════════════════════════════

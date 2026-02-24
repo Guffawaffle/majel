@@ -182,7 +182,6 @@ export function createCoreRoutes(appState: AppState): Router {
       { method: "DELETE", path: "/api/catalog/ships/:id/overlay", auth: "admiral", description: "Reset ship overlay" },
       { method: "POST", path: "/api/catalog/officers/bulk-overlay", auth: "admiral", description: "Bulk set officer overlays" },
       { method: "POST", path: "/api/catalog/ships/bulk-overlay", auth: "admiral", description: "Bulk set ship overlays" },
-      { method: "POST", path: "/api/catalog/sync", auth: "admiral", description: "Sync reference data from game data" },
       // ── Targets (ADR-026) ──
       { method: "GET", path: "/api/targets", auth: "lieutenant", description: "List targets (filter by type, status, priority)" },
       { method: "GET", path: "/api/targets/counts", auth: "lieutenant", description: "Target counts by status" },

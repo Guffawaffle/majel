@@ -2,7 +2,7 @@
  * routes/auth.ts — Authentication Routes (ADR-019 Phase 1)
  *
  * User sign-up, sign-in, email verification, password management,
- * session management, and legacy invite code redemption.
+ * and session management.
  *
  * Routes:
  *   POST /api/auth/signup               — Create account → verification email
@@ -15,8 +15,6 @@
  *   POST /api/auth/change-password      — Change password (kills other sessions)
  *   POST /api/auth/forgot-password      — Request password reset email
  *   POST /api/auth/reset-password       — Reset password with token
- *   GET  /api/auth/status               — Auth tier check (legacy compat)
- *   POST /api/auth/redeem               — Legacy invite code redemption
  *   GET  /api/auth/dev-verify           — Dev-only: verify email by address
  *
  * Admiral routes:
@@ -481,111 +479,6 @@ export function createAuthRoutes(appState: AppState): Router {
     }
   });
 
-  // ── GET /api/auth/status ──────────────────────────────────
-  // Legacy compatibility endpoint
-  router.get("/api/auth/status", async (req, res) => {
-    if (!appState.config.authEnabled) {
-      return sendOk(res, { tier: "admiral", authEnabled: false, tenantId: "local" });
-    }
-
-    // Check for admin bearer token — bootstrap-only (#91 Phase B)
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.slice(7);
-      if (appState.config.adminToken && timingSafeCompare(token, appState.config.adminToken)) {
-        const hasAdmiral = appState.userStore ? await appState.userStore.hasAdmiral() : false;
-        if (!hasAdmiral) {
-          return sendOk(res, { tier: "admiral", authEnabled: true, tenantId: "admiral", bootstrap: true });
-        }
-        // Admiral exists → token ignored, fall through to session check
-      }
-    }
-
-    // Check for user session
-    const sessionToken = req.cookies?.[SESSION_COOKIE];
-    if (sessionToken && appState.userStore) {
-      const session = await appState.userStore.resolveSession(sessionToken);
-      if (session) {
-        return sendOk(res, {
-          tier: session.role,
-          authEnabled: true,
-          user: {
-            id: session.userId,
-            email: session.email,
-            displayName: session.displayName,
-            role: session.role,
-          },
-        });
-      }
-    }
-
-    // Check for legacy tenant cookie
-    const tenantId = req.cookies?.[TENANT_COOKIE];
-    if (tenantId && appState.inviteStore) {
-      const session = await appState.inviteStore.getSession(tenantId);
-      if (session) {
-        return sendOk(res, { tier: "visitor", authEnabled: true, tenantId });
-      }
-    }
-
-    sendOk(res, { tier: "public", authEnabled: true, tenantId: null });
-  });
-
-  // ── POST /api/auth/redeem ─────────────────────────────────
-  // Legacy invite code redemption (backward compat)
-  router.post("/api/auth/redeem", async (req, res) => {
-    if (!appState.config.authEnabled) {
-      return sendOk(res, {
-        tenantId: "local",
-        tier: "admiral",
-        message: "Auth disabled — running in local/demo mode",
-      });
-    }
-
-    const { code } = req.body ?? {};
-    if (!code || typeof code !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing invite code", 400);
-    }
-    if (code.length > 100) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid invite code", 400);
-    }
-
-    if (!appState.inviteStore) {
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Invite store not available", 503);
-    }
-
-    try {
-      const session = await appState.inviteStore.redeemCode(code.trim());
-      res.cookie(TENANT_COOKIE, session.tenantId, {
-        httpOnly: true,
-        sameSite: "strict",
-        secure: appState.config.nodeEnv === "production",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: "/",
-      });
-      sendOk(res, {
-        tenantId: session.tenantId,
-        tier: "visitor",
-        message: "Welcome aboard, Ensign. Explore freely.",
-      }, 201);
-
-      appState.auditStore?.logEvent({
-        event: "auth.invite.redeem",
-        detail: { tenantId: session.tenantId },
-        ...auditMeta(req),
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to redeem invite code";
-
-      appState.auditStore?.logEvent({
-        event: "auth.invite.redeem",
-        detail: { success: false, reason: message },
-        ...auditMeta(req),
-      });
-
-      sendFail(res, ErrorCode.FORBIDDEN, message, 403);
-    }
-  });
 
   // ── Admiral Console Routes (#91 Phase B) ───────────────────
   // Bearer token is bootstrap-only: only works when no real Admiral exists.

@@ -26,12 +26,13 @@
  */
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync, mkdirSync, readdirSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import os from "node:os";
 import type { AxCommandOutput } from "../src/shared/ax.js";
+import { stableJsonStringify } from "../src/server/services/effects-contract-v3.js";
 
 // ─── Constants ──────────────────────────────────────────────────
 
@@ -276,11 +277,18 @@ function requireWriteAuth(command: string): boolean {
 
 async function cmdDeploy(): Promise<void> {
   const start = Date.now();
+  const args = process.argv.slice(2);
+  const skipSeed = args.includes("--skip-seed");
+  const explicitFeed = getFlagValue(args, "seed-feed") ?? getFlagValue(args, "feed");
+  const feedsRootFlag = getFlagValue(args, "feeds-root");
+  const retentionKeepRunsRaw = getFlagValue(args, "retention-keep-runs");
+  const retentionKeepRuns = retentionKeepRunsRaw ? Math.max(1, Number.parseInt(retentionKeepRunsRaw, 10) || 10) : 10;
+
   humanLog("🚀 Majel Cloud Deploy — Full Pipeline");
   humanLog("────────────────────────────────────────");
 
   // Step 1: Local CI
-  humanLog("\n📋 Step 1/4: Running local CI...");
+  humanLog("\n📋 Step 1/6: Running local CI...");
   try {
     run("npm run local-ci");
   } catch {
@@ -298,7 +306,7 @@ async function cmdDeploy(): Promise<void> {
   }
 
   // Step 2: Build image
-  humanLog("\n📦 Step 2/4: Building container image...");
+  humanLog("\n📦 Step 2/6: Building container image...");
   try {
     gcloud(`builds submit --tag ${IMAGE} --quiet`);
   } catch (err) {
@@ -315,7 +323,7 @@ async function cmdDeploy(): Promise<void> {
   }
 
   // Step 3: Deploy to Cloud Run
-  humanLog("\n☁️  Step 3/4: Deploying to Cloud Run...");
+  humanLog("\n☁️  Step 3/6: Deploying to Cloud Run...");
   try {
     gcloud(`run deploy ${SERVICE} --image ${IMAGE} --region ${REGION} --quiet`);
   } catch (err) {
@@ -332,7 +340,7 @@ async function cmdDeploy(): Promise<void> {
   }
 
   // Step 4: Health check
-  humanLog("\n🏥 Step 4/4: Health check...");
+  humanLog("\n🏥 Step 4/6: Health check...");
   const url = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.url)'`);
   let healthOk = false;
   let healthData: Record<string, unknown> = {};
@@ -344,6 +352,35 @@ async function cmdDeploy(): Promise<void> {
     /* healthOk already false */
   }
 
+  let canonicalSeedOutput = "";
+  let ingestionOutput = "";
+  let seededFeedPath: string | null = null;
+  let seededFeedSource: "explicit" | "auto" | "skipped" = "skipped";
+
+  if (healthOk && !skipSeed) {
+    // Step 5: Idempotent canonical upsert seed (officers/ships)
+    humanLog("\n🌱 Step 5/6: Seeding canonical reference data (idempotent upsert)...");
+    const canonicalSeed = runCanonicalSeedScript(start, "deploy");
+    canonicalSeedOutput = canonicalSeed.output;
+
+    // Step 6: Idempotent crawler feed load (all entities + runtime dataset)
+    humanLog("\n🧩 Step 6/6: Loading crawler feed data (idempotent add/update)...");
+    const discovered = resolveDeployFeedSelection({
+      explicitFeed,
+      feedsRootFlag,
+    });
+    seededFeedPath = discovered.feedPath;
+    seededFeedSource = discovered.source;
+    const cloudDbUrl = getCloudDbUrl();
+    const ingestion = runCrawlerFeedLoad(start, "deploy", {
+      feedPath: discovered.feedPath,
+      feedsRoot: discovered.feedsRoot,
+      dbUrl: cloudDbUrl,
+      retentionKeepRuns,
+    });
+    ingestionOutput = ingestion.output;
+  }
+
   if (AX_MODE) {
     const revision = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.latestReadyRevisionName)'`);
     axOutput("deploy", start, {
@@ -353,6 +390,17 @@ async function cmdDeploy(): Promise<void> {
       healthCheck: healthOk ? "pass" : "fail",
       health: healthData,
       version: getPackageVersion(),
+      seed: {
+        skipped: skipSeed,
+        canonicalApplied: healthOk && !skipSeed,
+        feedPath: seededFeedPath,
+        feedSource: seededFeedSource,
+        retentionKeepRuns,
+      },
+      seedOutputs: {
+        canonical: canonicalSeedOutput,
+        ingestion: ingestionOutput,
+      },
     }, {
       success: healthOk,
       errors: healthOk ? undefined : ["Post-deploy health check failed"],
@@ -360,8 +408,164 @@ async function cmdDeploy(): Promise<void> {
     });
   } else {
     humanLog("\n────────────────────────────────────────");
-    humanLog(healthOk ? `✅ Deploy complete! ${url}` : `⚠️  Deployed but health check failed. Check: npm run cloud:logs`);
+    if (!healthOk) {
+      humanLog(`⚠️  Deployed but health check failed. Check: npm run cloud:logs`);
+      return;
+    }
+    if (skipSeed) {
+      humanLog(`✅ Deploy complete (seed skipped). ${url}`);
+      return;
+    }
+    humanLog(`✅ Deploy + idempotent data sync complete! ${url}`);
+    if (seededFeedPath) {
+      humanLog(`   Feed loaded: ${seededFeedPath} (${seededFeedSource})`);
+    }
   }
+}
+
+function getCloudDbUrl(): string {
+  const password = encodeURIComponent(getCloudDbPassword());
+  const publicIp = getCloudSqlPrimaryIp();
+  return `postgresql://postgres:${password}@${publicIp}:5432/majel`;
+}
+
+function findLatestFeedRun(feedsRoot: string): string | null {
+  if (!existsSync(feedsRoot)) return null;
+
+  const runDirs: Array<{ path: string; mtimeMs: number }> = [];
+  const firstLevel = readdirSync(feedsRoot, { withFileTypes: true });
+
+  for (const entry of firstLevel) {
+    if (!entry.isDirectory()) continue;
+    const dayOrFeedDir = join(feedsRoot, entry.name);
+    const directFeed = join(dayOrFeedDir, "feed.json");
+    if (existsSync(directFeed)) {
+      runDirs.push({ path: dayOrFeedDir, mtimeMs: statSync(directFeed).mtimeMs });
+      continue;
+    }
+
+    for (const runEntry of readdirSync(dayOrFeedDir, { withFileTypes: true })) {
+      if (!runEntry.isDirectory()) continue;
+      const runDir = join(dayOrFeedDir, runEntry.name);
+      const feedPath = join(runDir, "feed.json");
+      if (!existsSync(feedPath)) continue;
+      runDirs.push({ path: runDir, mtimeMs: statSync(feedPath).mtimeMs });
+    }
+  }
+
+  if (runDirs.length === 0) return null;
+  runDirs.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return runDirs[0]?.path ?? null;
+}
+
+function resolveDeployFeedSelection(input: {
+  explicitFeed?: string;
+  feedsRootFlag?: string;
+}): { feedPath: string; feedsRoot: string; source: "explicit" | "auto" } {
+  const explicit = input.explicitFeed?.trim();
+  const explicitFeedsRoot = input.feedsRootFlag?.trim();
+
+  if (explicit) {
+    const explicitPath = resolve(explicit);
+    if (existsSync(join(explicitPath, "feed.json"))) {
+      return {
+        feedPath: explicitPath,
+        feedsRoot: explicitFeedsRoot ?? dirname(explicitPath),
+        source: "explicit",
+      };
+    }
+    const rootForExplicit = resolve(explicitFeedsRoot ?? ".");
+    const rootedPath = resolve(rootForExplicit, explicit);
+    if (existsSync(join(rootedPath, "feed.json"))) {
+      return {
+        feedPath: rootedPath,
+        feedsRoot: rootForExplicit,
+        source: "explicit",
+      };
+    }
+    return {
+      feedPath: explicit,
+      feedsRoot: rootForExplicit,
+      source: "explicit",
+    };
+  }
+
+  const candidateRoots = [
+    explicitFeedsRoot,
+    process.env.MAJEL_FEEDS_ROOT,
+    resolve(ROOT, "data", "feeds"),
+    "/srv/crawlers/stfc.space/data/feeds",
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+  for (const root of candidateRoots) {
+    const resolvedRoot = resolve(root);
+    const latestRun = findLatestFeedRun(resolvedRoot);
+    if (latestRun) {
+      return {
+        feedPath: latestRun,
+        feedsRoot: resolvedRoot,
+        source: "auto",
+      };
+    }
+  }
+
+  throw new Error("No crawler feed found for deploy sync. Provide --seed-feed <feedId-or-path> and optionally --feeds-root <path>.");
+}
+
+function runCrawlerFeedLoad(
+  start: number,
+  commandName: string,
+  options: {
+    feedPath: string;
+    feedsRoot: string;
+    dbUrl: string;
+    retentionKeepRuns: number;
+  }
+): { output: string } {
+  const args = [
+    "tsx",
+    "scripts/data-ingestion.ts",
+    "load",
+    "--feed",
+    options.feedPath,
+    "--feeds-root",
+    options.feedsRoot,
+    "--db-url",
+    options.dbUrl,
+    "--activate-runtime-dataset",
+    "--retention-keep-runs",
+    String(options.retentionKeepRuns),
+  ];
+
+  const result = spawnSync("npx", args, {
+    cwd: process.cwd(),
+    stdio: AX_MODE ? "pipe" : "inherit",
+    encoding: "utf-8",
+  });
+
+  if (result.status !== 0) {
+    if (AX_MODE) {
+      axOutput(commandName, start, {
+        step: "crawler-feed-load",
+        feedPath: options.feedPath,
+        feedsRoot: options.feedsRoot,
+      }, {
+        success: false,
+        errors: ["Crawler feed load failed", result.stderr || "Unknown error"],
+        hints: [
+          "Verify feed path has feed.json",
+          "Try explicit feed: npm run cloud:deploy -- --seed-feed <feedId-or-path> --feeds-root <path>",
+        ],
+      });
+    } else {
+      humanError("❌ Crawler feed load failed");
+      humanError(`   feed=${options.feedPath}`);
+      humanError(`   feedsRoot=${options.feedsRoot}`);
+    }
+    process.exit(1);
+  }
+
+  return { output: result.stdout || "" };
 }
 
 async function cmdBuild(): Promise<void> {
@@ -533,55 +737,6 @@ async function cmdHealth(): Promise<void> {
       axOutput("health", start, { url: `${url}/api/health`, status: "unhealthy" }, { success: false, errors: ["Health check failed or timed out"], hints: ["Check logs: npm run cloud:logs"] });
     } else {
       humanError(`❌ Health check failed: ${url}/api/health`);
-      humanError("   Check: npm run cloud:logs");
-    }
-    process.exit(1);
-  }
-}
-
-async function cmdSync(): Promise<void> {
-  const start = Date.now();
-  const url = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.url)'`);
-
-  humanLog("� Querying catalog counts on production...");
-  humanLog("────────────────────────────────────────");
-  humanLog("");
-  humanLog("ℹ️  Note: Catalog data is seeded externally via scripts/seed-cloud-db.ts");
-  humanLog("   To seed/update the cloud DB, run:");
-  humanLog("   Terminal 1: npx tsx scripts/cloud.ts ssh");
-  humanLog("   Terminal 2: CLOUD_DB_PASSWORD=<pw> npx tsx scripts/seed-cloud-db.ts");
-  humanLog("");
-
-  try {
-    // Get identity token for authenticated request
-    const token = runCapture(`gcloud auth print-identity-token`);
-    const raw = runCapture(`curl -sf -X POST ${url}/api/catalog/sync -H 'Authorization: Bearer ${token}' -H 'X-Requested-With: majel-client' --max-time 120`);
-    const data = JSON.parse(raw);
-
-    if (AX_MODE) {
-      axOutput("sync", start, {
-        url: `${url}/api/catalog/sync`,
-        status: "completed",
-        result: data,
-        note: "Data seeded externally via scripts/seed-cloud-db.ts",
-      });
-    } else {
-      humanLog(`  URL:      ${url}/api/catalog/sync`);
-      humanLog(`  Status:   ✅ completed`);
-      humanLog(`  Result:`);
-      console.log(JSON.stringify(data, null, 2));
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (AX_MODE) {
-      axOutput("sync", start, { url: `${url}/api/catalog/sync`, status: "failed" }, {
-        success: false,
-        errors: ["Catalog query failed", msg],
-        hints: ["Check logs: npm run cloud:logs", "Seed data: npx tsx scripts/seed-cloud-db.ts"],
-      });
-    } else {
-      humanError(`❌ Catalog query failed: ${url}/api/catalog/sync`);
-      humanError(`   Error: ${msg}`);
       humanError("   Check: npm run cloud:logs");
     }
     process.exit(1);
@@ -869,43 +1024,61 @@ async function cmdSql(): Promise<void> {
 // ─── DB Operations ──────────────────────────────────────────────
 
 async function cmdDbSeed(): Promise<void> {
-  const start = Date.now();
-  
-  humanLog("🌱 Seeding Cloud DB from CDN snapshot...");
-  humanLog("────────────────────────────────────────");
-  
-  // Get password from Secret Manager
-  const password = runCapture(`gcloud secrets versions access latest --secret=cloudsql-password --project ${PROJECT}`);
-  
-  // Get Cloud SQL IP
+  await cmdDbSeedCanonical();
+}
+
+function getFlagValue(args: string[], name: string): string | undefined {
+  const key = `--${name}`;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === key) {
+      const next = args[index + 1];
+      if (next && !next.startsWith("--")) return next;
+      return "";
+    }
+    if (arg.startsWith(`${key}=`)) {
+      return arg.slice(key.length + 1);
+    }
+  }
+  return undefined;
+}
+
+function getCloudDbPassword(): string {
+  return runCapture(`gcloud secrets versions access latest --secret=cloudsql-password --project ${PROJECT}`);
+}
+
+function getCloudSqlPrimaryIp(): string {
   const instance = gcloudJson<{ ipAddresses?: Array<{ type?: string; ipAddress?: string }> }>(`sql instances describe majel-pg --project ${PROJECT}`);
   const publicIp = instance.ipAddresses?.find(ip => ip.type === "PRIMARY")?.ipAddress;
-  
   if (!publicIp) {
-    humanError("❌ Could not find Cloud SQL public IP");
-    process.exit(1);
+    throw new Error("Could not find Cloud SQL public IP");
   }
-  
+  return publicIp;
+}
+
+function runCanonicalSeedScript(start: number, commandName: string): { output: string } {
+  const password = getCloudDbPassword();
+  const publicIp = getCloudSqlPrimaryIp();
+
   humanLog(`   Connecting to ${publicIp}:5432...`);
-  
-  // Run seed script
+
   const env = {
     ...process.env,
     CLOUD_DB_HOST: publicIp,
     CLOUD_DB_PORT: "5432",
     CLOUD_DB_PASSWORD: password,
   };
-  
+
   const result = spawnSync("npx", ["tsx", "scripts/seed-cloud-db.ts"], {
     cwd: process.cwd(),
     env,
     stdio: AX_MODE ? "pipe" : "inherit",
     encoding: "utf-8",
   });
-  
+
   if (result.status !== 0) {
     if (AX_MODE) {
-      axOutput("db:seed", start, { status: "failed" }, {
+      axOutput(commandName, start, { status: "failed" }, {
         success: false,
         errors: ["Seed script failed", result.stderr || "Unknown error"],
         hints: ["Ensure IP is authorized: npm run cloud:db:auth", "Check CDN snapshot exists: data/.stfc-snapshot/"],
@@ -915,9 +1088,346 @@ async function cmdDbSeed(): Promise<void> {
     }
     process.exit(1);
   }
-  
+
+  return { output: result.stdout || "" };
+}
+
+interface CdnAbilityRef {
+  id?: number | null;
+  loca_id?: number | null;
+  value_is_percentage?: boolean;
+}
+
+interface CdnOfficerSummaryItem {
+  id: number;
+  captain_ability?: CdnAbilityRef | null;
+  ability?: CdnAbilityRef | null;
+  below_decks_ability?: CdnAbilityRef | null;
+}
+
+interface TranslationEntry {
+  id: number | null;
+  key: string;
+  text: string;
+}
+
+interface EffectsSnapshotExportOfficer {
+  officerId: string;
+  abilities: Array<{
+    abilityId: string;
+    slot: "cm" | "oa" | "bda";
+    name: string | null;
+    rawText: string;
+    isInert: boolean;
+    sourceRef: string;
+  }>;
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function stripColorTags(text: string): string {
+  return text.replace(/<\/?color[^>]*>/gi, "").replace(/<\/?size[^>]*>/gi, "").replace(/<\/?sprite[^>]*>/gi, "");
+}
+
+function sanitizeSnapshotText(text: string | undefined): string {
+  if (!text) return "";
+  return stripColorTags(text)
+    .replace(/<\/?[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildTranslationMap(entries: TranslationEntry[], key: string): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const entry of entries) {
+    if (entry.id != null && entry.key === key) {
+      map.set(entry.id, entry.text);
+    }
+  }
+  return map;
+}
+
+function buildEffectsSnapshotFromCdn(): { path: string; officerCount: number; abilityCount: number; snapshotVersion: string } {
+  const snapshotRoot = resolve(ROOT, "data", ".stfc-snapshot");
+  const summaryPath = resolve(snapshotRoot, "officer", "summary.json");
+  const versionPath = resolve(snapshotRoot, "version.txt");
+  const buffsPath = resolve(snapshotRoot, "translations", "en", "officer_buffs.json");
+
+  if (!existsSync(summaryPath)) {
+    throw new Error("Missing CDN officer summary: data/.stfc-snapshot/officer/summary.json");
+  }
+  if (!existsSync(versionPath)) {
+    throw new Error("Missing CDN snapshot version file: data/.stfc-snapshot/version.txt");
+  }
+  if (!existsSync(buffsPath)) {
+    throw new Error("Missing CDN translations file: data/.stfc-snapshot/translations/en/officer_buffs.json");
+  }
+
+  const snapshotVersion = readFileSync(versionPath, "utf-8").trim() || "unknown";
+  const summary = JSON.parse(readFileSync(summaryPath, "utf-8")) as CdnOfficerSummaryItem[];
+  const buffEntries = JSON.parse(readFileSync(buffsPath, "utf-8")) as TranslationEntry[];
+
+  const abilityNameMap = buildTranslationMap(buffEntries, "officer_ability_name");
+  const abilityDescMap = buildTranslationMap(buffEntries, "officer_ability_desc");
+
+  const officers: EffectsSnapshotExportOfficer[] = [];
+  const slots: Array<{ key: "captain_ability" | "ability" | "below_decks_ability"; slot: "cm" | "oa" | "bda" }> = [
+    { key: "captain_ability", slot: "cm" },
+    { key: "ability", slot: "oa" },
+    { key: "below_decks_ability", slot: "bda" },
+  ];
+
+  for (const officer of summary) {
+    const officerId = `cdn:officer:${officer.id}`;
+    const abilities: EffectsSnapshotExportOfficer["abilities"] = [];
+
+    for (const slotDef of slots) {
+      const abilityRef = officer[slotDef.key];
+      const abilityLocaId = abilityRef?.loca_id ?? null;
+      const abilityGameId = abilityRef?.id ?? null;
+      if (!abilityLocaId || !abilityGameId) continue;
+
+      const name = abilityNameMap.get(abilityLocaId) ?? null;
+      const rawText = sanitizeSnapshotText(abilityDescMap.get(abilityLocaId));
+      const isInert = rawText.length === 0 || /^unknown/i.test(rawText);
+
+      abilities.push({
+        abilityId: `${officerId}:${slotDef.slot}:${abilityGameId}`,
+        slot: slotDef.slot,
+        name,
+        rawText,
+        isInert,
+        sourceRef: `data/.stfc-snapshot/officer/summary.json#/officerId/${officer.id}/${slotDef.key}`,
+      });
+    }
+
+    officers.push({ officerId, abilities });
+  }
+
+  officers.sort((left, right) => left.officerId.localeCompare(right.officerId));
+  for (const officer of officers) {
+    officer.abilities.sort((left, right) => left.abilityId.localeCompare(right.abilityId));
+  }
+
+  const schemaDescriptor = {
+    schemaVersion: "1.0.0",
+    snapshot: {
+      snapshotId: "string",
+      source: "cdn-snapshot",
+      sourceVersion: "string",
+      generatedAt: "iso8601",
+      schemaHash: "sha256",
+      contentHash: "sha256",
+    },
+    officers: [{
+      officerId: "string",
+      abilities: [{
+        abilityId: "string",
+        slot: "cm|oa|bda",
+        name: "string|null",
+        rawText: "string",
+        isInert: "boolean",
+        sourceRef: "string",
+      }],
+    }],
+  } as const;
+
+  const generatedAt = new Date().toISOString();
+  const schemaHash = sha256Hex(stableJsonStringify(schemaDescriptor));
+  const snapshotId = `cdn-${snapshotVersion}`;
+  const contentHash = sha256Hex(stableJsonStringify({
+    schemaVersion: "1.0.0",
+    snapshot: {
+      snapshotId,
+      source: "cdn-snapshot",
+      sourceVersion: snapshotVersion,
+      schemaHash,
+    },
+    officers,
+  }));
+
+  const payload = {
+    schemaVersion: "1.0.0" as const,
+    snapshot: {
+      snapshotId,
+      source: "cdn-snapshot",
+      sourceVersion: snapshotVersion,
+      generatedAt,
+      schemaHash,
+      contentHash,
+    },
+    officers,
+  };
+
+  const outDir = resolve(ROOT, "tmp", "effects", "exports");
+  mkdirSync(outDir, { recursive: true });
+  const outPath = resolve(outDir, `effects-snapshot.cdn-${snapshotVersion}.json`);
+  writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+
+  const abilityCount = officers.reduce((sum, officer) => sum + officer.abilities.length, 0);
+  return {
+    path: outPath,
+    officerCount: officers.length,
+    abilityCount,
+    snapshotVersion,
+  };
+}
+
+function runEffectsBuild(start: number, commandName: string): { mode: "deterministic" | "hybrid"; inputPath?: string; snapshotVersion?: string; axData: Record<string, unknown> } {
+  const args = process.argv.slice(2);
+  const modeRaw = getFlagValue(args, "mode") || "hybrid";
+  if (modeRaw !== "deterministic" && modeRaw !== "hybrid") {
+    if (AX_MODE) {
+      axOutput(commandName, start, { status: "failed" }, {
+        success: false,
+        errors: [`Invalid mode '${modeRaw}'`],
+        hints: ["Use --mode=deterministic or --mode=hybrid"],
+      });
+    } else {
+      humanError(`❌ Invalid mode '${modeRaw}'. Use --mode=deterministic or --mode=hybrid`);
+    }
+    process.exit(1);
+  }
+
+  const mode = modeRaw;
+  let inputPath = getFlagValue(args, "input") || undefined;
+  const snapshotVersion = getFlagValue(args, "snapshot") || undefined;
+
+  let generatedInput: { path: string; officerCount: number; abilityCount: number; snapshotVersion: string } | undefined;
+  if (!inputPath) {
+    try {
+      generatedInput = buildEffectsSnapshotFromCdn();
+      inputPath = generatedInput.path;
+      if (!AX_MODE) {
+        humanLog(`   📦 Using CDN snapshot export: ${inputPath}`);
+        humanLog(`   👥 Officers parsed: ${generatedInput.officerCount}, abilities parsed: ${generatedInput.abilityCount}`);
+      }
+    } catch (error) {
+      if (AX_MODE) {
+        axOutput(commandName, start, { status: "failed" }, {
+          success: false,
+          errors: [error instanceof Error ? `CDN snapshot export failed: ${error.message}` : "CDN snapshot export failed"],
+          hints: ["Ensure data/.stfc-snapshot contains officer summary + translations", "Or provide --input=<snapshot export path>"],
+        });
+      } else {
+        humanError(error instanceof Error ? `❌ ${error.message}` : "❌ CDN snapshot export failed");
+      }
+      process.exit(1);
+    }
+  }
+
+  const buildArgs = ["tsx", "scripts/ax.ts", "effects:build", `--mode=${mode}`];
+  if (inputPath) buildArgs.push(`--input=${inputPath}`);
+  if (snapshotVersion) buildArgs.push(`--snapshot=${snapshotVersion}`);
+
+  const result = spawnSync("npx", buildArgs, {
+    cwd: process.cwd(),
+    stdio: AX_MODE ? "pipe" : "inherit",
+    encoding: "utf-8",
+  });
+
+  const raw = result.stdout?.trim() || "";
+  let parsed: Record<string, unknown> = {};
+  if (raw) {
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      parsed = { rawOutput: raw };
+    }
+  }
+
+  if (result.status !== 0) {
+    if (AX_MODE) {
+      const errors = Array.isArray(parsed.errors) ? parsed.errors.map(String) : [result.stderr || "effects:build failed"];
+      const hints = Array.isArray(parsed.hints) ? parsed.hints.map(String) : ["Run: npm run ax -- effects:build --mode=hybrid"];
+      axOutput(commandName, start, {
+        status: "failed",
+        mode,
+        inputPath: inputPath ?? null,
+        snapshotVersion: snapshotVersion ?? null,
+        generatedInput: generatedInput ?? null,
+      }, {
+        success: false,
+        errors,
+        hints,
+      });
+    } else {
+      humanError("❌ Effects generation failed");
+    }
+    process.exit(1);
+  }
+
+  if (!AX_MODE) {
+    const data = (parsed.data && typeof parsed.data === "object") ? parsed.data as Record<string, unknown> : {};
+    const runId = typeof data.runId === "string" ? data.runId : "unknown";
+    const receiptPath = typeof data.receiptPath === "string" ? data.receiptPath : "(not reported)";
+    humanLog(`   ✅ effects:build ${mode} complete (runId: ${runId})`);
+    humanLog(`   📄 Receipt: ${receiptPath}`);
+  }
+
+  return {
+    mode,
+    inputPath,
+    snapshotVersion,
+    axData: {
+      ...parsed,
+      generatedInput,
+    },
+  };
+}
+
+async function cmdDbSeedCanonical(): Promise<void> {
+  const start = Date.now();
+
+  humanLog("🌱 Seeding Cloud DB from CDN snapshot...");
+  humanLog("────────────────────────────────────────");
+
+  const result = runCanonicalSeedScript(start, "db:seed:canonical");
+
   if (AX_MODE) {
-    axOutput("db:seed", start, { status: "completed", output: result.stdout || "" });
+    axOutput("db:seed:canonical", start, { status: "completed", output: result.output });
+  }
+}
+
+async function cmdDbSeedEffects(): Promise<void> {
+  const start = Date.now();
+
+  humanLog("🧬 Building effects artifacts for cloud seed...");
+  humanLog("──────────────────────────────────────────────");
+
+  const build = runEffectsBuild(start, "db:seed:effects");
+
+  if (AX_MODE) {
+    axOutput("db:seed:effects", start, {
+      status: "completed",
+      mode: build.mode,
+      inputPath: build.inputPath ?? null,
+      snapshotVersion: build.snapshotVersion ?? null,
+      effectsBuild: build.axData,
+    });
+  }
+}
+
+async function cmdDbSeedAll(): Promise<void> {
+  const start = Date.now();
+
+  humanLog("🚀 Running effects generation + canonical cloud DB seed...");
+  humanLog("────────────────────────────────────────────────────────────");
+
+  const build = runEffectsBuild(start, "db:seed:all");
+  const seed = runCanonicalSeedScript(start, "db:seed:all");
+
+  if (AX_MODE) {
+    axOutput("db:seed:all", start, {
+      status: "completed",
+      mode: build.mode,
+      inputPath: build.inputPath ?? null,
+      snapshotVersion: build.snapshotVersion ?? null,
+      effectsBuild: build.axData,
+      canonicalSeedOutput: seed.output,
+    });
   }
 }
 
@@ -1048,6 +1558,162 @@ await pool.end();
     humanLog("────────────────────────────────────────");
     humanLog(`   Officers: ${counts.officers}`);
     humanLog(`   Ships:    ${counts.ships}`);
+  }
+}
+
+async function cmdDbResetCanonical(): Promise<void> {
+  const start = Date.now();
+  const args = process.argv.slice(2);
+  const force = args.includes("--force") || args.includes("-f");
+  const apply = args.includes("--apply");
+  const confirmIndex = args.findIndex((value) => value === "--confirm");
+  const confirmValue = confirmIndex >= 0 ? args[confirmIndex + 1] : undefined;
+
+  if (!force || !apply || confirmValue !== "RESET_CANONICAL") {
+    humanError("⚠️  Canonical reset is protected.");
+    humanError("   Required flags:");
+    humanError("   --force --apply --confirm RESET_CANONICAL");
+    humanError("   Example:");
+    humanError("   npm run cloud:db:reset:canonical -- --force --apply --confirm RESET_CANONICAL");
+    process.exit(1);
+  }
+
+  humanLog("🧨 Resetting canonical/reference/effects data on Cloud SQL (preserving user/player/auth tables)...");
+
+  const password = runCapture(`gcloud secrets versions access latest --secret=cloudsql-password --project ${PROJECT}`);
+  const instance = gcloudJson<{ ipAddresses?: Array<{ type?: string; ipAddress?: string }> }>(
+    `sql instances describe majel-pg --project ${PROJECT}`,
+  );
+  const publicIp = instance.ipAddresses?.find((ip) => ip.type === "PRIMARY")?.ipAddress;
+
+  if (!publicIp) {
+    humanError("❌ Could not find Cloud SQL public IP");
+    process.exit(1);
+  }
+
+  const resetScript = `
+import pg from "pg";
+
+const PRESERVE_TABLES = new Set([
+  "users",
+  "user_sessions",
+  "email_tokens",
+  "invite_codes",
+  "tenant_sessions",
+  "auth_audit_log",
+  "user_settings",
+  "inventory_items",
+  "officer_overlay",
+  "ship_overlay",
+  "targets",
+  "intent_catalog",
+  "bridge_cores",
+  "bridge_core_members",
+  "below_deck_policies",
+  "loadouts",
+  "loadout_variants",
+  "docks",
+  "fleet_presets",
+  "fleet_preset_slots",
+  "plan_items",
+  "officer_reservations",
+  "mutation_proposals",
+  "behavior_rules",
+  "lex_frames"
+]);
+
+const pool = new pg.Pool({
+  host: ${JSON.stringify(publicIp)},
+  port: 5432,
+  user: "postgres",
+  password: process.env.CLOUD_DB_PASSWORD,
+  database: "majel",
+});
+
+try {
+  const rows = await pool.query(
+    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+  );
+
+  const allTables = rows.rows.map((row) => String(row.tablename));
+  const preserve = allTables.filter((tableName) => PRESERVE_TABLES.has(tableName));
+  const truncate = allTables.filter((tableName) => !PRESERVE_TABLES.has(tableName));
+
+  if (truncate.length > 0) {
+    const quoted = truncate.map((tableName) => '"' + tableName + '"').join(", ");
+    await pool.query("BEGIN");
+    await pool.query("TRUNCATE TABLE " + quoted + " RESTART IDENTITY CASCADE");
+    await pool.query("COMMIT");
+  }
+
+  console.log(JSON.stringify({
+    preserved: preserve,
+    truncated: truncate,
+    preservedCount: preserve.length,
+    truncatedCount: truncate.length,
+  }));
+} catch (error) {
+  try { await pool.query("ROLLBACK"); } catch {}
+  throw error;
+} finally {
+  await pool.end();
+}
+`;
+
+  const tmpFile = resolve(process.cwd(), ".tmp-db-reset-canonical.mts");
+  writeFileSync(tmpFile, resetScript);
+
+  const result = spawnSync("npx", ["tsx", tmpFile], {
+    cwd: process.cwd(),
+    env: { ...process.env, CLOUD_DB_PASSWORD: password },
+    stdio: "pipe",
+    encoding: "utf-8",
+  });
+
+  try { unlinkSync(tmpFile); } catch { /* ignore */ }
+
+  let payload: {
+    preserved?: string[];
+    truncated?: string[];
+    preservedCount?: number;
+    truncatedCount?: number;
+  } = {};
+
+  try {
+    payload = JSON.parse(result.stdout || "{}");
+  } catch {
+    payload = {};
+  }
+
+  if (result.status !== 0) {
+    const stderr = result.stderr?.trim() || "Unknown canonical reset failure";
+    if (AX_MODE) {
+      axOutput("db:reset:canonical", start, {
+        status: "failed",
+        stderr,
+        ...payload,
+      }, { success: false, errors: [stderr] });
+    } else {
+      humanError("❌ Canonical reset failed");
+      if (stderr) humanError(stderr);
+    }
+    process.exit(1);
+  }
+
+  if (AX_MODE) {
+    axOutput("db:reset:canonical", start, {
+      status: "completed",
+      ...payload,
+    });
+  } else {
+    const truncated = payload.truncated ?? [];
+    const preserved = payload.preserved ?? [];
+    humanLog("✅ Canonical reset complete");
+    humanLog(`   Truncated tables: ${payload.truncatedCount ?? truncated.length}`);
+    humanLog(`   Preserved tables: ${payload.preservedCount ?? preserved.length}`);
+    if (truncated.length > 0) {
+      humanLog(`   Truncated list: ${truncated.join(", ")}`);
+    }
   }
 }
 
@@ -1633,9 +2299,19 @@ const COMMANDS: Record<string, CommandDef> = {
     description: "Send warmup pings to detect cold starts",
     args: [{ name: "-n", type: "integer", default: "3", description: "Number of warmup requests" }],
   },
-  sync:      { fn: cmdSync,      tier: "read",  alias: "cloud:sync",      description: "Run catalog sync on production (CDN → DB)" },
   // Tier: write (requires .cloud-auth)
-  deploy:    { fn: cmdDeploy,    tier: "write", alias: "cloud:deploy",    description: "Full pipeline: local-ci \u2192 build \u2192 deploy \u2192 health check" },
+  deploy:    {
+    fn: cmdDeploy,
+    tier: "write",
+    alias: "cloud:deploy",
+    description: "Full pipeline: local-ci → build → deploy → health → idempotent canonical+crawler sync",
+    args: [
+      { name: "--skip-seed", type: "boolean", description: "Skip post-deploy DB sync steps" },
+      { name: "--seed-feed", type: "string", description: "Feed ID/path for crawler sync (auto-discovered if omitted)" },
+      { name: "--feeds-root", type: "string", description: "Feeds root when using feed IDs (default auto-detect)" },
+      { name: "--retention-keep-runs", type: "integer", default: "10", description: "Runtime dataset retention window for feed load" },
+    ],
+  },
   build:     { fn: cmdBuild,     tier: "write", alias: "cloud:build",     description: "Build container image via Cloud Build" },
   push:      { fn: cmdPush,      tier: "write", alias: "cloud:push",      description: "Deploy already-built image to Cloud Run" },
   rollback:  { fn: cmdRollback,  tier: "write", alias: "cloud:rollback",  description: "Roll back to previous Cloud Run revision" },
@@ -1665,9 +2341,43 @@ const COMMANDS: Record<string, CommandDef> = {
   },
   ssh:       { fn: cmdSsh,       tier: "write", alias: "cloud:ssh",       description: "Start Cloud SQL Auth Proxy for local psql" },
   // DB operations (requires IP authorization)
-  "db:seed":  { fn: cmdDbSeed,   tier: "write", alias: "cloud:db:seed",  description: "Seed Cloud DB from CDN snapshot" },
-  "db:wipe":  { fn: cmdDbWipe,   tier: "write", alias: "cloud:db:wipe",  description: "Delete all officers (--force required)" },
-  "db:count": { fn: cmdDbCount,  tier: "read",  alias: "cloud:db:count", description: "Show officer/ship counts in Cloud DB" },
+  "db:seed":           { fn: cmdDbSeed,          tier: "write", alias: "cloud:db:seed",           description: "Seed Cloud DB from CDN snapshot (alias for db:seed:canonical)" },
+  "db:seed:canonical": { fn: cmdDbSeedCanonical, tier: "write", alias: "cloud:db:seed:canonical", description: "Seed Cloud DB from CDN snapshot" },
+  "db:seed:effects":   {
+    fn: cmdDbSeedEffects,
+    tier: "write",
+    alias: "cloud:db:seed:effects",
+    description: "Run effects:build for seed prep (--mode=deterministic|hybrid, default hybrid)",
+    args: [
+      { name: "--mode", type: "string", default: "hybrid", description: "effects:build mode: deterministic | hybrid" },
+      { name: "--input", type: "string", description: "Optional snapshot export path for effects:build" },
+      { name: "--snapshot", type: "string", description: "Optional snapshot label passed to effects:build" },
+    ],
+  },
+  "db:seed:all":       {
+    fn: cmdDbSeedAll,
+    tier: "write",
+    alias: "cloud:db:seed:all",
+    description: "Run effects generation then canonical Cloud DB seed",
+    args: [
+      { name: "--mode", type: "string", default: "hybrid", description: "effects:build mode: deterministic | hybrid" },
+      { name: "--input", type: "string", description: "Optional snapshot export path for effects:build" },
+      { name: "--snapshot", type: "string", description: "Optional snapshot label passed to effects:build" },
+    ],
+  },
+  "db:wipe":           { fn: cmdDbWipe,          tier: "write", alias: "cloud:db:wipe",           description: "Delete all officers (--force required)" },
+  "db:reset:canonical": {
+    fn: cmdDbResetCanonical,
+    tier: "write",
+    alias: "cloud:db:reset:canonical",
+    description: "Truncate canonical/reference/effects data while preserving user/auth/player tables",
+    args: [
+      { name: "--force", type: "boolean", description: "Required safety flag" },
+      { name: "--apply", type: "boolean", description: "Required execution flag" },
+      { name: "--confirm", type: "string", description: "Must equal RESET_CANONICAL" },
+    ],
+  },
+  "db:count":          { fn: cmdDbCount,         tier: "read",  alias: "cloud:db:count",          description: "Show officer/ship counts in Cloud DB" },
 };
 
 // ─── Main ───────────────────────────────────────────────────────

@@ -722,7 +722,7 @@ describe("effect-based captain gating", () => {
     expect(score.captainBonus).toBeGreaterThan(0);
   });
 
-  it("emits fallback warning on each fallback recommendation", () => {
+  it("emits a single run-level fallback warning", () => {
     const fallbackBundle = makeEffectBundle({
       intents: {
         grinding: {
@@ -768,7 +768,7 @@ describe("effect-based captain gating", () => {
       .filter((line) => line.includes("No viable captains found"))
       .length;
 
-    expect(warningCount).toBe(recs.length);
+    expect(warningCount).toBe(1);
   });
 
   it("supports scenario overrides for engagement", () => {
@@ -1269,7 +1269,7 @@ describe("issue #138 golden regression suite (recommender)", () => {
     expect(kirkTrio).toBeDefined();
   });
 
-  it("fallback warning appears on each fallback recommendation when no viable captains exist", () => {
+  it("fallback warning is deduped to one run-level reason when no viable captains exist", () => {
     const fallbackBundle = makeEffectBundle({
       intents: {
         grinding: {
@@ -1303,7 +1303,7 @@ describe("issue #138 golden regression suite (recommender)", () => {
       .filter((line) => line.includes("No viable captains found"))
       .length;
 
-    expect(warningCount).toBe(recs.length);
+    expect(warningCount).toBe(1);
   });
 
   it("pvp station context ranks player/station captain over hostile-only captain", () => {

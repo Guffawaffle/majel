@@ -11,7 +11,6 @@
  *   GET  /api/health       — Status check
  *   GET  /api/diagnostic   — Deep subsystem status
  *   GET  /api              — API discovery manifest
- *   GET  /api/roster       — Fetch/refresh roster from Sheets
  *   POST /api/chat         — Send message, get Gemini response
  *   GET  /api/history      — Conversation history from Lex
  *   GET  /api/recall       — Search Lex memory (query param: q)

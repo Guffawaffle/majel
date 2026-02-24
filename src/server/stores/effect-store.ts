@@ -17,7 +17,7 @@
  *   Intent (3):    intent_def, intent_default_context, intent_effect_weight
  */
 
-import { initSchema, type Pool } from "../db.js";
+import { initSchema, withTransaction, type Pool } from "../db.js";
 import { log } from "../logger.js";
 
 // ─── Row Types (DB-level, camelCased after SELECT aliasing) ─
@@ -117,6 +117,47 @@ export interface IntentWithWeights extends IntentDefRow {
   effectWeights: { effectKey: string; weight: number }[];
 }
 
+export type EffectDatasetRunStatus = "staged" | "active" | "retired" | "failed";
+
+export interface EffectDatasetRunRow {
+  runId: string;
+  contentHash: string;
+  datasetKind: string;
+  sourceLabel: string;
+  sourceVersion: string | null;
+  snapshotId: string | null;
+  status: EffectDatasetRunStatus;
+  metricsJson: string | null;
+  metadataJson: string | null;
+  createdAt: string;
+  activatedAt: string | null;
+}
+
+export interface RegisterEffectDatasetRunInput {
+  runId: string;
+  contentHash: string;
+  datasetKind: string;
+  sourceLabel: string;
+  sourceVersion?: string | null;
+  snapshotId?: string | null;
+  metricsJson?: string | null;
+  metadataJson?: string | null;
+  status?: EffectDatasetRunStatus;
+}
+
+export interface EffectDatasetRetentionResult {
+  removedRunIds: string[];
+  keptRunIds: string[];
+}
+
+export interface EffectReadOptions {
+  runId?: string | null;
+}
+
+export interface SeedAbilityCatalogOptions {
+  runId?: string;
+}
+
 // ─── Store Interface ────────────────────────────────────────
 
 export interface EffectStore {
@@ -129,8 +170,8 @@ export interface EffectStore {
   listIssueTypes(): Promise<IssueTypeRow[]>;
 
   // ── Ability catalog reads ──
-  getOfficerAbilities(officerId: string): Promise<OfficerAbilityWithEffects[]>;
-  getOfficerAbilitiesBulk(officerIds: string[]): Promise<Map<string, OfficerAbilityWithEffects[]>>;
+  getOfficerAbilities(officerId: string, options?: EffectReadOptions): Promise<OfficerAbilityWithEffects[]>;
+  getOfficerAbilitiesBulk(officerIds: string[], options?: EffectReadOptions): Promise<Map<string, OfficerAbilityWithEffects[]>>;
 
   // ── Intent reads ──
   getIntent(intentId: string): Promise<IntentWithWeights | null>;
@@ -139,9 +180,16 @@ export interface EffectStore {
   getIntentWeights(intentId: string): Promise<Record<string, number>>;
   getIntentDefaultContext(intentId: string): Promise<IntentDefaultContextRow | null>;
 
+  // ── Dataset run metadata / activation ──
+  registerDatasetRun(input: RegisterEffectDatasetRunInput): Promise<EffectDatasetRunRow>;
+  activateDatasetRun(runId: string): Promise<void>;
+  getActiveDatasetRun(): Promise<EffectDatasetRunRow | null>;
+  listDatasetRuns(limit?: number): Promise<EffectDatasetRunRow[]>;
+  applyDatasetRunRetention(keepRuns: number): Promise<EffectDatasetRetentionResult>;
+
   // ── Seed / bulk writes ──
   seedTaxonomy(data: SeedTaxonomyData): Promise<SeedResult>;
-  seedAbilityCatalog(abilities: SeedAbilityInput[]): Promise<SeedResult>;
+  seedAbilityCatalog(abilities: SeedAbilityInput[], options?: SeedAbilityCatalogOptions): Promise<SeedResult>;
   seedIntents(intents: SeedIntentInput[]): Promise<SeedResult>;
 
   // ── Diagnostics ──
@@ -253,6 +301,7 @@ const SCHEMA_STATEMENTS = [
 
   `CREATE TABLE IF NOT EXISTS catalog_officer_ability (
     id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL DEFAULT 'seed-bootstrap',
     officer_id TEXT NOT NULL,
     slot TEXT NOT NULL REFERENCES taxonomy_slot(id),
     name TEXT,
@@ -265,6 +314,7 @@ const SCHEMA_STATEMENTS = [
 
   `CREATE TABLE IF NOT EXISTS catalog_ability_effect (
     id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL DEFAULT 'seed-bootstrap',
     ability_id TEXT NOT NULL REFERENCES catalog_officer_ability(id) ON DELETE CASCADE,
     effect_key TEXT NOT NULL REFERENCES taxonomy_effect_key(id),
     magnitude REAL,
@@ -286,6 +336,18 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_catalog_ability_effect_ability ON catalog_ability_effect(ability_id)`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_ability_effect_key ON catalog_ability_effect(effect_key)`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_effect_value_effect ON catalog_effect_value(ability_effect_id)`,
+
+  `ALTER TABLE catalog_officer_ability ADD COLUMN IF NOT EXISTS run_id TEXT`,
+  `UPDATE catalog_officer_ability SET run_id = 'seed-bootstrap' WHERE run_id IS NULL`,
+  `ALTER TABLE catalog_officer_ability ALTER COLUMN run_id SET DEFAULT 'seed-bootstrap'`,
+  `ALTER TABLE catalog_officer_ability ALTER COLUMN run_id SET NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_catalog_officer_ability_run_officer ON catalog_officer_ability(run_id, officer_id)`,
+
+  `ALTER TABLE catalog_ability_effect ADD COLUMN IF NOT EXISTS run_id TEXT`,
+  `UPDATE catalog_ability_effect SET run_id = 'seed-bootstrap' WHERE run_id IS NULL`,
+  `ALTER TABLE catalog_ability_effect ALTER COLUMN run_id SET DEFAULT 'seed-bootstrap'`,
+  `ALTER TABLE catalog_ability_effect ALTER COLUMN run_id SET NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_catalog_ability_effect_run_ability ON catalog_ability_effect(run_id, ability_id)`,
 
   `CREATE TABLE IF NOT EXISTS catalog_ability_effect_target_kind (
     ability_effect_id TEXT NOT NULL REFERENCES catalog_ability_effect(id) ON DELETE CASCADE,
@@ -330,6 +392,34 @@ const SCHEMA_STATEMENTS = [
     weight REAL NOT NULL,
     PRIMARY KEY (intent_id, effect_key)
   )`,
+
+  // ── Dataset run metadata / active pointer tables ──
+
+  `CREATE TABLE IF NOT EXISTS effect_dataset_run (
+    run_id TEXT PRIMARY KEY,
+    content_hash TEXT NOT NULL UNIQUE,
+    dataset_kind TEXT NOT NULL,
+    source_label TEXT NOT NULL,
+    source_version TEXT,
+    snapshot_id TEXT,
+    status TEXT NOT NULL CHECK (status IN ('staged', 'active', 'retired', 'failed')),
+    metrics_json TEXT,
+    metadata_json TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    activated_at TIMESTAMPTZ
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS effect_dataset_active (
+    scope TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES effect_dataset_run(run_id) ON DELETE RESTRICT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_effect_dataset_run_status_created
+    ON effect_dataset_run(status, created_at DESC)`,
+
+  `CREATE INDEX IF NOT EXISTS idx_effect_dataset_run_created
+    ON effect_dataset_run(created_at DESC)`,
 ];
 
 // ─── SQL Constants ──────────────────────────────────────────
@@ -347,7 +437,7 @@ const SQL = {
   getOfficerAbilities: `
     SELECT id, officer_id AS "officerId", slot, name, raw_text AS "rawText", is_inert AS "isInert"
     FROM catalog_officer_ability
-    WHERE officer_id = $1
+    WHERE officer_id = $1 AND run_id = $2
     ORDER BY CASE slot WHEN 'cm' THEN 0 WHEN 'oa' THEN 1 WHEN 'bda' THEN 2 ELSE 3 END
   `,
 
@@ -355,7 +445,7 @@ const SQL = {
     SELECT id, ability_id AS "abilityId", effect_key AS "effectKey",
            magnitude, unit, stacking
     FROM catalog_ability_effect
-    WHERE ability_id = ANY($1)
+        WHERE ability_id = ANY($1) AND run_id = $2
     ORDER BY effect_key
   `,
 
@@ -382,8 +472,45 @@ const SQL = {
   getOfficerAbilitiesBulk: `
     SELECT id, officer_id AS "officerId", slot, name, raw_text AS "rawText", is_inert AS "isInert"
     FROM catalog_officer_ability
-    WHERE officer_id = ANY($1)
+    WHERE officer_id = ANY($1) AND run_id = $2
     ORDER BY officer_id, CASE slot WHEN 'cm' THEN 0 WHEN 'oa' THEN 1 WHEN 'bda' THEN 2 ELSE 3 END
+  `,
+
+  getLatestDatasetRunId: `
+    SELECT run_id AS "runId"
+    FROM effect_dataset_run
+    WHERE status IN ('active', 'staged')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `,
+
+  getLatestDatasetRunIdWithAbilities: `
+    SELECT r.run_id AS "runId"
+    FROM effect_dataset_run r
+    WHERE r.status IN ('active', 'staged')
+      AND EXISTS (
+        SELECT 1
+        FROM catalog_officer_ability a
+        WHERE a.run_id = r.run_id
+      )
+    ORDER BY r.created_at DESC
+    LIMIT 1
+  `,
+
+  runHasAbilities: `
+    SELECT EXISTS(
+      SELECT 1
+      FROM catalog_officer_ability
+      WHERE run_id = $1
+    ) AS "exists"
+  `,
+
+  getAnyAbilityRunId: `
+    SELECT run_id AS "runId"
+    FROM catalog_officer_ability
+    GROUP BY run_id
+    ORDER BY run_id DESC
+    LIMIT 1
   `,
 
   // Intent reads
@@ -412,6 +539,117 @@ const SQL = {
     WHERE intent_id = $1
   `,
 
+  registerDatasetRun: `
+    INSERT INTO effect_dataset_run (
+      run_id, content_hash, dataset_kind, source_label, source_version, snapshot_id,
+      status, metrics_json, metadata_json
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    ON CONFLICT (run_id) DO UPDATE SET
+      content_hash = EXCLUDED.content_hash,
+      dataset_kind = EXCLUDED.dataset_kind,
+      source_label = EXCLUDED.source_label,
+      source_version = EXCLUDED.source_version,
+      snapshot_id = EXCLUDED.snapshot_id,
+      status = EXCLUDED.status,
+      metrics_json = EXCLUDED.metrics_json,
+      metadata_json = EXCLUDED.metadata_json
+    RETURNING
+      run_id AS "runId",
+      content_hash AS "contentHash",
+      dataset_kind AS "datasetKind",
+      source_label AS "sourceLabel",
+      source_version AS "sourceVersion",
+      snapshot_id AS "snapshotId",
+      status,
+      metrics_json AS "metricsJson",
+      metadata_json AS "metadataJson",
+      created_at::text AS "createdAt",
+      activated_at::text AS "activatedAt"
+  `,
+
+  setRunStatus: `
+    UPDATE effect_dataset_run
+    SET status = $2,
+        activated_at = CASE
+          WHEN $2 = 'active' THEN now()
+          ELSE activated_at
+        END
+    WHERE run_id = $1
+  `,
+
+  setAllActiveToRetired: `
+    UPDATE effect_dataset_run
+    SET status = 'retired'
+    WHERE status = 'active' AND run_id <> $1
+  `,
+
+  upsertActivePointer: `
+    INSERT INTO effect_dataset_active (scope, run_id, updated_at)
+    VALUES ('global', $1, now())
+    ON CONFLICT (scope) DO UPDATE SET
+      run_id = EXCLUDED.run_id,
+      updated_at = now()
+  `,
+
+  getActiveDatasetRun: `
+    SELECT
+      r.run_id AS "runId",
+      r.content_hash AS "contentHash",
+      r.dataset_kind AS "datasetKind",
+      r.source_label AS "sourceLabel",
+      r.source_version AS "sourceVersion",
+      r.snapshot_id AS "snapshotId",
+      r.status,
+      r.metrics_json AS "metricsJson",
+      r.metadata_json AS "metadataJson",
+      r.created_at::text AS "createdAt",
+      r.activated_at::text AS "activatedAt"
+    FROM effect_dataset_active a
+    JOIN effect_dataset_run r ON r.run_id = a.run_id
+    WHERE a.scope = 'global'
+  `,
+
+  listDatasetRuns: `
+    SELECT
+      run_id AS "runId",
+      content_hash AS "contentHash",
+      dataset_kind AS "datasetKind",
+      source_label AS "sourceLabel",
+      source_version AS "sourceVersion",
+      snapshot_id AS "snapshotId",
+      status,
+      metrics_json AS "metricsJson",
+      metadata_json AS "metadataJson",
+      created_at::text AS "createdAt",
+      activated_at::text AS "activatedAt"
+    FROM effect_dataset_run
+    ORDER BY created_at DESC
+    LIMIT $1
+  `,
+
+  listRetentionCandidates: `
+    SELECT
+      run_id AS "runId",
+      content_hash AS "contentHash",
+      dataset_kind AS "datasetKind",
+      source_label AS "sourceLabel",
+      source_version AS "sourceVersion",
+      snapshot_id AS "snapshotId",
+      status,
+      metrics_json AS "metricsJson",
+      metadata_json AS "metadataJson",
+      created_at::text AS "createdAt",
+      activated_at::text AS "activatedAt"
+    FROM effect_dataset_run
+    WHERE run_id NOT IN (
+      SELECT run_id FROM effect_dataset_active WHERE scope = 'global'
+    )
+    ORDER BY created_at DESC
+  `,
+
+  deleteDatasetRun: `DELETE FROM effect_dataset_run WHERE run_id = $1`,
+
   // Seed inserts (all use ON CONFLICT DO NOTHING for idempotent seeding)
   seedTargetKind: `INSERT INTO taxonomy_target_kind (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`,
   seedTargetTag: `INSERT INTO taxonomy_target_tag (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`,
@@ -422,18 +660,21 @@ const SQL = {
   seedIssueType: `INSERT INTO taxonomy_issue_type (id, severity, default_message) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
 
   seedOfficerAbility: `
-    INSERT INTO catalog_officer_ability (id, officer_id, slot, name, raw_text, is_inert)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO catalog_officer_ability (id, run_id, officer_id, slot, name, raw_text, is_inert)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (id) DO UPDATE SET
+      run_id = EXCLUDED.run_id,
       name = EXCLUDED.name,
       raw_text = EXCLUDED.raw_text,
       is_inert = EXCLUDED.is_inert
   `,
 
   seedAbilityEffect: `
-    INSERT INTO catalog_ability_effect (id, ability_id, effect_key, magnitude, unit, stacking)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO catalog_ability_effect (id, run_id, ability_id, effect_key, magnitude, unit, stacking)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (id) DO UPDATE SET
+      run_id = EXCLUDED.run_id,
+      ability_id = EXCLUDED.ability_id,
       effect_key = EXCLUDED.effect_key,
       magnitude = EXCLUDED.magnitude,
       unit = EXCLUDED.unit,
@@ -509,17 +750,38 @@ export async function createEffectStore(
   await initSchema(adminPool, SCHEMA_STATEMENTS);
   const pool = runtimePool ?? adminPool;
 
+  async function runHasAbilities(runId: string): Promise<boolean> {
+    const result = await pool.query<{ exists: boolean }>(SQL.runHasAbilities, [runId]);
+    return Boolean(result.rows[0]?.exists);
+  }
+
+  async function resolveReadRunId(explicitRunId?: string | null): Promise<string | null> {
+    if (explicitRunId && explicitRunId.trim().length > 0) {
+      if (await runHasAbilities(explicitRunId)) return explicitRunId;
+    }
+
+    const latestWithAbilities = await pool.query<{ runId: string }>(SQL.getLatestDatasetRunIdWithAbilities);
+    if (latestWithAbilities.rows[0]?.runId) return latestWithAbilities.rows[0].runId;
+
+    const activeResult = await pool.query<EffectDatasetRunRow>(SQL.getActiveDatasetRun);
+    const activeRunId = activeResult.rows[0]?.runId;
+    if (activeRunId && await runHasAbilities(activeRunId)) return activeRunId;
+
+    return null;
+  }
+
   // ── Helpers ──
 
   async function assembleAbilityEffects(
     abilityRows: OfficerAbilityRow[],
+    runId: string,
   ): Promise<OfficerAbilityWithEffects[]> {
     if (abilityRows.length === 0) return [];
 
     const abilityIds = abilityRows.map((a) => a.id);
 
     // Fetch effects for all abilities in one query
-    const effectsResult = await pool.query<AbilityEffectRow>(SQL.getAbilityEffects, [abilityIds]);
+    const effectsResult = await pool.query<AbilityEffectRow>(SQL.getAbilityEffects, [abilityIds, runId]);
     const effectRows = effectsResult.rows;
 
     if (effectRows.length === 0) {
@@ -617,15 +879,19 @@ export async function createEffectStore(
 
     // ── Ability catalog reads ──
 
-    async getOfficerAbilities(officerId) {
-      const { rows } = await pool.query<OfficerAbilityRow>(SQL.getOfficerAbilities, [officerId]);
-      return assembleAbilityEffects(rows);
+    async getOfficerAbilities(officerId, options) {
+      const runId = await resolveReadRunId(options?.runId ?? null);
+      if (!runId) return [];
+      const { rows } = await pool.query<OfficerAbilityRow>(SQL.getOfficerAbilities, [officerId, runId]);
+      return assembleAbilityEffects(rows, runId);
     },
 
-    async getOfficerAbilitiesBulk(officerIds) {
+    async getOfficerAbilitiesBulk(officerIds, options) {
       if (officerIds.length === 0) return new Map();
-      const { rows } = await pool.query<OfficerAbilityRow>(SQL.getOfficerAbilitiesBulk, [officerIds]);
-      const assembled = await assembleAbilityEffects(rows);
+      const runId = await resolveReadRunId(options?.runId ?? null);
+      if (!runId) return new Map();
+      const { rows } = await pool.query<OfficerAbilityRow>(SQL.getOfficerAbilitiesBulk, [officerIds, runId]);
+      const assembled = await assembleAbilityEffects(rows, runId);
 
       const byOfficer = new Map<string, OfficerAbilityWithEffects[]>();
       for (const ability of assembled) {
@@ -699,6 +965,65 @@ export async function createEffectStore(
       return rows[0] ?? null;
     },
 
+    // ── Dataset run metadata / activation ──
+
+    async registerDatasetRun(input) {
+      const status: EffectDatasetRunStatus = input.status ?? "staged";
+      const { rows } = await pool.query<EffectDatasetRunRow>(SQL.registerDatasetRun, [
+        input.runId,
+        input.contentHash,
+        input.datasetKind,
+        input.sourceLabel,
+        input.sourceVersion ?? null,
+        input.snapshotId ?? null,
+        status,
+        input.metricsJson ?? null,
+        input.metadataJson ?? null,
+      ]);
+      return rows[0];
+    },
+
+    async activateDatasetRun(runId) {
+      await withTransaction(pool, async (client) => {
+        const exists = await client.query<{ exists: boolean }>(
+          "SELECT EXISTS(SELECT 1 FROM effect_dataset_run WHERE run_id = $1) AS exists",
+          [runId],
+        );
+        if (!exists.rows[0]?.exists) {
+          throw new Error(`Cannot activate missing effect dataset run '${runId}'`);
+        }
+
+        await client.query(SQL.setAllActiveToRetired, [runId]);
+        await client.query(SQL.setRunStatus, [runId, "active"]);
+        await client.query(SQL.upsertActivePointer, [runId]);
+      });
+    },
+
+    async getActiveDatasetRun() {
+      const { rows } = await pool.query<EffectDatasetRunRow>(SQL.getActiveDatasetRun);
+      return rows[0] ?? null;
+    },
+
+    async listDatasetRuns(limit = 20) {
+      const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 20;
+      const { rows } = await pool.query<EffectDatasetRunRow>(SQL.listDatasetRuns, [safeLimit]);
+      return rows;
+    },
+
+    async applyDatasetRunRetention(keepRuns) {
+      const keep = Number.isFinite(keepRuns) ? Math.max(0, Math.floor(keepRuns)) : 0;
+      const { rows } = await pool.query<EffectDatasetRunRow>(SQL.listRetentionCandidates);
+      const keptRunIds = rows.slice(0, keep).map((row) => row.runId);
+      const toDelete = rows.slice(keep);
+      for (const row of toDelete) {
+        await pool.query(SQL.deleteDatasetRun, [row.runId]);
+      }
+      return {
+        removedRunIds: toDelete.map((row) => row.runId),
+        keptRunIds,
+      };
+    },
+
     // ── Seed / bulk writes ──
 
     async seedTaxonomy(data) {
@@ -734,39 +1059,42 @@ export async function createEffectStore(
       return { inserted, skipped };
     },
 
-    async seedAbilityCatalog(abilities) {
+    async seedAbilityCatalog(abilities, options) {
       let inserted = 0;
       const skipped = 0;
+      const runId = options?.runId ?? "seed-bootstrap-v2";
 
       for (const ability of abilities) {
+        const scopedAbilityId = `${runId}:${ability.id}`;
         const res = await pool.query(SQL.seedOfficerAbility, [
-          ability.id, ability.officerId, ability.slot,
+          scopedAbilityId, runId, ability.officerId, ability.slot,
           ability.name, ability.rawText, ability.isInert,
         ]);
         if (res.rowCount && res.rowCount > 0) inserted++;
 
         for (const effect of ability.effects) {
+          const scopedEffectId = `${runId}:${effect.id}`;
           await pool.query(SQL.seedAbilityEffect, [
-            effect.id, ability.id, effect.effectKey,
+            scopedEffectId, runId, scopedAbilityId, effect.effectKey,
             effect.magnitude ?? null, effect.unit ?? null, effect.stacking ?? null,
           ]);
 
           if (effect.targetKinds) {
             for (const tk of effect.targetKinds) {
-              await pool.query(SQL.seedEffectTargetKind, [effect.id, tk]);
+              await pool.query(SQL.seedEffectTargetKind, [scopedEffectId, tk]);
             }
           }
           if (effect.targetTags) {
             for (const tt of effect.targetTags) {
-              await pool.query(SQL.seedEffectTargetTag, [effect.id, tt]);
+              await pool.query(SQL.seedEffectTargetTag, [scopedEffectId, tt]);
             }
           }
           if (effect.conditions) {
             for (let ci = 0; ci < effect.conditions.length; ci++) {
               const cond = effect.conditions[ci];
-              const condId = `${effect.id}:cond:${ci}`;
+              const condId = `${scopedEffectId}:cond:${ci}`;
               await pool.query(SQL.seedEffectCondition, [
-                condId, effect.id, cond.conditionKey,
+                condId, scopedEffectId, cond.conditionKey,
                 cond.params ? JSON.stringify(cond.params) : null,
               ]);
             }

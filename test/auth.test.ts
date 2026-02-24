@@ -196,61 +196,6 @@ describe("Auth Routes", () => {
     inviteStore = await createInviteStore(pool);
   });
 
-  describe("POST /api/auth/redeem", () => {
-    it("redeems valid invite code and sets cookie", async () => {
-      const code = await inviteStore.createCode();
-      const state = makeState({
-        config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
-        inviteStore,
-      });
-      const app = createApp(state);
-      const res = await testRequest(app)
-        .post("/api/auth/redeem")
-        .send({ code: code.code });
-      expect(res.status).toBe(201);
-      expect(res.body.data.tier).toBe("visitor");
-      expect(res.body.data.tenantId).toBeTruthy();
-      // Should set cookie
-      const cookies = res.headers["set-cookie"];
-      expect(cookies).toBeDefined();
-      expect(cookies.some((c: string) => c.startsWith(`${TENANT_COOKIE}=`))).toBe(true);
-    });
-
-    it("rejects missing code", async () => {
-      const state = makeState({
-        config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
-        inviteStore,
-      });
-      const app = createApp(state);
-      const res = await testRequest(app)
-        .post("/api/auth/redeem")
-        .send({});
-      expect(res.status).toBe(400);
-    });
-
-    it("rejects invalid code", async () => {
-      const state = makeState({
-        config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
-        inviteStore,
-      });
-      const app = createApp(state);
-      const res = await testRequest(app)
-        .post("/api/auth/redeem")
-        .send({ code: "NOPE" });
-      expect(res.status).toBe(403);
-    });
-
-    it("returns demo mode response when auth disabled", async () => {
-      const state = makeState({ inviteStore });
-      const app = createApp(state);
-      const res = await testRequest(app)
-        .post("/api/auth/redeem")
-        .send({ code: "anything" });
-      expect(res.status).toBe(200);
-      expect(res.body.data.tier).toBe("admiral");
-    });
-  });
-
   describe("POST /api/auth/logout", () => {
     it("clears the tenant cookie", async () => {
       const state = makeState({ inviteStore });
@@ -264,55 +209,6 @@ describe("Auth Routes", () => {
     });
   });
 
-  describe("GET /api/auth/status", () => {
-    it("returns admiral tier when auth disabled", async () => {
-      const state = makeState({ inviteStore });
-      const app = createApp(state);
-      const res = await testRequest(app).get("/api/auth/status");
-      expect(res.status).toBe(200);
-      expect(res.body.data.tier).toBe("admiral");
-      expect(res.body.data.authEnabled).toBe(false);
-    });
-
-    it("returns admiral tier with valid bearer token", async () => {
-      const state = makeState({
-        config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
-        inviteStore,
-      });
-      const app = createApp(state);
-      const res = await testRequest(app)
-        .get("/api/auth/status")
-        .set("Authorization", `Bearer ${ADMIN_TOKEN}`);
-      expect(res.status).toBe(200);
-      expect(res.body.data.tier).toBe("admiral");
-    });
-
-    it("returns visitor tier with valid tenant cookie", async () => {
-      const code = await inviteStore.createCode();
-      const session = await inviteStore.redeemCode(code.code);
-      const state = makeState({
-        config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
-        inviteStore,
-      });
-      const app = createApp(state);
-      const res = await testRequest(app)
-        .get("/api/auth/status")
-        .set("Cookie", `${TENANT_COOKIE}=${session.tenantId}`);
-      expect(res.status).toBe(200);
-      expect(res.body.data.tier).toBe("visitor");
-    });
-
-    it("returns public tier with no credentials", async () => {
-      const state = makeState({
-        config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true }),
-        inviteStore,
-      });
-      const app = createApp(state);
-      const res = await testRequest(app).get("/api/auth/status");
-      expect(res.status).toBe(200);
-      expect(res.body.data.tier).toBe("public");
-    });
-  });
 });
 
 // ─── Admin Routes ───────────────────────────────────────────────

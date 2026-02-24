@@ -196,8 +196,7 @@ function decodeCursor(cursor: string): CursorPayload | null {
   }
 }
 
-// Re-export withUserScope from db.ts for backward compatibility
-// (imported by frame-maintenance.ts)
+// Re-export withUserScope from db.ts for backward compatibility.
 export { withUserScope } from "../db.js";
 
 // ─── PostgresFrameStore ─────────────────────────────────────────

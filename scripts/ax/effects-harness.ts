@@ -38,6 +38,9 @@ export interface EffectsBuildReceipt {
   stochastic?: {
     inferenceReportPath: string;
     candidateCount: number;
+    deterministicSweepPath?: string;
+    deterministicSweepCount?: number;
+    modelRun?: InferenceReport["modelRun"];
     statusCounts: {
       proposed: number;
       gate_passed: number;
@@ -162,6 +165,32 @@ export interface InferenceReport {
   model: string | null;
   promptVersion: string | null;
   candidates: InferenceCandidate[];
+  modelRun?: {
+    executed: boolean;
+    provider: "openai" | "none";
+    model: string | null;
+    processedCandidates: number;
+    skippedReason?: string;
+  };
+  deterministicImprovementSweep?: DeterministicImprovementSweep;
+}
+
+export interface DeterministicImprovementOpportunity {
+  candidateId: string;
+  abilityId: string;
+  rawText: string;
+  normalizedText: string;
+  suggestedEffectKeys: string[];
+  extractedMagnitudeHints: string[];
+  reason: string;
+}
+
+export interface DeterministicImprovementSweep {
+  schemaVersion: "1.0.0";
+  runId: string;
+  generatedAt: string;
+  opportunityCount: number;
+  opportunities: DeterministicImprovementOpportunity[];
 }
 
 export interface GateRunResult {
@@ -247,6 +276,155 @@ export interface EffectsSnapshotExportFile {
   }>;
 }
 
+const EFFECT_TEXT_SYNONYMS: Record<string, string[]> = {
+  damage_dealt: [
+    "damage dealt",
+    "increases damage",
+    "increase damage",
+    "deal more damage",
+    "damage against",
+    "isolytic cascade damage",
+  ],
+  weapon_damage: ["weapon damage", "weapon dmg", "damage of energy weapons", "energy weapons damage"],
+  crit_chance: ["critical chance", "crit chance", "critical hit chance", "chances of dealing a critical hit"],
+  crit_damage: ["critical damage", "crit damage"],
+  accuracy: ["accuracy"],
+  penetration: ["penetration"],
+  piercing: ["piercing", "shield piercing"],
+  shield_piercing: ["shield piercing"],
+  damage_taken: ["damage taken", "take less damage", "reduce damage taken"],
+  mitigation: ["mitigation", "reduce incoming damage", "incoming damage reduction"],
+  shield_deflection: ["shield deflection"],
+  shield_health: ["shield health", "shield hp", "shield strength"],
+  hull_health: ["hull health", "hull hp", "hull strength"],
+  shield_repair: ["shield repair", "restore shields", "repair shields"],
+  hull_repair: ["hull repair", "restore hull", "repair hull"],
+  armor: ["armor"],
+  dodge: ["dodge", "evasion"],
+  apply_burning: ["apply burning", "inflict burning", "cause burning"],
+  apply_hull_breach: ["apply hull breach", "inflict hull breach", "cause hull breach"],
+  apply_morale: ["apply morale", "inspire morale", "grants morale"],
+  resist_burning: ["resist burning", "burning resistance"],
+  resist_hull_breach: ["resist hull breach", "hull breach resistance"],
+  resist_morale: ["resist morale", "morale resistance"],
+  loot_bonus: ["loot bonus", "bonus loot"],
+  resource_drop_bonus: ["resource drop bonus", "resource drop", "resource rewards"],
+  xp_bonus: ["ship xp", "xp gained", "experience gained"],
+  mining_rate: ["mining speed", "mining rate"],
+  mining_protection: ["protected cargo", "mining protection"],
+  cargo_capacity: ["cargo size", "cargo capacity"],
+  warp_range: ["warp range", "warp speed"],
+  repair_cost_reduction: ["repair cost", "cost efficiency", "repair cost reduction"],
+  officer_attack: ["officer attack"],
+  officer_defense: ["officer defense"],
+  officer_health: ["officer health"],
+  captain_maneuver_effectiveness: ["captain maneuver effectiveness", "captain maneuvers"],
+  officer_ability_effectiveness: ["officer ability effectiveness", "officer abilities"],
+  below_deck_ability_effectiveness: ["below decks abilities", "below-decks abilities"],
+  effect_duration_bonus: ["duration", "lasts longer", "effect duration"],
+  stack_rate_bonus: ["stack rate", "stacking rate", "cumulative"],
+};
+
+function normalizeEffectText(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/<[^>]+>/g, " ")
+    .replace(/captain\s*'?s/g, "captain")
+    .replace(/below\s*-\s*decks?/g, "below decks")
+    .replace(/[^a-z0-9\s%+.-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferEffectKeysFromRawText(
+  rawText: string,
+  taxonomy: EffectsSeedFile["taxonomy"],
+): string[] {
+  const normalized = normalizeEffectText(rawText);
+  if (!normalized) return [];
+
+  const taxonomyKeys = taxonomy.effectKeys.map((entry) => entry.id);
+  const knownKeys = new Set(taxonomyKeys);
+  const scoreByKey = new Map<string, number>();
+
+  for (const key of taxonomyKeys) {
+    const phrase = key.replace(/_/g, " ");
+    if (phrase.length > 2 && normalized.includes(phrase)) {
+      scoreByKey.set(key, Math.max(scoreByKey.get(key) ?? 0, 3));
+    }
+  }
+
+  for (const [key, phrases] of Object.entries(EFFECT_TEXT_SYNONYMS)) {
+    if (!knownKeys.has(key)) continue;
+    for (const phrase of phrases) {
+      if (normalized.includes(phrase)) {
+        scoreByKey.set(key, Math.max(scoreByKey.get(key) ?? 0, 2));
+      }
+    }
+  }
+
+  return [...scoreByKey.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 2)
+    .map(([key]) => key);
+}
+
+function extractMagnitudeHints(rawText: string): string[] {
+  const normalized = normalizeEffectText(rawText);
+  if (!normalized) return [];
+  const hints = new Set<string>();
+
+  for (const match of normalized.matchAll(/([+-]?\d+(?:\.\d+)?)\s*%/g)) {
+    if (match[1]) hints.add(`${match[1]}%`);
+  }
+
+  for (const match of normalized.matchAll(/x\s*([0-9]+(?:\.[0-9]+)?)/g)) {
+    if (match[1]) hints.add(`x${match[1]}`);
+  }
+
+  return [...hints].slice(0, 5);
+}
+
+function buildDeterministicImprovementSweep(
+  artifact: EffectsContractArtifact,
+  report: InferenceReport,
+  taxonomy: EffectsSeedFile["taxonomy"],
+): DeterministicImprovementSweep {
+  const abilityById = new Map<string, EffectsContractArtifact["officers"][number]["abilities"][number]>();
+  for (const officer of artifact.officers) {
+    for (const ability of officer.abilities) {
+      abilityById.set(ability.abilityId, ability);
+    }
+  }
+
+  const opportunities: DeterministicImprovementOpportunity[] = report.candidates
+    .map((candidate) => {
+      const ability = abilityById.get(candidate.abilityId);
+      const rawText = ability?.rawText ?? "";
+      const suggestedEffectKeys = inferEffectKeysFromRawText(rawText, taxonomy);
+      return {
+        candidateId: candidate.candidateId,
+        abilityId: candidate.abilityId,
+        rawText,
+        normalizedText: normalizeEffectText(rawText),
+        suggestedEffectKeys,
+        extractedMagnitudeHints: extractMagnitudeHints(rawText),
+        reason: suggestedEffectKeys.length > 0
+          ? "deterministic keyword/taxonomy opportunities detected"
+          : "no deterministic keyword match; requires stochastic/manual interpretation",
+      };
+    })
+    .sort((left, right) => left.candidateId.localeCompare(right.candidateId));
+
+  return {
+    schemaVersion: "1.0.0",
+    runId: report.runId,
+    generatedAt: new Date().toISOString(),
+    opportunityCount: opportunities.length,
+    opportunities,
+  };
+}
+
 export async function readEffectsSeedFile(): Promise<EffectsSeedFile> {
   const seedPath = resolve(ROOT, "data", "seed", "effect-taxonomy.json");
   const fixturePath = resolve(ROOT, "data", "seed", "effect-taxonomy.officer-fixture.v1.json");
@@ -286,19 +464,35 @@ export async function readEffectsSnapshotExportFile(path: string): Promise<Effec
   return JSON.parse(raw) as EffectsSnapshotExportFile;
 }
 
-export function abilitiesFromSnapshotExport(snapshot: EffectsSnapshotExportFile): SeedAbilityInput[] {
+export function abilitiesFromSnapshotExport(
+  snapshot: EffectsSnapshotExportFile,
+  taxonomy: EffectsSeedFile["taxonomy"],
+): SeedAbilityInput[] {
   const abilities: SeedAbilityInput[] = [];
 
   for (const officer of snapshot.officers) {
     for (const ability of officer.abilities) {
+      const normalized = normalizeEffectText(ability.rawText);
+      const inferredInert = ability.slot === "cm"
+        && (normalized.includes("does not have a captain") || normalized.includes("provides no benefit"));
+      const inferredEffectKeys = inferEffectKeysFromRawText(ability.rawText, taxonomy);
       abilities.push({
         id: ability.abilityId,
         officerId: officer.officerId,
         slot: ability.slot,
         name: ability.name,
         rawText: ability.rawText,
-        isInert: ability.isInert,
-        effects: [],
+        isInert: ability.isInert || inferredInert,
+        effects: inferredEffectKeys.map((effectKey, index) => ({
+          id: `${ability.abilityId}:det:${index + 1}`,
+          effectKey,
+          magnitude: null,
+          unit: null,
+          stacking: null,
+          targetKinds: [],
+          targetTags: [],
+          conditions: [],
+        })),
       });
     }
   }
@@ -461,6 +655,7 @@ export async function writeDeterministicArtifacts(input: {
 export function deriveInferenceReport(
   artifact: EffectsContractArtifact,
   runId: string,
+  taxonomy?: EffectsSeedFile["taxonomy"],
 ): InferenceReport {
   const rawCandidates: InferenceCandidate[] = [];
 
@@ -515,6 +710,222 @@ export function deriveInferenceReport(
     model: null,
     promptVersion: null,
     candidates,
+    deterministicImprovementSweep: taxonomy
+      ? buildDeterministicImprovementSweep(artifact, {
+          schemaVersion: "1.0.0",
+          artifactBase: artifact.artifactVersion,
+          runId,
+          model: null,
+          promptVersion: null,
+          candidates,
+        }, taxonomy)
+      : undefined,
+    modelRun: {
+      executed: false,
+      provider: "none",
+      model: null,
+      processedCandidates: 0,
+      skippedReason: "stochastic model pass not executed",
+    },
+  };
+}
+
+function parseOpenAiJsonPayload(outputText: string): {
+  effectKey?: string;
+  confidenceScore?: number;
+  rationale?: string;
+  magnitude?: number | null;
+  unit?: string | null;
+} | null {
+  const trimmed = outputText.trim();
+  if (!trimmed) return null;
+
+  const direct = trimmed.match(/\{[\s\S]*\}$/);
+  if (!direct) return null;
+
+  try {
+    return JSON.parse(direct[0]) as {
+      effectKey?: string;
+      confidenceScore?: number;
+      rationale?: string;
+      magnitude?: number | null;
+      unit?: string | null;
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function deriveInferenceReportWithModel(input: {
+  report: InferenceReport;
+  artifact: EffectsContractArtifact;
+  taxonomy: EffectsSeedFile["taxonomy"];
+  maxCandidates?: number;
+}): Promise<InferenceReport> {
+  const { report, artifact, taxonomy } = input;
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.EFFECTS_STOCHASTIC_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-5.3-codex";
+  const promptVersion = "effects-stochastic-v1";
+  const configuredMax = input.maxCandidates
+    ?? Number.parseInt(process.env.EFFECTS_STOCHASTIC_MAX_CANDIDATES ?? "100", 10);
+  const maxCandidates = Math.max(1, Number.isFinite(configuredMax) && configuredMax > 0 ? configuredMax : 100);
+
+  const abilityById = new Map<string, EffectsContractArtifact["officers"][number]["abilities"][number]>();
+  for (const officer of artifact.officers) {
+    for (const ability of officer.abilities) {
+      abilityById.set(ability.abilityId, ability);
+    }
+  }
+
+  if (!apiKey) {
+    return {
+      ...report,
+      modelRun: {
+        executed: false,
+        provider: "none",
+        model: null,
+        processedCandidates: 0,
+        skippedReason: "OPENAI_API_KEY missing; stochastic inference skipped",
+      },
+      deterministicImprovementSweep: buildDeterministicImprovementSweep(artifact, report, taxonomy),
+    };
+  }
+
+  const taxonomyEffectKeys = taxonomy.effectKeys.map((entry) => entry.id);
+  const nextCandidates: InferenceCandidate[] = [];
+  let processed = 0;
+
+  for (const candidate of report.candidates) {
+    if (processed >= maxCandidates) {
+      nextCandidates.push(candidate);
+      continue;
+    }
+
+    const ability = abilityById.get(candidate.abilityId);
+    if (!ability || ability.effects.length > 0) {
+      nextCandidates.push(candidate);
+      continue;
+    }
+
+    processed += 1;
+    const rawText = ability.rawText ?? "";
+    const systemPrompt = [
+      "You map STFC officer ability text to one best taxonomy effect key.",
+      "Return strict JSON only with keys: effectKey, confidenceScore, rationale, magnitude, unit.",
+      "effectKey must be one of the provided taxonomy keys.",
+      "If unsure, set effectKey to null and confidenceScore <= 0.5.",
+    ].join(" ");
+
+    const userPrompt = stableJsonStringify({
+      abilityId: candidate.abilityId,
+      rawText,
+      allowedEffectKeys: taxonomyEffectKeys,
+    });
+
+    let parsed = null as {
+      effectKey?: string;
+      confidenceScore?: number;
+      rationale?: string;
+      magnitude?: number | null;
+      unit?: string | null;
+    } | null;
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0,
+          input: [
+            { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+            { role: "user", content: [{ type: "input_text", text: userPrompt }] },
+          ],
+        }),
+      });
+
+      if (response.ok) {
+        const payload = await response.json() as {
+          output_text?: string;
+        };
+        parsed = parseOpenAiJsonPayload(payload.output_text ?? "");
+      }
+    } catch {
+      parsed = null;
+    }
+
+    const inferredKey = (parsed?.effectKey && taxonomyEffectKeys.includes(parsed.effectKey))
+      ? parsed.effectKey
+      : null;
+    const confidenceScore = typeof parsed?.confidenceScore === "number"
+      ? Math.max(0, Math.min(1, parsed.confidenceScore))
+      : 0.45;
+
+    if (!inferredKey) {
+      nextCandidates.push(candidate);
+      continue;
+    }
+
+    const proposedEffect: InferenceCandidate["proposedEffects"][number] = {
+      effectId: `${candidate.abilityId}:stoch:1`,
+      effectKey: inferredKey,
+      magnitude: typeof parsed?.magnitude === "number" ? parsed.magnitude : null,
+      unit: (parsed?.unit as "percent" | "flat" | null | undefined) ?? null,
+      stacking: null,
+      targets: {
+        targetKinds: [],
+        targetTags: [],
+        shipClass: null,
+      },
+      conditions: [],
+      extraction: {
+        method: "inferred",
+        ruleId: "stochastic_model_v1",
+        model,
+        promptVersion,
+        inputDigest: candidate.inputDigest,
+      },
+      inferred: true,
+      promotionReceiptId: null,
+      confidence: {
+        score: confidenceScore,
+        tier: confidenceScore >= 0.85 ? "high" : confidenceScore >= 0.65 ? "medium" : "low",
+        forcedByOverride: false,
+      },
+      evidence: candidate.evidence,
+    };
+
+    const nextCandidate = evaluateInferenceCandidate({
+      ...candidate,
+      proposedEffects: [proposedEffect],
+      confidence: proposedEffect.confidence,
+      rationale: parsed?.rationale ?? "stochastic model inference",
+      model,
+      promptVersion,
+    });
+
+    nextCandidates.push(nextCandidate);
+  }
+
+  const nextReport: InferenceReport = {
+    ...report,
+    model,
+    promptVersion,
+    candidates: nextCandidates.sort((left, right) => left.candidateId.localeCompare(right.candidateId)),
+  };
+
+  return {
+    ...nextReport,
+    modelRun: {
+      executed: true,
+      provider: "openai",
+      model,
+      processedCandidates: processed,
+    },
+    deterministicImprovementSweep: buildDeterministicImprovementSweep(artifact, nextReport, taxonomy),
   };
 }
 

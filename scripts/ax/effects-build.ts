@@ -10,6 +10,7 @@ import {
   readEffectsOverridesFile,
   readEffectsSnapshotExportFile,
   deriveInferenceReport,
+  deriveInferenceReportWithModel,
   hashInferenceReport,
   readEffectsSeedFile,
   summarizeEffectsContractArtifact,
@@ -50,7 +51,7 @@ const command: AxCommand = {
 
     if (inputPath) {
       const snapshotExport = await readEffectsSnapshotExportFile(inputPath);
-      seed.officers = abilitiesFromSnapshotExport(snapshotExport);
+      seed.officers = abilitiesFromSnapshotExport(snapshotExport, seed.taxonomy);
       inputSource = "snapshot-export";
       inputMetadata = {
         inputPath,
@@ -192,15 +193,29 @@ const command: AxCommand = {
     }
 
     if (mode === "hybrid") {
-      const report = deriveInferenceReport(built.artifact, runId);
+      const baseReport = deriveInferenceReport(built.artifact, runId, seed.taxonomy);
+      const report = await deriveInferenceReportWithModel({
+        report: baseReport,
+        artifact: built.artifact,
+        taxonomy: seed.taxonomy,
+      });
       const reportHash = hashInferenceReport(report);
       const reportPath = buildInferenceReportPath(runId, reportHash);
       await writeJsonAt(reportPath, report);
       const statusCounts = summarizeCandidateStatuses(report.candidates);
+
+      const deterministicSweepPath = resolve("tmp", "effects", "runs", runId, "deterministic-improvement-sweep.json");
+      if (report.deterministicImprovementSweep) {
+        await writeJsonAt(deterministicSweepPath, report.deterministicImprovementSweep);
+      }
+
       receipt.stochastic = {
         inferenceReportPath: reportPath,
         candidateCount: report.candidates.length,
         statusCounts,
+        deterministicSweepPath,
+        deterministicSweepCount: report.deterministicImprovementSweep?.opportunityCount ?? 0,
+        modelRun: report.modelRun,
       };
     }
 

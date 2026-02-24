@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type pg from "pg";
 import type { UpsertOutcome } from "./cdn-ingest-pipeline.ts";
 import { mapCdnOfficerToReferenceInput } from "../../src/server/services/cdn-mappers.js";
+import { serializeNormalizedJson } from "../../src/server/services/json-number-normalize.js";
 
 interface AbilityValue {
   value: number;
@@ -97,6 +98,10 @@ export class OfficerCdnUpsertService {
       formatAbilityDescription,
     });
 
+    const abilitiesJson = serializeNormalizedJson(mapped.abilities, "reference_officers.abilities");
+    const factionJson = serializeNormalizedJson(mapped.faction, "reference_officers.faction");
+    const traitConfigJson = serializeNormalizedJson(mapped.traitConfig, "reference_officers.trait_config");
+
     const result = await pool.query<{ inserted: boolean }>(`
       INSERT INTO reference_officers (id, name, rarity, group_name, captain_maneuver, officer_ability,
         below_deck_ability, abilities, tags, officer_game_id, officer_class, faction, synergy_id,
@@ -125,14 +130,14 @@ export class OfficerCdnUpsertService {
       mapped.captainManeuver,
       mapped.officerAbility,
       mapped.belowDeckAbility,
-      mapped.abilities ? JSON.stringify(mapped.abilities) : null,
+      abilitiesJson,
       null,
       mapped.officerGameId,
       mapped.officerClass,
-      mapped.faction ? JSON.stringify(mapped.faction) : null,
+      factionJson,
       mapped.synergyId,
       mapped.maxRank,
-      mapped.traitConfig ? JSON.stringify(mapped.traitConfig) : null,
+      traitConfigJson,
       mapped.source,
       mapped.sourceUrl,
       "CC-BY-NC 4.0",

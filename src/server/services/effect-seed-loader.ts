@@ -11,6 +11,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import type { EffectStore, SeedAbilityInput, SeedIntentInput, SeedTaxonomyData } from "../stores/effect-store.js";
 import { log } from "../logger.js";
 
@@ -30,6 +31,12 @@ interface OfficerFixtureFile {
   officers: (SeedAbilityInput & { _comment?: string })[];
 }
 
+const BOOTSTRAP_RUN_ID = "seed-bootstrap-v2";
+
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input, "utf8").digest("hex");
+}
+
 /**
  * Load and apply the effect taxonomy seed data.
  *
@@ -47,9 +54,10 @@ export async function loadEffectSeedData(store: EffectStore): Promise<{
 }> {
   const raw = await readFile(SEED_PATH, "utf-8");
   const data: SeedFile = JSON.parse(raw);
+  let fixtureRaw = "";
 
   try {
-    const fixtureRaw = await readFile(OFFICER_FIXTURE_PATH, "utf-8");
+    fixtureRaw = await readFile(OFFICER_FIXTURE_PATH, "utf-8");
     const fixture = JSON.parse(fixtureRaw) as OfficerFixtureFile;
     if (Array.isArray(fixture.officers)) {
       data.officers = fixture.officers;
@@ -64,10 +72,32 @@ export async function loadEffectSeedData(store: EffectStore): Promise<{
   // 2. Seed intents (depends on taxonomy_target_kind, taxonomy_effect_key)
   const intents = await store.seedIntents(data.intents);
 
+  const activeRun = await store.getActiveDatasetRun();
+  let abilityRunId = activeRun?.runId ?? null;
+
+  if (!abilityRunId) {
+    const contentHash = sha256Hex(`${raw}\n${fixtureRaw}`);
+    await store.registerDatasetRun({
+      runId: BOOTSTRAP_RUN_ID,
+      contentHash,
+      datasetKind: "deterministic",
+      sourceLabel: "bootstrap-seed",
+      sourceVersion: "effect-taxonomy.officer-fixture.v1.json",
+      snapshotId: BOOTSTRAP_RUN_ID,
+      status: "staged",
+      metadataJson: JSON.stringify({
+        seedPath: SEED_PATH,
+        fixturePath: OFFICER_FIXTURE_PATH,
+      }),
+    });
+    await store.activateDatasetRun(BOOTSTRAP_RUN_ID);
+    abilityRunId = BOOTSTRAP_RUN_ID;
+  }
+
   // 3. Seed officer abilities (depends on taxonomy_slot, taxonomy_effect_key, taxonomy_target_kind, taxonomy_target_tag, taxonomy_condition_key)
   // Strip _comment fields
   const abilities = data.officers.map(({ _comment, ...rest }) => rest);
-  const abilitiesResult = await store.seedAbilityCatalog(abilities);
+  const abilitiesResult = await store.seedAbilityCatalog(abilities, { runId: abilityRunId });
 
   log.boot.info(
     {

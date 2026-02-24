@@ -327,7 +327,8 @@ function buildEffectReasons(
   bridge2Name: string,
   bridge2Breakdown: EffectScoreEntry[],
   captainViable: boolean,
-  captainFallbackUsed: boolean,
+  captainFallbackInRun: boolean,
+  includeFallbackWarning: boolean,
   synergyPairs: number,
   reservationTotal: number,
 ): string[] {
@@ -358,10 +359,10 @@ function buildEffectReasons(
     reasons.push(`${bridge2Name} (Bridge): ${bridge2Works}.`);
   }
 
-  if (!captainViable && !captainFallbackUsed) {
+  if (!captainViable && !captainFallbackInRun) {
     reasons.push(`⚠ ${captainName} has no useful Captain Maneuver for this objective.`);
   }
-  if (captainFallbackUsed) {
+  if (includeFallbackWarning) {
     reasons.push("No viable captains found; using best available fallback.");
   }
 
@@ -440,6 +441,7 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
     : (viableCaptains.length > 0 ? viableCaptains.slice(0, 6) : captainScored.slice(0, 2));
 
   const recs: CrewRecommendation[] = [];
+  let fallbackWarningEmitted = false;
   for (const captainInfo of captainCandidates) {
     const captain = captainInfo.officer;
 
@@ -497,9 +499,14 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
           b2.breakdown,
           captainInfo.viable,
           captainFallbackUsed,
+          captainFallbackUsed && !fallbackWarningEmitted,
           synergyPairs,
           captainInfo.reservation + b1.reservation + b2.reservation,
         );
+
+        if (captainFallbackUsed && !fallbackWarningEmitted) {
+          fallbackWarningEmitted = true;
+        }
 
         recs.push({
           captainId: captain.id,

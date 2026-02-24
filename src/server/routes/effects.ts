@@ -364,6 +364,69 @@ export function createEffectsRoutes(appState: AppState): Router {
     }
   });
 
+  router.get("/api/effects/runtime/health", async (_req, res) => {
+    if (!requireEffectStore(res) || !requireReferenceStore(res)) return;
+
+    try {
+      const effectStore = appState.effectStore!;
+      const referenceStore = appState.referenceStore!;
+      const activeRun = await effectStore.getActiveDatasetRun();
+      const generatedAt = new Date().toISOString();
+
+      const inferRunIdFromAbilityId = (abilityId: string | null | undefined): string | null => {
+        if (!abilityId) return null;
+        const cdnDelimiter = abilityId.indexOf(":cdn:");
+        if (cdnDelimiter > 0) return abilityId.slice(0, cdnDelimiter);
+        const firstColon = abilityId.indexOf(":");
+        if (firstColon > 0) return abilityId.slice(0, firstColon);
+        return null;
+      };
+
+      const officers = (await referenceStore.listOfficers())
+        .sort((left, right) => left.id.localeCompare(right.id));
+      const sampledKeys = officers.slice(0, 5).map((officer) => officer.id);
+      const lookupMap = await effectStore.getOfficerAbilitiesBulk(sampledKeys);
+      const missingLookup = await effectStore.getOfficerAbilitiesBulk(["__missing_officer_id__"]);
+
+      const lookupByKey = sampledKeys.map((officerId) => {
+        const abilities = lookupMap.get(officerId) ?? [];
+        return {
+          naturalKey: officerId,
+          runId: inferRunIdFromAbilityId(abilities[0]?.id ?? null) ?? activeRun?.runId ?? null,
+          abilityCount: abilities.length,
+        };
+      });
+
+      const status = lookupByKey.every((entry) => entry.abilityCount > 0) ? "ok" : "degraded";
+
+      res.status(200).json({
+        schemaVersion: "1.0.0",
+        generatedAt,
+        status,
+        activeRun: activeRun
+          ? {
+              runId: activeRun.runId,
+              datasetKind: activeRun.datasetKind,
+              contentHash: activeRun.contentHash,
+              activatedAt: activeRun.activatedAt,
+            }
+          : null,
+        sample: {
+          requested: sampledKeys.length,
+          sampledKeys,
+          lookupByKey,
+        },
+        fallback: {
+          zeroResultStable: !missingLookup.has("__missing_officer_id__") || (missingLookup.get("__missing_officer_id__") ?? []).length === 0,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Effects runtime health failed:", message);
+      sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch effects runtime health", 500);
+    }
+  });
+
   router.get("/api/effects/runtime/taxonomy.:hash.json", async (req, res) => {
     if (!requireEffectStore(res) || !requireReferenceStore(res)) return;
 

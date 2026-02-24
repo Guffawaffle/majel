@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Local PG startup reliability + docs structure sweep (2026-02-24)
+- Added `pg:autofix` helper command to force-create/start local Postgres service and enforce `unless-stopped` restart policy on the compose container. (`package.json`, `scripts/pg-autofix.mjs`)
+- Added/updated directory README coverage for core code and ops/data areas to clarify ownership, purpose, and safe usage patterns. (`src/README.md`, `src/server/README.md`, `src/server/routes/README.md`, `scripts/README.md`, `web/README.md`, `test/README.md`, `migrations/README.md`, `data/README.md`, `docs/README.md`, `review/README.md`, `receipts/README.md`, `legacy/README.md`, `tmp/README.md`, `schemas/README.md`)
+- Added PM/QA review packet docs for the current 2026-02-24 lock and triage sweep. (`docs/PM_SWEEP_2026-02-24.md`, `docs/QA_TRIAGE_2026-02-24.md`, `review/LEX_QA_REVIEW_PACKET_2026-02-24.md`)
+
+#### Reference JSON numeric canonicalization hardening (active issue lock)
+- Added centralized JSON number normalization utilities for persistence boundaries with deep-rounding and long-decimal-tail guardrails. (`src/server/services/json-number-normalize.ts`)
+- Added regression coverage for numeric normalization/serialization behavior. (`test/json-number-normalize.test.ts`)
+
 #### Effects Contract v3 — Phase 6 CI budgets + runtime split/caching rollout (#145)
 - Added `effects:budgets` AX command with configurable thresholds in `data/seed/effects-ci-budget.v1.json`.
   - Block gates: deterministic hash stability, inferred promoted ratio, mapped coverage floor.
@@ -95,6 +104,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+#### Reference data persistence + local runtime reliability
+- Fixed long floating-point tails leaking into persisted ship/officer JSONB payloads by normalizing numeric values across CDN upsert and reference store write paths. (`scripts/lib/ship-cdn-upsert-service.ts`, `scripts/lib/officer-cdn-upsert-service.ts`, `src/server/stores/reference-store.ts`)
+- Fixed local Postgres autostart behavior for Docker Desktop/WSL setups by setting compose restart policy to `unless-stopped`. (`docker-compose.yml`)
+
 #### Effects runtime caching + CI budget accuracy (post-review hardening)
 - Runtime split endpoints now preserve route-owned cache headers/ETag behavior instead of default envelope cache overrides, enabling manifest/hash asset caching semantics as designed. (`src/server/routes/effects.ts`)
 - Manifest revalidation now uses stable bundle-hash ETag basis and supports 304 conditional responses with short-lived in-memory runtime artifact coherence window. (`src/server/routes/effects.ts`, `test/effect-routes.test.ts`)
@@ -103,6 +116,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Effect taxonomy seed contract parity
 - Seed taxonomy now includes `targetTag: station` and `effectKey: penetration` so existing intent/ability references pass strict contract validation. (`data/seed/effect-taxonomy.json`)
+
+### Removed
+
+#### Legacy compatibility endpoint retirement (PM issue #171)
+- Removed legacy auth compatibility endpoints `GET /api/auth/status` and `POST /api/auth/redeem`; modern auth/session flows remain unchanged. (`src/server/routes/auth.ts`, `test/auth.test.ts`, `test/auth-validation.test.ts`)
+- Removed deprecated catalog sync endpoint `POST /api/catalog/sync` and its dedicated rate limiter/discovery metadata. (`src/server/routes/catalog.ts`, `src/server/rate-limit.ts`, `src/server/routes/core.ts`, `test/data-route-auth-boundaries.test.ts`)
+- Removed deprecated local/cloud script entrypoints that called retired sync endpoint (`sync`, `sync:wait`, `cloud:sync`) and cloud command handler. (`package.json`, `scripts/cloud.ts`)
 
 ### Validation
 - `effects:dry-run` now returns `ok: true` with deterministic repeat hash stability on current seed input.

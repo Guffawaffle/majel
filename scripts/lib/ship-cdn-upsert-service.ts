@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type pg from "pg";
 import type { UpsertOutcome } from "./cdn-ingest-pipeline.ts";
 import { mapCdnShipToReferenceInput } from "../../src/server/services/cdn-mappers.js";
+import { serializeNormalizedJson } from "../../src/server/services/json-number-normalize.js";
 
 export interface CdnShipSummary {
   id: number;
@@ -66,6 +67,14 @@ export class ShipCdnUpsertService {
       factionLabels,
     });
 
+    const abilityJson = serializeNormalizedJson(mapped.ability, "reference_ships.ability");
+    const officerBonusJson = serializeNormalizedJson(mapped.officerBonus, "reference_ships.officer_bonus");
+    const crewSlotsJson = serializeNormalizedJson(mapped.crewSlots, "reference_ships.crew_slots");
+    const buildCostJson = serializeNormalizedJson(mapped.buildCost, "reference_ships.build_cost");
+    const levelsJson = serializeNormalizedJson(mapped.levels, "reference_ships.levels");
+    const tiersJson = serializeNormalizedJson(mapped.tiers, "reference_ships.tiers");
+    const buildRequirementsJson = serializeNormalizedJson(mapped.buildRequirements, "reference_ships.build_requirements");
+
     const result = await pool.query<{ inserted: boolean }>(`
       INSERT INTO reference_ships (id, name, ship_class, grade, rarity, faction, ability,
         hull_type, build_time_in_seconds, max_tier, max_level, officer_bonus, crew_slots,
@@ -99,17 +108,17 @@ export class ShipCdnUpsertService {
       mapped.grade,
       mapped.rarity,
       mapped.faction,
-      mapped.ability ? JSON.stringify(mapped.ability) : null,
+      abilityJson,
       mapped.hullType,
       mapped.buildTimeInSeconds,
       mapped.maxTier,
       mapped.maxLevel,
-      mapped.officerBonus ? JSON.stringify(mapped.officerBonus) : null,
-      mapped.crewSlots ? JSON.stringify(mapped.crewSlots) : null,
-      mapped.buildCost ? JSON.stringify(mapped.buildCost) : null,
-      mapped.levels ? JSON.stringify(mapped.levels) : null,
-      mapped.tiers ? JSON.stringify(mapped.tiers) : null,
-      mapped.buildRequirements ? JSON.stringify(mapped.buildRequirements) : null,
+      officerBonusJson,
+      crewSlotsJson,
+      buildCostJson,
+      levelsJson,
+      tiersJson,
+      buildRequirementsJson,
       mapped.blueprintsRequired,
       mapped.gameId,
       mapped.link,

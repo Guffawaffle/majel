@@ -266,7 +266,7 @@ describe("EffectBundleAdapter", () => {
       json: async () => ({ ok: true, data: { schemaVersion: "1.0.0", intents: null, officers: {} } }),
     } as Response);
 
-    await expect(fetchEffectBundle()).rejects.toThrow(/malformed effect bundle payload/i);
+    await expect(fetchEffectBundle()).rejects.toThrow(/malformed runtime manifest payload/i);
   });
 
   it("fetchEffectBundle assembles runtime split artifacts via manifest/taxonomy/index/chunks", async () => {
@@ -409,7 +409,7 @@ describe("EffectBundleManager", () => {
     expect(mgr.hasError()).toBe(true);
     expect(mgr.getError()?.message).toBe("network down");
     expect(mgr.get()).toBeNull();
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("concurrent load() calls share one fetch and resolve together", async () => {
@@ -429,6 +429,6 @@ describe("EffectBundleManager", () => {
 
     const results = await Promise.allSettled([mgr.load(), mgr.load(), mgr.load()]);
     expect(results.every((r) => r.status === "rejected")).toBe(true);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });

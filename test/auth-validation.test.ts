@@ -12,7 +12,6 @@ import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
 import type { AppState } from "../src/server/app-context.js";
 import { createUserStore, type UserStore } from "../src/server/stores/user-store.js";
-import { createInviteStore, type InviteStore } from "../src/server/stores/invite-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;
@@ -501,47 +500,6 @@ describe("Auth routes — admiral management", () => {
         .set("Authorization", bearer);
       expect(res.status).toBe(503);
     });
-  });
-});
-
-// ═══════════════════════════════════════════════════════════
-// Auth Status & Redeem
-// ═══════════════════════════════════════════════════════════
-
-describe("Auth routes — status cascade", () => {
-  let userStore: UserStore;
-  let inviteStore: InviteStore;
-
-  beforeEach(async () => {
-    await cleanDatabase(pool);
-    userStore = await createUserStore(pool);
-    inviteStore = await createInviteStore(pool);
-  });
-
-  it("status with user session returns user role", async () => {
-    const app = createApp(makeState({ userStore, inviteStore, startupComplete: true }));
-    const signup = await userStore.signUp({ email: "stat@test.com", password: "securePassword12345!", displayName: "S" });
-    await userStore.verifyEmail(signup.verifyToken);
-    const signin = await userStore.signIn("stat@test.com", "securePassword12345!");
-    const res = await testRequest(app).get("/api/auth/status")
-      .set("Cookie", `majel_session=${signin.sessionToken}`);
-    expect(res.status).toBe(200);
-    expect(res.body.data.user).toBeDefined();
-    expect(res.body.data.user.role).toBe("ensign");
-  });
-
-  it("status returns public when no credentials", async () => {
-    const app = createApp(makeState({ userStore, inviteStore, startupComplete: true }));
-    const res = await testRequest(app).get("/api/auth/status");
-    expect(res.status).toBe(200);
-    expect(res.body.data.tier).toBe("public");
-  });
-
-  it("redeem with code > 100 chars returns 400", async () => {
-    const app = createApp(makeState({ inviteStore, startupComplete: true }));
-    const res = await testRequest(app).post("/api/auth/redeem")
-      .send({ code: "x".repeat(101) });
-    expect(res.status).toBe(400);
   });
 });
 

@@ -31,6 +31,35 @@ function createMockEffectStore(overrides: Partial<EffectStore> = {}): EffectStor
     listIntentsFull: vi.fn().mockResolvedValue([]),
     getIntentWeights: vi.fn().mockResolvedValue({}),
     getIntentDefaultContext: vi.fn().mockResolvedValue(null),
+    registerDatasetRun: vi.fn().mockResolvedValue({
+      runId: "seed-bootstrap-v2",
+      contentHash: "seed",
+      datasetKind: "deterministic",
+      sourceLabel: "bootstrap-seed",
+      sourceVersion: null,
+      snapshotId: null,
+      status: "active",
+      metricsJson: null,
+      metadataJson: null,
+      createdAt: new Date().toISOString(),
+      activatedAt: new Date().toISOString(),
+    }),
+    activateDatasetRun: vi.fn().mockResolvedValue(undefined),
+    getActiveDatasetRun: vi.fn().mockResolvedValue({
+      runId: "seed-bootstrap-v2",
+      contentHash: "seed",
+      datasetKind: "deterministic",
+      sourceLabel: "bootstrap-seed",
+      sourceVersion: null,
+      snapshotId: null,
+      status: "active",
+      metricsJson: null,
+      metadataJson: null,
+      createdAt: new Date().toISOString(),
+      activatedAt: new Date().toISOString(),
+    }),
+    listDatasetRuns: vi.fn().mockResolvedValue([]),
+    applyDatasetRunRetention: vi.fn().mockResolvedValue({ removedRunIds: [], keptRunIds: [] }),
     seedTaxonomy: vi.fn().mockResolvedValue({ inserted: 0, skipped: 0 }),
     seedAbilityCatalog: vi.fn().mockResolvedValue({ inserted: 0, skipped: 0 }),
     seedIntents: vi.fn().mockResolvedValue({ inserted: 0, skipped: 0 }),
@@ -148,34 +177,35 @@ describe("GET /api/effects/bundle", () => {
     });
 
     it("returns officers with abilities and effects", async () => {
+      const getOfficerAbilitiesBulk = vi.fn().mockResolvedValue(
+        new Map([
+          ["kirk-001", [
+            {
+              id: "kirk-cm",
+              officerId: "kirk-001",
+              slot: "cm",
+              name: "Captain Maneuver",
+              rawText: "Increase damage dealt",
+              isInert: false,
+              effects: [
+                {
+                  id: "kirk-cm-dmg",
+                  abilityId: "kirk-cm",
+                  effectKey: "damage_dealt",
+                  magnitude: 0.3,
+                  unit: "percent",
+                  stacking: "additive",
+                  targetKinds: ["hostile"],
+                  targetTags: [],
+                  conditions: [],
+                },
+              ],
+            },
+          ]],
+        ]),
+      );
       const effectStore = createMockEffectStore({
-        getOfficerAbilitiesBulk: vi.fn().mockResolvedValue(
-          new Map([
-            ["kirk-001", [
-              {
-                id: "kirk-cm",
-                officerId: "kirk-001",
-                slot: "cm",
-                name: "Captain Maneuver",
-                rawText: "Increase damage dealt",
-                isInert: false,
-                effects: [
-                  {
-                    id: "kirk-cm-dmg",
-                    abilityId: "kirk-cm",
-                    effectKey: "damage_dealt",
-                    magnitude: 0.3,
-                    unit: "percent",
-                    stacking: "additive",
-                    targetKinds: ["hostile"],
-                    targetTags: [],
-                    conditions: [],
-                  },
-                ],
-              },
-            ]],
-          ]),
-        ),
+        getOfficerAbilitiesBulk,
       });
       const referenceStore = createMockReferenceStore({
         listOfficers: vi.fn().mockResolvedValue([
@@ -200,6 +230,51 @@ describe("GET /api/effects/bundle", () => {
       expect(cm.effects[0].magnitude).toBe(0.3);
       expect(cm.effects[0].applicableTargetKinds).toEqual(["hostile"]);
       expect(cm.effects[0].conditions).toEqual([]);
+      expect(getOfficerAbilitiesBulk).toHaveBeenCalledWith(["kirk-001"]);
+    });
+
+    it("does not pin bundle reads to active run id", async () => {
+      const getOfficerAbilitiesBulk = vi.fn().mockResolvedValue(new Map());
+      const effectStore = createMockEffectStore({
+        getOfficerAbilitiesBulk,
+      });
+      const referenceStore = createMockReferenceStore({
+        listOfficers: vi.fn().mockResolvedValue([{ id: "officer-1", name: "Officer One" }]),
+      });
+      app = createApp(makeReadyState({ effectStore, referenceStore }));
+
+      const res = await testRequest(app).get("/api/effects/bundle");
+      expect(res.status).toBe(200);
+      expect(getOfficerAbilitiesBulk).toHaveBeenCalledWith(["officer-1"]);
+    });
+
+    it("uses resolved ability payload from store without run pinning", async () => {
+      const getOfficerAbilitiesBulk = vi.fn().mockResolvedValue(new Map([
+        ["officer-1", [
+          {
+            id: "runB:ability-1",
+            officerId: "officer-1",
+            slot: "cm",
+            name: "Run B Maneuver",
+            rawText: "run B",
+            isInert: false,
+            effects: [],
+          },
+        ]],
+      ]));
+
+      const effectStore = createMockEffectStore({
+        getOfficerAbilitiesBulk,
+      });
+      const referenceStore = createMockReferenceStore({
+        listOfficers: vi.fn().mockResolvedValue([{ id: "officer-1", name: "Officer One" }]),
+      });
+      app = createApp(makeReadyState({ effectStore, referenceStore }));
+
+      const res = await testRequest(app).get("/api/effects/bundle");
+      expect(res.status).toBe(200);
+      expect(getOfficerAbilitiesBulk).toHaveBeenCalledWith(["officer-1"]);
+      expect(res.body.data.officers["officer-1"].abilities[0].id).toBe("runB:ability-1");
     });
 
     it("returns officers with no abilities as empty ability arrays", async () => {
@@ -417,5 +492,22 @@ describe("GET /api/effects/runtime/*", () => {
       .set("If-None-Match", chunk.headers["etag"] as string);
 
     expect(chunkRevalidate.status).toBe(304);
+  });
+
+  it("runtime health returns active run + sampled lookup contract", async () => {
+    const { effectStore, referenceStore } = createRuntimeFixture();
+    app = createApp(makeReadyState({ effectStore, referenceStore }));
+
+    const res = await testRequest(app).get("/api/effects/runtime/health");
+    expect(res.status).toBe(200);
+    expect(res.body.schemaVersion).toBe("1.0.0");
+    expect(res.body.status).toBe("ok");
+    expect(res.body.activeRun).toBeTruthy();
+    expect(typeof res.body.activeRun.runId).toBe("string");
+    expect(Array.isArray(res.body.sample.sampledKeys)).toBe(true);
+    expect(Array.isArray(res.body.sample.lookupByKey)).toBe(true);
+    expect(res.body.sample.lookupByKey.length).toBe(res.body.sample.sampledKeys.length);
+    expect(res.body.sample.lookupByKey[0].runId).toBe(res.body.activeRun.runId);
+    expect(res.body.fallback.zeroResultStable).toBe(true);
   });
 });

@@ -5,7 +5,7 @@
  */
 
 import type { AxCommand, AxResult, CiStepResult } from "./types.js";
-import { makeResult, runCapture } from "./runner.js";
+import { getFlag, makeResult, runCapture } from "./runner.js";
 import lint from "./lint.js";
 import typecheck from "./typecheck.js";
 import test from "./test.js";
@@ -22,6 +22,20 @@ const command: AxCommand = {
 
     // Strip --fix for ci — never auto-fix in pipeline
     const ciArgs = args.filter(a => a !== "--fix");
+    const ingestionFeed = getFlag(ciArgs, "ingestion-feed");
+    const ingestionFeedsRoot = getFlag(ciArgs, "ingestion-feeds-root");
+    const effectsGateInput = getFlag(ciArgs, "effects-gates-input");
+    const effectsGateProfile = getFlag(ciArgs, "effects-gates-profile");
+    const effectsGateDatasetKind = getFlag(ciArgs, "effects-gates-dataset-kind") ?? "hybrid";
+    const effectsGateDbUrl = getFlag(ciArgs, "effects-gates-db-url");
+
+    if (effectsGateDbUrl) {
+      return makeResult("ci", start, { steps }, {
+        success: false,
+        errors: ["--effects-gates-db-url is disabled for security; use DATABASE_URL environment variable"],
+        hints: ["Set DATABASE_URL in the CI environment/session before running ax ci"],
+      });
+    }
 
     // ── Step 1: Lint ──────────────────────────────────────────
     const lintResult = await lint.run(ciArgs);
@@ -64,6 +78,34 @@ const command: AxCommand = {
         errors: hygieneResult.errors ?? ["data hygiene checks failed"],
         hints: ["Run: npm run ax -- data:hygiene"],
       });
+    }
+
+    // ── Optional Step: Feed ingestion validate gate ───────────
+    if (ingestionFeed) {
+      const ingestionStart = Date.now();
+      const ingestionCmd = ["scripts/data-ingestion.ts", "validate", "--feed", ingestionFeed];
+      if (ingestionFeedsRoot) ingestionCmd.push("--feeds-root", ingestionFeedsRoot);
+      const ingestionResult = runCapture("tsx", ingestionCmd, { ignoreExit: true });
+      const ingestionDuration = Date.now() - ingestionStart;
+
+      steps.push({
+        step: "data:ingestion:validate",
+        success: ingestionResult.exitCode === 0,
+        durationMs: ingestionDuration,
+        data: {
+          feed: ingestionFeed,
+          feedsRoot: ingestionFeedsRoot ?? "data/feeds",
+          exitCode: ingestionResult.exitCode,
+        },
+      });
+
+      if (ingestionResult.exitCode !== 0) {
+        return makeResult("ci", start, { steps, stoppedAt: "data:ingestion:validate" }, {
+          success: false,
+          errors: ["data ingestion validation failed"],
+          hints: ["Run: npm run ax -- data:ingestion --mode=validate --feed <feedId-or-path>"],
+        });
+      }
     }
 
     // ── Step 3: Typecheck ─────────────────────────────────────
@@ -125,6 +167,43 @@ const command: AxCommand = {
         errors: budgetsResult.errors ?? ["effects budget gate failed"],
         hints: ["Run: npm run ax -- effects:budgets"],
       });
+    }
+
+    // ── Optional Step: Effects policy gates ─────────────────
+    if (effectsGateInput) {
+      const effectsGateStart = Date.now();
+      const gateCmd = [
+        "scripts/ax.ts",
+        "effects:gates",
+        "--input",
+        effectsGateInput,
+        "--dataset-kind",
+        effectsGateDatasetKind,
+      ];
+      if (effectsGateProfile) gateCmd.push("--profile", effectsGateProfile);
+
+      const gateResult = runCapture("tsx", gateCmd, { ignoreExit: true });
+      const effectsGateDuration = Date.now() - effectsGateStart;
+
+      steps.push({
+        step: "effects:gates",
+        success: gateResult.exitCode === 0,
+        durationMs: effectsGateDuration,
+        data: {
+          input: effectsGateInput,
+          profile: effectsGateProfile ?? "default",
+          datasetKind: effectsGateDatasetKind,
+          exitCode: gateResult.exitCode,
+        },
+      });
+
+      if (gateResult.exitCode !== 0) {
+        return makeResult("ci", start, { steps, stoppedAt: "effects:gates" }, {
+          success: false,
+          errors: ["effects policy gate failed"],
+          hints: ["Run: npm run ax -- effects:gates --input <contractPath> [--profile local_dev|cloud_activation] [--dataset-kind deterministic|hybrid]"],
+        });
+      }
     }
 
     // ── Step 6: Test ──────────────────────────────────────────

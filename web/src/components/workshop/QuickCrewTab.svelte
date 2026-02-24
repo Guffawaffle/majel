@@ -18,7 +18,9 @@
     type CrewRecommendation,
   } from "../../lib/crew-recommender.js";
   import { getEffectBundleManager, type EffectBundleData } from "../../lib/effect-bundle-adapter.js";
+  import { validateCrew } from "../../lib/crew-validator.js";
   import type { Engagement, TargetKind } from "../../lib/types/effect-types.js";
+  import CrewValidationMatrix from "./CrewValidationMatrix.svelte";
 
   interface Props {
     officers: CatalogOfficer[];
@@ -185,6 +187,27 @@
   });
 
   const activeRecommendation = $derived(recommendations[ui.selectedRecommendation] ?? null);
+
+  const validation = $derived.by(() => {
+    if (!effectBundle) return null;
+    const hasSelected = SLOTS.some((slot) => Boolean(ui.selectedSlots[slot]));
+    if (!hasSelected) return null;
+
+    const officerNames = Object.fromEntries(ownedOfficers.map((officer) => [officer.id, officer.name]));
+    return validateCrew({
+      slots: ui.selectedSlots,
+      officerNames,
+      intentKey,
+      shipClass: selectedShip?.shipClass ?? null,
+      targetClass,
+      contextOverrides: {
+        engagement,
+        modeTag,
+        targetKind,
+      },
+      effectBundle,
+    });
+  });
 
   const maxPower = $derived(Math.max(...ownedOfficers.map((officer) => officer.userPower ?? 0), 1));
 
@@ -532,6 +555,10 @@
             </button>
           </div>
         </div>
+
+        {#if validation}
+          <CrewValidationMatrix {validation} />
+        {/if}
       </div>
     </div>
   {/if}

@@ -38,6 +38,21 @@ function listGitFiles(): string[] {
   return listed.stdout.split("\0").map((value) => value.trim()).filter(Boolean);
 }
 
+function listStagedFiles(): string[] {
+  const listed = runCapture("git", ["diff", "--cached", "--name-only", "-z"]);
+  if (listed.exitCode !== 0) return [];
+  return listed.stdout.split("\0").map((value) => value.trim()).filter(Boolean);
+}
+
+const NON_AUTHORITATIVE_GENERATED_PATTERNS: RegExp[] = [
+  /^tmp\//,
+  /^logs\/ax-last-run\.json$/,
+  /^logs\/ax-runs\.ndjson$/,
+  /^receipts\/effects-build\..+\.json$/,
+  /^receipts\/load-receipt\..+\.json$/,
+  /^receipts\/load-receipt\.json$/,
+];
+
 const command: AxCommand = {
   name: "data:hygiene",
   description: "Guardrail scaffold for blocking raw CDN data and oversized payload commits",
@@ -46,6 +61,7 @@ const command: AxCommand = {
     const start = Date.now();
     const strict = hasFlag(args, "strict");
     const files = listGitFiles();
+    const stagedFiles = listStagedFiles();
 
     const violations: HygieneFinding[] = [];
     const warnings: HygieneFinding[] = [];
@@ -78,6 +94,12 @@ const command: AxCommand = {
       }
     }
 
+    for (const staged of stagedFiles) {
+      if (NON_AUTHORITATIVE_GENERATED_PATTERNS.some((pattern) => pattern.test(staged))) {
+        violations.push({ staged, reason: "staged non-authoritative generated artifact" });
+      }
+    }
+
     const success = strict ? (violations.length === 0 && warnings.length === 0) : violations.length === 0;
 
     return makeResult("data:hygiene", start, {
@@ -86,6 +108,8 @@ const command: AxCommand = {
       forbiddenPathPrefixes: FORBIDDEN_PATH_PREFIXES,
       sizeBlockBytes: DATA_JSON_SIZE_BLOCK_BYTES,
       allowlistCount: DATA_JSON_ALLOWLIST.size,
+      stagedFiles: stagedFiles.length,
+      generatedArtifactPatterns: NON_AUTHORITATIVE_GENERATED_PATTERNS.map((pattern) => pattern.source),
       violations,
       warnings,
     }, {
