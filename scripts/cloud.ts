@@ -68,6 +68,15 @@ interface CommandDef {
   args?: CommandArgDef[];
 }
 
+interface DeploySmokeCheck {
+  name: string;
+  path: string;
+  expectedStatus: number[];
+  actualStatus: number | null;
+  pass: boolean;
+  error?: string;
+}
+
 let AX_MODE = false;
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -273,6 +282,40 @@ function requireWriteAuth(command: string): boolean {
   return true;
 }
 
+function runDeploySmokeChecks(baseUrl: string): { pass: boolean; checks: DeploySmokeCheck[] } {
+  const checks: Array<Omit<DeploySmokeCheck, "actualStatus" | "pass" | "error">> = [
+    { name: "health endpoint", path: "/api/health", expectedStatus: [200] },
+    { name: "api discovery", path: "/api", expectedStatus: [200] },
+    { name: "auth me guard", path: "/api/auth/me", expectedStatus: [200, 401] },
+    { name: "catalog counts guard", path: "/api/catalog/counts", expectedStatus: [200, 401] },
+  ];
+
+  const results: DeploySmokeCheck[] = checks.map((check) => {
+    try {
+      const raw = runCapture(`curl -sS -o /dev/null -w '%{http_code}' ${baseUrl}${check.path} --max-time 10`);
+      const actualStatus = Number.parseInt(raw, 10);
+      const pass = Number.isFinite(actualStatus) && check.expectedStatus.includes(actualStatus);
+      return {
+        ...check,
+        actualStatus: Number.isFinite(actualStatus) ? actualStatus : null,
+        pass,
+      };
+    } catch (err) {
+      return {
+        ...check,
+        actualStatus: null,
+        pass: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  return {
+    pass: results.every((check) => check.pass),
+    checks: results,
+  };
+}
+
 // ─── Commands ───────────────────────────────────────────────────
 
 async function cmdDeploy(): Promise<void> {
@@ -288,7 +331,7 @@ async function cmdDeploy(): Promise<void> {
   humanLog("────────────────────────────────────────");
 
   // Step 1: Local CI
-  humanLog("\n📋 Step 1/6: Running local CI...");
+  humanLog("\n📋 Step 1/7: Running local CI...");
   try {
     run("npm run local-ci");
   } catch {
@@ -306,7 +349,7 @@ async function cmdDeploy(): Promise<void> {
   }
 
   // Step 2: Build image
-  humanLog("\n📦 Step 2/6: Building container image...");
+  humanLog("\n📦 Step 2/7: Building container image...");
   try {
     gcloud(`builds submit --tag ${IMAGE} --quiet`);
   } catch (err) {
@@ -323,7 +366,7 @@ async function cmdDeploy(): Promise<void> {
   }
 
   // Step 3: Deploy to Cloud Run
-  humanLog("\n☁️  Step 3/6: Deploying to Cloud Run...");
+  humanLog("\n☁️  Step 3/7: Deploying to Cloud Run...");
   try {
     gcloud(`run deploy ${SERVICE} --image ${IMAGE} --region ${REGION} --quiet`);
   } catch (err) {
@@ -340,7 +383,7 @@ async function cmdDeploy(): Promise<void> {
   }
 
   // Step 4: Health check
-  humanLog("\n🏥 Step 4/6: Health check...");
+  humanLog("\n🏥 Step 4/7: Health check...");
   const url = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.url)'`);
   let healthOk = false;
   let healthData: Record<string, unknown> = {};
@@ -356,15 +399,17 @@ async function cmdDeploy(): Promise<void> {
   let ingestionOutput = "";
   let seededFeedPath: string | null = null;
   let seededFeedSource: "explicit" | "auto" | "skipped" = "skipped";
+  let deploySmokeChecks: DeploySmokeCheck[] = [];
+  let deploySmokePass = false;
 
   if (healthOk && !skipSeed) {
     // Step 5: Idempotent canonical upsert seed (officers/ships)
-    humanLog("\n🌱 Step 5/6: Seeding canonical reference data (idempotent upsert)...");
+    humanLog("\n🌱 Step 5/7: Seeding canonical reference data (idempotent upsert)...");
     const canonicalSeed = runCanonicalSeedScript(start, "deploy");
     canonicalSeedOutput = canonicalSeed.output;
 
     // Step 6: Idempotent crawler feed load (all entities + runtime dataset)
-    humanLog("\n🧩 Step 6/6: Loading crawler feed data (idempotent add/update)...");
+    humanLog("\n🧩 Step 6/7: Loading crawler feed data (idempotent add/update)...");
     const discovered = resolveDeployFeedSelection({
       explicitFeed,
       feedsRootFlag,
@@ -381,6 +426,23 @@ async function cmdDeploy(): Promise<void> {
     ingestionOutput = ingestion.output;
   }
 
+  if (healthOk) {
+    humanLog("\n🧪 Step 7/7: Running post-deploy smoke checklist...");
+    const smokeResult = runDeploySmokeChecks(url);
+    deploySmokeChecks = smokeResult.checks;
+    deploySmokePass = smokeResult.pass;
+
+    if (!AX_MODE) {
+      for (const check of deploySmokeChecks) {
+        const expected = check.expectedStatus.join("/");
+        const actual = check.actualStatus ?? "request-failed";
+        humanLog(`  ${check.pass ? "✅" : "❌"} ${check.name}: ${check.path} (expected ${expected}, got ${actual})`);
+      }
+    }
+  }
+
+  const deployOk = healthOk && deploySmokePass;
+
   if (AX_MODE) {
     const revision = gcloudCapture(`run services describe ${SERVICE} --region ${REGION} --format='value(status.latestReadyRevisionName)'`);
     axOutput("deploy", start, {
@@ -389,6 +451,11 @@ async function cmdDeploy(): Promise<void> {
       image: IMAGE,
       healthCheck: healthOk ? "pass" : "fail",
       health: healthData,
+      postDeployChecklist: {
+        ran: healthOk,
+        status: !healthOk ? "skipped" : (deploySmokePass ? "pass" : "fail"),
+        checks: deploySmokeChecks,
+      },
       version: getPackageVersion(),
       seed: {
         skipped: skipSeed,
@@ -402,14 +469,25 @@ async function cmdDeploy(): Promise<void> {
         ingestion: ingestionOutput,
       },
     }, {
-      success: healthOk,
-      errors: healthOk ? undefined : ["Post-deploy health check failed"],
-      hints: healthOk ? undefined : [`Check logs: npm run cloud:logs`, `Rollback: npm run cloud:rollback`],
+      success: deployOk,
+      errors: deployOk
+        ? undefined
+        : [
+          ...(healthOk ? [] : ["Post-deploy health check failed"]),
+          ...(healthOk && !deploySmokePass ? ["Post-deploy smoke checklist failed"] : []),
+        ],
+      hints: deployOk ? undefined : [`Check logs: npm run cloud:logs`, `Rollback: npm run cloud:rollback`, `Run: npm run cloud:health`],
     });
   } else {
     humanLog("\n────────────────────────────────────────");
     if (!healthOk) {
       humanLog(`⚠️  Deployed but health check failed. Check: npm run cloud:logs`);
+      process.exitCode = 1;
+      return;
+    }
+    if (!deploySmokePass) {
+      humanLog(`⚠️  Deploy completed but post-deploy smoke checklist failed. Check: npm run cloud:logs`);
+      process.exitCode = 1;
       return;
     }
     if (skipSeed) {

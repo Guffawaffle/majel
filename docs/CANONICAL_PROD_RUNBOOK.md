@@ -9,6 +9,7 @@ Out of scope: `hostile`, `consumable`
 
 1. Idempotent canonical seed (`officer` + `ship` upsert path)
 2. Idempotent crawler feed load (`officer`, `ship`, `research`, `system`, `building`, translations) with runtime dataset activation
+3. Post-deploy smoke checklist (`/api/health`, `/api`, `/api/auth/me`, `/api/catalog/counts`)
 
 Behavior is add/update only (upsert) and supports idempotent replay/no-op for unchanged feed content hashes.
 
