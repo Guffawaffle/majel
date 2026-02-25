@@ -4,6 +4,7 @@ import {
   type EffectsSeedFile,
 } from "../src/server/services/effects-contract-v3.js";
 import {
+  abilitiesFromSnapshotExport,
   applyPromotionDecisions,
   buildInferenceReportPath,
   buildDecisionTemplate,
@@ -110,6 +111,68 @@ function createSeedWithUnmappedAbility(): EffectsSeedFile {
 }
 
 describe("effects-harness inference + review pack", () => {
+  it("infers inert CM abilities from normalized phrase variants", () => {
+    const taxonomy: EffectsSeedFile["taxonomy"] = {
+      targetKinds: ["hostile"],
+      targetTags: ["pve"],
+      shipClasses: ["explorer"],
+      slots: ["cm", "oa", "bda"],
+      effectKeys: [{ id: "damage_dealt", category: "damage" }],
+      conditionKeys: [],
+      issueTypes: [{ id: "unmapped_ability_text", severity: "info", defaultMessage: "unmapped" }],
+    };
+
+    const snapshot = {
+      schemaVersion: "1.0.0",
+      snapshot: {
+        snapshotId: "stfc-test",
+        source: "test",
+        sourceVersion: "test",
+        generatedAt: "2026-02-24T00:00:00.000Z",
+        schemaHash: "sha256:test",
+        contentHash: "sha256:test",
+      },
+      officers: [
+        {
+          officerId: "cdn:officer:100",
+          abilities: [
+            {
+              abilityId: "cdn:ability:cm-no-benefit",
+              slot: "cm",
+              name: null,
+              rawText: "Provides NO Benefit.",
+              isInert: false,
+              sourceRef: "test",
+            },
+            {
+              abilityId: "cdn:ability:cm-no-captain",
+              slot: "cm",
+              name: null,
+              rawText: "This does not have a Captain's Maneuver",
+              isInert: false,
+              sourceRef: "test",
+            },
+            {
+              abilityId: "cdn:ability:oa-no-benefit",
+              slot: "oa",
+              name: null,
+              rawText: "Provides no benefit in some cases",
+              isInert: false,
+              sourceRef: "test",
+            },
+          ],
+        },
+      ],
+    } as const;
+
+    const abilities = abilitiesFromSnapshotExport(snapshot, taxonomy);
+    const byId = new Map(abilities.map((entry) => [entry.id, entry]));
+
+    expect(byId.get("cdn:ability:cm-no-benefit")?.isInert).toBe(true);
+    expect(byId.get("cdn:ability:cm-no-captain")?.isInert).toBe(true);
+    expect(byId.get("cdn:ability:oa-no-benefit")?.isInert).toBe(false);
+  });
+
   it("derives inference candidates for needs_interpretation triggers", () => {
     const seed = createSeedWithUnmappedAbility();
     const artifact = buildEffectsContractV3Artifact(seed, {
