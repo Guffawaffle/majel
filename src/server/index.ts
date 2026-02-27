@@ -29,7 +29,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pinoHttp } from "pino-http";
 import { log, rootLogger } from "./logger.js";
-import { createGeminiEngine } from "./services/gemini/index.js";
+import { createGeminiEngine, DEFAULT_MODEL } from "./services/gemini/index.js";
 import { createMemoryService } from "./services/memory.js";
 import { createFrameStoreFactory } from "./stores/postgres-frame-store.js";
 import { createSettingsStore } from "./stores/settings.js";
@@ -516,9 +516,7 @@ async function boot(): Promise<void> {
   // 3. Initialize Gemini engine (#85: ToolContextFactory for per-user scoping)
   if (geminiApiKey) {
     const runner = await buildMicroRunnerFromState(state);
-    const modelName = state.settingsStore
-      ? await state.settingsStore.get("model.name")
-      : undefined;
+    const modelName = DEFAULT_MODEL;
 
     // Build a ToolContextFactory that creates user-scoped ToolContext per chat() call
     const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStoreFactory || state.targetStoreFactory || state.researchStoreFactory || state.inventoryStoreFactory || state.userSettingsStore) ? {

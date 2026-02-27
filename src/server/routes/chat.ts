@@ -16,13 +16,14 @@ import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
-import { MODEL_REGISTRY, getModelDef } from "../services/gemini/index.js";
+import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL } from "../services/gemini/index.js";
 import type { ImagePart } from "../services/gemini/index.js";
 
 /** Allowed image MIME types for multimodal chat (ADR-008) */
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 /** Max base64 image data size: ~10MB base64 ≈ ~7.5MB raw image */
 const MAX_IMAGE_DATA_LENGTH = 10 * 1024 * 1024;
+const LOCKED_MODEL_ID = DEFAULT_MODEL;
 
 export function createChatRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -32,7 +33,7 @@ export function createChatRoutes(appState: AppState): Router {
   // Route-specific body limit: 10MB to accommodate base64 image payloads (ADR-008)
   const chatBodyParser = express.json({ limit: '10mb' });
 
-  router.post("/api/chat", chatBodyParser, requireAdmiral(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(60_000), async (req, res) => {
+  router.post("/api/chat", chatBodyParser, requireVisitor(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(60_000), async (req, res) => {
     const { message, image: rawImage } = req.body;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
 
@@ -220,73 +221,30 @@ export function createChatRoutes(appState: AppState): Router {
    * Returns the full registry + which model is currently active.
    */
   router.get("/api/models", requireAdmiral(appState), async (_req, res) => {
-    const current = appState.geminiEngine?.getModel() ?? "unknown";
+    const current = LOCKED_MODEL_ID;
+    const lockedDef = getModelDef(LOCKED_MODEL_ID);
 
     sendOk(res, {
       current,
-      defaultModel: MODEL_REGISTRY[0].id,
-      currentDef: getModelDef(current),
-      models: MODEL_REGISTRY.map((m) => ({
-        ...m,
-        active: m.id === current,
-      })),
+      defaultModel: LOCKED_MODEL_ID,
+      currentDef: lockedDef,
+      locked: true,
+      models: MODEL_REGISTRY
+        .filter((m) => m.id === LOCKED_MODEL_ID)
+        .map((m) => ({
+          ...m,
+          active: true,
+        })),
     });
   });
 
   /**
-   * POST /api/models/select — Switch the active model (Admiral only).
-   *
-   * Body: { "model": "gemini-2.5-pro" }
-   *
-   * This hot-swaps the model without restarting the server.
-   * All chat sessions are cleared (new model = fresh context).
-   * The selection is persisted to settings so it survives restarts.
+   * POST /api/models/select — disabled while model is pinned.
    */
-  router.post("/api/models/select", requireAdmiral(appState), async (req, res) => {
-    const { model: requestedModel } = req.body;
-
-    if (!requestedModel || typeof requestedModel !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Missing 'model' in request body", 400, {
-        hints: ["Send JSON body: { \"model\": \"<model-id>\" }", `Valid IDs: ${MODEL_REGISTRY.map(m => m.id).join(", ")}`],
-      });
-    }
-
-    if (!appState.geminiEngine) {
-      return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready", 503, {
-        hints: ["Check /api/health for status"],
-      });
-    }
-
-    const modelDef = getModelDef(requestedModel);
-    if (!modelDef) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown model: ${requestedModel}`, 400, {
-        detail: { validModels: MODEL_REGISTRY.map(m => m.id) },
-        hints: [`Valid models: ${MODEL_REGISTRY.map(m => m.id).join(", ")}`, "Use GET /api/models for full metadata"],
-      });
-    }
-
-    const previousModel = appState.geminiEngine.getModel();
-    appState.geminiEngine.setModel(requestedModel);
-
-    // Persist to settings store so it survives restarts
-    if (appState.settingsStore) {
-      try {
-        await appState.settingsStore.set("model.name", requestedModel);
-      } catch (err) {
-        log.settings.warn({ err: err instanceof Error ? err.message : String(err) }, "failed to persist model selection");
-      }
-    }
-
-    log.gemini.info({ previousModel, newModel: requestedModel, tier: modelDef.tier }, "model:select");
-
-    sendOk(res, {
-      previousModel,
-      currentModel: requestedModel,
-      modelDef,
-      sessionsCleared: true,
-      hints: modelDef.thinking
-        ? ["Thinking model active — responses may take longer but will be more reasoned."]
-        : ["Standard model active — fastest responses."],
+  router.post("/api/models/select", requireAdmiral(appState), async (_req, res) => {
+    return sendFail(res, ErrorCode.INSUFFICIENT_RANK, `Model selection is disabled. Locked model: ${LOCKED_MODEL_ID}`, 403, {
+      detail: { requiredRole: "admiral", lockedModel: LOCKED_MODEL_ID },
+      hints: ["Model is pinned for reliability and consistency"],
     });
   });
 

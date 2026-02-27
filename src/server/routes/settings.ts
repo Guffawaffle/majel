@@ -54,6 +54,11 @@ export function createSettingsRoutes(appState: AppState): Router {
     if (keys.length > 50) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Too many settings in one request (max 50)", 400);
     }
+    if (keys.includes("model.name")) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Setting \"model.name\" is locked to gemini-3-flash-preview", 400, {
+        hints: ["Model selection is disabled for reliability and consistency"],
+      });
+    }
     for (const [key, value] of Object.entries(updates)) {
       if (typeof key !== "string" || key.length > 200) {
         return sendFail(res, ErrorCode.INVALID_PARAM, "Setting key must be a string of 200 characters or fewer", 400);
