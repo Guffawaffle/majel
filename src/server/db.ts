@@ -45,6 +45,7 @@ export function createPool(connectionString?: string): Pool {
     max: 5,
     connectionTimeoutMillis: 5000,  // fail after 5s if no connection available
     idleTimeoutMillis: 30000,       // release idle clients after 30s
+    statement_timeout: 30000,       // kill queries exceeding 30s
   });
 
   // Must handle pool error events — unhandled idle-client errors crash the process
@@ -53,6 +54,24 @@ export function createPool(connectionString?: string): Pool {
   });
 
   return pool;
+}
+
+/**
+ * Verify pool connectivity with a trivial query.
+ * Returns true on success, false on failure.
+ */
+export async function healthCheck(pool: Pool): Promise<boolean> {
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query("SELECT 1");
+      return true;
+    } finally {
+      client.release();
+    }
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -187,6 +206,9 @@ export async function withUserRead<T>(
     ]);
     return await fn(client);
   } finally {
+    // Clear RLS scope before returning connection to pool to prevent
+    // cross-tenant data leakage if a subsequent checkout skips scoping.
+    await client.query("RESET app.current_user_id").catch(() => {});
     client.release();
   }
 }

@@ -43,6 +43,7 @@
 
   let editingId = $state<number | "new" | null>(null);
   let formError = $state("");
+  let saving = $state(false);
 
   // Form fields
   let formName = $state("");
@@ -91,6 +92,7 @@
   }
 
   async function save() {
+    if (saving) return;
     if (!formName.trim()) { formError = "Name is required."; return; }
     const members: BridgeCoreMemberInput[] = SLOTS
       .filter((s) => formSlots[s])
@@ -98,6 +100,7 @@
     if (members.length === 0) { formError = "Assign at least one officer."; return; }
 
     formError = "";
+    saving = true;
     try {
       if (editingId === "new") {
         await createBridgeCore(formName.trim(), members, formNotes.trim());
@@ -109,10 +112,13 @@
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Save failed.";
+    } finally {
+      saving = false;
     }
   }
 
   async function handleDelete(core: BridgeCoreWithMembers) {
+    if (saving) return;
     const usedIn = coreUsedIn(core.id);
     const extra = usedIn.length
       ? `\n\nWarning: used by loadouts: ${usedIn.map((l) => l.name).join(", ")}`
@@ -171,7 +177,7 @@
         <p class="ws-form-error">{formError}</p>
       {/if}
       <div class="ws-form-actions">
-        <button class="ws-btn ws-btn-save" onclick={save}>Save</button>
+        <button class="ws-btn ws-btn-save" disabled={saving} onclick={save}>Save</button>
         <button class="ws-btn ws-btn-cancel" onclick={cancel}>Cancel</button>
       </div>
     </div>
@@ -211,7 +217,7 @@
               <p class="ws-form-error">{formError}</p>
             {/if}
             <div class="ws-form-actions">
-              <button class="ws-btn ws-btn-save" onclick={save}>Save</button>
+              <button class="ws-btn ws-btn-save" disabled={saving} onclick={save}>Save</button>
               <button class="ws-btn ws-btn-cancel" onclick={cancel}>Cancel</button>
             </div>
           </div>
@@ -222,7 +228,7 @@
               <span class="ws-card-count">{(core.members ?? []).length}/3 slots</span>
               <div class="ws-card-actions">
                 <button class="ws-action" onclick={() => startEdit(core)} title="Edit">✎</button>
-                <button class="ws-action ws-action-danger" onclick={() => handleDelete(core)} title="Delete">✕</button>
+                <button class="ws-action ws-action-danger" disabled={saving} onclick={() => handleDelete(core)} title="Delete">✕</button>
               </div>
             </div>
             <div class="ws-card-body">

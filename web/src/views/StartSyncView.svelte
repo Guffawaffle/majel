@@ -19,9 +19,11 @@
     resolveGuidedSetupSuggestions,
     type GuidedSetupSuggestion,
   } from "../lib/guided-setup-templates.js";
+  import { loadUserSetting, saveUserSetting } from "../lib/api/user-settings.js";
 
   let loading = $state(true);
   let error = $state("");
+  let info = $state("");
 
   let firstRun = $state(true);
   let receiptCount = $state(0);
@@ -43,6 +45,9 @@
   let guidedShips = $state<GuidedSetupSuggestion[]>([]);
   let guidedLastReceiptId = $state<number | null>(null);
   let showGuidedCompositionPrompt = $state(false);
+  let opsLevel = $state("1");
+  let opsSaving = $state(false);
+  let opsStatus = $state<"idle" | "saved" | "error">("idle");
 
   const environment = import.meta.env.PROD ? "production" : "development";
 
@@ -67,6 +72,7 @@
       receiptCount = receipts.length;
       lastSyncAt = receipts.length > 0 ? receipts[0].createdAt : null;
       ariaConfigured = !!health && health.gemini === "connected";
+      opsLevel = await loadUserSetting("fleet.opsLevel", "1");
     } catch (err) {
       error = err instanceof Error ? err.message : "Failed to load Start/Sync status.";
     } finally {
@@ -203,19 +209,35 @@
   }
 
   async function runSandboxAction(action: string) {
-    const ok = await confirm({
-      title: `Confirm ${action}?`,
-      subtitle: "This operation is currently scaffolded and not wired in this phase.",
-      severity: "warning",
-      approveLabel: "Confirm",
-    });
-    if (!ok) return;
-    error = `${action} is not wired yet in this phase.`;
+    info = `${action} — coming soon. This feature is under development.`;
   }
 
   function fmtDate(date: string | null): string {
     if (!date) return "Never";
     return new Date(date).toLocaleString();
+  }
+
+  async function saveOpsLevel() {
+    const parsed = Number.parseInt(opsLevel, 10);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 80) {
+      opsStatus = "error";
+      error = "OPS Level must be a whole number between 1 and 80.";
+      return;
+    }
+
+    opsSaving = true;
+    opsStatus = "idle";
+    try {
+      await saveUserSetting("fleet.opsLevel", parsed);
+      opsLevel = String(parsed);
+      opsStatus = "saved";
+      error = "";
+    } catch (err) {
+      opsStatus = "error";
+      error = err instanceof Error ? err.message : "Failed to save OPS Level.";
+    } finally {
+      opsSaving = false;
+    }
   }
 </script>
 
@@ -224,7 +246,17 @@
     <p class="ss-loading">Loading Start/Sync…</p>
   {:else}
     {#if error}
-      <p class="ss-error">{error}</p>
+      <div class="ss-error" role="alert">
+        <span>⚠ {error}</span>
+        <button onclick={() => { error = ""; }}>✕</button>
+      </div>
+    {/if}
+
+    {#if info}
+      <div class="ss-info" role="status">
+        <span>ℹ {info}</span>
+        <button onclick={() => { info = ""; }}>✕</button>
+      </div>
     {/if}
 
     {#if showAriaIntro}
@@ -253,6 +285,32 @@
     </div>
 
     <div class="ss-grid">
+      <div class="ss-card">
+        <h3>Fleet Profile</h3>
+        <p>Set your current OPS level so recommendations match your progression.</p>
+        <label class="ss-label" for="ops-level-input" title="Your in-game Operations (Starbase) level. Determines which buildings, ships, research, and content are relevant to you.">OPS Level (1–80)</label>
+        <input
+          id="ops-level-input"
+          class="ss-input"
+          type="number"
+          min="1"
+          max="80"
+          value={opsLevel}
+          oninput={(e) => {
+            opsLevel = (e.currentTarget as HTMLInputElement).value;
+            opsStatus = "idle";
+          }}
+        />
+        <div class="ss-receipt-actions">
+          <button class="ss-btn" onclick={saveOpsLevel} disabled={opsSaving}>
+            {opsSaving ? "Saving…" : "Save OPS Level"}
+          </button>
+          {#if opsStatus === "saved"}
+            <span class="ss-inline-status">Saved</span>
+          {/if}
+        </div>
+      </div>
+
       <div class="ss-card">
         <h3>Quick Setup (No file)</h3>
         <p>Mark your officers and ships as owned from the catalog.</p>
@@ -417,6 +475,31 @@
   .ss-error {
     color: var(--danger, #f66);
     font-size: 0.86rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ss-error button {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  .ss-info {
+    color: var(--info, #6af);
+    font-size: 0.86rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ss-info button {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 1rem;
   }
 
   .ss-grid {
@@ -488,6 +571,21 @@
     border-radius: var(--radius-sm);
     background: var(--bg-primary);
     color: var(--text-primary);
+  }
+
+  .ss-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .ss-inline-status {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    align-self: center;
   }
 
   .ss-receipt-actions {

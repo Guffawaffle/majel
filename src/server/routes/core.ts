@@ -100,7 +100,11 @@ export function createCoreRoutes(appState: AppState): Router {
       overlayStore: await safeCounts(appState.overlayStore, "overlayStore"),
     };
 
-    sendOk(res, health);
+    if (appState.startupComplete) {
+      sendOk(res, health);
+    } else {
+      res.status(503).json({ ok: false, data: health });
+    }
   });
 
   // ─── API Discovery ──────────────────────────────────────────
@@ -112,7 +116,7 @@ export function createCoreRoutes(appState: AppState): Router {
       { method: "GET", path: "/api", auth: "none", description: "API discovery (this endpoint)" },
       { method: "GET", path: "/api/health", auth: "none", description: "Fast health check (returns retryAfterMs when initializing)" },
       { method: "GET", path: "/api/diagnostic", auth: "lieutenant", description: "Deep subsystem status" },
-      { method: "POST", path: "/api/chat", auth: "admiral", description: "Send a message, get a Gemini response", body: { message: "string (required)" } },
+      { method: "POST", path: "/api/chat", auth: "lieutenant", description: "Send a message, get a Gemini response", body: { message: "string (required)" } },
       { method: "GET", path: "/api/history", auth: "lieutenant", description: "Conversation history (session + Lex)", params: { source: "session|lex|both", limit: "1-100", sessionId: "string" } },
       { method: "GET", path: "/api/recall", auth: "lieutenant", description: "Search Lex memory by meaning", params: { q: "string (required)", limit: "1-100" } },
       { method: "GET", path: "/api/settings", auth: "lieutenant", description: "All settings with resolved values" },

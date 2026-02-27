@@ -59,6 +59,7 @@
   // ── Loadout state ──
 
   let ui = $state(createInitialLoadoutsTabUiState());
+  let saving = $state(false);
 
   // Form
   let formName = $state("");
@@ -180,6 +181,7 @@
   }
 
   async function saveLoadout() {
+    if (saving) return;
     if (!formName.trim()) { send({ type: "loadout/error", message: "Name is required." }); return; }
 
     const data: LoadoutInput = {
@@ -195,6 +197,7 @@
     };
 
     send({ type: "loadout/error-clear" });
+    saving = true;
     try {
       if (ui.editingId === "new") {
         await createCrewLoadout(data);
@@ -205,10 +208,13 @@
       await onRefresh();
     } catch (err: unknown) {
       send({ type: "loadout/error", message: err instanceof Error ? err.message : "Save failed." });
+    } finally {
+      saving = false;
     }
   }
 
   async function handleDelete(lo: Loadout) {
+    if (saving) return;
     if (!(await confirm({ title: `Delete loadout "${lo.name}"?`, subtitle: "This will also delete all variants.", severity: "warning", approveLabel: "Delete" }))) return;
     try {
       await deleteCrewLoadout(String(lo.id));
@@ -410,7 +416,7 @@
                   {ui.expandedId === lo.id ? "▾" : "▸"}
                 </button>
                 <button class="ws-action" onclick={() => startEdit(lo)} title="Edit">✎</button>
-                <button class="ws-action ws-action-danger" onclick={() => handleDelete(lo)} title="Delete">✕</button>
+                <button class="ws-action ws-action-danger" disabled={saving} onclick={() => handleDelete(lo)} title="Delete">✕</button>
               </div>
             </div>
             <div class="ws-card-body">
@@ -518,7 +524,7 @@
     <p class="ws-form-error">{ui.formError}</p>
   {/if}
   <div class="ws-form-actions">
-    <button class="ws-btn ws-btn-save" onclick={saveLoadout}>Save</button>
+    <button class="ws-btn ws-btn-save" disabled={saving} onclick={saveLoadout}>Save</button>
     <button class="ws-btn ws-btn-cancel" onclick={cancelEdit}>Cancel</button>
   </div>
 {/snippet}

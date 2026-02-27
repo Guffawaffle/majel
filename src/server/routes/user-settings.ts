@@ -12,6 +12,7 @@
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { log } from "../logger.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireVisitor } from "../services/auth.js";
 
@@ -69,7 +70,8 @@ export function createUserSettingsRoutes(appState: AppState): Router {
       sendOk(res, { key, value: strValue, status: "updated" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return sendFail(res, ErrorCode.INVALID_PARAM, message);
+      log.settings.error({ err: message, key }, "user-setting update failed");
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Failed to update setting");
     }
   });
 

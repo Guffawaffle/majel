@@ -146,6 +146,10 @@
   // ── Actions: Invites ──
 
   async function handleCreateInvite() {
+    if (invMaxUses < 1 || invMaxUses > 100) {
+      error = "Max uses must be between 1 and 100.";
+      return;
+    }
     try {
       const opts: InviteOpts = { maxUses: invMaxUses, expiresIn: invExpiry };
       if (invLabel.trim()) opts.label = invLabel.trim();
@@ -192,14 +196,17 @@
   </nav>
 
   {#if error}
-    <p class="adm-error">{error}</p>
+    <div class="adm-error" role="alert">
+      <span>⚠ {error}</span>
+      <button onclick={() => { error = ""; }}>✕</button>
+    </div>
   {/if}
 
   {#if loading}
     <div class="adm-loading">Loading…</div>
   {:else if activeTab === "users"}
     <div class="adm-table-wrap">
-      <table class="adm-table">
+      <table class="adm-table" aria-label="Registered users">
         <thead>
           <tr><th>Email</th><th>Name</th><th>Role</th><th>Verified</th><th>Locked</th><th>Joined</th><th>Actions</th></tr>
         </thead>
@@ -234,6 +241,9 @@
               </td>
             </tr>
           {/each}
+          {#if users.length === 0}
+            <tr><td colspan="7" class="adm-empty">No users registered yet.</td></tr>
+          {/if}
         </tbody>
       </table>
     </div>
@@ -253,7 +263,7 @@
     </div>
 
     <div class="adm-table-wrap">
-      <table class="adm-table">
+      <table class="adm-table" aria-label="Invite codes">
         <thead>
           <tr><th>Code</th><th>Label</th><th>Uses</th><th>Status</th><th>Created</th><th>Expires</th><th>Actions</th></tr>
         </thead>
@@ -277,6 +287,9 @@
               </td>
             </tr>
           {/each}
+          {#if invites.length === 0}
+            <tr><td colspan="7" class="adm-empty">No invites created yet. Create one above.</td></tr>
+          {/if}
         </tbody>
       </table>
     </div>
@@ -290,7 +303,7 @@
     {/if}
 
     <div class="adm-table-wrap">
-      <table class="adm-table">
+      <table class="adm-table" aria-label="Active sessions">
         <thead>
           <tr><th>Session ID</th><th>Invite Code</th><th>Created</th><th>Last Active</th><th>Actions</th></tr>
         </thead>
@@ -306,6 +319,9 @@
               </td>
             </tr>
           {/each}
+          {#if sessions.length === 0}
+            <tr><td colspan="5" class="adm-empty">No active sessions.</td></tr>
+          {/if}
         </tbody>
       </table>
     </div>
@@ -351,6 +367,22 @@
     border-radius: 4px;
     margin-bottom: 12px;
     font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .adm-error button {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+  .adm-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 16px;
+    font-style: italic;
   }
   .adm-loading {
     text-align: center;

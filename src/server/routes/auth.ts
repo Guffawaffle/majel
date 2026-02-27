@@ -25,6 +25,7 @@
 import type { Router, Request } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { log } from "../logger.js";
 import { SESSION_COOKIE, TENANT_COOKIE, requireRole, requireAdmiral } from "../services/auth.js";
 import { timingSafeCompare } from "../services/password.js";
 import { authRateLimiter, emailRateLimiter } from "../rate-limit.js";
@@ -285,7 +286,8 @@ export function createAuthRoutes(appState: AppState): Router {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign-in failed";
-      sendFail(res, ErrorCode.UNAUTHORIZED, message, 401);
+      log.auth.warn({ err: message }, "signin failed");
+      sendFail(res, ErrorCode.UNAUTHORIZED, "Invalid email or password", 401);
 
       appState.auditStore?.logEvent({
         event: "auth.signin.failure",
@@ -391,7 +393,8 @@ export function createAuthRoutes(appState: AppState): Router {
         ...auditMeta(req),
       });
 
-      sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
+      log.auth.warn({ err: message }, "password change failed");
+      sendFail(res, ErrorCode.INVALID_PARAM, "Password change failed — check your current password and try again", 400);
     }
   });
 
@@ -475,7 +478,8 @@ export function createAuthRoutes(appState: AppState): Router {
         detail: { success: false, reason: message },
         ...auditMeta(req),
       });
-      sendFail(res, ErrorCode.INVALID_PARAM, message, 400);
+      log.auth.warn({ err: message }, "password reset failed");
+      sendFail(res, ErrorCode.INVALID_PARAM, "Password reset failed", 400);
     }
   });
 

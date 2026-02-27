@@ -20,7 +20,7 @@
     {view.title}
   </h1>
   <span class="subtitle">{view.subtitle}</span>
-  <button class="help-btn" class:active={helpOpen} title="Help (?)" onclick={ontogglehelp}>?</button>
+  <button class="help-btn" class:active={helpOpen} title="Help (?)" aria-label="Toggle help panel" onclick={ontogglehelp}>?</button>
 </div>
 
 <style>

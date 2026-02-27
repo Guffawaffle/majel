@@ -28,6 +28,7 @@
 
   let editingId = $state<string | "new" | null>(null);
   let formError = $state("");
+  let saving = $state(false);
 
   // Form fields
   let formOfficerId = $state("");
@@ -78,35 +79,47 @@
   }
 
   async function save() {
+    if (saving) return;
     if (editingId === "new" && !formOfficerId) { formError = "Select an officer."; return; }
     if (!formReservedFor.trim()) { formError = "Reserved For is required."; return; }
 
     formError = "";
+    saving = true;
     try {
       await setReservation(formOfficerId, formReservedFor.trim(), formLocked, formNotes.trim());
       editingId = null;
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Save failed.";
+    } finally {
+      saving = false;
     }
   }
 
   async function toggleLock(res: OfficerReservation) {
+    if (saving) return;
+    saving = true;
     try {
       await setReservation(res.officerId, res.reservedFor, !res.locked, res.notes ?? "");
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Toggle lock failed.";
+    } finally {
+      saving = false;
     }
   }
 
   async function handleDelete(res: OfficerReservation) {
+    if (saving) return;
     if (!(await confirm({ title: `Remove reservation for ${officerName(res.officerId)}?` }))) return;
+    saving = true;
     try {
       await deleteReservation(res.officerId);
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Delete failed.";
+    } finally {
+      saving = false;
     }
   }
 
@@ -161,7 +174,7 @@
         <p class="ws-form-error">{formError}</p>
       {/if}
       <div class="ws-form-actions">
-        <button class="ws-btn ws-btn-save" onclick={save}>Save</button>
+        <button class="ws-btn ws-btn-save" disabled={saving} onclick={save}>Save</button>
         <button class="ws-btn ws-btn-cancel" onclick={cancel}>Cancel</button>
       </div>
     </div>
@@ -198,7 +211,7 @@
               <p class="ws-form-error">{formError}</p>
             {/if}
             <div class="ws-form-actions">
-              <button class="ws-btn ws-btn-save" onclick={save}>Save</button>
+              <button class="ws-btn ws-btn-save" disabled={saving} onclick={save}>Save</button>
               <button class="ws-btn ws-btn-cancel" onclick={cancel}>Cancel</button>
             </div>
           </div>
@@ -213,11 +226,11 @@
               {/if}
             </div>
             <div class="res-actions">
-              <button class="ws-action" onclick={() => toggleLock(res)} title={res.locked ? "Unlock" : "Lock"}>
+              <button class="ws-action" disabled={saving} onclick={() => toggleLock(res)} title={res.locked ? "Unlock" : "Lock"}>
                 {res.locked ? "🔓 Unlock" : "🔒 Lock"}
               </button>
               <button class="ws-action" onclick={() => startEdit(res)} title="Edit">✎</button>
-              <button class="ws-action ws-action-danger" onclick={() => handleDelete(res)} title="Delete">✕</button>
+              <button class="ws-action ws-action-danger" disabled={saving} onclick={() => handleDelete(res)} title="Delete">✕</button>
             </div>
           </div>
         {/if}

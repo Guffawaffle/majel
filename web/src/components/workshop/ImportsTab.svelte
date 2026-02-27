@@ -487,7 +487,7 @@
 
     <div class="imports-paste">
       <label for="csv-paste">Or paste CSV</label>
-      <textarea id="csv-paste" bind:value={pastedCsv} placeholder="officer name,level,power\nKirk,50,120000"></textarea>
+      <textarea id="csv-paste" bind:value={pastedCsv} maxlength="500000" placeholder="officer name,level,power\nKirk,50,120000"></textarea>
       <div class="imports-actions">
         <button class="imports-btn" onclick={() => { void analyzePastedCsv(); }} disabled={loading}>Analyze pasted CSV</button>
         <button class="imports-btn" onclick={() => { void continueManualFromPastedCsv(); }} disabled={loading}>Continue with manual mapping</button>

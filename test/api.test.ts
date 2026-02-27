@@ -90,7 +90,7 @@ describe("GET /api/health", () => {
     const app = createApp(state);
 
     const res = await testRequest(app).get("/api/health");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     expect(res.body.data.status).toBe("initializing");
     expect(res.body.data.gemini).toBe("not configured");
     expect(res.body.data.memory).toBe("not configured");

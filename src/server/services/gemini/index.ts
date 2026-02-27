@@ -30,6 +30,32 @@ import {
 import { MODEL_REGISTRY, MODEL_REGISTRY_MAP, resolveModelId } from "./model-registry.js";
 import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
 
+// ─── Retry helper for transient Gemini API errors ─────────────
+
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const MAX_RETRIES = 2;
+const BASE_DELAY_MS = 1000;
+
+async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      lastErr = err;
+      const status = (err as { status?: number }).status ?? (err as { httpStatusCode?: number }).httpStatusCode;
+      if (attempt < MAX_RETRIES && status != null && RETRYABLE_STATUS.has(status)) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+        log.gemini.warn({ attempt: attempt + 1, status, delay, label }, "Gemini transient error — retrying");
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
 // ─── Re-exports (preserve existing import paths) ──────────────
 
 export { MODEL_REGISTRY, MODEL_REGISTRY_MAP, getModelDef, resolveModelId, DEFAULT_MODEL } from "./model-registry.js";
@@ -396,7 +422,10 @@ export function createGeminiEngine(
 
         // Send augmented message (with gated context prepended)
         // Image attached on first message only (augmentedMessage includes gated context)
-        const result = await session.chat.sendMessage({ message: buildMessageParts(augmentedMessage) });
+        const result = await withRetry(
+          () => session.chat.sendMessage({ message: buildMessageParts(augmentedMessage) }),
+          "micro-runner",
+        );
 
         // Check for function calls before text extraction
         let responseText: string;
@@ -444,7 +473,10 @@ export function createGeminiEngine(
       }
 
       // ── Standard path (no MicroRunner) ────────────────────
-      const result = await session.chat.sendMessage({ message: buildMessageParts(message) });
+      const result = await withRetry(
+        () => session.chat.sendMessage({ message: buildMessageParts(message) }),
+        "standard",
+      );
 
       // Check for function calls before text extraction
       let responseText: string;

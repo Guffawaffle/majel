@@ -11,6 +11,7 @@
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { log } from "../logger.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
 import { withUserScope } from "../db.js";
@@ -143,9 +144,10 @@ export function createReceiptRoutes(appState: AppState): Router {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("not found")) {
-        return sendFail(res, ErrorCode.NOT_FOUND, msg, 404);
+        return sendFail(res, ErrorCode.NOT_FOUND, "Receipt not found", 404);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "receipt resolve failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to resolve receipt", 500);
     }
   });
 

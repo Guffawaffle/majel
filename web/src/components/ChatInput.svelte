@@ -96,6 +96,7 @@
   let modelsData = $state<ModelsResponse | null>(null);
   let pickerOpen = $state(false);
   const showModelSelector = $derived(hasRole("admiral") && modelsData != null);
+  const modelLocked = $derived(modelsData != null && modelsData.models.length <= 1);
   const currentModelLabel = $derived(modelsData?.currentDef?.name ?? modelsData?.current ?? "");
 
   onMount(async () => {
@@ -108,7 +109,7 @@
     if (sessionRefreshTimer) clearTimeout(sessionRefreshTimer);
   });
 
-  function togglePicker() { pickerOpen = !pickerOpen; }
+  function togglePicker() { if (!modelLocked) pickerOpen = !pickerOpen; }
   function closePicker() { pickerOpen = false; }
 
   async function handleModelSelect(modelId: string) {
@@ -196,6 +197,7 @@
         placeholder="Message Aria..."
         aria-label="Message Aria"
         rows="1"
+        maxlength={10000}
         disabled={isSending()}
         oninput={autoGrow}
         onkeydown={handleKeydown}
@@ -209,11 +211,15 @@
     <!-- Hint line + model selector -->
     <p class="input-hint">
       {#if showModelSelector}
-        <button type="button" class="model-selector-btn" onclick={togglePicker}
-          aria-expanded={pickerOpen} aria-haspopup="listbox">
-          <span class="model-selector-label">{currentModelLabel}</span>
-          <span class="model-chevron" class:open={pickerOpen}>▾</span>
-        </button>
+        {#if modelLocked}
+          <span class="model-selector-label model-locked" title="Model is locked by admin">🔒 {currentModelLabel}</span>
+        {:else}
+          <button type="button" class="model-selector-btn" onclick={togglePicker}
+            aria-expanded={pickerOpen} aria-haspopup="listbox">
+            <span class="model-selector-label">{currentModelLabel}</span>
+            <span class="model-chevron" class:open={pickerOpen}>▾</span>
+          </button>
+        {/if}
         ·
       {/if}
       <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline

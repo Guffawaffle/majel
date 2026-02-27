@@ -163,7 +163,7 @@ describe("receipt routes", () => {
       const res = await testRequest(app).post(`/api/import/receipts/${receipt.id}/resolve`).send({ resolvedItems: [] });
       expect(res.status).toBe(500);
       expect(res.body.error.code).toBe("INTERNAL_ERROR");
-      expect(res.body.error.message).toContain("boom");
+      expect(res.body.error.message).toContain("Failed to resolve receipt");
       spy.mockRestore();
     });
   });

@@ -44,6 +44,7 @@
 
   let activeTab = $state<TabId>("state");
   let loading = $state(false);
+  let error = $state("");
 
   // ── Shared state ──
 
@@ -80,7 +81,9 @@
       belowDeckPolicies = bdp;
       docks = dk;
       officers = off;
+      error = "";
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to load plan data.";
       console.error("Plan refresh failed:", err);
     } finally {
       loading = false;
@@ -96,6 +99,7 @@
       effectiveState = es;
       planItems = pi;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to refresh state.";
       console.error("Plan state-scope refresh failed:", err);
     }
   }
@@ -111,6 +115,7 @@
       effectiveState = es;
       planItems = pi;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to refresh docks.";
       console.error("Plan docks-scope refresh failed:", err);
     }
   }
@@ -124,6 +129,7 @@
       fleetPresets = fp;
       effectiveState = es;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to refresh presets.";
       console.error("Plan presets-scope refresh failed:", err);
     }
   }
@@ -137,6 +143,7 @@
       planItems = pi;
       effectiveState = es;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to refresh plan items.";
       console.error("Plan items-scope refresh failed:", err);
     }
   }
@@ -149,6 +156,13 @@
 </script>
 
 <div class="plan">
+  {#if error}
+    <div class="pl-error-banner" role="alert">
+      <span>⚠ {error}</span>
+      <button onclick={() => { error = ""; refresh(true); }}>Retry</button>
+      <button onclick={() => { error = ""; }}>✕</button>
+    </div>
+  {/if}
   <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
   <nav class="pl-tabs" role="tablist">
     {#each TABS as tab}

@@ -5,6 +5,7 @@
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { log } from "../logger.js";
 import { createSafeRouter } from "../safe-router.js";
 import { getCategories } from "../stores/settings.js";
 import { resolveConfig } from "../config.js";
@@ -73,12 +74,19 @@ export function createSettingsRoutes(appState: AppState): Router {
     
     for (const [key, value] of Object.entries(updates)) {
       try {
-        await appState.settingsStore.set(key, String(value));
-        results.push({ key, status: "updated" });
-        configChanged = true;
+        if (value === null || value === undefined) {
+          await appState.settingsStore.delete(key);
+          results.push({ key, status: "reset" });
+          configChanged = true;
+        } else {
+          await appState.settingsStore.set(key, String(value));
+          results.push({ key, status: "updated" });
+          configChanged = true;
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        results.push({ key, status: "error", error: message });
+        log.settings.error({ err: message, key }, "setting update failed");
+        results.push({ key, status: "error", error: "Failed to update setting" });
       }
     }
 

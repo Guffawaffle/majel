@@ -41,6 +41,7 @@
 
   let editingId = $state<number | "new" | null>(null);
   let formError = $state("");
+  let saving = $state(false);
 
   // Form fields
   let formName = $state("");
@@ -95,6 +96,7 @@
   }
 
   async function save() {
+    if (saving) return;
     if (!formName.trim()) { formError = "Name is required."; return; }
 
     const spec: BelowDeckPolicy["spec"] = {
@@ -104,6 +106,7 @@
     };
 
     formError = "";
+    saving = true;
     try {
       if (editingId === "new") {
         await createBelowDeckPolicy(formName.trim(), formMode, spec, formNotes.trim());
@@ -119,10 +122,13 @@
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Save failed.";
+    } finally {
+      saving = false;
     }
   }
 
   async function handleDelete(policy: BelowDeckPolicy) {
+    if (saving) return;
     const usedIn = policyUsedIn(policy.id);
     const extra = usedIn.length
       ? `\n\nWarning: used by loadouts: ${usedIn.map((l) => l.name).join(", ")}`
@@ -177,7 +183,7 @@
               <span class="ws-badge ws-badge-mode">{MODE_LABELS[policy.mode] ?? policy.mode}</span>
               <div class="ws-card-actions">
                 <button class="ws-action" onclick={() => startEdit(policy)} title="Edit">✎</button>
-                <button class="ws-action ws-action-danger" onclick={() => handleDelete(policy)} title="Delete">✕</button>
+                <button class="ws-action ws-action-danger" disabled={saving} onclick={() => handleDelete(policy)} title="Delete">✕</button>
               </div>
             </div>
             <div class="ws-card-body">
@@ -256,7 +262,7 @@
       <p class="ws-form-error">{formError}</p>
     {/if}
     <div class="ws-form-actions">
-      <button class="ws-btn ws-btn-save" onclick={save}>Save</button>
+      <button class="ws-btn ws-btn-save" disabled={saving} onclick={save}>Save</button>
       <button class="ws-btn ws-btn-cancel" onclick={cancel}>Cancel</button>
     </div>
   </div>

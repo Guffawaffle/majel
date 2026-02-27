@@ -60,6 +60,7 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     description: "LCARS color theme. Options: default, red-alert, andorian.",
     type: "string",
     default: "default",
+    options: ["default", "red-alert", "andorian"],
   },
   {
     key: "display.helpPinned",
@@ -152,6 +153,8 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     description: "Sampling temperature (0.0–2.0). Lower = more focused.",
     type: "number",
     default: "1.0",
+    min: 0,
+    max: 2,
   },
   {
     key: "model.topP",
@@ -160,6 +163,8 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     description: "Nucleus sampling threshold (0.0–1.0).",
     type: "number",
     default: "0.95",
+    min: 0,
+    max: 1,
   },
 
   // ── System ──────────────────────────────────────────────────
@@ -179,6 +184,7 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     description: "Controls UI complexity. BASIC hides power-user features; ADVANCED shows crew builder, conflict matrix, and bulk operations.",
     type: "string",
     default: "basic",
+    options: ["basic", "advanced"],
   },
 
   // ── Fleet ───────────────────────────────────────────────────

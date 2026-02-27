@@ -553,6 +553,14 @@ async function boot(): Promise<void> {
 
   state.startupComplete = true;
 
+  // Close admin pool — DDL/schema init is done, no more superuser access needed at runtime.
+  // This prevents accidental RLS bypass via adminPool reference.
+  if (state.adminPool) {
+    await state.adminPool.end();
+    log.boot.info("admin pool closed (DDL complete)");
+    state.adminPool = null as unknown as typeof state.adminPool;
+  }
+
   // 4. Start HTTP server
   const app = createApp(state);
   httpServer = app.listen(state.config.port, () => {

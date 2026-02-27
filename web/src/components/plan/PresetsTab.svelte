@@ -27,6 +27,7 @@
 
   let editingId = $state<number | "new" | null>(null);
   let formError = $state("");
+  let saving = $state(false);
   let formName = $state("");
   let formNotes = $state("");
 
@@ -59,9 +60,11 @@
   }
 
   async function save() {
+    if (saving) return;
     if (!formName.trim()) { formError = "Name is required."; return; }
 
     formError = "";
+    saving = true;
     try {
       if (editingId === "new") {
         await createFleetPreset(formName.trim(), formNotes.trim());
@@ -72,10 +75,13 @@
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Save failed.";
+    } finally {
+      saving = false;
     }
   }
 
   async function handleDelete(preset: FleetPresetWithSlots) {
+    if (saving) return;
     const severity = preset.isActive ? "Warning: this preset is currently active." : "";
     if (!(await confirm({ title: `Delete preset "${preset.name}"?`, subtitle: severity || undefined, severity: "warning", approveLabel: "Delete" }))) return;
     try {
@@ -87,15 +93,19 @@
   }
 
   async function handleActivate(preset: FleetPresetWithSlots) {
+    if (saving) return;
     if (preset.isActive) {
       // Re-activate — warn about manual overrides
       if (!(await confirm({ title: `Re-activate "${preset.name}"?`, subtitle: "This will clear manual overrides and re-expand preset slots." }))) return;
     }
+    saving = true;
     try {
       await activateFleetPreset(String(preset.id));
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Activate failed.";
+    } finally {
+      saving = false;
     }
   }
 
@@ -135,12 +145,12 @@
               {/if}
               <div class="pl-card-actions">
                 {#if preset.isActive}
-                  <button class="pl-action pl-action-warning" onclick={() => handleActivate(preset)}>🔄 Re-activate</button>
+                  <button class="pl-action pl-action-warning" disabled={saving} onclick={() => handleActivate(preset)}>🔄 Re-activate</button>
                 {:else}
-                  <button class="pl-action pl-action-primary" onclick={() => handleActivate(preset)}>▶ Activate</button>
+                  <button class="pl-action pl-action-primary" disabled={saving} onclick={() => handleActivate(preset)}>▶ Activate</button>
                 {/if}
                 <button class="pl-action" onclick={() => startEdit(preset)} title="Edit">✎</button>
-                <button class="pl-action pl-action-danger" onclick={() => handleDelete(preset)} title="Delete">✕</button>
+                <button class="pl-action pl-action-danger" disabled={saving} onclick={() => handleDelete(preset)} title="Delete">✕</button>
               </div>
             </div>
             <div class="pl-card-body">
@@ -189,7 +199,7 @@
       <p class="pl-form-error">{formError}</p>
     {/if}
     <div class="pl-form-actions">
-      <button class="pl-btn pl-btn-save" onclick={save}>Save</button>
+      <button class="pl-btn pl-btn-save" disabled={saving} onclick={save}>Save</button>
       <button class="pl-btn pl-btn-cancel" onclick={cancel}>Cancel</button>
     </div>
   </div>

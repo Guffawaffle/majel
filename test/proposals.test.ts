@@ -465,7 +465,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
 
     expect(res.status).toBe(500);
     expect(res.body.error.code).toBe("INTERNAL_ERROR");
-    expect(res.body.error.message).toContain("boom");
+    expect(res.body.error.message).toContain("Failed to apply proposal");
   });
 });
 

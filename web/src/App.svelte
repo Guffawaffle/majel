@@ -105,7 +105,7 @@
     <div class="app-main">
       <!-- Mobile header (hidden on desktop) -->
       <div class="mobile-header">
-        <button class="sidebar-toggle" onclick={() => (sidebarOpen = !sidebarOpen)}>☰</button>
+        <button class="sidebar-toggle" aria-label="Toggle navigation menu" onclick={() => (sidebarOpen = !sidebarOpen)}>☰</button>
         <span class="title">ARIADNE</span>
       </div>
 

@@ -58,6 +58,7 @@
   let mode = $state<ModeId>("basic");
   let activeTab = $state<TabId>("quick");
   let loading = $state(false);
+  let error = $state("");
 
   let bridgeCores = $state<BridgeCoreWithMembers[]>([]);
   let belowDeckPolicies = $state<BelowDeckPolicy[]>([]);
@@ -86,7 +87,9 @@
       reservations = r;
       officers = o;
       ships = s;
+      error = "";
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to load workshop data.";
       console.error("Workshop refresh failed:", err);
     } finally {
       loading = false;
@@ -102,6 +105,7 @@
       bridgeCores = c;
       loadouts = l;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to refresh cores.";
       console.error("Workshop cores-scope refresh failed:", err);
     }
   }
@@ -111,6 +115,7 @@
       const l = await fetchCrewLoadouts(undefined, { forceNetwork: true });
       loadouts = l;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to refresh loadouts.";
       console.error("Workshop loadouts-scope refresh failed:", err);
     }
   }
@@ -124,6 +129,7 @@
       belowDeckPolicies = p;
       loadouts = l;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to refresh policies.";
       console.error("Workshop policies-scope refresh failed:", err);
     }
   }
@@ -133,6 +139,7 @@
       const r = await fetchReservations({ forceNetwork: true });
       reservations = r;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to refresh reservations.";
       console.error("Workshop reservations-scope refresh failed:", err);
     }
   }
@@ -163,6 +170,13 @@
 </script>
 
 <div class="workshop">
+  {#if error}
+    <div class="ws-error-banner" role="alert">
+      <span>⚠ {error}</span>
+      <button onclick={() => { error = ""; refresh(true); }}>Retry</button>
+      <button onclick={() => { error = ""; }}>✕</button>
+    </div>
+  {/if}
   <div class="ws-modebar">
     {#each MODES as m}
       <button class="ws-modebtn" class:active={mode === m.id} onclick={() => switchMode(m.id)}>

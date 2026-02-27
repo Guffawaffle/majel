@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { log } from "../logger.js";
 import { requireVisitor } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
 import { executeFleetTool } from "../services/fleet-tools/index.js";
@@ -189,7 +190,8 @@ export function createProposalRoutes(appState: AppState): Router {
       if (msg.includes("expired") || msg.includes("Cannot apply") || msg.includes("Cannot decline")) {
         return sendFail(res, ErrorCode.CONFLICT, msg, 409);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "proposal apply failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to apply proposal", 500);
     }
   });
 

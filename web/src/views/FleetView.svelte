@@ -54,7 +54,8 @@
   let officers = $state<CatalogOfficer[]>([]);
   let ships = $state<CatalogShip[]>([]);
   let ui = $state(createInitialFleetViewUiState());
-  let loading = $state(false);
+  let loading = $state(true);
+  let error = $state("");
 
   // Cross-reference maps
   let officerUsedIn = $state<Map<string, string[]>>(new Map());
@@ -189,6 +190,7 @@
       crossRefLastBuiltAt = Date.now();
     } catch (err) {
       console.error("Cross-ref build failed:", err);
+      error = err instanceof Error ? err.message : "Failed to load crew cross-references.";
     }
   }
 
@@ -212,7 +214,9 @@
       officers = o;
       ships = s;
       await maybeBuildCrossRefs();
+      error = "";
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to load fleet data.";
       console.error("Fleet refresh failed:", err);
     } finally {
       loading = false;
@@ -305,6 +309,7 @@
       }
       item.target = next;
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to toggle target.";
       console.error("Toggle target failed:", err);
     }
   }
@@ -339,6 +344,7 @@
       crossRefDirty = true;
       crossRefLoadedTabs.clear();
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to save reservation.";
       console.error("Reservation save failed:", err);
     }
     send({ type: "reservation/edit-cancel" });
@@ -369,6 +375,13 @@
 </script>
 
 <div class="fleet-area">
+  {#if error}
+    <div class="fleet-error-banner" role="alert">
+      <span>⚠ {error}</span>
+      <button onclick={() => { error = ""; refresh(); }}>Retry</button>
+      <button onclick={() => { error = ""; }}>✕</button>
+    </div>
+  {/if}
   <!-- Tab Bar -->
   <div class="fleet-tabs" role="tablist">
     <button
@@ -608,6 +621,7 @@
               <input
                 type="text"
                 placeholder="Reserved for…"
+                maxlength="200"
                 bind:value={reservationText}
                 class="fleet-reservation-input"
               />

@@ -33,6 +33,7 @@
 
   let editingId = $state<number | "new" | null>(null);
   let formError = $state("");
+  let saving = $state(false);
 
   // Form
   let formLoadoutId = $state("");
@@ -88,6 +89,7 @@
   }
 
   async function save() {
+    if (saving) return;
     if (!formLoadoutId) { formError = "Select a loadout."; return; }
 
     const data: PlanItemInput = {
@@ -101,6 +103,7 @@
     };
 
     formError = "";
+    saving = true;
     try {
       if (editingId === "new") {
         await createCrewPlanItem(data);
@@ -111,10 +114,13 @@
       await onRefresh();
     } catch (err: unknown) {
       formError = err instanceof Error ? err.message : "Save failed.";
+    } finally {
+      saving = false;
     }
   }
 
   async function handleDelete(item: PlanItem) {
+    if (saving) return;
     const label = item.label || loadoutName(item.loadoutId) || "Plan Item";
     if (!(await confirm({ title: `Delete plan item "${label}"?`, severity: "warning", approveLabel: "Delete" }))) return;
     try {
@@ -172,7 +178,7 @@
               {/if}
               <div class="pl-card-actions">
                 <button class="pl-action" onclick={() => startEdit(item)} title="Edit">✎</button>
-                <button class="pl-action pl-action-danger" onclick={() => handleDelete(item)} title="Delete">✕</button>
+                <button class="pl-action pl-action-danger" disabled={saving} onclick={() => handleDelete(item)} title="Delete">✕</button>
               </div>
             </div>
             <div class="pl-card-body">
@@ -233,7 +239,7 @@
       <p class="pl-form-error">{formError}</p>
     {/if}
     <div class="pl-form-actions">
-      <button class="pl-btn pl-btn-save" onclick={save}>Save</button>
+      <button class="pl-btn pl-btn-save" disabled={saving} onclick={save}>Save</button>
       <button class="pl-btn pl-btn-cancel" onclick={cancel}>Cancel</button>
     </div>
   </div>

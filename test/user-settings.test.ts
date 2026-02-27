@@ -284,7 +284,7 @@ describe("User Settings API routes", () => {
         .set("Authorization", `Bearer ${ADMIN_TOKEN}`)
         .send({ value: "4000" });
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toMatch(/not user-overridable/);
+      expect(res.body.error.message).toMatch(/Failed to update setting/);
     });
 
     it("PUT /api/user-settings/:key requires value in body", async () => {

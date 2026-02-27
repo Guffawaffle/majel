@@ -168,7 +168,10 @@
   </nav>
 
   {#if error}
-    <p class="diag-error">{error}</p>
+    <div class="diag-error" role="alert">
+      <span>⚠ {error}</span>
+      <button class="diag-retry-btn" onclick={() => { error = ""; refresh(); }}>Retry</button>
+    </div>
   {/if}
 
   {#if loading}
@@ -321,6 +324,7 @@
     <textarea
       class="diag-sql-textarea"
       rows="3"
+      maxlength="10000"
       spellcheck="false"
       placeholder="SELECT … FROM reference_officers LIMIT 50"
       bind:value={sqlInput}

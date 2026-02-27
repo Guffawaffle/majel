@@ -28,7 +28,9 @@
   let activeTab = $state<"officers" | "ships">("officers");
   let searchQuery = $state("");
   let letterFilter = $state("");
-  let loading = $state(false);
+  let loading = $state(true);
+  let error = $state("");
+  let bulkBusy = $state(false);
 
   // Filters
   let filterOwnership = $state("");
@@ -94,7 +96,9 @@
         ships = await fetchCatalogShips(sFilters);
       }
       counts = await cPromise;
+      error = "";
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to load catalog data.";
       console.error("Catalog refresh failed:", err);
     } finally {
       loading = false;
@@ -182,6 +186,7 @@
       item.ownershipState = next;
       counts = await fetchCatalogCounts();
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to toggle ownership.";
       console.error("Toggle owned failed:", err);
     }
   }
@@ -197,6 +202,7 @@
       item.target = next;
       counts = await fetchCatalogCounts();
     } catch (err) {
+      error = err instanceof Error ? err.message : "Failed to toggle target.";
       console.error("Toggle target failed:", err);
     }
   }
@@ -205,7 +211,8 @@
 
   async function bulkOwnership(state: OwnershipState) {
     const visible = filteredItems;
-    if (!visible.length) return;
+    if (!visible.length || bulkBusy) return;
+    bulkBusy = true;
     const refIds = visible.map((it) => it.id);
     const previous = new Map(
       visible.map((it) => [it.id, { ownershipState: it.ownershipState, target: it.target }]),
@@ -219,13 +226,17 @@
       undoStack = [...undoStack, { type: activeTab, refIds, previousStates: previous, count: refIds.length }];
       await refresh();
     } catch (err) {
+      error = err instanceof Error ? err.message : "Bulk operation failed.";
       console.error("Bulk ownership failed:", err);
+    } finally {
+      bulkBusy = false;
     }
   }
 
   async function bulkToggleTarget() {
     const visible = filteredItems;
-    if (!visible.length) return;
+    if (!visible.length || bulkBusy) return;
+    bulkBusy = true;
     const anyNotTargeted = visible.some((it) => !it.target);
     const refIds = visible.map((it) => it.id);
     const previous = new Map(
@@ -240,7 +251,10 @@
       undoStack = [...undoStack, { type: activeTab, refIds, previousStates: previous, count: refIds.length }];
       await refresh();
     } catch (err) {
+      error = err instanceof Error ? err.message : "Bulk target operation failed.";
       console.error("Bulk target failed:", err);
+    } finally {
+      bulkBusy = false;
     }
   }
 
@@ -264,6 +278,7 @@
       if (unknownIds.length) await fn(unknownIds, { ownershipState: "unknown" });
       await refresh();
     } catch (err) {
+      error = err instanceof Error ? err.message : "Undo failed.";
       console.error("Undo failed:", err);
     }
   }
@@ -287,6 +302,13 @@
 </script>
 
 <div class="catalog-area">
+  {#if error}
+    <div class="cat-error-banner" role="alert">
+      <span>⚠ {error}</span>
+      <button onclick={() => { error = ""; refresh(); }}>Retry</button>
+      <button class="cat-error-dismiss" onclick={() => { error = ""; }}>✕</button>
+    </div>
+  {/if}
   <!-- Tab Bar -->
   <div class="cat-tabs" role="tablist">
     <button
@@ -386,14 +408,14 @@
 
   <!-- Bulk Actions -->
   <div class="cat-bulk-actions">
-    <button class="cat-bulk-btn" onclick={() => bulkOwnership("owned")} disabled={!filteredItems.length}>
-      Mark Owned ({resultCount})
+    <button class="cat-bulk-btn" onclick={() => bulkOwnership("owned")} disabled={!filteredItems.length || bulkBusy}>
+      {bulkBusy ? "Working…" : `Mark Owned (${resultCount})`}
     </button>
-    <button class="cat-bulk-btn" onclick={() => bulkOwnership("unowned")} disabled={!filteredItems.length}>
-      Mark Unowned ({resultCount})
+    <button class="cat-bulk-btn" onclick={() => bulkOwnership("unowned")} disabled={!filteredItems.length || bulkBusy}>
+      {bulkBusy ? "Working…" : `Mark Unowned (${resultCount})`}
     </button>
-    <button class="cat-bulk-btn" onclick={bulkToggleTarget} disabled={!filteredItems.length}>
-      Toggle Target ({resultCount})
+    <button class="cat-bulk-btn" onclick={bulkToggleTarget} disabled={!filteredItems.length || bulkBusy}>
+      {bulkBusy ? "Working…" : `Toggle Target (${resultCount})`}
     </button>
   </div>
 

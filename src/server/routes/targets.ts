@@ -10,6 +10,7 @@
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { log } from "../logger.js";
 import { createSafeRouter } from "../safe-router.js";
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES, type TargetType, type TargetStatus } from "../stores/target-store.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
@@ -172,8 +173,8 @@ export function createTargetRoutes(appState: AppState): Router {
       });
       sendOk(res, target, 201);
     } catch (err) {
-      return sendFail(res, ErrorCode.INTERNAL_ERROR,
-        `Failed to create target: ${err instanceof Error ? err.message : String(err)}`, 500);
+      log.fleet.error({ err: err instanceof Error ? err.message : String(err) }, "target create failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to create target", 500);
     }
   });
 

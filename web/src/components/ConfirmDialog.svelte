@@ -18,6 +18,8 @@
     approveLabel?: string;
     denyLabel?: string;
     severity?: "danger" | "warning";
+    /** Custom hint text. Set to false to hide the hint entirely. */
+    hint?: string | false;
   }
 
   type Resolver = (value: boolean) => void;
@@ -83,7 +85,9 @@
         </div>
       {/if}
 
-      <div class="confirm-hint">This action cannot be undone.</div>
+      {#if opts.hint !== false}
+        <div class="confirm-hint">{opts.hint ?? "This action cannot be undone."}</div>
+      {/if}
 
       <div class="confirm-actions">
         <!-- Deny is listed first so it gets autofocus -->

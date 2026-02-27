@@ -13,6 +13,7 @@ import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
+import { log } from "../logger.js";
 import { getCanonicalObjectiveArtifact } from "../services/canonical-objectives.js";
 import { sha256Hex, stableJsonStringify } from "../services/effects-contract-v3.js";
 
@@ -117,7 +118,7 @@ export function createEffectsRoutes(appState: AppState): Router {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("Canonical objectives assembly failed:", message);
+      log.root.error({ err: message }, "Canonical objectives assembly failed");
       sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch canonical objectives", 500);
     }
   });
@@ -343,7 +344,7 @@ export function createEffectsRoutes(appState: AppState): Router {
       sendOk(res, bundle);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("Effect bundle assembly failed:", message);
+      log.root.error({ err: message }, "Effect bundle assembly failed");
       sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch effect bundle", 500);
     }
   });
@@ -359,7 +360,7 @@ export function createEffectsRoutes(appState: AppState): Router {
       res.status(200).json(runtime.manifest);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("Effects runtime manifest failed:", message);
+      log.root.error({ err: message }, "Effects runtime manifest failed");
       sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch effects runtime manifest", 500);
     }
   });
@@ -422,7 +423,7 @@ export function createEffectsRoutes(appState: AppState): Router {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("Effects runtime health failed:", message);
+      log.root.error({ err: message }, "Effects runtime health failed");
       sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch effects runtime health", 500);
     }
   });
@@ -444,7 +445,7 @@ export function createEffectsRoutes(appState: AppState): Router {
       res.status(200).json(runtime.taxonomy);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("Effects runtime taxonomy failed:", message);
+      log.root.error({ err: message }, "Effects runtime taxonomy failed");
       sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch effects runtime taxonomy", 500);
     }
   });
@@ -466,7 +467,7 @@ export function createEffectsRoutes(appState: AppState): Router {
       res.status(200).json(runtime.officersIndex);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("Effects runtime officers index failed:", message);
+      log.root.error({ err: message }, "Effects runtime officers index failed");
       sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch effects runtime officers index", 500);
     }
   });
@@ -494,7 +495,7 @@ export function createEffectsRoutes(appState: AppState): Router {
       res.status(200).json(chunk.payload);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("Effects runtime chunk failed:", message);
+      log.root.error({ err: message }, "Effects runtime chunk failed");
       sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to fetch effects runtime chunk", 500);
     }
   });

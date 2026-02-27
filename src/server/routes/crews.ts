@@ -13,6 +13,7 @@
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
+import { log } from "../logger.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
 import { VALID_BRIDGE_SLOTS, VALID_BELOW_DECK_MODES } from "../types/crew-types.js";
@@ -124,7 +125,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("unique") || msg.includes("duplicate")) {
         return sendFail(res, ErrorCode.CONFLICT, `Bridge core name "${name}" already exists`, 409);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "bridge-core create failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to create bridge core", 500);
     }
   });
 
@@ -182,8 +184,8 @@ export function createCrewRoutes(appState: AppState): Router {
       const updated = await store.setBridgeCoreMembers(id, members as Array<{ officerId: string; slot: BridgeSlot }>);
       sendOk(res, { members: updated });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: err instanceof Error ? err.message : String(err) }, "bridge-core members update failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update bridge core members", 500);
     }
   });
 
@@ -235,7 +237,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("unique") || msg.includes("duplicate")) {
         return sendFail(res, ErrorCode.CONFLICT, `Policy name "${name}" already exists`, 409);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "below-deck-policy create failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to create below-deck policy", 500);
     }
   });
 
@@ -335,7 +338,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("violates foreign key")) {
         return sendFail(res, ErrorCode.INVALID_PARAM, "Referenced entity not found (ship, bridge core, or policy)", 400);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "loadout create failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to create crew loadout", 500);
     }
   });
 
@@ -427,7 +431,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("Unknown patch key") || msg.includes("mutually exclusive") || msg.includes("Invalid bridge slot")) {
         return sendFail(res, ErrorCode.INVALID_PARAM, msg, 400);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "variant create failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to create loadout variant", 500);
     }
   });
 
@@ -454,7 +459,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("Unknown patch key") || msg.includes("mutually exclusive") || msg.includes("Invalid bridge slot")) {
         return sendFail(res, ErrorCode.INVALID_PARAM, msg, 400);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "variant update failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update loadout variant", 500);
     }
   });
 
@@ -483,7 +489,11 @@ export function createCrewRoutes(appState: AppState): Router {
       sendOk(res, { resolvedLoadout: resolved });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return sendFail(res, ErrorCode.NOT_FOUND, msg, 404);
+      if (msg.includes("not found")) {
+        return sendFail(res, ErrorCode.NOT_FOUND, "Loadout or variant not found", 404);
+      }
+      log.fleet.error({ err: msg }, "variant resolve failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to resolve variant", 500);
     }
   });
 
@@ -576,7 +586,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("unique") || msg.includes("duplicate")) {
         return sendFail(res, ErrorCode.CONFLICT, `Fleet preset "${name}" already exists`, 409);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "fleet-preset create failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to create fleet preset", 500);
     }
   });
 
@@ -597,8 +608,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (!updated) return sendFail(res, ErrorCode.NOT_FOUND, `Fleet preset ${id} not found`, 404);
       sendOk(res, { fleetPreset: updated });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: err instanceof Error ? err.message : String(err) }, "fleet-preset update failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update fleet preset", 500);
     }
   });
 
@@ -632,7 +643,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("violates check constraint")) {
         return sendFail(res, ErrorCode.INVALID_PARAM, "Each slot must have exactly one of: loadoutId, variantId, or awayOfficers", 400);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "fleet-preset slots update failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update fleet preset slots", 500);
     }
   });
 
@@ -646,8 +658,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (!updated) return sendFail(res, ErrorCode.NOT_FOUND, `Fleet preset ${id} not found`, 404);
       sendOk(res, { fleetPreset: updated, activated: true });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: err instanceof Error ? err.message : String(err) }, "fleet-preset update failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update fleet preset", 500);
     }
   });
 
@@ -710,7 +722,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("violates check constraint")) {
         return sendFail(res, ErrorCode.INVALID_PARAM, "Plan item constraint violation: exactly one of loadoutId/variantId/awayOfficers required", 400);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "plan item create failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to create plan item", 500);
     }
   });
 
@@ -740,8 +753,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (!updated) return sendFail(res, ErrorCode.NOT_FOUND, `Plan item ${id} not found`, 404);
       sendOk(res, { planItem: updated });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: err instanceof Error ? err.message : String(err) }, "plan item update failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update plan item", 500);
     }
   });
 
@@ -785,7 +798,8 @@ export function createCrewRoutes(appState: AppState): Router {
       if (msg.includes("violates foreign key")) {
         return sendFail(res, ErrorCode.INVALID_PARAM, `Officer "${officerId}" not found in reference data`, 400);
       }
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, msg, 500);
+      log.fleet.error({ err: msg }, "reservation update failed");
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update officer reservation", 500);
     }
   });
 

@@ -43,6 +43,7 @@
   let overrideLabel = $state("");
   let overridePriority = $state(1);
   let overrideError = $state("");
+  let saving = $state(false);
 
   // ── Helpers ──
 
@@ -69,10 +70,12 @@
   }
 
   async function saveOverride() {
+    if (saving) return;
     if (!overrideLoadoutId) { overrideError = "Select a loadout."; return; }
     if (overrideDock == null) return;
 
     overrideError = "";
+    saving = true;
     try {
       await createCrewPlanItem({
         loadoutId: Number(overrideLoadoutId),
@@ -87,6 +90,8 @@
       await onRefresh();
     } catch (err: unknown) {
       overrideError = err instanceof Error ? err.message : "Override failed.";
+    } finally {
+      saving = false;
     }
   }
 </script>
@@ -191,7 +196,7 @@
           <p class="pl-form-error">{overrideError}</p>
         {/if}
         <div class="pl-form-actions">
-          <button class="pl-btn pl-btn-save" onclick={saveOverride}>Assign</button>
+          <button class="pl-btn pl-btn-save" disabled={saving} onclick={saveOverride}>Assign</button>
           <button class="pl-btn pl-btn-cancel" onclick={closeOverride}>Cancel</button>
         </div>
       </div>
