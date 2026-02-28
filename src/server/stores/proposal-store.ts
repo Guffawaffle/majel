@@ -24,6 +24,12 @@ import { log } from "../logger.js";
 
 export type ProposalStatus = "proposed" | "applied" | "declined" | "expired";
 
+export interface BatchItem {
+  tool: string;
+  args: Record<string, unknown>;
+  preview: string;
+}
+
 export interface MutationProposal {
   id: string;
   userId: string;
@@ -32,6 +38,7 @@ export interface MutationProposal {
   argsJson: Record<string, unknown>;
   argsHash: string;
   proposalJson: Record<string, unknown>;
+  batchItems: BatchItem[] | null;
   status: ProposalStatus;
   declineReason: string | null;
   appliedReceiptId: number | null;
@@ -46,6 +53,7 @@ export interface CreateProposalInput {
   argsJson: Record<string, unknown>;
   argsHash: string;
   proposalJson: Record<string, unknown>;
+  batchItems?: BatchItem[] | null;
   expiresAt: string; // ISO timestamp
 }
 
@@ -77,6 +85,7 @@ const SCHEMA_STATEMENTS = [
     args_json JSONB NOT NULL,
     args_hash TEXT NOT NULL,
     proposal_json JSONB NOT NULL,
+    batch_items JSONB,
     status TEXT NOT NULL CHECK (status IN ('proposed','applied','declined','expired')),
     decline_reason TEXT,
     applied_receipt_id BIGINT,
@@ -85,6 +94,15 @@ const SCHEMA_STATEMENTS = [
     applied_at TIMESTAMPTZ,
     declined_at TIMESTAMPTZ
   )`,
+  // Add batch_items column if table existed before this migration
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'mutation_proposals' AND column_name = 'batch_items'
+    ) THEN
+      ALTER TABLE mutation_proposals ADD COLUMN batch_items JSONB;
+    END IF;
+  END $$`,
   `CREATE INDEX IF NOT EXISTS idx_proposals_user_status ON mutation_proposals(user_id, status)`,
 
   // RLS
@@ -108,7 +126,7 @@ const SCHEMA_STATEMENTS = [
 
 const PROPOSAL_COLS = `id, user_id AS "userId", schema_version AS "schemaVersion",
   tool, args_json AS "argsJson", args_hash AS "argsHash",
-  proposal_json AS "proposalJson", status,
+  proposal_json AS "proposalJson", batch_items AS "batchItems", status,
   decline_reason AS "declineReason",
   applied_receipt_id AS "appliedReceiptId",
   created_at AS "createdAt", expires_at AS "expiresAt",
@@ -123,6 +141,7 @@ function mapProposal(row: Record<string, unknown>): MutationProposal {
     argsJson: (row.argsJson as Record<string, unknown>) ?? {},
     argsHash: String(row.argsHash),
     proposalJson: (row.proposalJson as Record<string, unknown>) ?? {},
+    batchItems: (row.batchItems as BatchItem[] | null) ?? null,
     status: String(row.status) as ProposalStatus,
     declineReason: row.declineReason == null ? null : String(row.declineReason),
     appliedReceiptId: row.appliedReceiptId == null ? null : Number(row.appliedReceiptId),
@@ -145,8 +164,8 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
         const id = `prop_${randomUUID()}`;
         const result = await client.query(
           `INSERT INTO mutation_proposals
-            (id, user_id, schema_version, tool, args_json, args_hash, proposal_json, status, expires_at)
-           VALUES ($1, $2, 1, $3, $4, $5, $6, 'proposed', $7)
+            (id, user_id, schema_version, tool, args_json, args_hash, proposal_json, batch_items, status, expires_at)
+           VALUES ($1, $2, 1, $3, $4, $5, $6, $7, 'proposed', $8)
            RETURNING ${PROPOSAL_COLS}`,
           [
             id,
@@ -155,6 +174,7 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
             JSON.stringify(input.argsJson),
             input.argsHash,
             JSON.stringify(input.proposalJson),
+            input.batchItems ? JSON.stringify(input.batchItems) : null,
             input.expiresAt,
           ],
         );

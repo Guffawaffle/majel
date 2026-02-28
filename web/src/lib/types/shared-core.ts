@@ -51,8 +51,15 @@ export interface ChatImage {
   mimeType: string;
 }
 
+export interface ChatProposal {
+  id: string;
+  batchItems: Array<{ tool: string; preview: string }>;
+  expiresAt: string;
+}
+
 export interface ChatResponse {
   answer: string;
+  proposals?: ChatProposal[];
   [key: string]: unknown;
 }
 

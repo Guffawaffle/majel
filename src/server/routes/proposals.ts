@@ -4,8 +4,8 @@
  * Majel — STFC Fleet Intelligence System
  *
  * Provides proposal create, apply, decline, list, and detail endpoints.
- * Every mutating tool action is first stored as a dry-run proposal, then
- * explicitly confirmed before being applied.
+ * Supports both single-tool proposals (sync_overlay dry-run flow) and
+ * batched proposals (multiple mutations from a single chat turn).
  *
  * Pattern: factory function createProposalRoutes(appState) → Router
  */
@@ -18,9 +18,10 @@ import { log } from "../logger.js";
 import { requireVisitor } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
 import { executeFleetTool } from "../services/fleet-tools/index.js";
+import { isMutationTool, getTrustLevel } from "../services/fleet-tools/trust.js";
 
-/** Phase 1: only these tools support the proposal flow. */
-const SUPPORTED_TOOLS = new Set(["sync_overlay"]);
+/** Tools that support the dry-run proposal creation via API. */
+const DRY_RUN_TOOLS = new Set(["sync_overlay", "sync_research"]);
 
 export function createProposalRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -69,7 +70,7 @@ export function createProposalRoutes(appState: AppState): Router {
     sendOk(res, { proposal });
   });
 
-  // ── Create proposal ──────────────────────────────────────
+  // ── Create proposal (dry-run tools only) ──────────────────
 
   router.post("/api/mutations/proposals", async (req, res) => {
     const userId = res.locals.userId as string;
@@ -85,8 +86,8 @@ export function createProposalRoutes(appState: AppState): Router {
     if (!args || typeof args !== "object") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "args is required and must be an object", 400);
     }
-    if (!SUPPORTED_TOOLS.has(tool)) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, `Tool '${tool}' is not supported for proposals`, 400);
+    if (!DRY_RUN_TOOLS.has(tool)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, `Tool '${tool}' does not support dry-run proposal creation via API. Use chat for approval-gated mutations.`, 400);
     }
 
     // Build tool context for this user
@@ -119,6 +120,7 @@ export function createProposalRoutes(appState: AppState): Router {
         id: proposal.id,
         tool: proposal.tool,
         status: proposal.status,
+        batchItems: proposal.batchItems,
         changesPreview: (preview as Record<string, unknown>).changesPreview,
         summary: (preview as Record<string, unknown>).summary,
         risk: {
@@ -147,8 +149,11 @@ export function createProposalRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.NOT_FOUND, `Proposal ${id} not found`, 404);
     }
 
-    // Tamper check: verify args hash matches
-    const currentHash = createHash("sha256").update(JSON.stringify(proposal.argsJson)).digest("hex");
+    // Tamper check: verify args hash matches the executable payload
+    const hashPayload = proposal.batchItems && proposal.batchItems.length > 0
+      ? proposal.batchItems
+      : proposal.argsJson;
+    const currentHash = createHash("sha256").update(JSON.stringify(hashPayload)).digest("hex");
     if (currentHash !== proposal.argsHash) {
       return sendFail(res, ErrorCode.CONFLICT, "Proposal args have been tampered with", 409);
     }
@@ -160,7 +165,70 @@ export function createProposalRoutes(appState: AppState): Router {
     }
 
     try {
-      // Re-execute tool with dry_run: false to actually apply changes
+      // Batch proposal: execute each item in sequence
+      if (proposal.batchItems && proposal.batchItems.length > 0) {
+        // Preflight trust + validity checks (fail closed before any mutation executes)
+        for (const item of proposal.batchItems) {
+          if (!isMutationTool(item.tool)) {
+            return sendFail(res, ErrorCode.CONFLICT, `Unknown mutation tool: ${item.tool}`, 409);
+          }
+
+          const trustLevel = await getTrustLevel(
+            item.tool,
+            userId,
+            toolContext.userSettingsStore,
+          );
+          if (trustLevel === "block") {
+            return sendFail(
+              res,
+              ErrorCode.CONFLICT,
+              `Tool '${item.tool}' is currently blocked by fleet trust settings and cannot be applied.`,
+              409,
+            );
+          }
+        }
+
+        const results: Array<{ tool: string; success: boolean; result?: object; error?: string }> = [];
+
+        for (const item of proposal.batchItems) {
+          const result = await executeFleetTool(item.tool, item.args, toolContext) as Record<string, unknown>;
+          if (result.error) {
+            results.push({ tool: item.tool, success: false, error: String(result.error) });
+            // Continue with remaining items — partial application is acceptable
+            // since each mutation is independent (bridge core, loadout, dock)
+          } else {
+            results.push({ tool: item.tool, success: true, result });
+          }
+        }
+
+        const successCount = results.filter((r) => r.success).length;
+        const applied = await proposalStore.apply(id, 0);
+        sendOk(res, {
+          applied: true,
+          proposal_id: applied.id,
+          batch_results: results,
+          summary: `${successCount}/${proposal.batchItems.length} mutations applied successfully.`,
+        });
+        return;
+      }
+
+      if (isMutationTool(proposal.tool)) {
+        const trustLevel = await getTrustLevel(
+          proposal.tool,
+          userId,
+          toolContext.userSettingsStore,
+        );
+        if (trustLevel === "block") {
+          return sendFail(
+            res,
+            ErrorCode.CONFLICT,
+            `Tool '${proposal.tool}' is currently blocked by fleet trust settings and cannot be applied.`,
+            409,
+          );
+        }
+      }
+
+      // Single-tool proposal: re-execute with dry_run: false
       const result = await executeFleetTool(
         proposal.tool,
         { ...proposal.argsJson, dry_run: false },

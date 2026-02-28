@@ -120,7 +120,7 @@ export const BASE_PROPOSAL_CREATE_VALIDATION_CASES: PayloadValidationCase[] = [
     name: "unsupported tool",
     payload: { tool: "delete_everything", args: {} },
     expectedStatus: 400,
-    expectedMessageFragment: "not supported",
+    expectedMessageFragment: "does not support",
   },
 ];
 

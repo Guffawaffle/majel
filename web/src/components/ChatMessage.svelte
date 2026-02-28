@@ -6,6 +6,7 @@
   import type { LocalMessage } from "../lib/chat.svelte.js";
   import { renderMarkdown, escapeHtml } from "../lib/markdown.js";
   import { openLightbox } from "./ImageLightbox.svelte";
+  import ChatProposalCard from "./ChatProposalCard.svelte";
   import { onDestroy } from "svelte";
 
   interface Props {
@@ -66,6 +67,13 @@
         </button>
       {/if}
       <div class="message-text">{@html bodyHtml}</div>
+      {#if message.proposals?.length}
+        <div class="proposal-cards">
+          {#each message.proposals as proposal (proposal.id)}
+            <ChatProposalCard {proposal} />
+          {/each}
+        </div>
+      {/if}
       {#if showCopy}
         <div class="message-actions">
           <button class="action-btn copy-btn" class:copied onclick={handleCopy}>
@@ -188,4 +196,11 @@
     opacity: 0.92;
   }
   .message-image-btn:hover .image-zoom-hint { opacity: 1; }
+
+  /* ── Proposal cards ── */
+  .proposal-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
 </style>

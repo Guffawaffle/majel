@@ -11,6 +11,7 @@
  * See docs/PROMPT_GUIDE.md for tuning strategy.
  */
 
+import { createHash } from "node:crypto";
 import {
   GoogleGenAI,
   type Chat,
@@ -27,6 +28,10 @@ import {
   FLEET_TOOL_DECLARATIONS,
   executeFleetTool,
 } from "../fleet-tools/index.js";
+import { getTrustLevel, isMutationTool } from "../fleet-tools/trust.js";
+import type { ProposalStoreFactory } from "../../stores/proposal-store.js";
+import type { BatchItem } from "../../stores/proposal-store.js";
+import type { UserSettingsStore } from "../../stores/user-settings-store.js";
 import { MODEL_REGISTRY, MODEL_REGISTRY_MAP, resolveModelId } from "./model-registry.js";
 import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
 
@@ -92,9 +97,29 @@ export interface ImagePart {
   };
 }
 
+/**
+ * Summary of a staged mutation proposal returned alongside chat text.
+ * The frontend renders these as inline approval cards.
+ */
+export interface ProposalSummary {
+  id: string;
+  batchItems: Array<{ tool: string; preview: string }>;
+  expiresAt: string;
+}
+
+/**
+ * Structured return from GeminiEngine.chat().
+ * `text` is the model's response; `proposals` contains any staged
+ * mutations that need Admiral approval before being applied.
+ */
+export interface ChatResult {
+  text: string;
+  proposals: ProposalSummary[];
+}
+
 export interface GeminiEngine {
-  /** Send a message and get the response text. Optional sessionId for isolation. Optional image attachment. Optional userId for user-scoped tool access (#85). */
-  chat(message: string, sessionId?: string, image?: ImagePart, userId?: string): Promise<string>;
+  /** Send a message and get the structured response. Optional sessionId for isolation. Optional image attachment. Optional userId for user-scoped tool access (#85). */
+  chat(message: string, sessionId?: string, image?: ImagePart, userId?: string): Promise<ChatResult>;
   /** Get the full conversation history. Optional sessionId (default: "default"). */
   getHistory(sessionId?: string): Array<{ role: string; text: string }>;
   /** Get the number of active sessions. */
@@ -147,6 +172,8 @@ export function createGeminiEngine(
   microRunner?: MicroRunner | null,
   initialModelId?: string | null,
   toolContextFactory?: ToolContextFactory | null,
+  proposalStoreFactory?: ProposalStoreFactory | null,
+  _userSettingsStore?: UserSettingsStore | null,
 ): GeminiEngine {
   // I5: Fail fast with clear message if API key is missing
   if (!apiKey) {
@@ -180,7 +207,7 @@ export function createGeminiEngine(
 
   /** Per-session mutex: prevents concurrent chat() calls from corrupting history */
   const sessionLocks = new Map<string, Promise<void>>();
-  function withSessionLock(sessionId: string, fn: () => Promise<string>): Promise<string> {
+  function withSessionLock(sessionId: string, fn: () => Promise<ChatResult>): Promise<ChatResult> {
     const prev = sessionLocks.get(sessionId) ?? Promise.resolve();
     let release: () => void;
     const next = new Promise<void>((r) => { release = r; });
@@ -313,23 +340,55 @@ export function createGeminiEngine(
    * Handle the function call loop: execute tool calls, send responses back,
    * repeat until Gemini produces a text response.
    *
-   * Returns the final text response from the model.
+   * Trust-aware (#93): checks each mutation tool against the trust tier system.
+   * - auto:    Execute immediately
+   * - approve: Stage into a batched proposal for Admiral approval
+   * - block:   Reject with error — tool must be explicitly unlocked in settings
+   *
+   * Returns ChatResult with text + any staged proposals.
    */
-  const MUTATION_TOOLS = new Set([
-    "create_bridge_core", "create_loadout", "create_variant",
-    "set_reservation", "activate_preset",
-  ]);
   const MAX_MUTATIONS_PER_CHAT = 5;
+
+  /** Generate a human-readable preview string for a mutation tool call. */
+  function generatePreview(toolName: string, args: Record<string, unknown>): string {
+    switch (toolName) {
+      case "create_bridge_core":
+        return `Create bridge core "${args.name ?? "?"}" — Captain: ${args.captain ?? "?"}, Bridge: ${args.bridge_1 ?? "?"} + ${args.bridge_2 ?? "?"}`;
+      case "create_loadout":
+        return `Create loadout "${args.name ?? "?"}" for ship ${args.ship_id ?? "?"}`;
+      case "create_variant":
+        return `Create variant "${args.name ?? "?"}" on loadout ${args.loadout_id ?? "?"}`;
+      case "assign_dock":
+        return `Assign dock ${args.dock_number ?? "?"} → loadout ${args.loadout_id ?? args.variant_id ?? "?"}`;
+      case "update_dock":
+        return `Update dock plan item ${args.plan_item_id ?? "?"}`;
+      case "remove_dock_assignment":
+        return `Clear dock ${args.dock_number ?? "?"} assignment`;
+      case "set_reservation":
+        return args.reserved_for
+          ? `Reserve officer ${args.officer_id ?? "?"} for ${args.reserved_for}`
+          : `Clear reservation for officer ${args.officer_id ?? "?"}`;
+      case "sync_overlay":
+        return "Sync overlay data from game export";
+      case "sync_research":
+        return "Sync research tree snapshot";
+      default:
+        return `${toolName}(${Object.keys(args).join(", ")})`;
+    }
+  }
 
   async function handleFunctionCalls(
     chat: Chat,
     initialFunctionCalls: FunctionCall[],
     sessionId: string,
     scopedContext: ToolContext,
-  ): Promise<string> {
+    userId: string,
+  ): Promise<ChatResult> {
     let functionCalls = initialFunctionCalls;
     let round = 0;
     let mutationCount = 0;
+    const pendingBatch: BatchItem[] = [];
+    const proposals: ProposalSummary[] = [];
 
     while (functionCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
       round++;
@@ -342,26 +401,72 @@ export function createGeminiEngine(
       // Execute all function calls in parallel
       const responses = await Promise.all(
         functionCalls.map(async (fc) => {
-          // Enforce mutation budget per chat turn
-          if (MUTATION_TOOLS.has(fc.name!)) {
+          const toolName = fc.name!;
+          const args = fc.args as Record<string, unknown>;
+
+          // ── Trust tier gate for mutation tools ──────────────
+          if (isMutationTool(toolName)) {
+            const trustLevel = await getTrustLevel(
+              toolName,
+              userId,
+              scopedContext.userSettingsStore,
+            );
+
+            if (trustLevel === "block") {
+              return {
+                functionResponse: {
+                  name: toolName,
+                  response: {
+                    tool: toolName,
+                    blocked: true,
+                    error: `Tool "${toolName}" is blocked. The Admiral must unlock it in fleet settings (fleet.trust) before it can be used.`,
+                  },
+                },
+              } as Part;
+            }
+
+            if (trustLevel === "approve") {
+              mutationCount++;
+              if (mutationCount > MAX_MUTATIONS_PER_CHAT) {
+                return {
+                  functionResponse: {
+                    name: toolName,
+                    response: { error: "Mutation limit reached for this message. Ask the Admiral to confirm before proceeding." },
+                  },
+                } as Part;
+              }
+              // Stage for batched proposal instead of executing
+              const preview = generatePreview(toolName, args);
+              pendingBatch.push({ tool: toolName, args, preview });
+              return {
+                functionResponse: {
+                  name: toolName,
+                  response: {
+                    tool: toolName,
+                    staged: true,
+                    message: `Staged for Admiral approval: ${preview}`,
+                  },
+                },
+              } as Part;
+            }
+
+            // trustLevel === "auto" — fall through to execute
             mutationCount++;
             if (mutationCount > MAX_MUTATIONS_PER_CHAT) {
               return {
                 functionResponse: {
-                  name: fc.name!,
+                  name: toolName,
                   response: { error: "Mutation limit reached for this message. Ask the Admiral to confirm before proceeding." },
                 },
               } as Part;
             }
           }
-          const result = await executeFleetTool(
-            fc.name!,
-            fc.args as Record<string, unknown>,
-            scopedContext,
-          );
+
+          // Execute tool (read-only tools and auto-trust mutations)
+          const result = await executeFleetTool(toolName, args, scopedContext);
           return {
             functionResponse: {
-              name: fc.name!,
+              name: toolName,
               response: sanitizeToolResponse(result) as Record<string, unknown>,
             },
           } as Part;
@@ -377,8 +482,15 @@ export function createGeminiEngine(
         continue;
       }
 
-      // Model produced a text response — we're done
-      return result.text ?? "";
+      // Model produced a text response — create proposal if needed, then return
+      const text = result.text ?? "";
+      if (pendingBatch.length > 0) {
+        const proposal = await createBatchProposal(pendingBatch, userId, proposals);
+        if (proposal) {
+          log.gemini.debug({ proposalId: proposal.id, items: pendingBatch.length }, "proposal:created");
+        }
+      }
+      return { text, proposals };
     }
 
     // Safety: max rounds exceeded — force a text response
@@ -390,11 +502,59 @@ export function createGeminiEngine(
     const summaryResult = await chat.sendMessage({
       message: "Please provide a text response summarizing the tool results.",
     });
-    return summaryResult.text ?? "";
+    const text = summaryResult.text ?? "";
+
+    // Create proposal for any batched items even in the fallback path
+    if (pendingBatch.length > 0) {
+      await createBatchProposal(pendingBatch, userId, proposals);
+    }
+    return { text, proposals };
+  }
+
+  /**
+   * Create a batched proposal from accumulated approve-tier mutations.
+   * Returns the proposal summary if created, null if proposal store unavailable.
+   */
+  async function createBatchProposal(
+    batch: BatchItem[],
+    userId: string,
+    proposals: ProposalSummary[],
+  ): Promise<ProposalSummary | null> {
+    if (!proposalStoreFactory || batch.length === 0) return null;
+
+    try {
+      const proposalStore = proposalStoreFactory.forUser(userId);
+      const argsHash = createHash("sha256")
+        .update(JSON.stringify(batch))
+        .digest("hex");
+
+      const proposal = await proposalStore.create({
+        tool: "_batch",
+        argsJson: { batchItems: batch },
+        argsHash,
+        proposalJson: {
+          summary: batch.map((b) => b.preview).join("; "),
+          itemCount: batch.length,
+        },
+        batchItems: batch,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      });
+
+      const summary: ProposalSummary = {
+        id: proposal.id,
+        batchItems: batch.map((b) => ({ tool: b.tool, preview: b.preview })),
+        expiresAt: proposal.expiresAt,
+      };
+      proposals.push(summary);
+      return summary;
+    } catch (err) {
+      log.gemini.error({ err: err instanceof Error ? err.message : String(err) }, "proposal:create-failed");
+      return null;
+    }
   }
 
   return {
-    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string): Promise<string> {
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string): Promise<ChatResult> {
       // #85: Namespace session keys by userId to prevent cross-user session leakage
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       return withSessionLock(sessionKey, async () => {
@@ -403,6 +563,7 @@ export function createGeminiEngine(
 
       // #85: Create user-scoped tool context for this chat call
       const scopedContext = hasToolContext ? toolContextFactory!.forUser(userId ?? "local") : null;
+      const effectiveUserId = userId ?? "local";
 
       // ── Build multimodal message parts (ADR-008) ────────
       // When an image is attached, we build a Part[] array: [imagePart, textPart]
@@ -429,11 +590,14 @@ export function createGeminiEngine(
 
         // Check for function calls before text extraction
         let responseText: string;
+        let chatProposals: ProposalSummary[] = [];
         const functionCalls = hasToolContext ? result.functionCalls : undefined;
 
         if (functionCalls && functionCalls.length > 0) {
           // Handle function call loop — tool results feed back to model
-          responseText = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!);
+          const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId);
+          responseText = chatResult.text;
+          chatProposals = chatResult.proposals;
         } else {
           responseText = result.text ?? "";
         }
@@ -469,7 +633,7 @@ export function createGeminiEngine(
 
         recordTurnAndTrim(session, message, responseText);
         log.gemini.debug({ sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
-        return responseText;
+        return { text: responseText, proposals: chatProposals };
       }
 
       // ── Standard path (no MicroRunner) ────────────────────
@@ -480,10 +644,13 @@ export function createGeminiEngine(
 
       // Check for function calls before text extraction
       let responseText: string;
+      let chatProposals: ProposalSummary[] = [];
       const functionCalls = hasToolContext ? result.functionCalls : undefined;
 
       if (functionCalls && functionCalls.length > 0) {
-        responseText = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!);
+        const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId);
+        responseText = chatResult.text;
+        chatProposals = chatResult.proposals;
       } else {
         responseText = result.text ?? "";
       }
@@ -491,7 +658,7 @@ export function createGeminiEngine(
       recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText);
 
       log.gemini.debug({ sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
-      return responseText;
+      return { text: responseText, proposals: chatProposals };
       }); // end withSessionLock
     },
 

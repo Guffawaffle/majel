@@ -467,6 +467,122 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     expect(res.body.error.code).toBe("INTERNAL_ERROR");
     expect(res.body.error.message).toContain("Failed to apply proposal");
   });
+
+  it("returns 409 when single-tool proposal is blocked by trust settings", async () => {
+    const { createHash } = await import("node:crypto");
+    const args = { preset_id: 42 };
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      tool: "activate_preset",
+      argsJson: args,
+      argsHash: createHash("sha256").update(JSON.stringify(args)).digest("hex"),
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      apply: vi.fn(),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    const callsBefore = mockedExecute.mock.calls.length;
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CONFLICT");
+    expect(String(res.body.error.message)).toContain("blocked");
+    expect(mockedExecute.mock.calls.length).toBe(callsBefore);
+    expect(store.apply).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when batch proposal hash is tampered", async () => {
+    const batchItems = [
+      {
+        tool: "assign_dock",
+        args: { dock_number: 1, loadout_id: 10 },
+        preview: "Assign dock 1 → loadout 10",
+      },
+    ];
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      tool: "_batch",
+      argsJson: { batchItems },
+      argsHash: "bad-hash",
+      batchItems,
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      apply: vi.fn(),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+    const callsBefore = mockedExecute.mock.calls.length;
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CONFLICT");
+    expect(String(res.body.error.message)).toContain("tampered");
+    expect(mockedExecute.mock.calls.length).toBe(callsBefore);
+    expect(store.apply).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when batch proposal includes blocked tool", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchItems = [
+      {
+        tool: "activate_preset",
+        args: { preset_id: 99 },
+        preview: "Activate preset 99",
+      },
+    ];
+
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      tool: "_batch",
+      argsJson: { batchItems },
+      argsHash: createHash("sha256").update(JSON.stringify(batchItems)).digest("hex"),
+      batchItems,
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      apply: vi.fn(),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+    const callsBefore = mockedExecute.mock.calls.length;
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CONFLICT");
+    expect(String(res.body.error.message)).toContain("blocked");
+    expect(mockedExecute.mock.calls.length).toBe(callsBefore);
+    expect(store.apply).not.toHaveBeenCalled();
+  });
 });
 
 // ─── POST /api/mutations/proposals/:id/decline ──────────────

@@ -1016,4 +1016,98 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["officer_id"],
     },
   },
+
+  // ─── Dock Assignment Tools ─────────────────────────────────
+
+  {
+    name: "assign_dock",
+    description:
+      "Assign a loadout (or variant) to a drydock slot. This creates a plan item linking " +
+      "the loadout to the dock number. If the dock already has an assignment, the old one " +
+      "is deactivated and replaced. " +
+      "Call this after creating a loadout to place it in a specific dock.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        dock_number: {
+          type: Type.INTEGER,
+          description: "Dock slot number (e.g. 1, 2, 3, 4, 5)",
+        },
+        loadout_id: {
+          type: Type.INTEGER,
+          description: "Loadout ID to assign to this dock (from create_loadout or list_plan_items)",
+        },
+        variant_id: {
+          type: Type.INTEGER,
+          description: "Optional variant ID to assign instead of the base loadout",
+        },
+        label: {
+          type: Type.STRING,
+          description: "Optional label for this dock assignment (e.g. 'PvP Dock', 'Mining')",
+        },
+        notes: {
+          type: Type.STRING,
+          description: "Optional notes about this dock assignment",
+        },
+      },
+      required: ["dock_number"],
+    },
+  },
+  {
+    name: "update_dock",
+    description:
+      "Update an existing dock assignment (plan item) — change the loadout, variant, dock number, " +
+      "label, or active status. Use this to reassign a dock without creating a new plan item.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        plan_item_id: {
+          type: Type.INTEGER,
+          description: "Plan item ID to update (from list_plan_items)",
+        },
+        loadout_id: {
+          type: Type.INTEGER,
+          description: "New loadout ID (optional — omit to keep current)",
+        },
+        variant_id: {
+          type: Type.INTEGER,
+          description: "New variant ID (optional — omit to keep current)",
+        },
+        dock_number: {
+          type: Type.INTEGER,
+          description: "New dock number (optional — omit to keep current)",
+        },
+        label: {
+          type: Type.STRING,
+          description: "Updated label",
+        },
+        is_active: {
+          type: Type.BOOLEAN,
+          description: "Whether this assignment is active (false to deactivate)",
+        },
+        notes: {
+          type: Type.STRING,
+          description: "Optional notes",
+        },
+      },
+      required: ["plan_item_id"],
+    },
+  },
+  {
+    name: "remove_dock_assignment",
+    description:
+      "Remove all active assignments from a dock slot, leaving it empty. " +
+      "This deactivates plan items but does not delete the dock entry. " +
+      "Call this when the Admiral wants to clear a dock.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        dock_number: {
+          type: Type.INTEGER,
+          description: "Dock slot number to clear (e.g. 1, 2, 3)",
+        },
+      },
+      required: ["dock_number"],
+    },
+  },
 ];

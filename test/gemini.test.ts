@@ -357,7 +357,7 @@ describe("createGeminiEngine", () => {
     const engine = createGeminiEngine("fake-key");
     const response = await engine.chat("Hello");
 
-    expect(response).toBe("Aye, Admiral.");
+    expect(response).toEqual({ text: "Aye, Admiral.", proposals: [] });
 
     const history = engine.getHistory();
     expect(history).toHaveLength(2);

@@ -155,7 +155,9 @@ interface CrewStore {
 // Schema DDL
 // ═══════════════════════════════════════════════════════════
 
-const MIGRATION_STATEMENTS = [
+// One-time migration from ADR-010/ADR-022 and ADR-025 v1 → v2 (user_id + RLS, #94).
+// Applied — retained for historical reference only. Do NOT pass to initSchema().
+const _MIGRATION_STATEMENTS_APPLIED = [
   // Drop ADR-010 tables (dock-store.ts legacy)
   `DROP TABLE IF EXISTS preset_tags CASCADE`,
   `DROP TABLE IF EXISTS crew_preset_members CASCADE`,
@@ -1330,7 +1332,7 @@ export async function createCrewStoreFactory(
   adminPool: Pool,
   runtimePool?: Pool,
 ): Promise<CrewStoreFactory> {
-  await initSchema(adminPool, [...MIGRATION_STATEMENTS, ...SCHEMA_STATEMENTS]);
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
   log.boot.debug("crew store initialized (ADR-025, user-scoped)");
   return new CrewStoreFactory(runtimePool ?? adminPool);
 }

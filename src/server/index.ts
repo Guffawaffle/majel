@@ -545,6 +545,8 @@ async function boot(): Promise<void> {
       runner,
       modelName,
       toolContextFactory,
+      state.proposalStoreFactory,  // #93: proposal store for approve-tier mutations
+      state.userSettingsStore,      // #93: trust level overrides
     );
     log.boot.info({ model: state.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
   } else {

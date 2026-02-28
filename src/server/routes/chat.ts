@@ -97,7 +97,9 @@ export function createChatRoutes(appState: AppState): Router {
         }
       }
 
-      const answer = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId);
+      const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId);
+      const answer = typeof result === "string" ? result : result.text;
+      const proposals = typeof result === "string" ? undefined : result.proposals;
 
       // Persist to Lex memory — user-scoped via RLS (ADR-021 D4)
       // Falls back to appState.memoryService if middleware didn't attach
@@ -118,7 +120,10 @@ export function createChatRoutes(appState: AppState): Router {
         await appState.sessionStore.addMessage(sessionId, "model", answer);
       }
 
-      sendOk(res, { answer });
+      sendOk(res, {
+        answer,
+        proposals: proposals && proposals.length > 0 ? proposals : undefined,
+      });
     } catch (err: unknown) {
       const errMessage = err instanceof Error ? err.message : String(err);
       log.gemini.error({ err: errMessage }, "chat request failed");

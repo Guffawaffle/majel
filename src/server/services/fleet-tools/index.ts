@@ -64,6 +64,9 @@ import {
   setShipOverlayTool,
   setOfficerOverlayTool,
   updateInventoryTool,
+  assignDockTool,
+  updateDockTool,
+  removeDockAssignmentTool,
 } from "./mutate-tools.js";
 
 // ─── Dispatcher ─────────────────────────────────────────────
@@ -213,6 +216,13 @@ async function dispatchTool(
       return setOfficerOverlayTool(args, ctx);
     case "update_inventory":
       return updateInventoryTool(args, ctx);
+    // Dock assignment tools
+    case "assign_dock":
+      return assignDockTool(args, ctx);
+    case "update_dock":
+      return updateDockTool(args, ctx);
+    case "remove_dock_assignment":
+      return removeDockAssignmentTool(args, ctx);
     default:
       return { error: `Unknown tool: ${name}` };
   }

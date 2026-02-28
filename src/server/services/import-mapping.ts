@@ -538,8 +538,8 @@ async function suggestWithAi(
   ].join("\n");
 
   try {
-    const raw = await geminiEngine.chat(prompt, "import-mapping");
-    const parsed = parseJsonObject(raw) as { suggestions?: ImportSuggestion[] } | null;
+    const result = await geminiEngine.chat(prompt, "import-mapping");
+    const parsed = parseJsonObject(result.text) as { suggestions?: ImportSuggestion[] } | null;
     const suggestions = parsed?.suggestions;
     if (!Array.isArray(suggestions)) return null;
     return suggestions

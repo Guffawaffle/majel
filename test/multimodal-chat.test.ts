@@ -254,7 +254,7 @@ describe("GeminiEngine.chat() — multimodal (ADR-008)", () => {
 
   it("sends text-only message as string when no image (backward compat)", async () => {
     const response = await engine.chat("Hello");
-    expect(response).toBe("Aye, Admiral.");
+    expect(response).toEqual({ text: "Aye, Admiral.", proposals: [] });
     expect(_mockSendMessage).toHaveBeenCalledWith({ message: "Hello" });
   });
 
@@ -264,7 +264,7 @@ describe("GeminiEngine.chat() — multimodal (ADR-008)", () => {
     };
 
     const response = await engine.chat("What officer is this?", "default", image);
-    expect(response).toBe("Aye, Admiral.");
+    expect(response).toEqual({ text: "Aye, Admiral.", proposals: [] });
 
     // Should send Part[] with image first, then text
     const callArg = _mockSendMessage.mock.calls[0][0];

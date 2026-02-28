@@ -242,6 +242,17 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     type: "json",
     default: "{}",
   },
+  {
+    key: "fleet.trust",
+    category: "fleet",
+    label: "Tool Trust Levels",
+    description:
+      "JSON object mapping tool names to trust levels (auto/approve/block). " +
+      'Example: {"create_bridge_core":"auto","activate_preset":"block"}. ' +
+      "Tools not listed fall back to system defaults.",
+    type: "json",
+    default: "{}",
+  },
 ];
 
 /** Lookup map for fast access. */

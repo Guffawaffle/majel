@@ -6,7 +6,7 @@
  * mutations go through exported functions.
  */
 
-import type { ChatImage, ChatMessage, ChatResponse } from "./types.js";
+import type { ChatImage, ChatMessage, ChatProposal, ChatResponse } from "./types.js";
 import { sendChat as apiSendChat } from "./api/chat.js";
 
 // ─── State ──────────────────────────────────────────────────
@@ -20,6 +20,8 @@ export interface LocalMessage {
   createdAt: string;
   /** Data URL for attached image thumbnail (user messages only). */
   imageDataUrl?: string;
+  /** Pending proposals attached to this model message (approve-tier mutations). */
+  proposals?: ChatProposal[];
 }
 
 let currentSessionId = $state<string>(crypto.randomUUID());
@@ -159,6 +161,7 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
       role: "model",
       text: result.answer,
       createdAt: new Date().toISOString(),
+      proposals: result.proposals?.length ? result.proposals : undefined,
     });
     onSent?.();
   } catch (e) {
