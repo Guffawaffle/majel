@@ -29,9 +29,24 @@ import {
   CdnIngestPipeline,
   ShipCdnIngestor,
   OfficerCdnIngestor,
+  ReferenceCdnIngestor,
 } from "./lib/cdn-ingest-pipeline.ts";
 import { ShipCdnUpsertService, type CdnShipSummary } from "./lib/ship-cdn-upsert-service.ts";
 import { OfficerCdnUpsertService, type CdnOfficerSummary } from "./lib/officer-cdn-upsert-service.ts";
+import {
+  ResearchCdnUpsertService,
+  BuildingCdnUpsertService,
+  HostileCdnUpsertService,
+  ConsumableCdnUpsertService,
+  SystemCdnUpsertService,
+} from "./lib/reference-cdn-upsert-services.ts";
+import type {
+  CdnResearchSummary,
+  CdnBuildingSummary,
+  CdnHostileSummary,
+  CdnConsumableSummary,
+  CdnSystemSummary,
+} from "../src/server/services/cdn-mappers.js";
 import {
   HULL_TYPE_LABELS,
   OFFICER_CLASS_LABELS,
@@ -69,7 +84,7 @@ function stripColorTags(text: string): string {
 }
 
 interface TranslationEntry {
-  id: number | null;
+  id: number | string | null;
   key: string;
   text: string;
 }
@@ -90,7 +105,10 @@ function buildNameMap(entries: TranslationEntry[], nameKey: string): Map<number,
   const map = new Map<number, string>();
   for (const e of entries) {
     if (e.id != null && e.key === nameKey) {
-      map.set(e.id, e.text);
+      const numId = typeof e.id === "string" ? Number(e.id) : e.id;
+      if (!Number.isNaN(numId)) {
+        map.set(numId, e.text);
+      }
     }
   }
   return map;
@@ -100,11 +118,13 @@ function buildAbilityTextMap(entries: TranslationEntry[]): Map<number, { name: s
   const map = new Map<number, { name: string; description: string; shortDescription: string }>();
   for (const e of entries) {
     if (e.id == null) continue;
-    const existing = map.get(e.id) ?? { name: "", description: "", shortDescription: "" };
+    const numId = typeof e.id === "string" ? Number(e.id) : e.id;
+    if (Number.isNaN(numId)) continue;
+    const existing = map.get(numId) ?? { name: "", description: "", shortDescription: "" };
     if (e.key === "officer_ability_name") existing.name = e.text;
     else if (e.key === "officer_ability_desc") existing.description = stripColorTags(e.text);
     else if (e.key === "officer_ability_short_desc") existing.shortDescription = stripColorTags(e.text);
-    map.set(e.id, existing);
+    map.set(numId, existing);
   }
   return map;
 }
@@ -155,11 +175,11 @@ async function main(): Promise<void> {
 
   // Check current counts
   const { rows: countRows } = await pool.query(`
-    SELECT 
+    SELECT
       (SELECT COUNT(*) FROM reference_officers) as officers,
       (SELECT COUNT(*) FROM reference_ships) as ships
   `);
-  console.log(`📊 Current DB state: ${countRows[0].officers} officers, ${countRows[0].ships} ships`);
+  console.log(`📊 Current DB state: ${countRows[0].officers} officers, ${countRows[0].ships} ships (pre-seed)`);
 
   // Purge legacy raw/wiki entries and related data
   console.log("\n🧹 Purging legacy raw/wiki entries...");
@@ -188,6 +208,23 @@ async function main(): Promise<void> {
   const traitTrans = await loadTranslationPack("traits");
   const traitNameMap = buildNameMap(traitTrans, "trait_name");
 
+  // Extended entity translations
+  const researchTrans = await loadTranslationPack("research");
+  const researchNameMap = buildNameMap(researchTrans, "research_project_name");
+  const researchTreeNameMap = buildNameMap(researchTrans, "research_tree_name");
+
+  const buildingTrans = await loadTranslationPack("starbase_modules");
+  const buildingNameMap = buildNameMap(buildingTrans, "starbase_module_name");
+
+  const hostileTrans = await loadTranslationPack("navigation");
+  const hostileNameMap = buildNameMap(hostileTrans, "marauder_name_only");
+
+  const consumableTrans = await loadTranslationPack("consumables");
+  const consumableNameMap = buildNameMap(consumableTrans, "consumable_name");
+
+  const systemTrans = await loadTranslationPack("systems");
+  const systemNameMap = buildNameMap(systemTrans, "title");
+
   const shipUpsertService = new ShipCdnUpsertService({
     pool,
     snapshotDir: SNAPSHOT_DIR,
@@ -212,6 +249,22 @@ async function main(): Promise<void> {
     formatAbilityDescription,
   });
 
+  const researchUpsertService = new ResearchCdnUpsertService({
+    pool, nameMap: researchNameMap, treeNameMap: researchTreeNameMap,
+  });
+  const buildingUpsertService = new BuildingCdnUpsertService({
+    pool, nameMap: buildingNameMap,
+  });
+  const hostileUpsertService = new HostileCdnUpsertService({
+    pool, nameMap: hostileNameMap, factionLabels: FACTION_LABELS,
+  });
+  const consumableUpsertService = new ConsumableCdnUpsertService({
+    pool, nameMap: consumableNameMap,
+  });
+  const systemUpsertService = new SystemCdnUpsertService({
+    pool, nameMap: systemNameMap, factionLabels: FACTION_LABELS,
+  });
+
   // ─── Sync via class-based ingest pipeline ────────────────
   console.log("\n🔄 Running CDN ingest pipeline...");
   const pipeline = new CdnIngestPipeline([
@@ -225,16 +278,52 @@ async function main(): Promise<void> {
       snapshotDir: SNAPSHOT_DIR,
       upsertOne: (officer) => officerUpsertService.upsertOne(officer),
     }),
+    new ReferenceCdnIngestor<CdnResearchSummary>({
+      pool, snapshotDir: SNAPSHOT_DIR, entity: "research",
+      summaryRelativePath: join("research", "summary.json"),
+      idPrefix: "cdn:research:", tableName: "reference_research",
+      upsertOne: (r) => researchUpsertService.upsertOne(r),
+    }),
+    new ReferenceCdnIngestor<CdnBuildingSummary>({
+      pool, snapshotDir: SNAPSHOT_DIR, entity: "buildings",
+      summaryRelativePath: join("building", "summary.json"),
+      idPrefix: "cdn:building:", tableName: "reference_buildings",
+      upsertOne: (b) => buildingUpsertService.upsertOne(b),
+    }),
+    new ReferenceCdnIngestor<CdnHostileSummary>({
+      pool, snapshotDir: SNAPSHOT_DIR, entity: "hostiles",
+      summaryRelativePath: join("hostile", "summary.json"),
+      idPrefix: "cdn:hostile:", tableName: "reference_hostiles",
+      upsertOne: (h) => hostileUpsertService.upsertOne(h),
+    }),
+    new ReferenceCdnIngestor<CdnConsumableSummary>({
+      pool, snapshotDir: SNAPSHOT_DIR, entity: "consumables",
+      summaryRelativePath: join("consumable", "summary.json"),
+      idPrefix: "cdn:consumable:", tableName: "reference_consumables",
+      upsertOne: (c) => consumableUpsertService.upsertOne(c),
+    }),
+    new ReferenceCdnIngestor<CdnSystemSummary>({
+      pool, snapshotDir: SNAPSHOT_DIR, entity: "systems",
+      summaryRelativePath: join("system", "summary.json"),
+      idPrefix: "cdn:system:", tableName: "reference_systems",
+      upsertOne: (s) => systemUpsertService.upsertOne(s),
+    }),
   ]);
   await pipeline.run();
 
   // Final counts
   const { rows: finalRows } = await pool.query(`
-    SELECT 
+    SELECT
       (SELECT COUNT(*) FROM reference_officers) as officers,
-      (SELECT COUNT(*) FROM reference_ships) as ships
+      (SELECT COUNT(*) FROM reference_ships) as ships,
+      (SELECT COUNT(*) FROM reference_research) as research,
+      (SELECT COUNT(*) FROM reference_buildings) as buildings,
+      (SELECT COUNT(*) FROM reference_hostiles) as hostiles,
+      (SELECT COUNT(*) FROM reference_consumables) as consumables,
+      (SELECT COUNT(*) FROM reference_systems) as systems
   `);
-  console.log(`\n📊 Final DB state: ${finalRows[0].officers} officers, ${finalRows[0].ships} ships`);
+  const f = finalRows[0];
+  console.log(`\n📊 Final DB state: ${f.officers} officers, ${f.ships} ships, ${f.research} research, ${f.buildings} buildings, ${f.hostiles} hostiles, ${f.consumables} consumables, ${f.systems} systems`);
 
   await pool.end();
   console.log("\n✅ Seed complete!");

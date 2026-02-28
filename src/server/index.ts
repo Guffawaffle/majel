@@ -341,6 +341,15 @@ async function boot(): Promise<void> {
     );
   } catch { /* ignore — role may not exist in test environments */ }
 
+  // 1c. Re-create settings store with app pool for runtime queries.
+  // The initial creation (step 1) used only adminPool because the app pool didn't exist yet
+  // (its URL comes from resolved config). The adminPool is closed after boot, so the store
+  // must be re-bound to the long-lived app pool. initSchema is idempotent (IF NOT EXISTS).
+  if (state.settingsStore) {
+    state.settingsStore = await createSettingsStore(adminPool, pool);
+    log.boot.debug("settings store re-bound to app pool");
+  }
+
   // 2. Initialize Lex memory — ADR-021: prefer PostgreSQL + RLS when pool is available
   try {
     if (adminPool) {
@@ -373,7 +382,13 @@ async function boot(): Promise<void> {
     // Purge legacy raw:* entries that duplicate CDN data (different IDs, different casing)
     const purged = await state.referenceStore.purgeLegacyEntries();
     const refCounts = await state.referenceStore.counts();
-    log.boot.info({ officers: refCounts.officers, ships: refCounts.ships, purgedShips: purged.ships, purgedOfficers: purged.officers }, "reference store online");
+    log.boot.info({
+      officers: refCounts.officers, ships: refCounts.ships,
+      research: refCounts.research, buildings: refCounts.buildings,
+      hostiles: refCounts.hostiles, consumables: refCounts.consumables,
+      systems: refCounts.systems,
+      purgedShips: purged.ships, purgedOfficers: purged.officers,
+    }, "reference store online");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
   }

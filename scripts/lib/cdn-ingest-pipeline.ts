@@ -17,15 +17,12 @@ export interface IngestStats {
 }
 
 export interface EntityIngestResult {
-  entity: "ships" | "officers";
+  entity: string;
   pruned: PruneStats;
   upsert: IngestStats;
 }
 
-export interface PipelineRunResult {
-  ships?: EntityIngestResult;
-  officers?: EntityIngestResult;
-}
+export type PipelineRunResult = Record<string, EntityIngestResult>;
 
 export interface IngestLogger {
   info(message: string): void;
@@ -44,9 +41,9 @@ abstract class CdnEntityIngestor<TSummary extends { id: number }> {
     protected readonly logger: IngestLogger,
   ) {}
 
-  protected abstract readonly entity: "ships" | "officers";
+  protected abstract readonly entity: string;
   protected abstract readonly summaryRelativePath: string;
-  protected abstract readonly idPrefix: "cdn:ship:" | "cdn:officer:";
+  protected abstract readonly idPrefix: string;
   protected abstract prune(validIds: string[]): Promise<PruneStats>;
   protected abstract upsertOne(summary: TSummary): Promise<UpsertOutcome>;
 
@@ -189,11 +186,7 @@ export class CdnIngestPipeline {
       const entityResult = await ingestor.run();
       if (!entityResult) continue;
 
-      if (entityResult.entity === "ships") {
-        result.ships = entityResult;
-      } else {
-        result.officers = entityResult;
-      }
+      result[entityResult.entity] = entityResult;
 
       if (entityResult.pruned.records > 0) {
         this.logger.info(
@@ -209,5 +202,52 @@ export class CdnIngestPipeline {
     }
 
     return result;
+  }
+}
+
+// ─── Generic Reference-Only Ingestor ───────────────────────
+// For entity types that only have a reference table (no overlays).
+
+interface ReferenceIngestorOptions<T extends { id: number }> {
+  pool: pg.Pool;
+  snapshotDir: string;
+  logger?: IngestLogger;
+  entity: string;
+  summaryRelativePath: string;
+  idPrefix: string;
+  tableName: string;
+  upsertOne: (entry: T) => Promise<UpsertOutcome>;
+}
+
+export class ReferenceCdnIngestor<T extends { id: number }> extends CdnEntityIngestor<T> {
+  protected readonly entity: string;
+  protected readonly summaryRelativePath: string;
+  protected readonly idPrefix: string;
+  private readonly tableName: string;
+  private readonly upsertHandler: (entry: T) => Promise<UpsertOutcome>;
+
+  constructor(options: ReferenceIngestorOptions<T>) {
+    super(options.pool, options.snapshotDir, options.logger ?? DEFAULT_LOGGER);
+    this.entity = options.entity;
+    this.summaryRelativePath = options.summaryRelativePath;
+    this.idPrefix = options.idPrefix;
+    this.tableName = options.tableName;
+    this.upsertHandler = options.upsertOne;
+  }
+
+  protected async prune(validIds: string[]): Promise<PruneStats> {
+    const recordResult = await this.pool.query(
+      `DELETE FROM ${this.tableName} WHERE id LIKE '${this.idPrefix}%' AND NOT (id = ANY($1::text[]))`,
+      [validIds],
+    );
+    return {
+      records: recordResult.rowCount ?? 0,
+      overlays: 0,
+      targets: 0,
+    };
+  }
+
+  protected upsertOne(summary: T): Promise<UpsertOutcome> {
+    return this.upsertHandler(summary);
   }
 }

@@ -1,4 +1,6 @@
-import type { CreateReferenceOfficerInput, CreateReferenceShipInput } from "../stores/reference-store.js";
+import type { CreateReferenceOfficerInput, CreateReferenceShipInput,
+  ReferenceResearch, ReferenceBuilding, ReferenceHostile, ReferenceConsumable, ReferenceSystem,
+} from "../stores/reference-store.js";
 
 interface AbilityValue {
   value: number;
@@ -321,5 +323,233 @@ export function mapCdnOfficerToReferenceInput(options: OfficerMapperOptions): Cr
     sourcePageId: null,
     sourceRevisionId: null,
     sourceRevisionTimestamp: null,
+  };
+}
+
+// ─── Extended CDN Mapper Types ─────────────────────────────
+
+export type CreateReferenceResearchInput = Omit<ReferenceResearch, "createdAt" | "updatedAt">;
+export type CreateReferenceBuildingInput = Omit<ReferenceBuilding, "createdAt" | "updatedAt">;
+export type CreateReferenceHostileInput = Omit<ReferenceHostile, "createdAt" | "updatedAt">;
+export type CreateReferenceConsumableInput = Omit<ReferenceConsumable, "createdAt" | "updatedAt">;
+export type CreateReferenceSystemInput = Omit<ReferenceSystem, "createdAt" | "updatedAt">;
+
+// ─── Research Mapper ───────────────────────────────────────
+
+export interface CdnResearchSummary {
+  id: number;
+  loca_id: number;
+  unlock_level: number;
+  max_level: number;
+  research_tree: { id: number; loca_id: number; type: number };
+  buffs: Record<string, unknown>[];
+  first_level_requirements?: Record<string, unknown>[];
+  row?: number;
+  column?: number;
+}
+
+interface ResearchMapperOptions {
+  research: CdnResearchSummary;
+  nameMap: Map<number, string>;
+  treeNameMap: Map<number, string>;
+}
+
+export function mapCdnResearchToReferenceInput(options: ResearchMapperOptions): CreateReferenceResearchInput {
+  const { research, nameMap, treeNameMap } = options;
+  const rawName = nameMap.get(research.loca_id) ?? `Research ${research.id}`;
+  const name = toTitleCase(rawName);
+  const treeName = treeNameMap.get(research.research_tree.loca_id) ?? null;
+
+  return {
+    id: `cdn:research:${research.id}`,
+    name,
+    researchTree: treeName,
+    unlockLevel: research.unlock_level,
+    maxLevel: research.max_level,
+    buffs: research.buffs ?? null,
+    requirements: research.first_level_requirements ?? null,
+    row: research.row ?? null,
+    col: research.column ?? null,
+    gameId: research.id,
+    source: "cdn:game-data",
+    license: "CC-BY-NC 4.0",
+    attribution: "STFC community data",
+  };
+}
+
+// ─── Building Mapper ───────────────────────────────────────
+
+export interface CdnBuildingSummary {
+  id: number;
+  max_level: number;
+  unlock_level: number;
+  buffs: Record<string, unknown>[];
+  first_level_requirements?: Record<string, unknown>[];
+}
+
+interface BuildingMapperOptions {
+  building: CdnBuildingSummary;
+  nameMap: Map<number, string>;
+}
+
+export function mapCdnBuildingToReferenceInput(options: BuildingMapperOptions): CreateReferenceBuildingInput {
+  const { building, nameMap } = options;
+  const rawName = nameMap.get(building.id) ?? `Building ${building.id}`;
+  const name = toTitleCase(rawName);
+
+  return {
+    id: `cdn:building:${building.id}`,
+    name,
+    maxLevel: building.max_level,
+    unlockLevel: building.unlock_level,
+    buffs: building.buffs ?? null,
+    requirements: building.first_level_requirements ?? null,
+    gameId: building.id,
+    source: "cdn:game-data",
+    license: "CC-BY-NC 4.0",
+    attribution: "STFC community data",
+  };
+}
+
+// ─── Hostile Mapper ────────────────────────────────────────
+
+export interface CdnHostileSummary {
+  id: number;
+  loca_id: number;
+  faction: { id: number; loca_id: number | null };
+  level: number;
+  ship_type: number;
+  hull_type: number;
+  rarity: number;
+  strength: number;
+  systems: number[];
+  warp: number;
+  resources: Record<string, unknown>[];
+}
+
+interface HostileMapperOptions {
+  hostile: CdnHostileSummary;
+  nameMap: Map<number, string>;
+  factionLabels: Record<number, string>;
+}
+
+export function mapCdnHostileToReferenceInput(options: HostileMapperOptions): CreateReferenceHostileInput {
+  const { hostile, nameMap, factionLabels } = options;
+  const rawName = nameMap.get(hostile.loca_id) ?? `Hostile ${hostile.id}`;
+  const name = toTitleCase(rawName);
+  const factionId = hostile.faction?.id ?? -1;
+  const factionName = factionId !== -1 ? (factionLabels[factionId] ?? null) : null;
+
+  return {
+    id: `cdn:hostile:${hostile.id}`,
+    name,
+    faction: factionName,
+    level: hostile.level,
+    shipType: hostile.ship_type,
+    hullType: hostile.hull_type,
+    rarity: hostile.rarity,
+    strength: hostile.strength,
+    systems: hostile.systems?.map(String) ?? null,
+    warp: hostile.warp,
+    resources: hostile.resources ?? null,
+    gameId: hostile.id,
+    source: "cdn:game-data",
+    license: "CC-BY-NC 4.0",
+    attribution: "STFC community data",
+  };
+}
+
+// ─── Consumable Mapper ─────────────────────────────────────
+
+export interface CdnConsumableSummary {
+  id: number;
+  loca_id: number;
+  rarity: string;
+  grade: number;
+  requires_slot: boolean;
+  buff: Record<string, unknown> | null;
+  duration_seconds: number;
+  category: number;
+}
+
+interface ConsumableMapperOptions {
+  consumable: CdnConsumableSummary;
+  nameMap: Map<number, string>;
+}
+
+export function mapCdnConsumableToReferenceInput(options: ConsumableMapperOptions): CreateReferenceConsumableInput {
+  const { consumable, nameMap } = options;
+  const rawName = nameMap.get(consumable.loca_id) ?? `Consumable ${consumable.id}`;
+  const name = toTitleCase(rawName);
+
+  return {
+    id: `cdn:consumable:${consumable.id}`,
+    name,
+    rarity: consumable.rarity ?? null,
+    grade: consumable.grade,
+    requiresSlot: consumable.requires_slot,
+    buff: consumable.buff,
+    durationSeconds: consumable.duration_seconds,
+    category: String(consumable.category),
+    gameId: consumable.id,
+    source: "cdn:game-data",
+    license: "CC-BY-NC 4.0",
+    attribution: "STFC community data",
+  };
+}
+
+// ─── System Mapper ─────────────────────────────────────────
+
+export interface CdnSystemSummary {
+  id: number;
+  est_warp: number;
+  is_deep_space: boolean;
+  faction: number[];
+  level: number;
+  coords_x: number;
+  coords_y: number;
+  has_mines: boolean;
+  has_planets: boolean;
+  has_missions: boolean;
+  mine_resources: unknown[];
+  hostiles: unknown[];
+  node_sizes: Record<string, unknown>[];
+  hazard_level?: number;
+}
+
+interface SystemMapperOptions {
+  system: CdnSystemSummary;
+  nameMap: Map<number, string>;
+  factionLabels: Record<number, string>;
+}
+
+export function mapCdnSystemToReferenceInput(options: SystemMapperOptions): CreateReferenceSystemInput {
+  const { system, nameMap, factionLabels } = options;
+  const rawName = nameMap.get(system.id) ?? `System ${system.id}`;
+  const name = toTitleCase(rawName);
+  const factions = system.faction
+    ?.map((fId) => factionLabels[fId] ?? String(fId))
+    .filter(Boolean) ?? null;
+
+  return {
+    id: `cdn:system:${system.id}`,
+    name,
+    estWarp: system.est_warp,
+    isDeepSpace: system.is_deep_space,
+    factions: factions && factions.length > 0 ? factions : null,
+    level: system.level,
+    coordsX: system.coords_x,
+    coordsY: system.coords_y,
+    hasMines: system.has_mines,
+    hasPlanets: system.has_planets,
+    hasMissions: system.has_missions,
+    mineResources: (system.mine_resources as Record<string, unknown>[]) ?? null,
+    hostileCount: system.hostiles?.length ?? 0,
+    nodeSizes: system.node_sizes ?? null,
+    hazardLevel: system.hazard_level ?? null,
+    gameId: system.id,
+    source: "cdn:game-data",
+    license: "CC-BY-NC 4.0",
+    attribution: "STFC community data",
   };
 }

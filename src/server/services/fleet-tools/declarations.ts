@@ -1110,4 +1110,54 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["dock_number"],
     },
   },
+  // ── Extended Game Reference Tools ───────────────────────
+  {
+    name: "search_game_reference",
+    description:
+      "Search game reference data by category: research projects, starbase buildings, hostiles (NPCs), " +
+      "consumables (buffs/items), or star systems. Returns matching entries with key attributes. " +
+      "Use this when the Admiral asks about game content like 'what research boosts mining?' or " +
+      "'find hostiles in Vulcan system' or 'what consumables increase damage?'.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        category: {
+          type: Type.STRING,
+          description: "The type of game data to search",
+          enum: ["research", "building", "hostile", "consumable", "system"],
+        },
+        query: {
+          type: Type.STRING,
+          description: "Search term — name or partial name (case-insensitive)",
+        },
+        limit: {
+          type: Type.INTEGER,
+          description: "Max results to return (default 20)",
+        },
+      },
+      required: ["category", "query"],
+    },
+  },
+  {
+    name: "get_game_reference",
+    description:
+      "Get full details for a specific game reference entity by its ID. " +
+      "Use this after a search_game_reference call to retrieve detailed info about a specific entry " +
+      "the Admiral is interested in (e.g. research buffs, building stats, hostile drops, system contents).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        category: {
+          type: Type.STRING,
+          description: "The type of game data",
+          enum: ["research", "building", "hostile", "consumable", "system"],
+        },
+        id: {
+          type: Type.STRING,
+          description: "The reference ID (from search results, e.g. 'cdn:research:4055439002')",
+        },
+      },
+      required: ["category", "id"],
+    },
+  },
 ];

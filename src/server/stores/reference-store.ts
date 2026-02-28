@@ -3,7 +3,8 @@
  *
  * Majel — STFC Fleet Intelligence System
  *
- * PostgreSQL-backed store for reference entities (officers, ships).
+ * PostgreSQL-backed store for reference entities (officers, ships, research,
+ * buildings, hostiles, consumables, systems).
  * Data is sourced from local game data snapshot (ADR-028).
  *
  * User state (ownership, targeting, level) lives in overlay-store.ts.
@@ -133,6 +134,100 @@ export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "update
   blueprintsRequired?: number | null;
 };
 
+export interface ReferenceResearch {
+  id: string;
+  name: string;
+  researchTree: string | null;
+  unlockLevel: number | null;
+  maxLevel: number | null;
+  buffs: Record<string, unknown>[] | null;
+  requirements: Record<string, unknown>[] | null;
+  row: number | null;
+  col: number | null;
+  gameId: number | null;
+  source: string;
+  license: string;
+  attribution: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferenceBuilding {
+  id: string;
+  name: string;
+  maxLevel: number | null;
+  unlockLevel: number | null;
+  buffs: Record<string, unknown>[] | null;
+  requirements: Record<string, unknown>[] | null;
+  gameId: number | null;
+  source: string;
+  license: string;
+  attribution: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferenceHostile {
+  id: string;
+  name: string;
+  faction: string | null;
+  level: number | null;
+  shipType: number | null;
+  hullType: number | null;
+  rarity: number | null;
+  strength: number | null;
+  systems: string[] | null;
+  warp: number | null;
+  resources: Record<string, unknown>[] | null;
+  gameId: number | null;
+  source: string;
+  license: string;
+  attribution: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferenceConsumable {
+  id: string;
+  name: string;
+  rarity: string | null;
+  grade: number | null;
+  requiresSlot: boolean | null;
+  buff: Record<string, unknown> | null;
+  durationSeconds: number | null;
+  category: string | null;
+  gameId: number | null;
+  source: string;
+  license: string;
+  attribution: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferenceSystem {
+  id: string;
+  name: string;
+  estWarp: number | null;
+  isDeepSpace: boolean | null;
+  factions: string[] | null;
+  level: number | null;
+  coordsX: number | null;
+  coordsY: number | null;
+  hasMines: boolean | null;
+  hasPlanets: boolean | null;
+  hasMissions: boolean | null;
+  mineResources: Record<string, unknown>[] | null;
+  hostileCount: number | null;
+  nodeSizes: Record<string, unknown>[] | null;
+  hazardLevel: number | null;
+  gameId: number | null;
+  source: string;
+  license: string;
+  attribution: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Store Interface ────────────────────────────────────────
 
 export interface ReferenceStore {
@@ -158,8 +253,30 @@ export interface ReferenceStore {
   /** Delete legacy `raw:*` / `wiki:*` ship and officer entries superseded by CDN data. */
   purgeLegacyEntries(): Promise<{ ships: number; officers: number }>;
 
-  counts(): Promise<{ officers: number; ships: number }>;
+  // ── Extended Reference Types ────────────────────────────
+  getResearch(id: string): Promise<ReferenceResearch | null>;
+  searchResearch(query: string): Promise<ReferenceResearch[]>;
+  getBuilding(id: string): Promise<ReferenceBuilding | null>;
+  searchBuildings(query: string): Promise<ReferenceBuilding[]>;
+  getHostile(id: string): Promise<ReferenceHostile | null>;
+  searchHostiles(query: string): Promise<ReferenceHostile[]>;
+  getConsumable(id: string): Promise<ReferenceConsumable | null>;
+  searchConsumables(query: string): Promise<ReferenceConsumable[]>;
+  getSystem(id: string): Promise<ReferenceSystem | null>;
+  searchSystems(query: string): Promise<ReferenceSystem[]>;
+
+  counts(): Promise<ReferenceCounts>;
   close(): void;
+}
+
+export interface ReferenceCounts {
+  officers: number;
+  ships: number;
+  research: number;
+  buildings: number;
+  hostiles: number;
+  consumables: number;
+  systems: number;
 }
 
 // ─── Constants ──────────────────────────────────────────────
@@ -305,6 +422,110 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_name ON reference_ships(name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_class ON reference_ships(ship_class)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_faction ON reference_ships(faction)`,
+  // ── Research ─────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS reference_research (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    research_tree TEXT,
+    unlock_level INTEGER,
+    max_level INTEGER,
+    buffs JSONB,
+    requirements JSONB,
+    row INTEGER,
+    col INTEGER,
+    game_id BIGINT,
+    source TEXT NOT NULL DEFAULT 'cdn:game-data',
+    license TEXT NOT NULL DEFAULT 'CC-BY-NC 4.0',
+    attribution TEXT NOT NULL DEFAULT 'STFC community data',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_research_name ON reference_research(name)`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_research_tree ON reference_research(research_tree)`,
+  // ── Buildings ────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS reference_buildings (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    max_level INTEGER,
+    unlock_level INTEGER,
+    buffs JSONB,
+    requirements JSONB,
+    game_id BIGINT,
+    source TEXT NOT NULL DEFAULT 'cdn:game-data',
+    license TEXT NOT NULL DEFAULT 'CC-BY-NC 4.0',
+    attribution TEXT NOT NULL DEFAULT 'STFC community data',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_buildings_name ON reference_buildings(name)`,
+  // ── Hostiles ─────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS reference_hostiles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    faction TEXT,
+    level INTEGER,
+    ship_type INTEGER,
+    hull_type INTEGER,
+    rarity INTEGER,
+    strength BIGINT,
+    systems TEXT[],
+    warp INTEGER,
+    resources JSONB,
+    game_id BIGINT,
+    source TEXT NOT NULL DEFAULT 'cdn:game-data',
+    license TEXT NOT NULL DEFAULT 'CC-BY-NC 4.0',
+    attribution TEXT NOT NULL DEFAULT 'STFC community data',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_hostiles_name ON reference_hostiles(name)`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_hostiles_level ON reference_hostiles(level)`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_hostiles_faction ON reference_hostiles(faction)`,
+  // ── Consumables ──────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS reference_consumables (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    rarity TEXT,
+    grade INTEGER,
+    requires_slot BOOLEAN,
+    buff JSONB,
+    duration_seconds INTEGER,
+    category TEXT,
+    game_id BIGINT,
+    source TEXT NOT NULL DEFAULT 'cdn:game-data',
+    license TEXT NOT NULL DEFAULT 'CC-BY-NC 4.0',
+    attribution TEXT NOT NULL DEFAULT 'STFC community data',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_consumables_name ON reference_consumables(name)`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_consumables_category ON reference_consumables(category)`,
+  // ── Systems ──────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS reference_systems (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    est_warp INTEGER,
+    is_deep_space BOOLEAN,
+    factions TEXT[],
+    level INTEGER,
+    coords_x REAL,
+    coords_y REAL,
+    has_mines BOOLEAN,
+    has_planets BOOLEAN,
+    has_missions BOOLEAN,
+    mine_resources JSONB,
+    hostile_count INTEGER,
+    node_sizes JSONB,
+    hazard_level INTEGER,
+    game_id BIGINT,
+    source TEXT NOT NULL DEFAULT 'cdn:game-data',
+    license TEXT NOT NULL DEFAULT 'CC-BY-NC 4.0',
+    attribution TEXT NOT NULL DEFAULT 'STFC community data',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_systems_name ON reference_systems(name)`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_systems_level ON reference_systems(level)`,
 ];
 
 const OFFICER_COLS = `id, name, rarity, group_name AS "groupName", captain_maneuver AS "captainManeuver",
@@ -326,6 +547,29 @@ const SHIP_COLS = `id, name, ship_class AS "shipClass", grade, rarity, faction, 
   source, source_url AS "sourceUrl", source_page_id AS "sourcePageId",
   source_revision_id AS "sourceRevisionId", source_revision_timestamp AS "sourceRevisionTimestamp",
   license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+const RESEARCH_COLS = `id, name, research_tree AS "researchTree", unlock_level AS "unlockLevel",
+  max_level AS "maxLevel", buffs, requirements, row, col, game_id AS "gameId",
+  source, license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+const BUILDING_COLS = `id, name, max_level AS "maxLevel", unlock_level AS "unlockLevel",
+  buffs, requirements, game_id AS "gameId",
+  source, license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+const HOSTILE_COLS = `id, name, faction, level, ship_type AS "shipType", hull_type AS "hullType",
+  rarity, strength, systems, warp, resources, game_id AS "gameId",
+  source, license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+const CONSUMABLE_COLS = `id, name, rarity, grade, requires_slot AS "requiresSlot",
+  buff, duration_seconds AS "durationSeconds", category, game_id AS "gameId",
+  source, license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+const SYSTEM_COLS = `id, name, est_warp AS "estWarp", is_deep_space AS "isDeepSpace",
+  factions, level, coords_x AS "coordsX", coords_y AS "coordsY",
+  has_mines AS "hasMines", has_planets AS "hasPlanets", has_missions AS "hasMissions",
+  mine_resources AS "mineResources", hostile_count AS "hostileCount",
+  node_sizes AS "nodeSizes", hazard_level AS "hazardLevel", game_id AS "gameId",
+  source, license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SQL = {
   // Officers
@@ -367,6 +611,31 @@ const SQL = {
   deleteShip: `DELETE FROM reference_ships WHERE id = $1`,
   shipExists: `SELECT 1 FROM reference_ships WHERE id = $1`,
   countShips: `SELECT COUNT(*) AS count FROM reference_ships`,
+
+  // Research
+  getResearch: `SELECT ${RESEARCH_COLS} FROM reference_research WHERE id = $1`,
+  searchResearch: `SELECT ${RESEARCH_COLS} FROM reference_research WHERE name ILIKE $1 ORDER BY name`,
+  countResearch: `SELECT COUNT(*) AS count FROM reference_research`,
+
+  // Buildings
+  getBuilding: `SELECT ${BUILDING_COLS} FROM reference_buildings WHERE id = $1`,
+  searchBuildings: `SELECT ${BUILDING_COLS} FROM reference_buildings WHERE name ILIKE $1 ORDER BY name`,
+  countBuildings: `SELECT COUNT(*) AS count FROM reference_buildings`,
+
+  // Hostiles
+  getHostile: `SELECT ${HOSTILE_COLS} FROM reference_hostiles WHERE id = $1`,
+  searchHostiles: `SELECT ${HOSTILE_COLS} FROM reference_hostiles WHERE name ILIKE $1 ORDER BY name`,
+  countHostiles: `SELECT COUNT(*) AS count FROM reference_hostiles`,
+
+  // Consumables
+  getConsumable: `SELECT ${CONSUMABLE_COLS} FROM reference_consumables WHERE id = $1`,
+  searchConsumables: `SELECT ${CONSUMABLE_COLS} FROM reference_consumables WHERE name ILIKE $1 ORDER BY name`,
+  countConsumables: `SELECT COUNT(*) AS count FROM reference_consumables`,
+
+  // Systems
+  getSystem: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE id = $1`,
+  searchSystems: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE name ILIKE $1 ORDER BY name`,
+  countSystems: `SELECT COUNT(*) AS count FROM reference_systems`,
 };
 
 // ─── Implementation ─────────────────────────────────────────
@@ -721,12 +990,76 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
 
     // ── Diagnostics ─────────────────────────────────────────
 
+    // ── Extended Reference Types ─────────────────────────────
+
+    async getResearch(id) {
+      const result = await pool.query(SQL.getResearch, [id]);
+      return (result.rows[0] as ReferenceResearch) ?? null;
+    },
+
+    async searchResearch(query) {
+      const result = await pool.query(SQL.searchResearch, [`%${query}%`]);
+      return result.rows as ReferenceResearch[];
+    },
+
+    async getBuilding(id) {
+      const result = await pool.query(SQL.getBuilding, [id]);
+      return (result.rows[0] as ReferenceBuilding) ?? null;
+    },
+
+    async searchBuildings(query) {
+      const result = await pool.query(SQL.searchBuildings, [`%${query}%`]);
+      return result.rows as ReferenceBuilding[];
+    },
+
+    async getHostile(id) {
+      const result = await pool.query(SQL.getHostile, [id]);
+      return (result.rows[0] as ReferenceHostile) ?? null;
+    },
+
+    async searchHostiles(query) {
+      const result = await pool.query(SQL.searchHostiles, [`%${query}%`]);
+      return result.rows as ReferenceHostile[];
+    },
+
+    async getConsumable(id) {
+      const result = await pool.query(SQL.getConsumable, [id]);
+      return (result.rows[0] as ReferenceConsumable) ?? null;
+    },
+
+    async searchConsumables(query) {
+      const result = await pool.query(SQL.searchConsumables, [`%${query}%`]);
+      return result.rows as ReferenceConsumable[];
+    },
+
+    async getSystem(id) {
+      const result = await pool.query(SQL.getSystem, [id]);
+      return (result.rows[0] as ReferenceSystem) ?? null;
+    },
+
+    async searchSystems(query) {
+      const result = await pool.query(SQL.searchSystems, [`%${query}%`]);
+      return result.rows as ReferenceSystem[];
+    },
+
+    // ── Diagnostics ─────────────────────────────────────────
+
     async counts() {
       const offResult = await pool.query(SQL.countOfficers);
       const shipResult = await pool.query(SQL.countShips);
+      const researchResult = await pool.query(SQL.countResearch);
+      const buildingResult = await pool.query(SQL.countBuildings);
+      const hostileResult = await pool.query(SQL.countHostiles);
+      const consumableResult = await pool.query(SQL.countConsumables);
+      const systemResult = await pool.query(SQL.countSystems);
       return {
         officers: Number((offResult.rows[0] as { count: string }).count),
         ships: Number((shipResult.rows[0] as { count: string }).count),
+        research: Number((researchResult.rows[0] as { count: string }).count),
+        buildings: Number((buildingResult.rows[0] as { count: string }).count),
+        hostiles: Number((hostileResult.rows[0] as { count: string }).count),
+        consumables: Number((consumableResult.rows[0] as { count: string }).count),
+        systems: Number((systemResult.rows[0] as { count: string }).count),
       };
     },
 

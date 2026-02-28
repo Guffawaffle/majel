@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ShipCdnIngestor, OfficerCdnIngestor } from "../scripts/lib/cdn-ingest-pipeline.ts";
+import { ShipCdnIngestor, OfficerCdnIngestor, ReferenceCdnIngestor } from "../scripts/lib/cdn-ingest-pipeline.ts";
 
 interface MockPool {
   query: ReturnType<typeof vi.fn>;
@@ -76,5 +76,52 @@ describe("cdn-ingest-pipeline", () => {
 
     const firstPruneArgs = pool.query.mock.calls[0]?.[1]?.[0] as string[];
     expect(firstPruneArgs).toEqual(["cdn:officer:201"]);
+  });
+
+  it("ReferenceCdnIngestor upserts entries and prunes only from its own table", async () => {
+    const baseDir = await mkdtemp(join(tmpdir(), "majel-cdn-ref-"));
+    dirs.push(baseDir);
+    await mkdir(join(baseDir, "research"), { recursive: true });
+    await writeFile(join(baseDir, "research", "summary.json"), JSON.stringify([
+      { id: 501 },
+      { id: 502 },
+      { id: 503 },
+    ]));
+
+    const seen = new Set<number>();
+    const upsertOne = vi.fn(async (entry: { id: number }) => {
+      if (seen.has(entry.id)) return "updated" as const;
+      seen.add(entry.id);
+      return "created" as const;
+    });
+
+    const pool = createMockPool(1); // 1 row pruned
+    const ingestor = new ReferenceCdnIngestor<{ id: number }>({
+      pool: pool as never,
+      snapshotDir: baseDir,
+      entity: "research",
+      summaryRelativePath: "research/summary.json",
+      idPrefix: "cdn:research:",
+      tableName: "reference_research",
+      upsertOne,
+    });
+
+    const first = await ingestor.run();
+    expect(first?.upsert).toEqual({ created: 3, updated: 0, total: 3 });
+    expect(first?.pruned).toEqual({ records: 1, overlays: 0, targets: 0 });
+
+    // Prune should only DELETE from reference_research (no overlay/target queries)
+    const pruneCall = pool.query.mock.calls[0];
+    expect(pruneCall[0]).toContain("reference_research");
+    expect(pruneCall[0]).toContain("cdn:research:");
+    const pruneIds = pruneCall[1][0] as string[];
+    expect(pruneIds).toEqual(["cdn:research:501", "cdn:research:502", "cdn:research:503"]);
+
+    // Only 1 query (prune) — no overlay or target cleanup
+    expect(pool.query).toHaveBeenCalledTimes(1);
+
+    // Second run should show all updates (no creates)
+    const second = await ingestor.run();
+    expect(second?.upsert).toEqual({ created: 0, updated: 3, total: 3 });
   });
 });

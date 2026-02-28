@@ -46,6 +46,8 @@ import {
   listTargets,
   suggestTargets,
   detectConflicts,
+  searchGameReference,
+  getGameReference,
 } from "./read-tools.js";
 
 // ─── Mutation tool implementations ──────────────────────────
@@ -223,6 +225,20 @@ async function dispatchTool(
       return updateDockTool(args, ctx);
     case "remove_dock_assignment":
       return removeDockAssignmentTool(args, ctx);
+    // Extended game reference tools
+    case "search_game_reference":
+      return searchGameReference(
+        String(args.category ?? "") as "research" | "building" | "hostile" | "consumable" | "system",
+        String(args.query ?? ""),
+        args.limit == null ? 20 : Number(args.limit),
+        ctx,
+      );
+    case "get_game_reference":
+      return getGameReference(
+        String(args.category ?? "") as "research" | "building" | "hostile" | "consumable" | "system",
+        String(args.id ?? ""),
+        ctx,
+      );
     default:
       return { error: `Unknown tool: ${name}` };
   }

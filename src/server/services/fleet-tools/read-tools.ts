@@ -1297,3 +1297,114 @@ export async function detectConflicts(ctx: ToolContext): Promise<object> {
     },
   };
 }
+
+// ─── Extended Game Reference Tools ───────────────────────
+
+type ReferenceCategory = "research" | "building" | "hostile" | "consumable" | "system";
+
+export async function searchGameReference(
+  category: ReferenceCategory,
+  query: string,
+  limit: number,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.referenceStore) {
+    return { error: "Reference catalog not available." };
+  }
+  if (!query.trim()) {
+    return { error: "Search query is required." };
+  }
+
+  const cap = Math.min(Math.max(1, limit), 50);
+
+  switch (category) {
+    case "research": {
+      const rows = await ctx.referenceStore.searchResearch(query);
+      const results = rows.slice(0, cap).map((r) => ({
+        id: r.id, name: r.name, researchTree: r.researchTree,
+        unlockLevel: r.unlockLevel, maxLevel: r.maxLevel,
+      }));
+      return { category, results, totalFound: rows.length, truncated: rows.length > cap };
+    }
+    case "building": {
+      const rows = await ctx.referenceStore.searchBuildings(query);
+      const results = rows.slice(0, cap).map((b) => ({
+        id: b.id, name: b.name,
+        maxLevel: b.maxLevel, unlockLevel: b.unlockLevel,
+      }));
+      return { category, results, totalFound: rows.length, truncated: rows.length > cap };
+    }
+    case "hostile": {
+      const rows = await ctx.referenceStore.searchHostiles(query);
+      const results = rows.slice(0, cap).map((h) => ({
+        id: h.id, name: h.name, faction: h.faction,
+        level: h.level, shipType: h.shipType, hullType: h.hullType,
+        rarity: h.rarity, strength: h.strength,
+      }));
+      return { category, results, totalFound: rows.length, truncated: rows.length > cap };
+    }
+    case "consumable": {
+      const rows = await ctx.referenceStore.searchConsumables(query);
+      const results = rows.slice(0, cap).map((c) => ({
+        id: c.id, name: c.name, rarity: c.rarity, grade: c.grade,
+        category: c.category, durationSeconds: c.durationSeconds,
+        requiresSlot: c.requiresSlot,
+      }));
+      return { category, results, totalFound: rows.length, truncated: rows.length > cap };
+    }
+    case "system": {
+      const rows = await ctx.referenceStore.searchSystems(query);
+      const results = rows.slice(0, cap).map((s) => ({
+        id: s.id, name: s.name, level: s.level, estWarp: s.estWarp,
+        isDeepSpace: s.isDeepSpace, factions: s.factions,
+        hasMines: s.hasMines, hasPlanets: s.hasPlanets,
+      }));
+      return { category, results, totalFound: rows.length, truncated: rows.length > cap };
+    }
+    default:
+      return { error: `Unknown category: ${category}` };
+  }
+}
+
+export async function getGameReference(
+  category: ReferenceCategory,
+  id: string,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.referenceStore) {
+    return { error: "Reference catalog not available." };
+  }
+  if (!id.trim()) {
+    return { error: "ID is required." };
+  }
+
+  switch (category) {
+    case "research": {
+      const row = await ctx.referenceStore.getResearch(id);
+      if (!row) return { error: `Research not found: ${id}` };
+      return { reference: row };
+    }
+    case "building": {
+      const row = await ctx.referenceStore.getBuilding(id);
+      if (!row) return { error: `Building not found: ${id}` };
+      return { reference: row };
+    }
+    case "hostile": {
+      const row = await ctx.referenceStore.getHostile(id);
+      if (!row) return { error: `Hostile not found: ${id}` };
+      return { reference: row };
+    }
+    case "consumable": {
+      const row = await ctx.referenceStore.getConsumable(id);
+      if (!row) return { error: `Consumable not found: ${id}` };
+      return { reference: row };
+    }
+    case "system": {
+      const row = await ctx.referenceStore.getSystem(id);
+      if (!row) return { error: `System not found: ${id}` };
+      return { reference: row };
+    }
+    default:
+      return { error: `Unknown category: ${category}` };
+  }
+}
