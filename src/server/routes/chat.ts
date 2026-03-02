@@ -97,9 +97,15 @@ export function createChatRoutes(appState: AppState): Router {
         }
       }
 
-      const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId);
+      const requestId = res.locals._requestId as string | undefined;
+      const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId);
       const answer = typeof result === "string" ? result : result.text;
       const proposals = typeof result === "string" ? undefined : result.proposals;
+
+      // Diagnostic: warn when engine returns empty answer after tool use (#diag)
+      if (!answer) {
+        log.gemini.warn({ requestId, sessionId, userId, hasImage: !!imagePart }, "chat:empty-answer");
+      }
 
       // Persist to Lex memory — user-scoped via RLS (ADR-021 D4)
       // Falls back to appState.memoryService if middleware didn't attach

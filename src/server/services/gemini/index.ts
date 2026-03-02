@@ -118,8 +118,8 @@ export interface ChatResult {
 }
 
 export interface GeminiEngine {
-  /** Send a message and get the structured response. Optional sessionId for isolation. Optional image attachment. Optional userId for user-scoped tool access (#85). */
-  chat(message: string, sessionId?: string, image?: ImagePart, userId?: string): Promise<ChatResult>;
+  /** Send a message and get the structured response. Optional sessionId for isolation. Optional image attachment. Optional userId for user-scoped tool access (#85). Optional requestId for end-to-end tracing. */
+  chat(message: string, sessionId?: string, image?: ImagePart, userId?: string, requestId?: string): Promise<ChatResult>;
   /** Get the full conversation history. Optional sessionId (default: "default"). */
   getHistory(sessionId?: string): Array<{ role: string; text: string }>;
   /** Get the number of active sessions. */
@@ -383,6 +383,7 @@ export function createGeminiEngine(
     sessionId: string,
     scopedContext: ToolContext,
     userId: string,
+    requestId?: string,
   ): Promise<ChatResult> {
     let functionCalls = initialFunctionCalls;
     let round = 0;
@@ -393,6 +394,7 @@ export function createGeminiEngine(
     while (functionCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
       round++;
       log.gemini.debug({
+        requestId,
         sessionId,
         round,
         calls: functionCalls.map((fc) => fc.name),
@@ -464,6 +466,13 @@ export function createGeminiEngine(
 
           // Execute tool (read-only tools and auto-trust mutations)
           const result = await executeFleetTool(toolName, args, scopedContext);
+          // Diagnostic: log tool call args + outcome for tracing (#diag)
+          const resultObj = result as Record<string, unknown>;
+          if (resultObj.error) {
+            log.gemini.warn({ requestId, tool: toolName, args, error: resultObj.error }, "tool:result:error");
+          } else {
+            log.gemini.debug({ requestId, tool: toolName, args, ok: true }, "tool:result:ok");
+          }
           return {
             functionResponse: {
               name: toolName,
@@ -484,6 +493,9 @@ export function createGeminiEngine(
 
       // Model produced a text response — create proposal if needed, then return
       const text = result.text ?? "";
+      if (!text) {
+        log.gemini.warn({ requestId, sessionId, round }, "tool:empty-text");
+      }
       if (pendingBatch.length > 0) {
         const proposal = await createBatchProposal(pendingBatch, userId, proposals);
         if (proposal) {
@@ -495,7 +507,7 @@ export function createGeminiEngine(
 
     // Safety: max rounds exceeded — force a text response
     if (round >= MAX_TOOL_ROUNDS) {
-      log.gemini.warn({ sessionId, rounds: round }, "tool:max-rounds");
+      log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:max-rounds");
     }
 
     // If we get here with no text, ask the model to summarize
@@ -503,6 +515,9 @@ export function createGeminiEngine(
       message: "Please provide a text response summarizing the tool results.",
     });
     const text = summaryResult.text ?? "";
+    if (!text) {
+      log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:empty-text:fallback");
+    }
 
     // Create proposal for any batched items even in the fallback path
     if (pendingBatch.length > 0) {
@@ -554,12 +569,12 @@ export function createGeminiEngine(
   }
 
   return {
-    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string): Promise<ChatResult> {
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string): Promise<ChatResult> {
       // #85: Namespace session keys by userId to prevent cross-user session leakage
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       return withSessionLock(sessionKey, async () => {
       const session = getSession(sessionKey);
-      log.gemini.debug({ sessionId: sessionKey, messageLen: message.length, hasImage: !!image, historyLen: session.history.length, userId }, "chat:send");
+      log.gemini.debug({ requestId, sessionId: sessionKey, messageLen: message.length, hasImage: !!image, historyLen: session.history.length, userId }, "chat:send");
 
       // #85: Create user-scoped tool context for this chat call
       const scopedContext = hasToolContext ? toolContextFactory!.forUser(userId ?? "local") : null;
@@ -595,7 +610,7 @@ export function createGeminiEngine(
 
         if (functionCalls && functionCalls.length > 0) {
           // Handle function call loop — tool results feed back to model
-          const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId);
+          const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId);
           responseText = chatResult.text;
           chatProposals = chatResult.proposals;
         } else {
@@ -632,7 +647,7 @@ export function createGeminiEngine(
         microRunner.finalize(receipt);
 
         recordTurnAndTrim(session, message, responseText);
-        log.gemini.debug({ sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
+        log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
         return { text: responseText, proposals: chatProposals };
       }
 
@@ -648,7 +663,7 @@ export function createGeminiEngine(
       const functionCalls = hasToolContext ? result.functionCalls : undefined;
 
       if (functionCalls && functionCalls.length > 0) {
-        const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId);
+        const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId);
         responseText = chatResult.text;
         chatProposals = chatResult.proposals;
       } else {
@@ -657,7 +672,7 @@ export function createGeminiEngine(
 
       recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText);
 
-      log.gemini.debug({ sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
+      log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
       return { text: responseText, proposals: chatProposals };
       }); // end withSessionLock
     },
