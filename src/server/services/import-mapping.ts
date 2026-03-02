@@ -123,6 +123,7 @@ const KNOWN_SCHEMA_M86_REQUIRED_HEADERS = ["officer", "level", "owned"];
 const MAX_IMPORT_PARSE_ROWS = 10_001; // header + 10k rows
 const MAX_IMPORT_PARSE_COLUMNS = 200;
 const MAX_IMPORT_CELL_CHARS = 20_000;
+const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
 export async function analyzeImport(
   input: ImportAnalyzeInput,
@@ -249,6 +250,7 @@ export function resolveMappedRows(
 
 async function parseRows(input: ImportAnalyzeInput): Promise<string[][]> {
   const buffer = Buffer.from(input.contentBase64, "base64");
+  assertMagicFormat(buffer, input.format);
 
   if (input.format === "xlsx") {
     return parseXlsxFirstSheet(buffer);
@@ -259,6 +261,21 @@ async function parseRows(input: ImportAnalyzeInput): Promise<string[][]> {
   }
 
   return parseDelimited(buffer.toString("utf8"), ",");
+}
+
+function assertMagicFormat(buffer: Buffer, format: ImportFormat): void {
+  const isZip = buffer.length >= ZIP_MAGIC.length && buffer.subarray(0, ZIP_MAGIC.length).equals(ZIP_MAGIC);
+
+  if (format === "xlsx") {
+    if (!isZip) {
+      throw new Error("Import content does not match declared format xlsx (missing ZIP/XLSX signature)");
+    }
+    return;
+  }
+
+  if (isZip) {
+    throw new Error(`Import content does not match declared format ${format} (received binary ZIP/XLSX payload)`);
+  }
 }
 
 function enforceParseSafety(rows: string[][]): string[][] {

@@ -160,6 +160,41 @@ describe("Import routes — data interactions", () => {
     expect(res.body.data.parsed.rows[0]).toEqual(["Kirk", "20"]);
   });
 
+  it("POST /api/import/parse rejects xlsx payload declared as csv", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("First");
+    sheet.addRow(["Officer", "Level"]);
+    sheet.addRow(["Kirk", "20"]);
+    const xlsxBuffer = await workbook.xlsx.writeBuffer();
+
+    const res = await testRequest(app)
+      .post("/api/import/parse")
+      .send({
+        fileName: "fleet.csv",
+        contentBase64: Buffer.from(xlsxBuffer).toString("base64"),
+        format: "csv",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PARAM");
+    expect(res.body.error.message).toContain("does not match declared format csv");
+  });
+
+  it("POST /api/import/parse rejects text payload declared as xlsx", async () => {
+    const csv = "Officer,Level\nKirk,20\n";
+    const res = await testRequest(app)
+      .post("/api/import/parse")
+      .send({
+        fileName: "fleet.xlsx",
+        contentBase64: toBase64(csv),
+        format: "xlsx",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PARAM");
+    expect(res.body.error.message).toContain("does not match declared format xlsx");
+  });
+
   it.each(IMPORT_PARSE_CASES)("POST /api/import/parse validates payload: $name", async ({ payload, expectedStatus, expectedMessageFragment }) => {
     const res = await testRequest(app)
       .post("/api/import/parse")
