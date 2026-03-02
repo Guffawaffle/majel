@@ -14,6 +14,23 @@ import { log } from "./logger.js";
 
 const IS_TEST = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
 
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function importLimiterKey(req: { ip?: string }, userId: unknown): string {
+  if (typeof userId === "string" && userId.trim().length > 0) return `user:${userId}`;
+  return `ip:${req.ip ?? "unknown"}`;
+}
+
+function shouldSkipImportLimiter(): boolean {
+  return IS_TEST && process.env.MAJEL_TEST_ENABLE_RATE_LIMIT !== "true";
+}
+
+const IMPORT_WINDOW_MS = 60 * 1000;
+
 /**
  * Rate limiter for auth endpoints (sign-up, sign-in, password reset).
  * 10 requests per minute per IP address.
@@ -77,6 +94,42 @@ export const globalRateLimiter = rateLimit({
     sendFail(res, "RATE_LIMITED", "Too many requests. Please slow down.", 429);
   },
   skip: () => IS_TEST,
+});
+
+export const importAnalyzeRateLimiter = rateLimit({
+  windowMs: IMPORT_WINDOW_MS,
+  max: () => parsePositiveInt(process.env.MAJEL_IMPORT_ANALYZE_RPM, 6),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req, res) => importLimiterKey(req, res.locals.userId),
+  handler: (req, res) => {
+    const limiterKey = importLimiterKey(req, res.locals.userId);
+    log.http.warn({ ip: req.ip, path: req.path, event: "rate_limit.hit", limiter: "import_analyze", limiterKey }, "import analyze rate limit exceeded");
+    res.setHeader("Retry-After", String(Math.ceil(IMPORT_WINDOW_MS / 1000)));
+    sendFail(res, "RATE_LIMITED", "Import analyze rate limit reached. Please retry shortly.", 429, {
+      hints: ["Retry after 60 seconds", "Reduce repeated analyze requests for the same file"],
+    });
+  },
+  skip: () => shouldSkipImportLimiter(),
+});
+
+export const importParseRateLimiter = rateLimit({
+  windowMs: IMPORT_WINDOW_MS,
+  max: () => parsePositiveInt(process.env.MAJEL_IMPORT_PARSE_RPM, 20),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req, res) => importLimiterKey(req, res.locals.userId),
+  handler: (req, res) => {
+    const limiterKey = importLimiterKey(req, res.locals.userId);
+    log.http.warn({ ip: req.ip, path: req.path, event: "rate_limit.hit", limiter: "import_parse", limiterKey }, "import parse rate limit exceeded");
+    res.setHeader("Retry-After", String(Math.ceil(IMPORT_WINDOW_MS / 1000)));
+    sendFail(res, "RATE_LIMITED", "Import parse rate limit reached. Please retry shortly.", 429, {
+      hints: ["Retry after 60 seconds", "Batch parse calls where possible"],
+    });
+  },
+  skip: () => shouldSkipImportLimiter(),
 });
 
 /**
