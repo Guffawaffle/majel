@@ -45,6 +45,7 @@ Request:
 {
   "message": "...",
   "sessionId": "...",
+  "tabId": "client-tab-uuid",
   "image": { "data": "...", "mimeType": "image/png" },
   "idempotencyKey": "client-generated-uuid"
 }
@@ -64,6 +65,7 @@ Rules:
 - Submission must not block on full AI completion.
 - Reusing `idempotencyKey` for same user/session returns the existing run.
 - If a duplicate key has mismatched payload, return `409 CONFLICT`.
+- Every run binds to a routing identity tuple: `(runId, sessionId, tabId)`.
 
 #### Status
 `GET /api/chat/runs/:runId`
@@ -73,6 +75,8 @@ Response (`200 OK`):
 ```json
 {
   "runId": "crun_01...",
+  "sessionId": "session-abc",
+  "tabId": "tab-uuid-123",
   "status": "running",
   "phase": "tool_execution",
   "progress": { "completedSteps": 2, "totalSteps": 5 },
@@ -103,6 +107,7 @@ Note:
 `GET /api/chat/runs/:runId/events` (SSE)
 
 - Emits structured events: `run.started`, `run.progress`, `run.proposal`, `run.completed`, `run.failed`.
+- Every SSE payload includes `sessionId` and `tabId` so UI can route updates to the originating tab.
 
 ---
 
@@ -139,6 +144,7 @@ CREATE TABLE chat_runs (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
+  tab_id TEXT NOT NULL,
   idempotency_key TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('queued','running','waiting_input','succeeded','failed','timed_out','cancelled')),
   phase TEXT,
@@ -152,7 +158,7 @@ CREATE TABLE chat_runs (
   started_at TIMESTAMPTZ,
   finished_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (user_id, session_id, idempotency_key)
+  UNIQUE (user_id, session_id, tab_id, idempotency_key)
 );
 
 CREATE TABLE chat_run_events (
@@ -195,6 +201,7 @@ Timeout model:
 
 - User sends message and immediately sees `queued/running` state with live progress.
 - Leaving and returning to the session rehydrates run status from backend.
+- Events are routed by `(sessionId, tabId)` so results return to the exact originating chat tab.
 - Final output appears when run reaches `succeeded`.
 - On `failed`/`timed_out`, UI shows durable error details and run trace ID for support.
 - Retry action creates a new run linked to previous run (`parentRunId`) for lineage.
@@ -275,6 +282,7 @@ Incident triage:
 - Chat completion survives refresh and client disconnect.
 - Idempotency prevents duplicate execution on retries.
 - Ownership tests prove no cross-user run access.
+- Multi-tab tests prove responses route to the initiating tab/session tuple.
 - Runbook includes run-based incident triage steps.
 
 ---

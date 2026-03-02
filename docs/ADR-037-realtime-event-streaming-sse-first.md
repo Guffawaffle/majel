@@ -86,6 +86,8 @@ Required fields in `data`:
 - `id`
 - `status`
 - `timestamp`
+- `sessionId`
+- `tabId`
 
 Optional fields:
 - `phase`
@@ -143,6 +145,7 @@ Retention:
 Client behavior:
 - Open one EventSource per active operation view.
 - Render events incrementally in operation-specific UI.
+- Route events using `(sessionId, tabId)` to the exact originating chat tab.
 - On disconnect, retry with exponential backoff and `Last-Event-ID`.
 - If retries exceed threshold, show “Reconnecting…” state and use snapshot endpoint.
 
@@ -229,6 +232,7 @@ SLO (initial):
 
 - Long-running chat operations show live progress without polling-first UX.
 - Reconnect restores missed progress via `Last-Event-ID` replay.
+- Multi-tab UI routing is deterministic via `sessionId` + `tabId` on every event.
 - Operation streams remain owner-scoped with explicit cross-user denial tests.
 - Shared stream plane supports both chat runs and runner jobs.
 - Runbook includes SSE incident diagnostics (disconnect, replay gaps, backpressure).

@@ -47,6 +47,7 @@ import { createTargetStoreFactory } from "./stores/target-store.js";
 import { createResearchStoreFactory } from "./stores/research-store.js";
 import { createInventoryStoreFactory } from "./stores/inventory-store.js";
 import { createProposalStoreFactory } from "./stores/proposal-store.js";
+import { createOperationEventStoreFactory } from "./stores/operation-event-store.js";
 import { createEffectStore } from "./stores/effect-store.js";
 import { loadEffectSeedData } from "./services/effect-seed-loader.js";
 import { createPool, ensureAppRole } from "./db.js";
@@ -85,6 +86,7 @@ import { createCrewRoutes } from "./routes/crews.js";
 import { createReceiptRoutes } from "./routes/receipts.js";
 import { createImportRoutes } from "./routes/imports.js";
 import { createProposalRoutes } from "./routes/proposals.js";
+import { createEventRoutes } from "./routes/events.js";
 import { createTranslatorRoutes } from "./routes/translator.js";
 import { createEffectsRoutes } from "./routes/effects.js";
 
@@ -134,6 +136,8 @@ const state: AppState = {
   inventoryStoreFactory: null,
   proposalStore: null,
   proposalStoreFactory: null,
+  operationEventStore: null,
+  operationEventStoreFactory: null,
   toolContextFactory: null,
   effectStore: null,
   startupComplete: false,
@@ -287,6 +291,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createReceiptRoutes(appState));
   app.use(createImportRoutes(appState));
   app.use(createProposalRoutes(appState));
+  app.use(createEventRoutes(appState));
   app.use(createTranslatorRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
@@ -523,6 +528,16 @@ async function boot(): Promise<void> {
     log.boot.info({ effects: effectCounts.taxonomyEffectKeys, abilities: effectCounts.catalogAbilities, intents: effectCounts.intentDefs }, "effect store online (ADR-034)");
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "effect store init failed");
+  }
+
+  // 2o. Initialize operation event store (ADR-037)
+  try {
+    const eventFactory = await createOperationEventStoreFactory(adminPool, pool);
+    state.operationEventStoreFactory = eventFactory;
+    state.operationEventStore = eventFactory.forUser("local");
+    log.boot.info("operation event store online (ADR-037, user-scoped)");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "operation event store init failed");
   }
 
   // Resolve config from settings store
