@@ -11,6 +11,7 @@ import { createApp } from "../src/server/index.js";
 import type { GeminiEngine } from "../src/server/services/gemini/index.js";
 import type { MemoryService, Frame } from "../src/server/services/memory.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
+import { createOperationEventStoreFactory } from "../src/server/stores/operation-event-store.js";
 import { makeState } from "./helpers/make-state.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 import { collectApiRoutes } from "../src/server/route-introspection.js";
@@ -135,6 +136,15 @@ describe("POST /api/chat", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 when tabId is not a string", async () => {
+    const state = makeState({ geminiEngine: makeMockEngine() });
+    const app = createApp(state);
+
+    const res = await testRequest(app).post("/api/chat").send({ message: "Hello", tabId: 123 });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PARAM");
+  });
+
   it("returns 503 when Gemini is not configured", async () => {
     const state = makeState();
     const app = createApp(state);
@@ -156,7 +166,39 @@ describe("POST /api/chat", () => {
       .send({ message: "Hello" });
     expect(res.status).toBe(200);
     expect(res.body.data.answer).toBe("Live long and prosper.");
+    expect(res.body.data.runId).toMatch(/^crun_/);
+    expect(res.body.data.sessionId).toBe("default");
+    expect(res.body.data.tabId).toBe("default_tab");
     expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local", expect.any(String));
+  });
+
+  it("registers and emits run lifecycle events with session/tab routing", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const state = makeState({
+      geminiEngine: makeMockEngine("Aye."),
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+    });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .set("X-Session-Id", "session-alpha")
+      .send({ message: "Status", tabId: "tab-alpha" });
+
+    expect(res.status).toBe(200);
+    const runId = res.body.data.runId as string;
+    expect(runId).toMatch(/^crun_/);
+
+    const store = eventFactory.forUser("local");
+    const routing = await store.getRouting("chat_run", runId);
+    expect(routing).toEqual({ sessionId: "session-alpha", tabId: "tab-alpha" });
+
+    const events = await store.listSince("chat_run", runId, 0, 10);
+    expect(events.map((e) => e.eventType)).toContain("run.started");
+    expect(events.map((e) => e.eventType)).toContain("run.completed");
+    expect(events.every((e) => e.sessionId === "session-alpha" && e.tabId === "tab-alpha")).toBe(true);
   });
 
   it("persists conversation to memory when available", async () => {

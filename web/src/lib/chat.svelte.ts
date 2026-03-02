@@ -27,6 +27,7 @@ export interface LocalMessage {
 }
 
 let currentSessionId = $state<string>(crypto.randomUUID());
+const clientTabId = crypto.randomUUID();
 let messages = $state<LocalMessage[]>([]);
 let sending = $state(false);
 let pendingImage = $state<(ChatImage & { name: string; dataUrl: string; fileSize: number }) | null>(null);
@@ -185,7 +186,7 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
   sending = true;
 
   try {
-    const result: ChatResponse = await apiSendChat(currentSessionId, msgText, image);
+    const result: ChatResponse = await apiSendChat(currentSessionId, msgText, image, clientTabId);
     messages.push({
       id: nextLocalId(),
       role: "model",

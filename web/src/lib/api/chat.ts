@@ -14,6 +14,7 @@ export async function sendChat(
   sessionId: string,
   message: string,
   image?: ChatImage,
+  tabId?: string,
 ): Promise<ChatResponse> {
   return runLockedMutation({
     label: "Send chat message",
@@ -21,7 +22,7 @@ export async function sendChat(
     mutate: () => apiFetch<ChatResponse>("/api/chat", {
       method: "POST",
       headers: { "X-Session-Id": sessionId },
-      body: JSON.stringify({ message, ...(image && { image }) }),
+      body: JSON.stringify({ message, ...(tabId && { tabId }), ...(image && { image }) }),
     }),
   });
 }

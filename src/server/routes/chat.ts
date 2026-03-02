@@ -3,6 +3,7 @@
  */
 
 import express, { type Router } from "express";
+import { randomUUID } from "node:crypto";
 import type { AppState } from "../app-context.js";
 import {
   readFleetConfigForUser,
@@ -24,6 +25,7 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 /** Max base64 image data size: ~10MB base64 ≈ ~7.5MB raw image */
 const MAX_IMAGE_DATA_LENGTH = 10 * 1024 * 1024;
 const LOCKED_MODEL_ID = DEFAULT_MODEL;
+const TAB_ID_RE = /^[a-zA-Z0-9_-]{2,120}$/;
 
 export function createChatRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -34,11 +36,19 @@ export function createChatRoutes(appState: AppState): Router {
   const chatBodyParser = express.json({ limit: '10mb' });
 
   router.post("/api/chat", chatBodyParser, requireVisitor(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(60_000), async (req, res) => {
-    const { message, image: rawImage } = req.body;
+    const { message, image: rawImage, tabId: rawTabId } = req.body;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
+    const tabId = typeof rawTabId === "string" && rawTabId.trim() ? rawTabId.trim() : "default_tab";
+    const runId = `crun_${randomUUID()}`;
 
     if (sessionId.length > 200 || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid session ID", 400);
+    }
+    if (rawTabId != null && typeof rawTabId !== "string") {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "tabId must be a string", 400);
+    }
+    if (!TAB_ID_RE.test(tabId)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid tabId", 400);
     }
 
     if (!message || typeof message !== "string") {
@@ -74,6 +84,24 @@ export function createChatRoutes(appState: AppState): Router {
 
     try {
       const userId = res.locals.userId as string | undefined;
+      const eventStore = userId && appState.operationEventStoreFactory
+        ? appState.operationEventStoreFactory.forUser(userId)
+        : null;
+
+      if (eventStore) {
+        await eventStore.register("chat_run", runId, { sessionId, tabId });
+        await eventStore.emit({
+          topic: "chat_run",
+          operationId: runId,
+          routing: { sessionId, tabId },
+          eventType: "run.started",
+          status: "running",
+          payloadJson: {
+            phase: "chat.request_received",
+            hasImage: !!imagePart,
+          },
+        });
+      }
 
       // #85 H3: Inject per-user fleet config as a context block prepended to the message.
       // This replaces the static fleet config that was baked into the system prompt at boot.
@@ -104,6 +132,21 @@ export function createChatRoutes(appState: AppState): Router {
       const proposals = typeof result === "string" ? undefined : result.proposals;
       const proposalIds = proposals?.map((p) => p.id) ?? [];
 
+      if (eventStore) {
+        await eventStore.emit({
+          topic: "chat_run",
+          operationId: runId,
+          routing: { sessionId, tabId },
+          eventType: "run.completed",
+          status: "succeeded",
+          payloadJson: {
+            phase: "chat.completed",
+            answerChars: answer.length,
+            proposalCount: proposalIds.length,
+          },
+        });
+      }
+
       // Diagnostic: warn when engine returns empty answer after tool use (#diag)
       if (!answer) {
         log.gemini.warn({ requestId, sessionId, userId, hasImage: !!imagePart }, "chat:empty-answer");
@@ -129,7 +172,11 @@ export function createChatRoutes(appState: AppState): Router {
         await appState.sessionStore.addMessage(sessionId, "model", answer, undefined, proposalIds);
       }
 
+      if (res.headersSent) return;
       sendOk(res, {
+        runId,
+        sessionId,
+        tabId,
         answer,
         proposals: proposals && proposals.length > 0 ? proposals : undefined,
         trace: isAdmiral
@@ -147,7 +194,28 @@ export function createChatRoutes(appState: AppState): Router {
       });
     } catch (err: unknown) {
       const errMessage = err instanceof Error ? err.message : String(err);
+      const userId = res.locals.userId as string | undefined;
+      if (userId && appState.operationEventStoreFactory) {
+        try {
+          const eventStore = appState.operationEventStoreFactory.forUser(userId);
+          await eventStore.register("chat_run", runId, { sessionId, tabId });
+          await eventStore.emit({
+            topic: "chat_run",
+            operationId: runId,
+            routing: { sessionId, tabId },
+            eventType: "run.failed",
+            status: "failed",
+            payloadJson: {
+              phase: "chat.failed",
+              error: errMessage,
+            },
+          });
+        } catch {
+          // best-effort telemetry only
+        }
+      }
       log.gemini.error({ err: errMessage }, "chat request failed");
+      if (res.headersSent) return;
       sendFail(res, ErrorCode.GEMINI_ERROR, "AI request failed", 500, {
         ...(res.locals.isAdmiral
           ? {

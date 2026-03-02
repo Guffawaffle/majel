@@ -78,6 +78,9 @@ export interface ChatTrace {
 }
 
 export interface ChatResponse {
+  runId?: string;
+  sessionId?: string;
+  tabId?: string;
   answer: string;
   proposals?: ChatProposal[];
   trace?: ChatTrace;
