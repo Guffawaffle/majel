@@ -13,6 +13,7 @@ import {
   BASE_IMPORT_MAP_PAYLOAD_CASES,
   baseImportParsePayloadCases,
 } from "./helpers/data-route-base.js";
+import { listImportRejectCounters, resetImportRejectCounters } from "../src/server/services/import-rejection-counters.js";
 
 const REF_DEFAULTS = {
   source: "test",
@@ -40,6 +41,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  resetImportRejectCounters();
   await truncatePublicTables(pool);
   app = createApp(
     makeState({
@@ -240,6 +242,11 @@ describe("Import routes — data interactions", () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_PARAM");
     expect(res.body.error.message).toContain("does not match declared format csv");
+    expect(listImportRejectCounters()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ endpoint: "parse", reason: "format_mismatch", count: 1 }),
+      ]),
+    );
   });
 
   it("POST /api/import/parse rejects text payload declared as xlsx", async () => {
@@ -280,6 +287,11 @@ describe("Import routes — data interactions", () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_PARAM");
     expect(res.body.error.message).toContain("valid base64");
+    expect(listImportRejectCounters()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ endpoint: "parse", reason: "invalid_base64", count: 1 }),
+      ]),
+    );
   });
 
   it("POST /api/import/parse rejects oversized row counts", async () => {
@@ -298,6 +310,36 @@ describe("Import routes — data interactions", () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_PARAM");
     expect(res.body.error.message).toContain("maximum rows");
+    expect(listImportRejectCounters()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ endpoint: "parse", reason: "parse_safety_rows", count: 1 }),
+      ]),
+    );
+  });
+
+  it("POST /api/import/analyze records format-mismatch rejection", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("First");
+    sheet.addRow(["Officer", "Level"]);
+    sheet.addRow(["Kirk", "20"]);
+    const xlsxBuffer = await workbook.xlsx.writeBuffer();
+
+    const res = await testRequest(app)
+      .post("/api/import/analyze")
+      .send({
+        fileName: "fleet.csv",
+        contentBase64: Buffer.from(xlsxBuffer).toString("base64"),
+        format: "csv",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PARAM");
+    expect(res.body.error.message).toContain("does not match declared format csv");
+    expect(listImportRejectCounters()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ endpoint: "analyze", reason: "format_mismatch", count: 1 }),
+      ]),
+    );
   });
 
   it("POST /api/import/map maps typed fields from parsed rows", async () => {

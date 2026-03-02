@@ -25,6 +25,7 @@ import {
   type OfficerOverlayRow,
   type ShipOverlayRow,
 } from "../services/route-helpers/imports-helpers.js";
+import { classifyImportRejectReason, recordImportReject } from "../services/import-rejection-counters.js";
 
 const MAX_IMPORT_ROWS = 10000;
 
@@ -63,15 +64,19 @@ export function createImportRoutes(appState: AppState): Router {
     const { fileName, contentBase64, format } = req.body ?? {};
 
     if (typeof fileName !== "string" || fileName.length === 0 || fileName.length > 260) {
+      recordImportReject("analyze", "file_name_invalid");
       return sendFail(res, ErrorCode.INVALID_PARAM, "fileName must be 1-260 characters", 400);
     }
     if (typeof contentBase64 !== "string" || contentBase64.length === 0) {
+      recordImportReject("analyze", "missing_content_base64");
       return sendFail(res, ErrorCode.MISSING_PARAM, "contentBase64 is required", 400);
     }
     if (contentBase64.length > 15_000_000) {
+      recordImportReject("analyze", "base64_too_large");
       return sendFail(res, ErrorCode.INVALID_PARAM, "contentBase64 exceeds size limit", 400);
     }
     if (format !== "csv" && format !== "tsv" && format !== "xlsx") {
+      recordImportReject("analyze", "invalid_format");
       return sendFail(res, ErrorCode.INVALID_PARAM, 'format must be one of "csv", "tsv", "xlsx"', 400);
     }
 
@@ -88,6 +93,7 @@ export function createImportRoutes(appState: AppState): Router {
       return sendOk(res, { analysis });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      recordImportReject("analyze", classifyImportRejectReason(msg));
       return sendFail(res, ErrorCode.INVALID_PARAM, `Import analysis failed: ${msg}`, 400);
     }
   });
@@ -101,6 +107,7 @@ export function createImportRoutes(appState: AppState): Router {
       return sendOk(res, { parsed });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      recordImportReject("parse", classifyImportRejectReason(msg));
       return sendFail(res, ErrorCode.INVALID_PARAM, `Import parse failed: ${msg}`, 400);
     }
   });
