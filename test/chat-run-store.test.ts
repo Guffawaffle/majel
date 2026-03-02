@@ -85,4 +85,69 @@ describe("chat-run-store", () => {
     const run = await store.get("crun_stale");
     expect(run?.status).toBe("queued");
   });
+
+  it("handles concurrent queued cancellations deterministically", async () => {
+    const store = await createChatRunStore(pool);
+
+    await store.enqueue({
+      id: "crun_cancel_race",
+      userId: "user-a",
+      sessionId: "s1",
+      tabId: "t1",
+      requestJson: { message: "cancel race" },
+    });
+
+    const attempts = await Promise.all(
+      Array.from({ length: 8 }, () => store.requestCancel("crun_cancel_race", "user-a")),
+    );
+
+    expect(attempts).toContain("queued");
+    expect(attempts.every((value) => value === "queued" || value === "terminal")).toBe(true);
+
+    const run = await store.getForUser("crun_cancel_race", "user-a");
+    expect(run?.status).toBe("cancelled");
+    expect(run?.cancelRequested).toBe(true);
+  });
+
+  it("preserves coherent terminal state under finish-vs-timeout race", async () => {
+    const store = await createChatRunStore(pool);
+
+    await store.enqueue({
+      id: "crun_finish_timeout_race",
+      userId: "user-a",
+      sessionId: "s1",
+      tabId: "t1",
+      requestJson: { message: "race" },
+    });
+
+    const claim = await store.claimNext("lock-race");
+    expect(claim).not.toBeNull();
+
+    const [finishApplied] = await Promise.all([
+      store.finish("crun_finish_timeout_race", "lock-race", "succeeded"),
+      pool.query(
+        `UPDATE chat_runs
+         SET status = 'timed_out',
+             lock_token = NULL,
+             finished_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1 AND status = 'running'`,
+        ["crun_finish_timeout_race"],
+      ),
+    ]);
+
+    const run = await store.get("crun_finish_timeout_race");
+    expect(run).not.toBeNull();
+    expect(["succeeded", "timed_out"]).toContain(run!.status);
+    expect(run!.status).not.toBe("running");
+    expect(run!.finishedAt).not.toBeNull();
+    expect(await store.heartbeat("crun_finish_timeout_race", "lock-race")).toBe(false);
+
+    if (run!.status === "succeeded") {
+      expect(finishApplied).toBe(true);
+    }
+    if (run!.status === "timed_out") {
+      expect(finishApplied).toBe(false);
+    }
+  });
 });
