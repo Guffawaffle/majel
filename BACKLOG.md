@@ -24,6 +24,42 @@
 
 ---
 
+## Active Sprint — Realtime Async Operations (ADR-036 + ADR-037, #175)
+
+**Sprint umbrella:** #175  
+**Linked implementation issues:** #174 (SSE stream plane), #172 (async chat runs)
+
+### Sprint Objective
+
+Ship a single, production-ready realtime operation stack where long-running chat work streams live progress to users and no longer relies on long-held synchronous request/response behavior.
+
+### Sequenced Plan (single sprint)
+
+| Day | Track | Scope | Issue |
+|---|---|---|---|
+| 1 | Platform | `operation_events` schema + event emitter helper | #174 |
+| 2 | Platform | `/api/events/stream`, keepalive, snapshot endpoint, replay (`Last-Event-ID`) | #174 |
+| 3 | Chat Runs | `chat_runs` + `chat_run_events`, submit endpoint (`202 + runId`) | #172 |
+| 4 | Chat Runs | worker claim loop/watchdog + SSE event integration + cancel flow | #172 |
+| 5 | Hardening | privacy tests, reconnect behavior, runbook updates, CI gates | #172 + #174 |
+
+### Definition of Done
+
+- [ ] Live operation progress streams to UI (SSE-first)
+- [ ] Chat completion survives refresh/reconnect with replay/snapshot recovery
+- [ ] No multi-minute blocking `/api/chat` responses
+- [ ] No timeout-triggered double-send response race
+- [ ] Cross-user access denied for streams and runs (including admiral)
+- [ ] `npm run ax -- affected --run` and `npm run ax -- ci` both pass
+
+### Risk Controls
+
+- [ ] Keep API contracts stable across incremental merges
+- [ ] If replay semantics block timeline, ship snapshot fallback with explicit follow-up checklist
+- [ ] Preserve owner-only visibility for all run/stream payloads
+
+---
+
 ## Critical — Must Fix Before Merge
 
 ### [x] Security Hardening (e685c09)
