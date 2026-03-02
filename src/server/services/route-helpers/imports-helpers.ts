@@ -1,6 +1,7 @@
 import { ErrorCode } from "../../envelope.js";
 import type { OwnershipState } from "../../stores/overlay-store.js";
 import type { ImportFormat } from "../import-mapping.js";
+import { recordImportReject } from "../import-rejection-counters.js";
 
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const MAX_IMPORT_BASE64_CHARS = 15_000_000;
@@ -28,23 +29,29 @@ export function validateSourcePayload(payload: Record<string, unknown>):
   const { fileName, contentBase64, format } = payload;
 
   if (typeof fileName !== "string" || fileName.length === 0 || fileName.length > 260) {
+    recordImportReject("parse", "file_name_invalid");
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: "fileName must be 1-260 characters" };
   }
   if (typeof contentBase64 !== "string" || contentBase64.length === 0) {
+    recordImportReject("parse", "missing_content_base64");
     return { ok: false, code: ErrorCode.MISSING_PARAM, message: "contentBase64 is required" };
   }
   if (contentBase64.length > MAX_IMPORT_BASE64_CHARS) {
+    recordImportReject("parse", "base64_too_large");
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: "contentBase64 exceeds size limit" };
   }
   if (!BASE64_RE.test(contentBase64)) {
+    recordImportReject("parse", "invalid_base64");
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: "contentBase64 must be valid base64" };
   }
   const decodedBytes = Math.floor((contentBase64.length * 3) / 4)
     - (contentBase64.endsWith("==") ? 2 : contentBase64.endsWith("=") ? 1 : 0);
   if (decodedBytes > MAX_IMPORT_DECODED_BYTES) {
+    recordImportReject("parse", "decoded_too_large");
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: "decoded import payload exceeds size limit" };
   }
   if (format !== "csv" && format !== "tsv" && format !== "xlsx") {
+    recordImportReject("parse", "invalid_format");
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: 'format must be one of "csv", "tsv", "xlsx"' };
   }
 
