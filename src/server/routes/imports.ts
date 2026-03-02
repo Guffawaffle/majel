@@ -4,6 +4,7 @@ import { createSafeRouter } from "../safe-router.js";
 import { sendFail, sendOk, ErrorCode } from "../envelope.js";
 import { requireVisitor } from "../services/auth.js";
 import { withUserScope } from "../db.js";
+import { importAnalyzeRateLimiter, importParseRateLimiter } from "../rate-limit.js";
 import {
   analyzeImport,
   mapParsedRows,
@@ -58,7 +59,7 @@ export function createImportRoutes(appState: AppState): Router {
 
   router.use("/api/import", visitor);
 
-  router.post("/api/import/analyze", async (req, res) => {
+  router.post("/api/import/analyze", importAnalyzeRateLimiter, async (req, res) => {
     const { fileName, contentBase64, format } = req.body ?? {};
 
     if (typeof fileName !== "string" || fileName.length === 0 || fileName.length > 260) {
@@ -91,7 +92,7 @@ export function createImportRoutes(appState: AppState): Router {
     }
   });
 
-  router.post("/api/import/parse", async (req, res) => {
+  router.post("/api/import/parse", importParseRateLimiter, async (req, res) => {
     const validation = validateSourcePayload(req.body ?? {});
     if (!validation.ok) return sendFail(res, validation.code, validation.message, 400);
 

@@ -102,6 +102,37 @@ describe("Import routes — data interactions", () => {
     expect(res.body.data.analysis.format).toBe("xlsx");
   });
 
+  it("POST /api/import/analyze enforces endpoint rate cap", async () => {
+    const prevEnable = process.env.MAJEL_TEST_ENABLE_RATE_LIMIT;
+    const prevAnalyze = process.env.MAJEL_IMPORT_ANALYZE_RPM;
+    process.env.MAJEL_TEST_ENABLE_RATE_LIMIT = "true";
+    process.env.MAJEL_IMPORT_ANALYZE_RPM = "1";
+
+    try {
+      const payload = {
+        fileName: "fleet.csv",
+        contentBase64: toBase64("Officer,Level\nKirk,20\n"),
+        format: "csv",
+      };
+
+      const first = await testRequest(app)
+        .post("/api/import/analyze")
+        .send(payload);
+      expect(first.status).toBe(200);
+
+      const second = await testRequest(app)
+        .post("/api/import/analyze")
+        .send(payload);
+      expect(second.status).toBe(429);
+      expect(second.body.error.code).toBe("RATE_LIMITED");
+    } finally {
+      if (prevEnable == null) delete process.env.MAJEL_TEST_ENABLE_RATE_LIMIT;
+      else process.env.MAJEL_TEST_ENABLE_RATE_LIMIT = prevEnable;
+      if (prevAnalyze == null) delete process.env.MAJEL_IMPORT_ANALYZE_RPM;
+      else process.env.MAJEL_IMPORT_ANALYZE_RPM = prevAnalyze;
+    }
+  });
+
   it("POST /api/import/parse parses csv payload", async () => {
     const csv = "Officer,Level\nKirk,20\n";
     const res = await testRequest(app)
@@ -116,6 +147,37 @@ describe("Import routes — data interactions", () => {
     expect(res.body.data.parsed.headers).toEqual(["Officer", "Level"]);
     expect(res.body.data.parsed.rowCount).toBe(1);
     expect(res.body.data.parsed.rows[0]).toEqual(["Kirk", "20"]);
+  });
+
+  it("POST /api/import/parse enforces endpoint rate cap", async () => {
+    const prevEnable = process.env.MAJEL_TEST_ENABLE_RATE_LIMIT;
+    const prevParse = process.env.MAJEL_IMPORT_PARSE_RPM;
+    process.env.MAJEL_TEST_ENABLE_RATE_LIMIT = "true";
+    process.env.MAJEL_IMPORT_PARSE_RPM = "1";
+
+    try {
+      const payload = {
+        fileName: "fleet.csv",
+        contentBase64: toBase64("Officer,Level\nKirk,20\n"),
+        format: "csv",
+      };
+
+      const first = await testRequest(app)
+        .post("/api/import/parse")
+        .send(payload);
+      expect(first.status).toBe(200);
+
+      const second = await testRequest(app)
+        .post("/api/import/parse")
+        .send(payload);
+      expect(second.status).toBe(429);
+      expect(second.body.error.code).toBe("RATE_LIMITED");
+    } finally {
+      if (prevEnable == null) delete process.env.MAJEL_TEST_ENABLE_RATE_LIMIT;
+      else process.env.MAJEL_TEST_ENABLE_RATE_LIMIT = prevEnable;
+      if (prevParse == null) delete process.env.MAJEL_IMPORT_PARSE_RPM;
+      else process.env.MAJEL_IMPORT_PARSE_RPM = prevParse;
+    }
   });
 
   it("POST /api/import/parse parses tsv payload", async () => {
