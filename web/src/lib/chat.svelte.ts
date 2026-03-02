@@ -6,7 +6,7 @@
  * mutations go through exported functions.
  */
 
-import type { ChatImage, ChatMessage, ChatProposal, ChatResponse } from "./types.js";
+import type { ChatImage, ChatMessage, ChatProposal, ChatResponse, ChatTrace } from "./types.js";
 import { sendChat as apiSendChat } from "./api/chat.js";
 
 // ─── State ──────────────────────────────────────────────────
@@ -22,6 +22,8 @@ export interface LocalMessage {
   imageDataUrl?: string;
   /** Pending proposals attached to this model message (approve-tier mutations). */
   proposals?: ChatProposal[];
+  /** Admiral-only diagnostic trace for this response. */
+  trace?: ChatTrace;
 }
 
 let currentSessionId = $state<string>(crypto.randomUUID());
@@ -68,14 +70,42 @@ export function startNewSession(): void {
 }
 
 /** Switch to a restored session, replaying its messages. */
-export function restoreMessages(sessionId: string, restored: ChatMessage[]): void {
+export function restoreMessages(
+  sessionId: string,
+  restored: ChatMessage[],
+  proposals?: Record<string, ChatProposal & { status: string }>,
+): void {
   currentSessionId = sessionId;
-  messages = restored.map((m) => ({
-    id: m.id,
-    role: m.role,
-    text: m.text,
-    createdAt: m.createdAt,
-  }));
+  messages = restored.map((m) => {
+    const local: LocalMessage = {
+      id: m.id,
+      role: m.role,
+      text: m.text,
+      createdAt: m.createdAt,
+    };
+    // Re-attach proposals from hydrated session data
+    if (m.proposalIds?.length && proposals) {
+      const attached: ChatProposal[] = [];
+      for (const pid of m.proposalIds) {
+        const p = proposals[pid];
+        if (p) {
+          attached.push({
+            id: p.id,
+            batchItems: p.batchItems,
+            expiresAt: p.expiresAt,
+            // Map stored status → resolvedStatus for the card
+            resolvedStatus: p.status === "proposed" ? undefined
+              : p.status === "applied" ? "applied"
+              : p.status === "declined" ? "declined"
+              : p.status === "expired" ? "expired"
+              : "error",
+          });
+        }
+      }
+      if (attached.length > 0) local.proposals = attached;
+    }
+    return local;
+  });
   pendingImage = null;
   sending = false;
 }
@@ -162,6 +192,7 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
       text: result.answer,
       createdAt: new Date().toISOString(),
       proposals: result.proposals?.length ? result.proposals : undefined,
+      trace: result.trace,
     });
     onSent?.();
   } catch (e) {

@@ -34,6 +34,7 @@ import type { BatchItem } from "../../stores/proposal-store.js";
 import type { UserSettingsStore } from "../../stores/user-settings-store.js";
 import { MODEL_REGISTRY, MODEL_REGISTRY_MAP, resolveModelId } from "./model-registry.js";
 import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
+import { canonicalStringify } from "../../util/canonical-json.js";
 
 // ─── Retry helper for transient Gemini API errors ─────────────
 
@@ -540,7 +541,7 @@ export function createGeminiEngine(
     try {
       const proposalStore = proposalStoreFactory.forUser(userId);
       const argsHash = createHash("sha256")
-        .update(JSON.stringify(batch))
+        .update(canonicalStringify(batch))
         .digest("hex");
 
       const proposal = await proposalStore.create({

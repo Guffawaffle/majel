@@ -36,6 +36,8 @@ export interface ChatMessage {
   role: "user" | "model" | "system" | "error";
   text: string;
   createdAt: string;
+  /** Proposal IDs attached to this message (present on model messages after session restore). */
+  proposalIds?: string[];
 }
 
 export interface ChatSession {
@@ -44,6 +46,8 @@ export interface ChatSession {
   createdAt: string;
   updatedAt: string;
   messages: ChatMessage[];
+  /** Hydrated proposals keyed by ID (present on session restore). */
+  proposals?: Record<string, ChatProposal & { status: string }>;
 }
 
 export interface ChatImage {
@@ -55,11 +59,28 @@ export interface ChatProposal {
   id: string;
   batchItems: Array<{ tool: string; preview: string }>;
   expiresAt: string;
+  /** Persisted card state so remounts don't reset to "pending". */
+  resolvedStatus?: "applied" | "declined" | "expired" | "error";
+  /** Error message when resolvedStatus is "error". */
+  resolvedError?: string;
+}
+
+export interface ChatTrace {
+  timestamp: string;
+  requestId: string | null;
+  sessionId: string;
+  userId: string | null;
+  hasImage: boolean;
+  answerChars?: number;
+  proposalCount?: number;
+  proposalIds?: string[];
+  error?: string;
 }
 
 export interface ChatResponse {
   answer: string;
   proposals?: ChatProposal[];
+  trace?: ChatTrace;
   [key: string]: unknown;
 }
 

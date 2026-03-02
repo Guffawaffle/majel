@@ -51,7 +51,7 @@ export async function refreshSessions(): Promise<void> {
 export async function switchToSession(id: string): Promise<boolean> {
   const session = await apiRestoreSession(id);
   if (!session) return false;
-  restoreMessages(id, session.messages);
+  restoreMessages(id, session.messages, session.proposals);
   return true;
 }
 

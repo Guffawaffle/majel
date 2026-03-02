@@ -19,6 +19,7 @@ import { requireVisitor } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
 import { executeFleetTool } from "../services/fleet-tools/index.js";
 import { isMutationTool, getTrustLevel } from "../services/fleet-tools/trust.js";
+import { canonicalStringify } from "../util/canonical-json.js";
 
 /** Tools that support the dry-run proposal creation via API. */
 const DRY_RUN_TOOLS = new Set(["sync_overlay", "sync_research"]);
@@ -97,7 +98,7 @@ export function createProposalRoutes(appState: AppState): Router {
     }
 
     // Hash the args for tamper detection
-    const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
+    const argsHash = createHash("sha256").update(canonicalStringify(args)).digest("hex");
 
     // Execute tool in dry_run mode to generate preview
     const preview = await executeFleetTool(tool, { ...args, dry_run: true }, toolContext) as Record<string, unknown>;
@@ -153,7 +154,7 @@ export function createProposalRoutes(appState: AppState): Router {
     const hashPayload = proposal.batchItems && proposal.batchItems.length > 0
       ? proposal.batchItems
       : proposal.argsJson;
-    const currentHash = createHash("sha256").update(JSON.stringify(hashPayload)).digest("hex");
+    const currentHash = createHash("sha256").update(canonicalStringify(hashPayload)).digest("hex");
     if (currentHash !== proposal.argsHash) {
       return sendFail(res, ErrorCode.CONFLICT, "Proposal args have been tampered with", 409);
     }
@@ -236,6 +237,11 @@ export function createProposalRoutes(appState: AppState): Router {
       ) as Record<string, unknown>;
 
       if (result.error) {
+        try {
+          await proposalStore.decline(id, `apply_failed:${String(result.error)}`);
+        } catch {
+          // Best-effort lock; preserve primary error response
+        }
         return sendFail(res, ErrorCode.CONFLICT, String(result.error), 409);
       }
 

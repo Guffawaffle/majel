@@ -73,6 +73,29 @@ function makeAbility(overrides: Partial<SeedAbilityInput> = {}): SeedAbilityInpu
   };
 }
 
+async function ensureReferenceOfficersTable(pool: Pool): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reference_officers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      rarity TEXT,
+      group_name TEXT,
+      captain_maneuver TEXT,
+      officer_ability TEXT,
+      below_deck_ability TEXT,
+      source TEXT NOT NULL,
+      source_url TEXT,
+      source_page_id TEXT,
+      source_revision_id TEXT,
+      source_revision_timestamp TEXT,
+      license TEXT NOT NULL DEFAULT 'Community Data',
+      attribution TEXT NOT NULL DEFAULT 'STFC community data',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
 // ─── Setup ──────────────────────────────────────────────────
 
 let pool: Pool;
@@ -84,9 +107,14 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await cleanDatabase(pool);
-  // Effect store has FK to reference_officers — create a stub table
-  await pool.query(`CREATE TABLE IF NOT EXISTS reference_officers (id TEXT PRIMARY KEY)`);
-  await pool.query(`INSERT INTO reference_officers (id) VALUES ('test-officer-1'), ('test-officer-2')`);
+  await ensureReferenceOfficersTable(pool);
+  await pool.query(`
+    INSERT INTO reference_officers (id, name, source, license, attribution)
+    VALUES
+      ('test-officer-1', 'Test Officer 1', 'test', 'Community Data', 'STFC community data'),
+      ('test-officer-2', 'Test Officer 2', 'test', 'Community Data', 'STFC community data')
+    ON CONFLICT (id) DO NOTHING
+  `);
   store = await createEffectStore(pool);
 });
 
@@ -423,7 +451,7 @@ describe("ability catalog", () => {
   it("getOfficerAbilities returns empty when no run exists", async () => {
     // Clean database has no runs with abilities
     await cleanDatabase(pool);
-    await pool.query(`CREATE TABLE IF NOT EXISTS reference_officers (id TEXT PRIMARY KEY)`);
+    await ensureReferenceOfficersTable(pool);
     store = await createEffectStore(pool);
     const abilities = await store.getOfficerAbilities("test-officer-1");
     expect(abilities).toEqual([]);

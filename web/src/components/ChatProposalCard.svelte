@@ -18,6 +18,19 @@
   let cardState = $state<CardState>("pending");
   let errorMsg = $state("");
 
+  // Seed from persisted resolvedStatus on mount (one-time).
+  // Done in $effect.pre so Svelte doesn't warn about one-time prop capture.
+  let seeded = false;
+  $effect.pre(() => {
+    if (!seeded) {
+      seeded = true;
+      if (proposal.resolvedStatus) {
+        cardState = proposal.resolvedStatus;
+        errorMsg = proposal.resolvedError ?? "";
+      }
+    }
+  });
+
   // ── Expiry countdown ──
   let now = $state(Date.now());
   const timer = setInterval(() => { now = Date.now(); }, 1000);
@@ -38,6 +51,7 @@
   $effect(() => {
     if (expired && cardState === "pending") {
       cardState = "expired";
+      proposal.resolvedStatus = "expired";
     }
   });
 
@@ -60,9 +74,12 @@
     try {
       await applyProposal(proposal.id);
       cardState = "applied";
+      proposal.resolvedStatus = "applied";
     } catch (e) {
       errorMsg = e instanceof Error ? e.message : "Failed to apply";
       cardState = "error";
+      proposal.resolvedStatus = "error";
+      proposal.resolvedError = errorMsg;
     }
   }
 
@@ -70,9 +87,12 @@
     try {
       await declineProposal(proposal.id);
       cardState = "declined";
+      proposal.resolvedStatus = "declined";
     } catch (e) {
       errorMsg = e instanceof Error ? e.message : "Failed to decline";
       cardState = "error";
+      proposal.resolvedStatus = "error";
+      proposal.resolvedError = errorMsg;
     }
   }
 </script>

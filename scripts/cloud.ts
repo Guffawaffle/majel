@@ -322,6 +322,7 @@ async function cmdDeploy(): Promise<void> {
   const start = Date.now();
   const args = process.argv.slice(2);
   const skipSeed = args.includes("--skip-seed");
+  const runCdn = args.includes("--run-cdn");
   const explicitFeed = getFlagValue(args, "seed-feed") ?? getFlagValue(args, "feed");
   const feedsRootFlag = getFlagValue(args, "feeds-root");
   const retentionKeepRunsRaw = getFlagValue(args, "retention-keep-runs");
@@ -403,10 +404,14 @@ async function cmdDeploy(): Promise<void> {
   let deploySmokePass = false;
 
   if (healthOk && !skipSeed) {
-    // Step 5: Idempotent canonical upsert seed (officers/ships)
-    humanLog("\n🌱 Step 5/7: Seeding canonical reference data (idempotent upsert)...");
-    const canonicalSeed = runCanonicalSeedScript(start, "deploy");
-    canonicalSeedOutput = canonicalSeed.output;
+    // Step 5: Idempotent canonical upsert seed (officers/ships) — requires --run-cdn
+    if (runCdn) {
+      humanLog("\n🌱 Step 5/7: Seeding canonical reference data (idempotent upsert)...");
+      const canonicalSeed = runCanonicalSeedScript(start, "deploy");
+      canonicalSeedOutput = canonicalSeed.output;
+    } else {
+      humanLog("\n⏭️  Step 5/7: Skipped CDN canonical seed (pass --run-cdn to enable)");
+    }
 
     // Step 6: Idempotent crawler feed load (all entities + runtime dataset)
     humanLog("\n🧩 Step 6/7: Loading crawler feed data (idempotent add/update)...");
@@ -459,7 +464,8 @@ async function cmdDeploy(): Promise<void> {
       version: getPackageVersion(),
       seed: {
         skipped: skipSeed,
-        canonicalApplied: healthOk && !skipSeed,
+        canonicalApplied: healthOk && !skipSeed && runCdn,
+        cdnFlagPassed: runCdn,
         feedPath: seededFeedPath,
         feedSource: seededFeedSource,
         retentionKeepRuns,
@@ -2384,7 +2390,8 @@ const COMMANDS: Record<string, CommandDef> = {
     alias: "cloud:deploy",
     description: "Full pipeline: local-ci → build → deploy → health → idempotent canonical+crawler sync",
     args: [
-      { name: "--skip-seed", type: "boolean", description: "Skip post-deploy DB sync steps" },
+      { name: "--skip-seed", type: "boolean", description: "Skip all post-deploy DB sync steps" },
+      { name: "--run-cdn", type: "boolean", description: "Run CDN canonical seed (officers/ships) — skipped by default" },
       { name: "--seed-feed", type: "string", description: "Feed ID/path for crawler sync (auto-discovered if omitted)" },
       { name: "--feeds-root", type: "string", description: "Feeds root when using feed IDs (default auto-detect)" },
       { name: "--retention-keep-runs", type: "integer", default: "10", description: "Runtime dataset retention window for feed load" },

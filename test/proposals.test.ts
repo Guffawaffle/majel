@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp } from "../src/server/index.js";
 import { makeState } from "./helpers/make-state.js";
+import { canonicalStringify } from "../src/server/util/canonical-json.js";
 import type {
   ProposalStore,
   MutationProposal,
@@ -276,7 +277,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     // Build a proposal with a correct argsHash
     const { createHash } = await import("node:crypto");
     const args = { export: { version: "1.0", officers: [] } };
-    const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
+    const argsHash = createHash("sha256").update(canonicalStringify(args)).digest("hex");
     const proposal: MutationProposal = {
       ...FIXTURE_PROPOSAL,
       argsJson: args,
@@ -312,10 +313,67 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     expect(res.body.data.receipt_id).toBe(99);
   });
 
+  it("applies proposal after JSONB key reordering (canonical hash survives round-trip)", async () => {
+    const { createHash } = await import("node:crypto");
+    // Original key order as Gemini sends it
+    const originalArgs = {
+      export: {
+        version: "1.0",
+        source: "screenshot",
+        officers: [
+          { refId: "cdn:officer:100", level: 45, rank: "3", owned: true },
+        ],
+      },
+    };
+    const argsHash = createHash("sha256").update(canonicalStringify(originalArgs)).digest("hex");
+
+    // Simulate JSONB round-trip: keys returned in different order
+    const reorderedArgs = {
+      export: {
+        officers: [
+          { level: 45, owned: true, rank: "3", refId: "cdn:officer:100" },
+        ],
+        source: "screenshot",
+        version: "1.0",
+      },
+    };
+
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      argsJson: reorderedArgs, // Returned from JSONB with different key order
+      argsHash, // Hash from original key order
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      apply: vi.fn().mockResolvedValue({ ...proposal, status: "applied" }),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    mockedExecute.mockResolvedValueOnce({
+      tool: "sync_overlay",
+      dryRun: false,
+      summary: { officers: { input: 1, changed: 1 } },
+      receipt: { id: 100 },
+    });
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.data.applied).toBe(true);
+  });
+
   it("returns 409 when proposal already applied", async () => {
     const { createHash } = await import("node:crypto");
     const args = { export: { version: "1.0", officers: [] } };
-    const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
+    const argsHash = createHash("sha256").update(canonicalStringify(args)).digest("hex");
     const appliedProposal: MutationProposal = {
       ...FIXTURE_PROPOSAL,
       argsJson: args,
@@ -386,7 +444,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     const proposal: MutationProposal = {
       ...FIXTURE_PROPOSAL,
       argsJson: args,
-      argsHash: createHash("sha256").update(JSON.stringify(args)).digest("hex"),
+      argsHash: createHash("sha256").update(canonicalStringify(args)).digest("hex"),
       status: "proposed",
     };
 
@@ -412,7 +470,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     const proposal: MutationProposal = {
       ...FIXTURE_PROPOSAL,
       argsJson: args,
-      argsHash: createHash("sha256").update(JSON.stringify(args)).digest("hex"),
+      argsHash: createHash("sha256").update(canonicalStringify(args)).digest("hex"),
       status: "proposed",
     };
 
@@ -435,6 +493,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("CONFLICT");
     expect(res.body.error.message).toContain("Overlay validation failed");
+    expect(store.decline).toHaveBeenCalledWith(proposal.id, expect.stringContaining("apply_failed"));
   });
 
   it("returns 500 for unexpected execution failures", async () => {
@@ -443,7 +502,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     const proposal: MutationProposal = {
       ...FIXTURE_PROPOSAL,
       argsJson: args,
-      argsHash: createHash("sha256").update(JSON.stringify(args)).digest("hex"),
+      argsHash: createHash("sha256").update(canonicalStringify(args)).digest("hex"),
       status: "proposed",
     };
 
@@ -475,7 +534,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
       ...FIXTURE_PROPOSAL,
       tool: "activate_preset",
       argsJson: args,
-      argsHash: createHash("sha256").update(JSON.stringify(args)).digest("hex"),
+      argsHash: createHash("sha256").update(canonicalStringify(args)).digest("hex"),
       status: "proposed",
     };
 
@@ -556,7 +615,7 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
       ...FIXTURE_PROPOSAL,
       tool: "_batch",
       argsJson: { batchItems },
-      argsHash: createHash("sha256").update(JSON.stringify(batchItems)).digest("hex"),
+      argsHash: createHash("sha256").update(canonicalStringify(batchItems)).digest("hex"),
       batchItems,
       status: "proposed",
     };

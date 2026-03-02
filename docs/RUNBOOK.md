@@ -313,3 +313,103 @@ jsonPayload.subsystem="http"
 2. Check Cloud SQL instance health in Console → SQL
 3. Common causes: connection pool exhaustion, disk full, instance stopped
 4. The auth system continues to function even when audit writes fail (fire-and-forget design)
+
+---
+
+## Incident Plan — Aria Could Not Update Officers
+
+Use this playbook when a user confirms a mutation failed (for example: officer updates not applied).
+
+### Trigger Conditions
+
+- UI shows proposal apply failure (conflict/error), or
+- User reports no officer state change after approval, or
+- UI shows "Proposal args have been tampered with" / trust block / tool validation error.
+
+### Evidence to Collect (first 60 seconds)
+
+1. Ask for the **Trace (Admiral)** box content from the chat response (copy/paste JSON).
+2. Capture timestamp (UTC), session ID, proposal ID (if present), and request ID (if present).
+3. Confirm whether user clicked **Approve** and whether card moved to failure state.
+
+Expected trace keys:
+
+- `timestamp`
+- `requestId`
+- `sessionId`
+- `userId`
+- `proposalCount`
+- `proposalIds`
+- `error` (when request failed)
+
+### Triage Flow
+
+1. **Request failed before apply path**
+   - Symptom: no proposal ID, trace contains `error`, API returned 500/429/etc.
+   - Action: inspect chat route + Gemini/tool logs around `requestId`.
+
+2. **Proposal existed but apply was rejected**
+   - Symptom: `proposalIds` present, apply returned 409/404.
+   - Action: inspect proposal status (`proposed|declined|expired|applied`) and reason.
+
+3. **Apply succeeded but data appears unchanged**
+   - Symptom: apply returned success + receipt, user sees no updated officers.
+   - Action: inspect `sync_overlay` summary/receipt and verify overlay rows for that `user_id`.
+
+### Cloud Logging Queries
+
+Use Logs Explorer with service filter:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+```
+
+#### Query A — by requestId (primary)
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.requestId="REQUEST_ID_HERE"
+```
+
+#### Query B — proposal apply failures
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="fleet"
+"proposal apply failed"
+```
+
+#### Query C — tool-level mutation errors
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="gemini"
+jsonPayload.event=~"tool:result:error|chat:empty-answer"
+```
+
+### Classification Matrix
+
+- **`CONFLICT` + tampered** → canonicalization/hash mismatch or stale payload.
+- **`CONFLICT` + blocked by trust settings** → policy block, not runtime failure.
+- **`CONFLICT` + tool validation text** → bad input parse or unsupported entity mapping.
+- **`NOT_FOUND` proposal/session** → expired proposal or wrong owner/session context.
+- **`INTERNAL_ERROR`/`GEMINI_ERROR`** → backend/model execution failure.
+
+### Immediate Operator Actions
+
+1. Preserve the trace JSON in incident notes.
+2. Save matching log snippets (requestId window ±2 min).
+3. Record final class: `policy`, `input`, `state`, `backend`, or `unknown`.
+4. If unknown, open follow-up with:
+   - trace JSON
+   - logs query results
+   - proposal ID + receipt ID (if any)
+   - user-visible symptom text
+
+### Privacy Guardrail
+
+Do not request or inspect another user's session transcript for debugging. Use trace payload + structured server logs + receipts only.

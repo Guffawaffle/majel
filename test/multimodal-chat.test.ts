@@ -59,7 +59,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.answer).toBe("Image received, Admiral.");
-    expect(mockChat).toHaveBeenCalledWith("Hello Aria", "default", undefined, expect.any(String));
+    expect(mockChat).toHaveBeenCalledWith("Hello Aria", "default", undefined, expect.any(String), expect.any(String));
   });
 
   it("accepts a message with a valid image attachment", async () => {
@@ -76,6 +76,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
       "What officer is this?",
       "default",
       { inlineData: { data: TINY_PNG_BASE64, mimeType: "image/png" } },
+      expect.any(String),
       expect.any(String),
     );
   });
@@ -195,6 +196,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
       "What ship is this?",
       "img-session-42",
       { inlineData: { data: TINY_PNG_BASE64, mimeType: "image/png" } },
+      expect.any(String),
       expect.any(String),
     );
   });

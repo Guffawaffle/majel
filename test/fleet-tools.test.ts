@@ -546,6 +546,64 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     const docks = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "list_docks");
     expect(docks?.parameters).toBeUndefined();
   });
+
+  it("sync_overlay export parameter has nested officer/ship/dock schema", () => {
+    const syncOverlay = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "sync_overlay");
+    expect(syncOverlay).toBeDefined();
+
+    const exportParam = syncOverlay!.parameters?.properties?.export as Record<string, unknown>;
+    expect(exportParam).toBeDefined();
+
+    const props = exportParam.properties as Record<string, unknown>;
+    expect(props).toBeDefined();
+    expect(props.version).toBeDefined();
+    expect(props.source).toBeDefined();
+
+    // Officers array with item schema
+    const officers = props.officers as Record<string, unknown>;
+    expect(officers).toBeDefined();
+    const officerItems = officers.items as Record<string, unknown>;
+    expect(officerItems).toBeDefined();
+    const officerProps = officerItems.properties as Record<string, unknown>;
+    expect(officerProps.refId).toBeDefined();
+    expect(officerProps.level).toBeDefined();
+    expect(officerProps.rank).toBeDefined();
+    expect(officerProps.owned).toBeDefined();
+    expect(officerProps.power).toBeDefined();
+
+    // Ships array with item schema
+    const ships = props.ships as Record<string, unknown>;
+    expect(ships).toBeDefined();
+    const shipItems = ships.items as Record<string, unknown>;
+    expect(shipItems).toBeDefined();
+    const shipProps = shipItems.properties as Record<string, unknown>;
+    expect(shipProps.refId).toBeDefined();
+    expect(shipProps.tier).toBeDefined();
+    expect(shipProps.level).toBeDefined();
+    expect(shipProps.owned).toBeDefined();
+
+    // Docks array with item schema
+    const docksProp = props.docks as Record<string, unknown>;
+    expect(docksProp).toBeDefined();
+    const dockItems = docksProp.items as Record<string, unknown>;
+    expect(dockItems).toBeDefined();
+    const dockProps = dockItems.properties as Record<string, unknown>;
+    expect(dockProps.number).toBeDefined();
+    expect(dockProps.shipId).toBeDefined();
+    expect(dockProps.loadoutId).toBeDefined();
+  });
+
+  it("set_officer_overlay description references sync_overlay for bulk", () => {
+    const tool = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "set_officer_overlay");
+    expect(tool).toBeDefined();
+    expect(tool!.description).toContain("sync_overlay");
+  });
+
+  it("set_ship_overlay description references sync_overlay for bulk", () => {
+    const tool = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "set_ship_overlay");
+    expect(tool).toBeDefined();
+    expect(tool!.description).toContain("sync_overlay");
+  });
 });
 
 // ─── Tool Executor ──────────────────────────────────────────
@@ -3899,6 +3957,189 @@ describe("sync_overlay", () => {
     const warnings = (result as Record<string, unknown>).warnings as string[] | undefined;
     expect(warnings).toBeDefined();
     expect(warnings!.some((w) => w.includes("Unknown Cadet") && w.includes("missing max rank"))).toBe(true);
+  });
+
+  it("accepts export object shaped exactly as declared schema (Gemini path)", async () => {
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+      }),
+      referenceStore: createMockReferenceStore({
+        getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
+        getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
+      }),
+    };
+
+    // Shape matches exactly what Gemini would construct from the declared schema
+    const result = await executeFleetTool("sync_overlay", {
+      export: {
+        version: "1.0",
+        source: "screenshot",
+        officers: [
+          { refId: "cdn:officer:100", level: 45, rank: "3", owned: true, power: 5000 },
+          { refId: "cdn:officer:200", level: 30, rank: "2", owned: true },
+        ],
+        ships: [
+          { refId: "cdn:ship:300", tier: 7, level: 35, owned: true },
+        ],
+      },
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(result.error).toBeUndefined();
+    expect(result.dryRun).toBe(true);
+    const summary = result.summary as Record<string, unknown>;
+    const officersSummary = summary.officers as Record<string, unknown>;
+    const shipsSummary = summary.ships as Record<string, unknown>;
+    expect(officersSummary.input).toBe(2);
+    expect(shipsSummary.input).toBe(1);
+  });
+
+  it("accepts export object with all three arrays (officers + ships + docks)", async () => {
+    const createPlanItem = vi.fn().mockResolvedValue({
+      id: 99,
+      intentKey: null,
+      label: "sync_overlay import",
+      loadoutId: 20,
+      variantId: null,
+      dockNumber: 3,
+      awayOfficers: null,
+      priority: 0,
+      isActive: true,
+      source: "manual",
+      notes: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+    const setOfficerOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:officer:100",
+      ownershipState: "owned",
+      target: false,
+      level: 50,
+      rank: null,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+    const setShipOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:200",
+      ownershipState: "owned",
+      target: false,
+      tier: 8,
+      level: null,
+      power: null,
+      targetNote: null,
+      targetPriority: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+        setOfficerOverlay,
+        setShipOverlay,
+      }),
+      referenceStore: createMockReferenceStore({
+        getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
+        getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
+      }),
+      crewStore: createMockCrewStore({
+        listPlanItems: vi.fn().mockResolvedValue([]),
+        listLoadouts: vi.fn().mockResolvedValue([
+          {
+            id: 20,
+            shipId: "cdn:ship:200",
+            bridgeCoreId: null,
+            belowDeckPolicyId: null,
+            name: "Ship Loadout",
+            priority: 0,
+            isActive: true,
+            intentKeys: [],
+            tags: [],
+            notes: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ]),
+        createPlanItem,
+      }),
+      receiptStore: createMockReceiptStore({
+        createReceipt: vi.fn().mockResolvedValue({
+          id: 42,
+          sourceType: "guided_setup",
+          sourceMeta: {},
+          mapping: null,
+          layer: "ownership",
+          changeset: {},
+          inverse: {},
+          unresolved: null,
+          createdAt: "2026-01-01T00:00:00Z",
+        }),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: {
+        version: "1.0",
+        source: "csv-paste",
+        officers: [{ refId: "cdn:officer:100", level: 50, owned: true }],
+        ships: [{ refId: "cdn:ship:200", tier: 8, owned: true }],
+        docks: [{ number: 3, shipId: "cdn:ship:200", loadoutId: 20 }],
+      },
+      dry_run: false,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(result.error).toBeUndefined();
+    expect(result.dryRun).toBe(false);
+    expect(setOfficerOverlay).toHaveBeenCalled();
+    expect(setShipOverlay).toHaveBeenCalled();
+    const summary = result.summary as Record<string, unknown>;
+    const docksSummary = summary.docks as Record<string, unknown>;
+    expect(docksSummary.changed).toBeGreaterThanOrEqual(1);
+  });
+
+  it("handles 30 officers in a single sync_overlay call (bulk scenario)", async () => {
+    // Generate 30 officer entries — the exact scenario that motivated this change
+    const officerEntries = Array.from({ length: 30 }, (_, i) => ({
+      refId: `cdn:officer:${1000 + i}`,
+      level: 10 + i,
+      rank: String(Math.min(5, Math.floor(i / 6) + 1)),
+      owned: true,
+    }));
+
+    const ctx: ToolContext = {
+      userId: "test-user",
+      overlayStore: createMockOverlayStore({
+        listOfficerOverlays: vi.fn().mockResolvedValue([]),
+        listShipOverlays: vi.fn().mockResolvedValue([]),
+      }),
+      referenceStore: createMockReferenceStore({
+        getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
+      }),
+    };
+
+    const result = await executeFleetTool("sync_overlay", {
+      export: {
+        version: "1.0",
+        source: "screenshot",
+        officers: officerEntries,
+      },
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("sync_overlay");
+    expect(result.error).toBeUndefined();
+    expect(result.dryRun).toBe(true);
+    const summary = result.summary as Record<string, unknown>;
+    const officersSummary = summary.officers as Record<string, unknown>;
+    expect(officersSummary.input).toBe(30);
+    expect(officersSummary.changed).toBe(30);
+    expect(officersSummary.applied).toBe(0); // dry-run
   });
 });
 

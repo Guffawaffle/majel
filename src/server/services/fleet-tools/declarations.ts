@@ -837,6 +837,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: "sync_overlay",
     description:
       "Sync Admiral game-state overlays from a MajelGameExport payload. " +
+      "Use this tool for bulk officer/ship updates (3 or more entities) instead of calling set_officer_overlay or set_ship_overlay repeatedly. " +
       "Validates payload shape, normalizes IDs, computes a changeset diff against current overlays, " +
       "and optionally applies updates. " +
       "Default is dry-run preview only. Use dry_run=false to commit.",
@@ -846,6 +847,91 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         export: {
           type: Type.OBJECT,
           description: "MajelGameExport object payload (preferred).",
+          properties: {
+            version: {
+              type: Type.STRING,
+              description: "Schema version — always '1.0'.",
+            },
+            source: {
+              type: Type.STRING,
+              description: "Data source identifier (e.g. 'manual', 'screenshot', 'csv-paste').",
+            },
+            officers: {
+              type: Type.ARRAY,
+              description: "Array of officer overlay entries to sync.",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  refId: {
+                    type: Type.STRING,
+                    description: "Officer reference ID (e.g. 'cdn:officer:776602621'). Raw numeric IDs are also accepted.",
+                  },
+                  level: {
+                    type: Type.NUMBER,
+                    description: "Current level.",
+                  },
+                  rank: {
+                    type: Type.STRING,
+                    description: "Current rank (1-5).",
+                  },
+                  owned: {
+                    type: Type.BOOLEAN,
+                    description: "Whether the Admiral owns this officer.",
+                  },
+                  power: {
+                    type: Type.NUMBER,
+                    description: "Current power contribution.",
+                  },
+                },
+              },
+            },
+            ships: {
+              type: Type.ARRAY,
+              description: "Array of ship overlay entries to sync.",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  refId: {
+                    type: Type.STRING,
+                    description: "Ship reference ID (e.g. 'cdn:ship:987654321').",
+                  },
+                  tier: {
+                    type: Type.NUMBER,
+                    description: "Current tier.",
+                  },
+                  level: {
+                    type: Type.NUMBER,
+                    description: "Current level.",
+                  },
+                  owned: {
+                    type: Type.BOOLEAN,
+                    description: "Whether the Admiral owns this ship.",
+                  },
+                },
+              },
+            },
+            docks: {
+              type: Type.ARRAY,
+              description: "Array of dock assignment entries to sync.",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  number: {
+                    type: Type.INTEGER,
+                    description: "Dock slot number (e.g. 1, 2, 3).",
+                  },
+                  shipId: {
+                    type: Type.STRING,
+                    description: "Ship reference ID assigned to this dock.",
+                  },
+                  loadoutId: {
+                    type: Type.INTEGER,
+                    description: "Loadout ID assigned to this dock.",
+                  },
+                },
+              },
+            },
+          },
         },
         payload_json: {
           type: Type.STRING,
@@ -893,7 +979,9 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Record the Admiral's actual in-game ship progression on a specific ship: current tier, level, power, " +
       "and ownership state. Use this when the Admiral tells you their ship's current tier/level (e.g. 'my Serene Squall " +
       "is at tier 9 level 45'). Also sets ownership state and target flag. " +
-      "Provide ship_id from search_ships or get_ship_detail results.",
+      "Provide ship_id from search_ships or get_ship_detail results. " +
+      "For bulk updates (3 or more ships), construct a MajelGameExport and call " +
+      "sync_overlay instead — it handles diffing, receipts, and undo in a single call.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -980,7 +1068,9 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Record the Admiral's actual in-game officer progression: current level, rank (1-5), power, " +
       "and ownership state. Use this when the Admiral tells you their officer's current level or rank " +
       "(e.g. 'Kirk is rank 4 level 50'). " +
-      "Provide officer_id from search_officers or get_officer_detail results.",
+      "Provide officer_id from search_officers or get_officer_detail results. " +
+      "For bulk updates (3 or more officers), construct a MajelGameExport and call " +
+      "sync_overlay instead — it handles diffing, receipts, and undo in a single call.",
     parameters: {
       type: Type.OBJECT,
       properties: {

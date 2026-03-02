@@ -98,9 +98,11 @@ export function createChatRoutes(appState: AppState): Router {
       }
 
       const requestId = res.locals._requestId as string | undefined;
+      const isAdmiral = !!res.locals.isAdmiral;
       const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId);
       const answer = typeof result === "string" ? result : result.text;
       const proposals = typeof result === "string" ? undefined : result.proposals;
+      const proposalIds = proposals?.map((p) => p.id) ?? [];
 
       // Diagnostic: warn when engine returns empty answer after tool use (#diag)
       if (!answer) {
@@ -123,17 +125,42 @@ export function createChatRoutes(appState: AppState): Router {
       if (appState.sessionStore) {
         const userId = res.locals.userId as string | undefined;
         await appState.sessionStore.addMessage(sessionId, "user", message, userId);
-        await appState.sessionStore.addMessage(sessionId, "model", answer);
+        // Persist proposal IDs so they survive session restore (ADR-026b)
+        await appState.sessionStore.addMessage(sessionId, "model", answer, undefined, proposalIds);
       }
 
       sendOk(res, {
         answer,
         proposals: proposals && proposals.length > 0 ? proposals : undefined,
+        trace: isAdmiral
+          ? {
+              timestamp: new Date().toISOString(),
+              requestId: requestId ?? null,
+              sessionId,
+              userId: userId ?? null,
+              hasImage: !!imagePart,
+              answerChars: answer.length,
+              proposalCount: proposalIds.length,
+              proposalIds,
+            }
+          : undefined,
       });
     } catch (err: unknown) {
       const errMessage = err instanceof Error ? err.message : String(err);
       log.gemini.error({ err: errMessage }, "chat request failed");
       sendFail(res, ErrorCode.GEMINI_ERROR, "AI request failed", 500, {
+        ...(res.locals.isAdmiral
+          ? {
+              trace: {
+                timestamp: new Date().toISOString(),
+                requestId: (res.locals._requestId as string | undefined) ?? null,
+                sessionId,
+                userId: (res.locals.userId as string | undefined) ?? null,
+                hasImage: !!rawImage,
+                error: errMessage,
+              },
+            }
+          : {}),
         hints: ["Try again in a few seconds", "If the problem persists, check /api/health"],
       });
     }

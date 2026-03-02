@@ -19,6 +19,8 @@ export interface ChatMessage {
   role: "user" | "model" | "system" | "error";
   text: string;
   createdAt: string;
+  /** Proposal IDs attached to this message (model messages with approve-tier mutations). */
+  proposalIds?: string[];
 }
 
 export interface ChatSession {
@@ -45,7 +47,7 @@ export interface SessionStore {
   list(limit?: number, userId?: string): Promise<SessionSummary[]>;
   get(id: string): Promise<(ChatSession & { messages: ChatMessage[] }) | null>;
   updateTitle(id: string, title: string): Promise<boolean>;
-  addMessage(sessionId: string, role: ChatMessage["role"], text: string, userId?: string): Promise<ChatMessage>;
+  addMessage(sessionId: string, role: ChatMessage["role"], text: string, userId?: string, proposalIds?: string[]): Promise<ChatMessage>;
   delete(id: string): Promise<boolean>;
   touch(id: string): Promise<void>;
   count(): Promise<number>;
@@ -79,6 +81,11 @@ const SCHEMA_STATEMENTS = [
   END $$`,
   `CREATE INDEX IF NOT EXISTS idx_sessions_user_id
     ON sessions(user_id)`,
+  // Proposal IDs attached to model messages (ADR-026b cross-session persistence)
+  `DO $$ BEGIN
+    ALTER TABLE messages ADD COLUMN proposal_ids JSONB;
+  EXCEPTION WHEN duplicate_column THEN NULL;
+  END $$`,
 ];
 
 const SQL = {
@@ -117,8 +124,8 @@ const SQL = {
   updateTitle: `UPDATE sessions SET title = $1, updated_at = $2 WHERE id = $3`,
   touchSession: `UPDATE sessions SET updated_at = $1 WHERE id = $2`,
   deleteSession: `DELETE FROM sessions WHERE id = $1`,
-  insertMessage: `INSERT INTO messages (session_id, role, text, created_at) VALUES ($1, $2, $3, $4) RETURNING id`,
-  getMessages: `SELECT id, role, text, created_at AS "createdAt" FROM messages WHERE session_id = $1 ORDER BY created_at ASC`,
+  insertMessage: `INSERT INTO messages (session_id, role, text, created_at, proposal_ids) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+  getMessages: `SELECT id, role, text, created_at AS "createdAt", proposal_ids AS "proposalIds" FROM messages WHERE session_id = $1 ORDER BY created_at ASC`,
   countSessions: `SELECT COUNT(*) AS count FROM sessions`,
   sessionExists: `SELECT 1 FROM sessions WHERE id = $1`,
 };
@@ -167,7 +174,13 @@ export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): P
       const session = sessionResult.rows[0] as ChatSession | undefined;
       if (!session) return null;
       const msgResult = await pool.query(SQL.getMessages, [id]);
-      const messages = msgResult.rows as ChatMessage[];
+      const messages = (msgResult.rows as Array<Record<string, unknown>>).map((r) => ({
+        id: Number(r.id),
+        role: r.role as ChatMessage["role"],
+        text: String(r.text),
+        createdAt: String(r.createdAt),
+        proposalIds: Array.isArray(r.proposalIds) ? r.proposalIds as string[] : undefined,
+      }));
       return { ...session, messages };
     },
 
@@ -177,7 +190,7 @@ export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): P
       return (result.rowCount ?? 0) > 0;
     },
 
-    async addMessage(sessionId, role, text, userId?) {
+    async addMessage(sessionId, role, text, userId?, proposalIds?) {
       // Auto-create session if it doesn't exist
       const existsResult = await pool.query(SQL.sessionExists, [sessionId]);
       if (existsResult.rows.length === 0) {
@@ -189,7 +202,10 @@ export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): P
       }
 
       const now = new Date().toISOString();
-      const result = await pool.query(SQL.insertMessage, [sessionId, role, text, now]);
+      const result = await pool.query(SQL.insertMessage, [
+        sessionId, role, text, now,
+        proposalIds?.length ? JSON.stringify(proposalIds) : null,
+      ]);
 
       // Touch the session's updated_at
       await pool.query(SQL.touchSession, [now, sessionId]);
@@ -199,6 +215,7 @@ export async function createSessionStore(adminPool: Pool, runtimePool?: Pool): P
         role,
         text,
         createdAt: now,
+        proposalIds: proposalIds?.length ? proposalIds : undefined,
       };
     },
 

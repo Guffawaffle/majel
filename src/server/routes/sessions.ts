@@ -3,16 +3,66 @@
  *
  * Ownership model (ADR-019 Phase 2):
  *   - list:   returns only sessions owned by the authenticated user
- *   - get:    owner or admiral
- *   - patch:  owner or admiral
- *   - delete: owner or admiral
+ *   - get:    owner only
+ *   - patch:  owner only
+ *   - delete: owner only
  */
 
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
+import type { ChatSession, ChatMessage } from "../sessions.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireVisitor } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
+import { log } from "../logger.js";
+
+/**
+ * Hydrate proposal data for messages that have proposalIds.
+ * Attaches a `proposals` map to the session response so the frontend
+ * can reconstruct ChatProposalCards with correct status.
+ */
+async function hydrateSessionProposals(
+  session: ChatSession & { messages: ChatMessage[] },
+  userId: string,
+  appState: AppState,
+): Promise<Record<string, unknown>> {
+  // Collect all proposal IDs from messages
+  const allIds = new Set<string>();
+  for (const msg of session.messages) {
+    if (msg.proposalIds?.length) {
+      for (const id of msg.proposalIds) allIds.add(id);
+    }
+  }
+
+  // If no proposals or no proposal store, return as-is
+  if (allIds.size === 0 || !appState.proposalStoreFactory) {
+    return session as unknown as Record<string, unknown>;
+  }
+
+  // Batch-fetch proposals
+  const proposalStore = appState.proposalStoreFactory.forUser(userId);
+  const proposals: Record<string, { id: string; status: string; batchItems: Array<{ tool: string; preview: string }>; expiresAt: string }> = {};
+
+  await Promise.all(
+    [...allIds].map(async (id) => {
+      try {
+        const p = await proposalStore.get(id);
+        if (p) {
+          proposals[id] = {
+            id: p.id,
+            status: p.status,
+            batchItems: (p.batchItems ?? []).map((b) => ({ tool: b.tool, preview: b.preview })),
+            expiresAt: p.expiresAt,
+          };
+        }
+      } catch (err) {
+        log.fleet.warn({ err: err instanceof Error ? err.message : String(err), proposalId: id }, "proposal hydrate failed");
+      }
+    }),
+  );
+
+  return { ...session, proposals } as unknown as Record<string, unknown>;
+}
 
 export function createSessionRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -31,9 +81,7 @@ export function createSessionRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "limit must be an integer between 1 and 200", 400);
     }
     const userId = res.locals.userId as string;
-    // Admirals can see all sessions via ?all=true
-    const showAll = res.locals.isAdmiral && req.query.all === "true";
-    sendOk(res, { sessions: await appState.sessionStore.list(limit, showAll ? undefined : userId) });
+    sendOk(res, { sessions: await appState.sessionStore.list(limit, userId) });
   });
 
   router.get("/api/sessions/:id", async (req, res) => {
@@ -43,24 +91,17 @@ export function createSessionRoutes(appState: AppState): Router {
     if ((req.params.id as string).length > 200) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    // Ownership check: owner or admiral
+    // Ownership check: owner only
     const owner = await appState.sessionStore.getOwner(req.params.id as string);
     const userId = res.locals.userId as string;
-    // null owner = unowned legacy session → only admirals may access
-    if (owner === null) {
-      const session = await appState.sessionStore.get(req.params.id as string);
-      if (!session) return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
-      if (!res.locals.isAdmiral) return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
-      return sendOk(res, session);
-    }
-    if (owner !== userId && !res.locals.isAdmiral) {
+    if (owner !== userId) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
     const session = await appState.sessionStore.get(req.params.id as string);
     if (!session) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    sendOk(res, session);
+    sendOk(res, await hydrateSessionProposals(session, userId, appState));
   });
 
   router.patch("/api/sessions/:id", async (req, res) => {
@@ -77,14 +118,10 @@ export function createSessionRoutes(appState: AppState): Router {
     if (title.length > MAX_TITLE) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Title must be ${MAX_TITLE} characters or fewer`, 400);
     }
-    // Ownership check: owner or admiral
+    // Ownership check: owner only
     const owner = await appState.sessionStore.getOwner(req.params.id as string);
     const userId = res.locals.userId as string;
-    // null owner = unowned legacy session → only admirals may modify
-    if (owner === null && !res.locals.isAdmiral) {
-      return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
-    }
-    if (owner !== null && owner !== userId && !res.locals.isAdmiral) {
+    if (owner !== userId) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
     const updated = await appState.sessionStore.updateTitle(req.params.id as string, title.trim());
@@ -101,14 +138,10 @@ export function createSessionRoutes(appState: AppState): Router {
     if ((req.params.id as string).length > 200) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
-    // Ownership check: owner or admiral
+    // Ownership check: owner only
     const owner = await appState.sessionStore.getOwner(req.params.id as string);
     const userId = res.locals.userId as string;
-    // null owner = unowned legacy session → only admirals may delete
-    if (owner === null && !res.locals.isAdmiral) {
-      return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
-    }
-    if (owner !== null && owner !== userId && !res.locals.isAdmiral) {
+    if (owner !== userId) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
     const deleted = await appState.sessionStore.delete(req.params.id as string);

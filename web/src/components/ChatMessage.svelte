@@ -17,7 +17,9 @@
 
   // Copy‐to‐clipboard
   let copied = $state(false);
+  let traceCopied = $state(false);
   let copyTimer: ReturnType<typeof setTimeout>;
+  let traceCopyTimer: ReturnType<typeof setTimeout>;
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(message.text);
@@ -26,7 +28,19 @@
       copyTimer = setTimeout(() => { copied = false; }, 2000);
     } catch { /* ignore */ }
   }
-  onDestroy(() => clearTimeout(copyTimer));
+  async function handleCopyTrace() {
+    if (!message.trace) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(message.trace, null, 2));
+      traceCopied = true;
+      clearTimeout(traceCopyTimer);
+      traceCopyTimer = setTimeout(() => { traceCopied = false; }, 2000);
+    } catch { /* ignore */ }
+  }
+  onDestroy(() => {
+    clearTimeout(copyTimer);
+    clearTimeout(traceCopyTimer);
+  });
 
   // Rendered HTML
   const bodyHtml = $derived(
@@ -67,6 +81,21 @@
         </button>
       {/if}
       <div class="message-text">{@html bodyHtml}</div>
+      {#if message.trace}
+        <details class="trace-box">
+          <summary class="trace-summary">Trace (Admiral)</summary>
+          <div class="trace-actions">
+            <button class="action-btn" class:copied={traceCopied} onclick={handleCopyTrace}>
+              {#if traceCopied}
+                ✓ Copied
+              {:else}
+                📋 Copy Trace
+              {/if}
+            </button>
+          </div>
+          <pre class="trace-pre">{JSON.stringify(message.trace, null, 2)}</pre>
+        </details>
+      {/if}
       {#if message.proposals?.length}
         <div class="proposal-cards">
           {#each message.proposals as proposal (proposal.id)}
@@ -169,6 +198,36 @@
   }
   .action-btn:hover { color: var(--text-primary); border-color: var(--border); }
   .action-btn.copied { color: var(--accent-green); }
+
+  .trace-box {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-secondary);
+    padding: 6px 10px;
+  }
+  .trace-summary {
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    user-select: none;
+  }
+  .trace-actions {
+    margin-top: 8px;
+  }
+  .trace-pre {
+    margin: 8px 0 0;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    line-height: 1.45;
+    overflow-x: auto;
+    white-space: pre;
+  }
 
   /* ── Image ── */
   .message-image-btn {

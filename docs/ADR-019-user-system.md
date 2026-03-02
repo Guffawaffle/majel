@@ -239,6 +239,23 @@ CREATE POLICY officer_overlay_isolation ON officer_overlay
 
 Each request's middleware sets `SET LOCAL app.current_user_id = '<uuid>'` inside `withTransaction()`. RLS automatically filters all queries. We **also** add explicit `WHERE user_id = $1` in queries (belt-and-suspenders).
 
+### D6a — Session Privacy Invariant (Normative)
+
+Session data is private to the session owner. This is a hard rule, not a convenience rule.
+
+- `GET /api/sessions` MUST return only sessions where `session.user_id == requester.user_id`.
+- `GET /api/sessions/:id` MUST return `404` unless `session.user_id == requester.user_id`.
+- `PATCH /api/sessions/:id` MUST return `404` unless `session.user_id == requester.user_id`.
+- `DELETE /api/sessions/:id` MUST return `404` unless `session.user_id == requester.user_id`.
+
+This applies to all roles, including `admiral`. Admirals retain operational access via diagnostics/audit tooling, but do not get application-level access to another user's chat/session content.
+
+Rationale:
+
+1. Privacy-by-design: operators can debug platform health without reading user conversation data.
+2. Least privilege: role elevation does not imply content visibility.
+3. Safer threat model: if an admin credential is compromised, blast radius excludes historical user chat/session contents.
+
 ### D7 — Auth Endpoints
 
 ```

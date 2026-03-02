@@ -156,7 +156,7 @@ describe("POST /api/chat", () => {
       .send({ message: "Hello" });
     expect(res.status).toBe(200);
     expect(res.body.data.answer).toBe("Live long and prosper.");
-    expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local");
+    expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local", expect.any(String));
   });
 
   it("persists conversation to memory when available", async () => {
@@ -218,7 +218,7 @@ describe("POST /api/chat", () => {
       .set("X-Session-Id", "tab-abc")
       .send({ message: "Hello from tab A" });
 
-    expect(engine.chat).toHaveBeenCalledWith("Hello from tab A", "tab-abc", undefined, "local");
+    expect(engine.chat).toHaveBeenCalledWith("Hello from tab A", "tab-abc", undefined, "local", expect.any(String));
   });
 
   it("uses 'default' session when no X-Session-Id header", async () => {
@@ -230,7 +230,7 @@ describe("POST /api/chat", () => {
       .post("/api/chat")
       .send({ message: "Hello" });
 
-    expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local");
+    expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local", expect.any(String));
   });
 
   it("isolates history between different session IDs", async () => {
