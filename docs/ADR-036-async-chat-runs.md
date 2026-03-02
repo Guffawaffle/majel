@@ -3,7 +3,7 @@
 **Status:** Proposed  
 **Date:** 2026-03-02  
 **Authors:** Guff, GitHub Copilot (GPT-5.3-Codex)  
-**References:** ADR-004 (AX envelope), ADR-009 (logging), ADR-019 (user/privacy), ADR-026b (proposal/apply safety), ADR-027 (GenAI SDK), ADR-031 (Svelte migration), ADR-032 (cache)
+**References:** ADR-004 (AX envelope), ADR-009 (logging), ADR-019 (user/privacy), ADR-026b (proposal/apply safety), ADR-027 (GenAI SDK), ADR-031 (Svelte migration), ADR-032 (cache), ADR-037 (realtime event streaming)
 
 ---
 
@@ -26,7 +26,7 @@ Adopt an **asynchronous chat run model**:
 
 1. `POST /api/chat` becomes a **submission endpoint** that validates input, creates a persisted run, and returns quickly.
 2. Execution happens in a background processor that updates persisted run state.
-3. UI reads progress via polling (`GET /api/chat/runs/:runId`) and later upgrades to server-sent events (SSE).
+3. UI reads progress via server-sent events (SSE) as the primary transport (`GET /api/chat/runs/:runId/events`), with polling/snapshot only as degraded fallback.
 4. Final answer, proposals, and trace metadata are persisted on the run and replayable after refresh/reconnect.
 5. Request timeouts remain short and deterministic; long runtime is managed by run lifecycle controls instead of open HTTP sockets.
 
@@ -89,13 +89,17 @@ Response (`200 OK`):
 
 Final states include `answer` and `proposals`.
 
+Note:
+- This endpoint is authoritative snapshot state and degraded fallback.
+- Realtime UX is delivered by SSE per ADR-037.
+
 #### Cancel
 `POST /api/chat/runs/:runId/cancel`
 
 - Allowed while `queued` or `running`.
 - Sets status `cancelled` and emits a cancellation signal to the worker.
 
-#### Streaming (Phase 2)
+#### Streaming (Phase 1)
 `GET /api/chat/runs/:runId/events` (SSE)
 
 - Emits structured events: `run.started`, `run.progress`, `run.proposal`, `run.completed`, `run.failed`.
@@ -247,16 +251,16 @@ Incident triage:
 
 ## Rollout Plan
 
-### Phase 1 — Durable Polling
+### Phase 1 — Durable Streaming
 - Add `chat_runs` + `chat_run_events` schema.
 - Convert `POST /api/chat` to submit-and-return-202.
-- Add `GET /api/chat/runs/:runId` and `cancel` endpoint.
-- Add in-process worker and status polling in web chat.
+- Add `GET /api/chat/runs/:runId`, `events`, and `cancel` endpoints.
+- Add in-process worker and SSE status streaming in web chat.
 - Persist proposal IDs and final answer through run completion.
 
-### Phase 2 — Streaming UX
-- Add SSE endpoint for run events.
-- Update web chat to prefer SSE with polling fallback.
+### Phase 2 — Hardened Reconnect
+- Add replay semantics (`Last-Event-ID`) and fallback snapshot recovery.
+- Tune keepalive/backoff behavior for Cloud Run/proxy idle windows.
 
 ### Phase 3 — Queue Externalization
 - Move run execution off API process into dedicated worker runtime.
