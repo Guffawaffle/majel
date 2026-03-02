@@ -47,6 +47,7 @@ export function makeState(overrides: Partial<AppState> = {}): AppState {
     proposalStoreFactory: null,
     operationEventStore: null,
     operationEventStoreFactory: null,
+    chatRunStore: null,
     toolContextFactory: null,
     effectStore: null,
     startupComplete: false,

@@ -12,6 +12,7 @@ import type { GeminiEngine } from "../src/server/services/gemini/index.js";
 import type { MemoryService, Frame } from "../src/server/services/memory.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
 import { createOperationEventStoreFactory } from "../src/server/stores/operation-event-store.js";
+import { createChatRunStore } from "../src/server/stores/chat-run-store.js";
 import { makeState } from "./helpers/make-state.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 import { collectApiRoutes } from "../src/server/route-introspection.js";
@@ -119,6 +120,21 @@ describe("GET /api/health", () => {
 // ─── POST /api/chat ─────────────────────────────────────────────
 
 describe("POST /api/chat", () => {
+  async function waitForRunStatus(
+    app: ReturnType<typeof createApp>,
+    runId: string,
+    targetStatus: string,
+  ): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 20; i += 1) {
+      const statusRes = await testRequest(app).get(`/api/chat/runs/${runId}`);
+      if (statusRes.status === 200 && statusRes.body.data?.status === targetStatus) {
+        return statusRes.body.data as Record<string, unknown>;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error(`run ${runId} did not reach ${targetStatus} state`);
+  }
+
   it("returns 400 when message is missing", async () => {
     const state = makeState({ geminiEngine: makeMockEngine() });
     const app = createApp(state);
@@ -170,6 +186,124 @@ describe("POST /api/chat", () => {
     expect(res.body.data.sessionId).toBe("default");
     expect(res.body.data.tabId).toBe("default_tab");
     expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local", expect.any(String));
+  });
+
+  it("supports async submit-and-return flow with run status", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine("Async success.");
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .set("X-Session-Id", "session-async")
+      .send({ message: "Hello async", tabId: "tab-async", async: true });
+
+    expect(submit.status).toBe(202);
+    expect(submit.body.data.runId).toMatch(/^crun_/);
+    expect(submit.body.data.status).toBe("queued");
+
+    const runData = await waitForRunStatus(app, submit.body.data.runId as string, "succeeded");
+    expect(runData.answer).toBe("Async success.");
+    expect(runData.sessionId).toBe("session-async");
+    expect(runData.tabId).toBe("tab-async");
+  });
+
+  it("returns 400 when async is not boolean", async () => {
+    const state = makeState({ geminiEngine: makeMockEngine() });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello", async: "yes" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PARAM");
+  });
+
+  it("cancels an async run and surfaces cancelled status", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine("Should not be returned after cancel.");
+    (engine.chat as ReturnType<typeof vi.fn>).mockImplementation(
+      async () => new Promise<string>((resolve) => setTimeout(() => resolve("Late answer"), 80)),
+    );
+
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .set("X-Session-Id", "session-cancel")
+      .send({ message: "Cancel me", tabId: "tab-cancel", async: true });
+
+    expect(submit.status).toBe(202);
+    const runId = submit.body.data.runId as string;
+
+    const cancelRes = await testRequest(app)
+      .post(`/api/chat/runs/${runId}/cancel`)
+      .send({});
+    expect(cancelRes.status).toBe(202);
+
+    const runData = await waitForRunStatus(app, runId, "cancelled");
+    expect(runData.sessionId).toBe("session-cancel");
+    expect(runData.tabId).toBe("tab-cancel");
+  });
+
+  it("returns 404 for unknown run status", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const state = makeState({
+      geminiEngine: makeMockEngine("noop"),
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+    });
+    const app = createApp(state);
+
+    const statusRes = await testRequest(app).get("/api/chat/runs/crun_unknown");
+    expect(statusRes.status).toBe(404);
+  });
+
+  it("exposes traceable error fields on failed async run status", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine();
+    (engine.chat as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("quota exhausted"));
+
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .set("X-Session-Id", "session-fail")
+      .send({ message: "Fail async", tabId: "tab-fail", async: true });
+
+    expect(submit.status).toBe(202);
+    const runId = submit.body.data.runId as string;
+
+    const runData = await waitForRunStatus(app, runId, "failed");
+    expect(runData.traceId).toBeTruthy();
+    expect(runData.errorCode).toBe("GEMINI_ERROR");
+    expect(typeof runData.errorMessage).toBe("string");
   });
 
   it("registers and emits run lifecycle events with session/tab routing", async () => {

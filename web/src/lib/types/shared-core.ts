@@ -81,6 +81,11 @@ export interface ChatResponse {
   runId?: string;
   sessionId?: string;
   tabId?: string;
+  traceId?: string;
+  requestId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  cancelReason?: string | null;
   answer: string;
   proposals?: ChatProposal[];
   trace?: ChatTrace;

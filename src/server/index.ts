@@ -48,6 +48,7 @@ import { createResearchStoreFactory } from "./stores/research-store.js";
 import { createInventoryStoreFactory } from "./stores/inventory-store.js";
 import { createProposalStoreFactory } from "./stores/proposal-store.js";
 import { createOperationEventStoreFactory } from "./stores/operation-event-store.js";
+import { createChatRunStore } from "./stores/chat-run-store.js";
 import { createEffectStore } from "./stores/effect-store.js";
 import { loadEffectSeedData } from "./services/effect-seed-loader.js";
 import { createPool, ensureAppRole } from "./db.js";
@@ -138,6 +139,7 @@ const state: AppState = {
   proposalStoreFactory: null,
   operationEventStore: null,
   operationEventStoreFactory: null,
+  chatRunStore: null,
   toolContextFactory: null,
   effectStore: null,
   startupComplete: false,
@@ -540,6 +542,14 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "operation event store init failed");
   }
 
+  // 2p. Initialize chat run store (ADR-036 Day 4)
+  try {
+    state.chatRunStore = await createChatRunStore(adminPool, pool);
+    log.boot.info("chat run store online (ADR-036, durable queue)");
+  } catch (err) {
+    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "chat run store init failed");
+  }
+
   // Resolve config from settings store
   const { geminiApiKey } = state.config;
 
@@ -669,6 +679,7 @@ async function shutdown(): Promise<void> {
   state.targetStore?.close();
   state.referenceStore?.close();
   state.effectStore?.close();
+  state.chatRunStore?.close();
   if (state.memoryService) {
     await state.memoryService.close();
   }

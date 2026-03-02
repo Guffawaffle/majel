@@ -413,3 +413,92 @@ jsonPayload.event=~"tool:result:error|chat:empty-answer"
 ### Privacy Guardrail
 
 Do not request or inspect another user's session transcript for debugging. Use trace payload + structured server logs + receipts only.
+
+## Async Chat Run Queue (ADR-036 Day 4)
+
+Use this section to diagnose durable async chat execution (`chat_runs` + SSE lifecycle events).
+
+### Fast Triage Fields
+
+- `runId`
+- `traceId` (request ID when present, otherwise run ID fallback)
+- `requestId` (when available)
+- `sessionId`, `tabId`, `userId`
+- terminal status: `failed|cancelled|timed_out`
+- `errorCode` / `errorMessage` from `GET /api/chat/runs/:runId`
+
+### Cloud Logging Queries (Async Queue)
+
+#### Query D — claim loop failures
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="gemini"
+jsonPayload.event="chat_run.claim_loop.error"
+```
+
+#### Query E — stale run recovery (watchdog/requeue)
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="gemini"
+jsonPayload.event="chat_run.requeue_stale"
+```
+
+#### Query F — single run trace (recommended)
+
+Replace `TRACE_ID_HERE` with `traceId` from API/UI:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.traceId="TRACE_ID_HERE"
+```
+
+#### Query G — terminal worker failures
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="gemini"
+jsonPayload.event=~"chat_run.failed|chat_run.worker.failed"
+```
+
+### Operator Workflow
+
+1. Start with `GET /api/chat/runs/:runId` and capture `status`, `traceId`, `errorCode`, `errorMessage`.
+2. Run Query F by `traceId` to reconstruct full timeline.
+3. If status is `timed_out`, check Query E for stale-run recovery spikes.
+4. If status is `failed`, check Query G and verify upstream Gemini/tool errors.
+5. If status is `cancelled`, confirm expected source (`queued` vs `running`) from cancellation events.
+
+### Escalation Thresholds
+
+- More than 5 `chat_run.claim_loop.error` events in 10 minutes.
+- Repeated `chat_run.requeue_stale` events (possible worker starvation or lock churn).
+- Multiple `timed_out` runs for same user/session in short window.
+
+### CLI Triage Shortcut (Pricing-Aware)
+
+Use the cloud CLI helper to gather a compact diagnostic bundle by ID:
+
+```
+npm run cloud:triage -- --run-id crun_...
+npm run cloud:triage -- --trace-id <traceId> --minutes 120 --limit 300
+npm run cloud:triage -- --request-id <requestId> --ax
+npm run ax -- triage:bundle --run-id crun_...
+```
+
+Guardrails baked into command defaults:
+
+- default window: 60 minutes (min 5, max 360)
+- default limit: 200 rows (min 20, max 500)
+- max rows are capped to avoid high-noise/high-read triage runs
+
+Cost principle:
+
+- Keep logs useful but compact; narrow first by `runId`/`traceId`/`requestId`.
+- Widen time window and row limit only when first pass is inconclusive.
+- Logging ingestion volume is the main driver of Cloud Logging cost; read/triage breadth also has operational overhead.

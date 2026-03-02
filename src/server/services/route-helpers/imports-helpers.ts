@@ -2,6 +2,10 @@ import { ErrorCode } from "../../envelope.js";
 import type { OwnershipState } from "../../stores/overlay-store.js";
 import type { ImportFormat } from "../import-mapping.js";
 
+const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const MAX_IMPORT_BASE64_CHARS = 15_000_000;
+const MAX_IMPORT_DECODED_BYTES = 11_500_000;
+
 export interface OfficerOverlayRow {
   refId: string;
   ownershipState: OwnershipState;
@@ -29,8 +33,16 @@ export function validateSourcePayload(payload: Record<string, unknown>):
   if (typeof contentBase64 !== "string" || contentBase64.length === 0) {
     return { ok: false, code: ErrorCode.MISSING_PARAM, message: "contentBase64 is required" };
   }
-  if (contentBase64.length > 15_000_000) {
+  if (contentBase64.length > MAX_IMPORT_BASE64_CHARS) {
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: "contentBase64 exceeds size limit" };
+  }
+  if (!BASE64_RE.test(contentBase64)) {
+    return { ok: false, code: ErrorCode.INVALID_PARAM, message: "contentBase64 must be valid base64" };
+  }
+  const decodedBytes = Math.floor((contentBase64.length * 3) / 4)
+    - (contentBase64.endsWith("==") ? 2 : contentBase64.endsWith("=") ? 1 : 0);
+  if (decodedBytes > MAX_IMPORT_DECODED_BYTES) {
+    return { ok: false, code: ErrorCode.INVALID_PARAM, message: "decoded import payload exceeds size limit" };
   }
   if (format !== "csv" && format !== "tsv" && format !== "xlsx") {
     return { ok: false, code: ErrorCode.INVALID_PARAM, message: 'format must be one of "csv", "tsv", "xlsx"' };

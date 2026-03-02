@@ -14,6 +14,7 @@ const OP_ID_RE = /^[a-zA-Z0-9._:-]{2,120}$/;
 const ALLOWED_TOPICS = new Set(["chat_run", "runner_job"]);
 const POLL_MS = 1000;
 const KEEPALIVE_MS = 15000;
+const SSE_EVENT_RE = /^[a-zA-Z0-9_.:-]{1,80}$/;
 
 function parseTopic(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -96,12 +97,6 @@ export function createEventRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.NOT_FOUND, "Operation not found", 404);
     }
 
-    const writeSse = (event: string, data: Record<string, unknown>, id?: number): void => {
-      if (id != null) res.write(`id: ${id}\n`);
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
-
     res.status(200);
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -112,6 +107,34 @@ export function createEventRoutes(appState: AppState): Router {
     let cursor = parseLastEventId(req.header("Last-Event-ID") ?? req.query.lastEventId);
     let closed = false;
     let inFlight = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+
+    const cleanup = (): void => {
+      if (closed) return;
+      closed = true;
+      if (pollTimer) clearInterval(pollTimer);
+      if (keepaliveTimer) clearInterval(keepaliveTimer);
+      try {
+        res.end();
+      } catch {
+        // socket already closed
+      }
+    };
+
+    const writeSse = (event: string, data: Record<string, unknown>, id?: number): void => {
+      if (closed) return;
+      const safeEvent = SSE_EVENT_RE.test(event) ? event : "run.message";
+      try {
+        if (id != null) res.write(`id: ${id}\n`);
+        res.write(`event: ${safeEvent}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (err) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        log.http.warn({ err: errMessage, topic, operationId, userId }, "event stream write failed");
+        cleanup();
+      }
+    };
 
     const flushReplay = async (): Promise<void> => {
       const replay = await store.listSince(topic, operationId, cursor, 200);
@@ -131,7 +154,7 @@ export function createEventRoutes(appState: AppState): Router {
 
     await flushReplay();
 
-    const pollTimer = setInterval(async () => {
+    pollTimer = setInterval(async () => {
       if (closed || inFlight) return;
       inFlight = true;
       try {
@@ -144,7 +167,7 @@ export function createEventRoutes(appState: AppState): Router {
       }
     }, POLL_MS);
 
-    const keepaliveTimer = setInterval(() => {
+    keepaliveTimer = setInterval(() => {
       if (closed) return;
       writeSse("keepalive", {
         topic,
@@ -154,14 +177,6 @@ export function createEventRoutes(appState: AppState): Router {
         timestamp: new Date().toISOString(),
       });
     }, KEEPALIVE_MS);
-
-    const cleanup = (): void => {
-      if (closed) return;
-      closed = true;
-      clearInterval(pollTimer);
-      clearInterval(keepaliveTimer);
-      res.end();
-    };
 
     req.on("close", cleanup);
     req.on("aborted", cleanup);

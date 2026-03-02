@@ -28,6 +28,7 @@
  *   canonical:preflight Validate canonical feed before apply
  *   canonical:postcheck Verify runtime canonical status after apply
  *   effects:coverage Full-feed effects coverage threshold check
+ *   triage:bundle Build Cloud Logging incident bundle (structured + markdown)
  *   tmp        Workspace temp-file helper (stdin/content/read)
  */
 
@@ -54,6 +55,7 @@ import effectsGates from "./ax/effects-gates.js";
 import effectsActivationSmoke from "./ax/effects-activation-smoke.js";
 import dataIngestion from "./ax/data-ingestion.js";
 import effectsPromoteDb from "./ax/effects-promote-db.js";
+import triageBundle from "./ax/triage-bundle.js";
 import tmp from "./ax/tmp.js";
 import { runCapture } from "./ax/runner.js";
 
@@ -120,6 +122,7 @@ const COMMANDS: Record<string, AxCommand> = {
   "effects:snapshot:export": effectsSnapshotExport,
   "effects:snapshot:verify": effectsSnapshotVerify,
   "effects:coverage": effectsCoverage,
+  "triage:bundle": triageBundle,
   "effects:gates": effectsGates,
   "effects:activation:smoke": effectsActivationSmoke,
   "effects:promote:db": effectsPromoteDb,

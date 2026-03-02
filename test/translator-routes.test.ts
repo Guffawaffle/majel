@@ -204,6 +204,22 @@ describe("POST /api/translate/preview", () => {
     expect(res.body.error.code).toBe("MISSING_PARAM");
   });
 
+  it("returns 400 when payload is an array", async () => {
+    const state = makeState({ startupComplete: true });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/translate/preview")
+      .send({
+        configName: "stfc-command-center-v1",
+        payload: [],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("MISSING_PARAM");
+    expect(res.body.error.message).toContain("non-null object");
+  });
+
   it("returns translation result for valid request", async () => {
     const state = makeState({ startupComplete: true });
     const app = createApp(state);
@@ -317,6 +333,25 @@ describe("POST /api/translate/apply", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("MISSING_PARAM");
+  });
+
+  it("returns 400 when dry_run is not boolean", async () => {
+    const tcf = createMockToolContextFactory();
+    const state = makeState({ startupComplete: true, toolContextFactory: tcf });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/translate/apply")
+      .send({
+        configName: "stfc-command-center-v1",
+        payload: { officers: [] },
+        dry_run: "yes",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PARAM");
+    expect(res.body.error.message).toContain("dry_run must be a boolean");
+    expect(mockedExecute).not.toHaveBeenCalled();
   });
 
   it("returns 400 when payload is missing", async () => {

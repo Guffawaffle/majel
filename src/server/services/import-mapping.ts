@@ -120,6 +120,9 @@ const KNOWN_SCHEMA_M86_MAP: Record<string, string> = {
 };
 
 const KNOWN_SCHEMA_M86_REQUIRED_HEADERS = ["officer", "level", "owned"];
+const MAX_IMPORT_PARSE_ROWS = 10_001; // header + 10k rows
+const MAX_IMPORT_PARSE_COLUMNS = 200;
+const MAX_IMPORT_CELL_CHARS = 20_000;
 
 export async function analyzeImport(
   input: ImportAnalyzeInput,
@@ -256,6 +259,23 @@ async function parseRows(input: ImportAnalyzeInput): Promise<string[][]> {
   }
 
   return parseDelimited(buffer.toString("utf8"), ",");
+}
+
+function enforceParseSafety(rows: string[][]): string[][] {
+  if (rows.length > MAX_IMPORT_PARSE_ROWS) {
+    throw new Error(`Import exceeds maximum rows (${MAX_IMPORT_PARSE_ROWS - 1} data rows + header)`);
+  }
+  for (const row of rows) {
+    if (row.length > MAX_IMPORT_PARSE_COLUMNS) {
+      throw new Error(`Import exceeds maximum columns (${MAX_IMPORT_PARSE_COLUMNS})`);
+    }
+    for (const cell of row) {
+      if (cell.length > MAX_IMPORT_CELL_CHARS) {
+        throw new Error(`Import cell exceeds maximum length (${MAX_IMPORT_CELL_CHARS})`);
+      }
+    }
+  }
+  return rows;
 }
 
 function applyMappedValue(target: MappedImportRow, field: string, raw: string): void {
@@ -414,7 +434,7 @@ function parseDelimited(text: string, delimiter: string): string[][] {
     rows.push(currentRow);
   }
 
-  return rows;
+  return enforceParseSafety(rows);
 }
 
 async function parseXlsxFirstSheet(buffer: Buffer): Promise<string[][]> {
@@ -426,12 +446,16 @@ async function parseXlsxFirstSheet(buffer: Buffer): Promise<string[][]> {
 
   const rows: string[][] = [];
   worksheet.eachRow((row) => {
-    rows.push(row.values
+    const parsed = row.values
       ? (row.values as unknown[]).slice(1).map((cell) => String(cell ?? ""))
-      : []);
+      : [];
+    rows.push(parsed);
+    if (rows.length > MAX_IMPORT_PARSE_ROWS) {
+      throw new Error(`Import exceeds maximum rows (${MAX_IMPORT_PARSE_ROWS - 1} data rows + header)`);
+    }
   });
 
-  return rows;
+  return enforceParseSafety(rows);
 }
 
 function detectKnownSchemaSuggestions(headers: string[]): ImportSuggestion[] | null {

@@ -18,8 +18,11 @@ import { createSafeRouter } from "../safe-router.js";
 import { listTranslatorConfigs, loadTranslatorConfig, translate } from "../services/translator/index.js";
 import { executeFleetTool } from "../services/fleet-tools/index.js";
 
-/** Characters forbidden in configName to prevent path traversal. */
-const UNSAFE_CONFIG_RE = /[./\\]/;
+const CONFIG_NAME_RE = /^[a-zA-Z0-9_-]{1,80}$/;
+
+function isValidPayloadObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
 
 export function createTranslatorRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -42,10 +45,10 @@ export function createTranslatorRoutes(appState: AppState): Router {
     if (typeof configName !== "string" || configName.length === 0) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "configName is required", 400);
     }
-    if (UNSAFE_CONFIG_RE.test(configName)) {
+    if (!CONFIG_NAME_RE.test(configName)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "configName contains invalid characters", 400);
     }
-    if (payload === undefined || payload === null || typeof payload !== "object") {
+    if (!isValidPayloadObject(payload)) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "payload must be a non-null object", 400);
     }
 
@@ -69,11 +72,14 @@ export function createTranslatorRoutes(appState: AppState): Router {
     if (typeof configName !== "string" || configName.length === 0) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "configName is required", 400);
     }
-    if (UNSAFE_CONFIG_RE.test(configName)) {
+    if (!CONFIG_NAME_RE.test(configName)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "configName contains invalid characters", 400);
     }
-    if (payload === undefined || payload === null || typeof payload !== "object") {
+    if (!isValidPayloadObject(payload)) {
       return sendFail(res, ErrorCode.MISSING_PARAM, "payload must be a non-null object", 400);
+    }
+    if (dry_run !== undefined && typeof dry_run !== "boolean") {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "dry_run must be a boolean when provided", 400);
     }
 
     const configPath = join(process.cwd(), "data", "translators", `${configName}.translator.json`);

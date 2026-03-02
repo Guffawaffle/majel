@@ -40,6 +40,8 @@
     "cloud:build": "tsx scripts/cloud.ts build",
     "cloud:push": "tsx scripts/cloud.ts push",
     "cloud:logs": "tsx scripts/cloud.ts logs",
+    "cloud:triage": "tsx scripts/cloud.ts triage",
+    "cloud:triage:bundle": "tsx scripts/cloud.ts triage:bundle",
     "cloud:status": "tsx scripts/cloud.ts status",
     "cloud:health": "tsx scripts/cloud.ts health",
     "cloud:secrets": "tsx scripts/cloud.ts secrets",
@@ -88,7 +90,8 @@
   "overrides": {
     "rimraf": "^6.1.3",
     "glob": "^13.0.3",
-    "minimatch": "^10.2.1"
+    "minimatch": "^10.2.3",
+    "rollup": "^4.59.0"
   },
   "dependencies": {
     "@google/genai": "^1.42.0",

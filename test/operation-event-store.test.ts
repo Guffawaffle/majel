@@ -85,4 +85,22 @@ describe("operation-event-store", () => {
     expect(evt.sessionId).toBe("session-42");
     expect(evt.tabId).toBe("tab-42");
   });
+
+  it("rejects invalid topics and routing IDs", async () => {
+    const factory = await createOperationEventStoreFactory(pool);
+    const store = factory.forUser("user-a");
+
+    await expect(
+      store.register("BAD_TOPIC", "run-1", { sessionId: "session-1", tabId: "tab-1" }),
+    ).rejects.toThrow("Invalid operation topic");
+
+    await expect(
+      store.emit({
+        topic: "chat_run",
+        operationId: "run-1",
+        routing: { sessionId: "no spaces allowed", tabId: "tab-1" },
+        eventType: "run.started",
+      }),
+    ).rejects.toThrow("Invalid sessionId");
+  });
 });

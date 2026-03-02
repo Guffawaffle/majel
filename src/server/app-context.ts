@@ -24,6 +24,7 @@ import type { ResearchStore, ResearchStoreFactory } from "./stores/research-stor
 import type { InventoryStore, InventoryStoreFactory } from "./stores/inventory-store.js";
 import type { ProposalStore, ProposalStoreFactory } from "./stores/proposal-store.js";
 import type { OperationEventStore, OperationEventStoreFactory } from "./stores/operation-event-store.js";
+import type { ChatRunStore } from "./stores/chat-run-store.js";
 import type { EffectStore } from "./stores/effect-store.js";
 import type { ToolContextFactory } from "./services/fleet-tools/index.js";
 import type { AppConfig } from "./config.js";
@@ -85,6 +86,8 @@ export interface AppState {
   operationEventStore: OperationEventStore | null;
   /** ADR-037: Factory for per-user operation event stores. */
   operationEventStoreFactory: OperationEventStoreFactory | null;
+  /** ADR-036 Day 4: Durable async chat run queue store. */
+  chatRunStore: ChatRunStore | null;
   /** #93: Factory for per-user tool contexts. */
   toolContextFactory: ToolContextFactory | null;
   /** ADR-034 #132: Effect taxonomy + ability catalog store. */

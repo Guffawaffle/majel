@@ -6,6 +6,32 @@
 
 import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
 
+const ALLOWED_TOPICS = new Set(["chat_run", "runner_job"]);
+const TOPIC_RE = /^[a-z0-9_]{2,40}$/;
+const OPERATION_ID_RE = /^[a-zA-Z0-9._:-]{2,120}$/;
+const ROUTING_ID_RE = /^[a-zA-Z0-9_-]{2,120}$/;
+
+function assertTopic(topic: string): void {
+  if (!TOPIC_RE.test(topic) || !ALLOWED_TOPICS.has(topic)) {
+    throw new Error(`Invalid operation topic: ${topic}`);
+  }
+}
+
+function assertOperationId(operationId: string): void {
+  if (!OPERATION_ID_RE.test(operationId)) {
+    throw new Error(`Invalid operation ID: ${operationId}`);
+  }
+}
+
+function assertRouting(routing: OperationRouting): void {
+  if (!ROUTING_ID_RE.test(routing.sessionId)) {
+    throw new Error(`Invalid sessionId: ${routing.sessionId}`);
+  }
+  if (!ROUTING_ID_RE.test(routing.tabId)) {
+    throw new Error(`Invalid tabId: ${routing.tabId}`);
+  }
+}
+
 export interface OperationEvent {
   seq: number;
   topic: string;
@@ -139,6 +165,9 @@ function mapOperationEvent(row: Record<string, unknown>): OperationEvent {
 function createScopedStore(pool: Pool, userId: string): OperationEventStore {
   return {
     async register(topic, operationId, routing) {
+      assertTopic(topic);
+      assertOperationId(operationId);
+      assertRouting(routing);
       return withUserScope(pool, userId, async (client) => {
         await client.query(
           `INSERT INTO operation_streams
@@ -154,6 +183,9 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
     },
 
     async emit(input) {
+      assertTopic(input.topic);
+      assertOperationId(input.operationId);
+      assertRouting(input.routing);
       return withUserScope(pool, userId, async (client) => {
         await client.query(
           `INSERT INTO operation_streams
@@ -187,6 +219,8 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
     },
 
     async listSince(topic, operationId, afterSeq, limit = 100) {
+      assertTopic(topic);
+      assertOperationId(operationId);
       return withUserRead(pool, userId, async (client) => {
         const result = await client.query(
           `SELECT ${EVENT_COLS}
@@ -204,6 +238,8 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
     },
 
     async latest(topic, operationId) {
+      assertTopic(topic);
+      assertOperationId(operationId);
       return withUserRead(pool, userId, async (client) => {
         const result = await client.query(
           `SELECT ${EVENT_COLS}
@@ -221,6 +257,8 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
     },
 
     async getRouting(topic, operationId) {
+      assertTopic(topic);
+      assertOperationId(operationId);
       return withUserRead(pool, userId, async (client) => {
         const result = await client.query(
           `SELECT session_id AS "sessionId", tab_id AS "tabId"

@@ -171,6 +171,38 @@ describe("Import routes — data interactions", () => {
     }
   });
 
+  it("POST /api/import/parse rejects malformed base64 payload", async () => {
+    const res = await testRequest(app)
+      .post("/api/import/parse")
+      .send({
+        fileName: "fleet.csv",
+        contentBase64: "%%%not-base64%%%",
+        format: "csv",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PARAM");
+    expect(res.body.error.message).toContain("valid base64");
+  });
+
+  it("POST /api/import/parse rejects oversized row counts", async () => {
+    const header = "Officer,Level";
+    const lines = [header, ...Array.from({ length: 10_001 }, () => "A,1")];
+    const csv = `${lines.join("\n")}\n`;
+
+    const res = await testRequest(app)
+      .post("/api/import/parse")
+      .send({
+        fileName: "fleet.csv",
+        contentBase64: toBase64(csv),
+        format: "csv",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_PARAM");
+    expect(res.body.error.message).toContain("maximum rows");
+  });
+
   it("POST /api/import/map maps typed fields from parsed rows", async () => {
     const res = await testRequest(app)
       .post("/api/import/map")
