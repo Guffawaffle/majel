@@ -71,6 +71,21 @@ describe("schema", () => {
     expect(cols).toContain("created_at");
   });
 
+  it("creates target_reminder_feedback table on init", async () => {
+    const result = await pool.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'target_reminder_feedback' ORDER BY ordinal_position`,
+    );
+    const cols = result.rows.map((r: Record<string, unknown>) => r.column_name);
+    expect(cols).toContain("id");
+    expect(cols).toContain("target_id");
+    expect(cols).toContain("reminder_key");
+    expect(cols).toContain("usefulness");
+    expect(cols).toContain("source");
+    expect(cols).toContain("note");
+    expect(cols).toContain("created_at");
+  });
+
   it("is idempotent (double init)", async () => {
     const store2 = await createTargetStore(pool);
     const { total } = await store2.counts();
@@ -377,6 +392,45 @@ describe("deltas", () => {
       delta: 1,
     });
     expect(delta).toBeNull();
+  });
+});
+
+describe("reminder feedback", () => {
+  it("records and lists reminder usefulness feedback", async () => {
+    const target = await store.create({ targetType: "ship", refId: "wiki:ship:voyager", targetTier: 1 });
+
+    const first = await store.recordReminderFeedback({
+      targetId: target.id,
+      reminderKey: "voyager_daily_loop",
+      usefulness: "useful",
+      source: "manual",
+    });
+
+    const second = await store.recordReminderFeedback({
+      reminderKey: "research_checkin",
+      usefulness: "not_useful",
+      source: "manual",
+      note: "Too noisy timing",
+    });
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+
+    const feedback = await store.listReminderFeedback(10);
+    expect(feedback).toHaveLength(2);
+    expect(feedback[0].reminderKey).toBe("research_checkin");
+    expect(feedback[0].usefulness).toBe("not_useful");
+    expect(feedback[1].targetId).toBe(target.id);
+  });
+
+  it("returns null when recording feedback for missing target", async () => {
+    const feedback = await store.recordReminderFeedback({
+      targetId: 999999,
+      reminderKey: "voyager_daily_loop",
+      usefulness: "useful",
+    });
+
+    expect(feedback).toBeNull();
   });
 });
 

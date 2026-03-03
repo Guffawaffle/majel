@@ -1577,6 +1577,109 @@ export async function recordTargetDeltaTool(
   };
 }
 
+export async function recordReminderFeedbackTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.targetStore) {
+    return { tool: "record_reminder_feedback", error: "Target system not available." };
+  }
+
+  const usefulness = str(args, "usefulness");
+  if (usefulness !== "useful" && usefulness !== "not_useful") {
+    return {
+      tool: "record_reminder_feedback",
+      error: "usefulness must be one of: useful, not_useful.",
+      input: { usefulness: args.usefulness ?? null },
+    };
+  }
+
+  const reminderKey = str(args, "reminder_key");
+  if (!reminderKey) {
+    return {
+      tool: "record_reminder_feedback",
+      error: "reminder_key is required.",
+      input: { reminder_key: args.reminder_key ?? null },
+    };
+  }
+
+  const targetId = args.target_id == null ? null : Number(args.target_id);
+  if (targetId != null && (!Number.isInteger(targetId) || targetId <= 0)) {
+    return {
+      tool: "record_reminder_feedback",
+      error: "target_id must be a positive integer when provided.",
+      input: { target_id: args.target_id },
+    };
+  }
+
+  if (targetId != null) {
+    const existing = await ctx.targetStore.get(targetId);
+    if (!existing) {
+      return {
+        tool: "record_reminder_feedback",
+        error: `Target not found with ID ${targetId}.`,
+        input: { target_id: targetId },
+      };
+    }
+  }
+
+  const source = str(args, "source") || "manual";
+  const note = str(args, "note") || null;
+
+  const feedback = await ctx.targetStore.recordReminderFeedback({
+    targetId,
+    reminderKey,
+    usefulness,
+    source,
+    note,
+  });
+
+  if (!feedback) {
+    return {
+      tool: "record_reminder_feedback",
+      error: "Failed to persist reminder feedback event.",
+      input: {
+        reminder_key: reminderKey,
+        usefulness,
+        target_id: targetId,
+      },
+    };
+  }
+
+  log.fleet.info(
+    {
+      event: "reminder.feedback_recorded",
+      userId: ctx.userId,
+      targetId,
+      reminderKey,
+      usefulness,
+      source,
+    },
+    "silent reminder feedback persisted",
+  );
+
+  return {
+    tool: "record_reminder_feedback",
+    persisted: true,
+    feedback: {
+      id: feedback.id,
+      targetId: feedback.targetId,
+      reminderKey: feedback.reminderKey,
+      usefulness: feedback.usefulness,
+      source: feedback.source,
+      note: feedback.note,
+      createdAt: feedback.createdAt,
+    },
+    logging: {
+      mode: "silent",
+      confirmationRequired: false,
+    },
+    nextSteps: [
+      "Use get_agent_experience_metrics to review reminder usefulness KPI trends.",
+    ],
+  };
+}
+
 // ─── Overlay Mutation Tools ─────────────────────────────────
 
 /**

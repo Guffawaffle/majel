@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Agent Experience Policy sprint checkpoint (ADR-038) — 2026-03-03
+- Added ADR-038 policy record for identity integrity, approved-stream trust, correction-loop behavior, and KPI acceptance gates. ([docs/ADR-038-agent-experience-policy.md](docs/ADR-038-agent-experience-policy.md))
+- Added prompt-level policy hardening for Ariadne/Majel identity framing, source-officiality guardrails, and approved-stream-first datastream rules. (`src/server/services/gemini/system-prompt.ts`, `test/gemini.test.ts`)
+- Added approved stream support and source-policy observability in `web_lookup` responses, including allowlisted `spocks.club` handling. (`src/server/services/fleet-tools/declarations.ts`, `src/server/services/fleet-tools/read-tools-web-lookup.ts`, `test/fleet-tools.test.ts`)
+- Added correction-delta persistence contract and tooling with immediate silent recalibration logging. (`src/server/stores/target-store.ts`, `src/server/services/fleet-tools/mutate-tools.ts`, `src/server/services/fleet-tools/index.ts`, `src/server/services/fleet-tools/trust.ts`, `test/target-store.test.ts`, `test/fleet-tools.test.ts`)
+- Added reminder usefulness feedback instrumentation for sprint KPI tracking via new mutation path and metrics aggregation. (`src/server/stores/target-store.ts`, `src/server/services/fleet-tools/declarations.ts`, `src/server/services/fleet-tools/mutate-tools.ts`, `src/server/services/fleet-tools/read-tools.ts`, `test/target-store.test.ts`, `test/fleet-tools.test.ts`)
+- Added confidence-threshold ETA mode (`0.75`) and KPI summary read tool for sprint telemetry visibility. (`src/server/services/fleet-tools/read-tools.ts`, `src/server/services/fleet-tools/declarations.ts`, `src/server/services/fleet-tools/index.ts`, `test/fleet-tools.test.ts`)
+
 #### Local PG startup reliability + docs structure sweep (2026-02-24)
 - Added `pg:autofix` helper command to force-create/start local Postgres service and enforce `unless-stopped` restart policy on the compose container. (`package.json`, `scripts/pg-autofix.mjs`)
 - Added/updated directory README coverage for core code and ops/data areas to clarify ownership, purpose, and safe usage patterns. (`src/README.md`, `src/server/README.md`, `src/server/routes/README.md`, `scripts/README.md`, `web/README.md`, `test/README.md`, `migrations/README.md`, `data/README.md`, `docs/README.md`, `review/README.md`, `receipts/README.md`, `legacy/README.md`, `tmp/README.md`, `schemas/README.md`)

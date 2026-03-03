@@ -252,6 +252,8 @@ function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStor
     markAchieved: vi.fn(),
     recordDelta: vi.fn(),
     listDeltas: vi.fn().mockResolvedValue([]),
+    recordReminderFeedback: vi.fn(),
+    listReminderFeedback: vi.fn().mockResolvedValue([]),
     listByRef: vi.fn(),
     counts: vi.fn().mockResolvedValue({
       total: 3, active: 2, achieved: 1, abandoned: 0,
@@ -502,6 +504,7 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("update_target");
     expect(names).toContain("complete_target");
     expect(names).toContain("record_target_delta");
+    expect(names).toContain("record_reminder_feedback");
   });
 
   it("includes agent experience metrics read tool", () => {
@@ -2282,6 +2285,26 @@ describe("get_agent_experience_metrics", () => {
             createdAt: new Date().toISOString(),
           },
         ]),
+        listReminderFeedback: vi.fn().mockResolvedValue([
+          {
+            id: 1,
+            targetId: 11,
+            reminderKey: "voyager_daily_loop",
+            usefulness: "useful",
+            source: "manual",
+            note: null,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 2,
+            targetId: null,
+            reminderKey: "research_checkin",
+            usefulness: "not_useful",
+            source: "manual",
+            note: null,
+            createdAt: new Date().toISOString(),
+          },
+        ]),
       }),
     };
 
@@ -2291,7 +2314,10 @@ describe("get_agent_experience_metrics", () => {
 
     expect(policy.etaConfidenceThreshold).toBe(0.75);
     expect(policy.sourceAttributionTargetPct).toBe(90);
+    expect(policy.reminderUsefulnessTargetPct).toBe(70);
     expect(observed.totalCorrectionDeltas).toBe(1);
+    expect(observed.reminderFeedbackTotal).toBe(2);
+    expect(observed.reminderUsefulnessPct).toBe(50);
     expect(observed.etaPolicyMode).toBe("thresholded_numeric_or_qualitative");
     expect(observed.sourceMix).toBeDefined();
   });
@@ -3170,6 +3196,48 @@ describe("record_target_delta", () => {
       metric: "voyager_blueprints",
       delta: 1,
     }, ctx) as Record<string, unknown>;
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("record_reminder_feedback", () => {
+  it("persists reminder usefulness feedback", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        recordReminderFeedback: vi.fn().mockResolvedValue({
+          id: 71,
+          targetId: 11,
+          reminderKey: "voyager_daily_loop",
+          usefulness: "useful",
+          source: "manual",
+          note: null,
+          createdAt: "2026-03-03T12:00:00.000Z",
+        }),
+        get: vi.fn().mockResolvedValue({ id: 11, targetType: "ship", refId: "ship-voyager", status: "active" }),
+      }),
+    };
+
+    const result = await executeFleetTool("record_reminder_feedback", {
+      reminder_key: "voyager_daily_loop",
+      usefulness: "useful",
+      target_id: 11,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("record_reminder_feedback");
+    expect(result.persisted).toBe(true);
+    expect((result.logging as Record<string, unknown>).mode).toBe("silent");
+  });
+
+  it("returns validation error for invalid usefulness", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore(),
+    };
+
+    const result = await executeFleetTool("record_reminder_feedback", {
+      reminder_key: "voyager_daily_loop",
+      usefulness: "meh",
+    }, ctx) as Record<string, unknown>;
+
     expect(result).toHaveProperty("error");
   });
 });

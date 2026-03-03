@@ -710,6 +710,39 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["target_id", "metric", "delta"],
     },
   },
+  {
+    name: "record_reminder_feedback",
+    description:
+      "Record whether a reminder was useful or not useful for the Admiral. " +
+      "Use this to capture explicit reminder quality feedback for sprint KPI tracking.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        usefulness: {
+          type: Type.STRING,
+          enum: ["useful", "not_useful"],
+          description: "Whether the reminder outcome was useful or not_useful.",
+        },
+        reminder_key: {
+          type: Type.STRING,
+          description: "Reminder identifier label (e.g. 'voyager_daily_loop', 'ops_upgrade_followup').",
+        },
+        target_id: {
+          type: Type.INTEGER,
+          description: "Optional related target ID when reminder feedback is tied to a tracked goal.",
+        },
+        source: {
+          type: Type.STRING,
+          description: "Optional source label (manual, stfc.space, spocks.club). Default: manual.",
+        },
+        note: {
+          type: Type.STRING,
+          description: "Optional short context note for this reminder feedback event.",
+        },
+      },
+      required: ["usefulness", "reminder_key"],
+    },
+  },
 
   // ─── ADR-025 Mutation Tools (Phase 3) ─────────────────────
 

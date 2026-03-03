@@ -41,6 +41,7 @@ export { __resetWebLookupStateForTests, webLookup };
 const ETA_CONFIDENCE_THRESHOLD = 0.75;
 const SOURCE_ATTRIBUTION_TARGET_PCT = 90;
 const CORRECTION_RECALIBRATION_TARGET_MINUTES = 5;
+const REMINDER_USEFULNESS_TARGET_PCT = 70;
 const APPROVED_STREAM_SOURCES = new Set(["stfc.space", "spocks.club"]);
 export { analyzeBattleLog, suggestCounter, suggestTargets };
 
@@ -1344,9 +1345,21 @@ export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<objec
     ? null
     : Math.round((approvedSourceCount / allDeltas.length) * 1000) / 10;
 
+  const reminderFeedback = await ctx.targetStore.listReminderFeedback(1000);
+  const reminderUsefulCount = reminderFeedback.filter((entry) => entry.usefulness === "useful").length;
+  const reminderNotUsefulCount = reminderFeedback.filter((entry) => entry.usefulness === "not_useful").length;
+  const reminderUsefulnessPct = reminderFeedback.length === 0
+    ? null
+    : Math.round((reminderUsefulCount / reminderFeedback.length) * 1000) / 10;
+  const reminderFeedbackLast7d = reminderFeedback.filter((entry) => {
+    const ts = Date.parse(entry.createdAt);
+    return Number.isFinite(ts) && now - ts <= last7dMs;
+  }).length;
+
   return {
     policy: {
       sourceAttributionTargetPct: SOURCE_ATTRIBUTION_TARGET_PCT,
+      reminderUsefulnessTargetPct: REMINDER_USEFULNESS_TARGET_PCT,
       correctionRecalibrationTargetMinutes: CORRECTION_RECALIBRATION_TARGET_MINUTES,
       etaConfidenceThreshold: ETA_CONFIDENCE_THRESHOLD,
       approvedStreams: Array.from(APPROVED_STREAM_SOURCES),
@@ -1362,15 +1375,27 @@ export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<objec
       metricMix: Object.fromEntries(Array.from(byMetric.entries()).sort(([a], [b]) => a.localeCompare(b))),
       approvedSourcePct,
       correctionRecalibrationLatencyMsP95: 0,
+      reminderFeedbackTotal: reminderFeedback.length,
+      reminderUsefulCount,
+      reminderNotUsefulCount,
+      reminderUsefulnessPct,
+      reminderFeedbackLast7d,
       etaPolicyMode: "thresholded_numeric_or_qualitative",
     },
-    notes: allDeltas.length === 0
-      ? [
+    notes: [
+      ...(allDeltas.length === 0
+        ? [
         "No correction deltas recorded yet — once record_target_delta is used, this report will populate trend metrics.",
       ]
-      : [
+        : [
         "Recalibration latency is immediate by design for persisted correction deltas.",
-      ],
+      ]),
+      ...(reminderFeedback.length === 0
+        ? [
+          "No reminder feedback recorded yet — use record_reminder_feedback to populate usefulness KPI metrics.",
+        ]
+        : []),
+    ],
   };
 }
 

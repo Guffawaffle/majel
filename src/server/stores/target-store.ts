@@ -87,6 +87,26 @@ export interface RecordTargetDeltaInput {
   note?: string | null;
 }
 
+export type ReminderUsefulness = "useful" | "not_useful";
+
+export interface ReminderFeedback {
+  id: number;
+  targetId: number | null;
+  reminderKey: string;
+  usefulness: ReminderUsefulness;
+  source: string;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface RecordReminderFeedbackInput {
+  targetId?: number | null;
+  reminderKey: string;
+  usefulness: ReminderUsefulness;
+  source?: string;
+  note?: string | null;
+}
+
 // ─── Store Interface ────────────────────────────────────────
 
 export interface TargetStore {
@@ -103,6 +123,8 @@ export interface TargetStore {
   markAchieved(id: number): Promise<Target | null>;
   recordDelta(input: RecordTargetDeltaInput): Promise<TargetProgressDelta | null>;
   listDeltas(targetId: number, limit?: number): Promise<TargetProgressDelta[]>;
+  recordReminderFeedback(input: RecordReminderFeedbackInput): Promise<ReminderFeedback | null>;
+  listReminderFeedback(limit?: number): Promise<ReminderFeedback[]>;
   listByRef(refId: string): Promise<Target[]>;
   counts(): Promise<{
     total: number;
@@ -194,6 +216,31 @@ const SCHEMA_STATEMENTS = [
         WITH CHECK (user_id = current_setting('app.current_user_id', true));
     END IF;
   END $$`,
+
+  `CREATE TABLE IF NOT EXISTS target_reminder_feedback (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'local',
+    target_id INTEGER REFERENCES targets(id) ON DELETE SET NULL,
+    reminder_key TEXT NOT NULL,
+    usefulness TEXT NOT NULL CHECK (usefulness IN ('useful', 'not_useful')),
+    source TEXT NOT NULL DEFAULT 'manual',
+    note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_target_reminder_feedback_user_created ON target_reminder_feedback(user_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_target_reminder_feedback_target_created ON target_reminder_feedback(target_id, created_at DESC)`,
+  `ALTER TABLE target_reminder_feedback ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE target_reminder_feedback FORCE ROW LEVEL SECURITY`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies
+      WHERE tablename = 'target_reminder_feedback' AND policyname = 'target_reminder_feedback_user_isolation'
+    ) THEN
+      CREATE POLICY target_reminder_feedback_user_isolation ON target_reminder_feedback
+        USING (user_id = current_setting('app.current_user_id', true))
+        WITH CHECK (user_id = current_setting('app.current_user_id', true));
+    END IF;
+  END $$`,
 ];
 
 // ─── SQL ────────────────────────────────────────────────────
@@ -218,6 +265,13 @@ const SQL = {
     WHERE target_id = $1
     ORDER BY created_at DESC, id DESC
     LIMIT $2`,
+  recordReminderFeedback: `INSERT INTO target_reminder_feedback (user_id, target_id, reminder_key, usefulness, source, note)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id, target_id, reminder_key, usefulness, source, note, created_at`,
+  listReminderFeedback: `SELECT id, target_id, reminder_key, usefulness, source, note, created_at
+    FROM target_reminder_feedback
+    ORDER BY created_at DESC, id DESC
+    LIMIT $1`,
   counts: `SELECT
     COUNT(*) AS total,
     COUNT(*) FILTER (WHERE status = 'active') AS active,
@@ -257,6 +311,18 @@ function mapDeltaRow(row: Record<string, unknown>): TargetProgressDelta {
     metric: String(row.metric),
     delta: Number(row.delta),
     absoluteValue: row.absolute_value == null ? null : Number(row.absolute_value),
+    source: String(row.source),
+    note: row.note == null ? null : String(row.note),
+    createdAt: (row.created_at as Date).toISOString(),
+  };
+}
+
+function mapReminderFeedbackRow(row: Record<string, unknown>): ReminderFeedback {
+  return {
+    id: row.id as number,
+    targetId: row.target_id == null ? null : Number(row.target_id),
+    reminderKey: String(row.reminder_key),
+    usefulness: row.usefulness as ReminderUsefulness,
     source: String(row.source),
     note: row.note == null ? null : String(row.note),
     createdAt: (row.created_at as Date).toISOString(),
@@ -417,6 +483,39 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
       return withUserRead(pool, userId, async (client) => {
         const result = await client.query(SQL.listDeltas, [targetId, Math.max(1, Math.min(limit, 200))]);
         return result.rows.map(mapDeltaRow);
+      });
+    },
+
+    async recordReminderFeedback(input) {
+      return withUserScope(pool, userId, async (client) => {
+        const reminderKey = input.reminderKey.trim();
+        const source = (input.source ?? "manual").trim() || "manual";
+        const note = input.note == null ? null : String(input.note).trim().slice(0, 500);
+        const targetId = input.targetId ?? null;
+
+        if (targetId != null) {
+          const targetResult = await client.query(SQL.get, [targetId]);
+          if (targetResult.rows.length === 0) {
+            return null;
+          }
+        }
+
+        const result = await client.query(SQL.recordReminderFeedback, [
+          userId,
+          targetId,
+          reminderKey,
+          input.usefulness,
+          source,
+          note,
+        ]);
+        return mapReminderFeedbackRow(result.rows[0]);
+      });
+    },
+
+    async listReminderFeedback(limit = 200) {
+      return withUserRead(pool, userId, async (client) => {
+        const result = await client.query(SQL.listReminderFeedback, [Math.max(1, Math.min(limit, 1000))]);
+        return result.rows.map(mapReminderFeedbackRow);
       });
     },
 
