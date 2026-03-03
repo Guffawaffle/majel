@@ -241,6 +241,68 @@ jsonPayload.subsystem="http"
 "Blocked by IP allowlist"
 ```
 
+### 14. Agent Experience correction + reminder feedback events (ADR-038)
+
+Track the new sprint KPI event stream for correction recalibration and reminder usefulness capture:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="fleet"
+jsonPayload.event=("target.delta_recorded" OR "reminder.feedback_recorded")
+```
+
+Focus only on reminder usefulness feedback events:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="fleet"
+jsonPayload.event="reminder.feedback_recorded"
+```
+
+Focus only on correction delta events:
+
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="majel"
+jsonPayload.subsystem="fleet"
+jsonPayload.event="target.delta_recorded"
+```
+
+---
+
+## Agent Experience KPI Operations (ADR-038)
+
+### When to record reminder feedback
+
+Record a feedback event whenever the Admiral explicitly signals reminder quality, e.g.:
+
+- “That reminder helped” → `usefulness: "useful"`
+- “That reminder wasn’t useful/noisy” → `usefulness: "not_useful"`
+
+Use `record_reminder_feedback` with:
+
+- `usefulness` (required): `useful` or `not_useful`
+- `reminder_key` (required): stable label for reminder class (`voyager_daily_loop`, `ops_upgrade_followup`)
+- `target_id` (optional): attach feedback to active tracked target when relevant
+- `source` / `note` (optional): context labels
+
+### Daily KPI review procedure
+
+1. Call `get_agent_experience_metrics`.
+2. Confirm `observed.reminderFeedbackTotal` is increasing with real feedback usage.
+3. Compare `observed.reminderUsefulnessPct` against `policy.reminderUsefulnessTargetPct`.
+4. If usefulness drops below target, inspect recent `reminder.feedback_recorded` log notes and adjust reminder timing/content.
+
+### Incident hint: usefulness metric stuck at zero
+
+If reminder usefulness remains empty/zero over multiple days while reminders are being issued:
+
+1. Verify reminder feedback is being captured via `record_reminder_feedback` calls.
+2. Check Cloud Logging query #14 for `reminder.feedback_recorded` events.
+3. Validate the metrics path by calling `get_agent_experience_metrics` and confirming `reminderFeedbackTotal` updates.
+
 ---
 
 ## Cloud Monitoring Alerts
