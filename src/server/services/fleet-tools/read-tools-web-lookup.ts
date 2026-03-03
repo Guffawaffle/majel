@@ -1,6 +1,7 @@
 import { log } from "../../logger.js";
 
-const WEB_LOOKUP_ALLOWLIST = new Set(["stfc.space", "memory-alpha.fandom.com", "stfc.fandom.com"]);
+const WEB_LOOKUP_ALLOWLIST = new Set(["stfc.space", "spocks.club", "memory-alpha.fandom.com", "stfc.fandom.com"]);
+const APPROVED_STFC_STREAMS = new Set(["stfc.space", "spocks.club"]);
 const WEB_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
 const ROBOTS_CACHE_TTL_MS = 60 * 60 * 1000;
 const WEB_LOOKUP_RATE_LIMIT_MAX = 5;
@@ -83,6 +84,21 @@ function snapshotWebLookupMetrics(): Record<string, number> {
     rateLimited: webLookupMetrics.rateLimited,
     robotsBlocked: webLookupMetrics.robotsBlocked,
     failures: webLookupMetrics.failures,
+  };
+}
+
+function buildSourcePolicy(domain: string): {
+  domain: string;
+  sourceTier: "approved_stream" | "community_reference";
+  approvedStream: boolean;
+  attributionRequired: boolean;
+} {
+  const approvedStream = APPROVED_STFC_STREAMS.has(domain);
+  return {
+    domain,
+    sourceTier: approvedStream ? "approved_stream" : "community_reference",
+    approvedStream,
+    attributionRequired: true,
   };
 }
 
@@ -327,6 +343,38 @@ async function lookupStfcSpace(
   };
 }
 
+async function lookupGenericHtmlDomain(
+  domain: string,
+  query: string,
+  entityType: "officer" | "ship" | "event" | "auto",
+): Promise<object> {
+  const response = await fetch(`https://${domain}/?s=${encodeURIComponent(query)}`, safeFetchInit());
+  if (!response.ok) {
+    return { error: `Lookup failed (${response.status}) for ${domain}` };
+  }
+
+  const html = await safeReadText(response);
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const headingMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const fallbackSnippetMatch = html.match(/<p[^>]*>([\s\S]{40,600}?)<\/p>/i);
+
+  const title = toPlainText(headingMatch?.[1] ?? titleMatch?.[1] ?? query).slice(0, 160);
+  const summary = extractMetaDescription(html)
+    || toPlainText(fallbackSnippetMatch?.[1] ?? "").slice(0, 800);
+
+  return {
+    source: domain,
+    query,
+    entityType,
+    result: {
+      title,
+      summary,
+      url: `https://${domain}/?s=${encodeURIComponent(query)}`,
+      type: entityType,
+    },
+  };
+}
+
 export async function webLookup(
   domainInput: string,
   queryInput: string,
@@ -342,7 +390,7 @@ export async function webLookup(
     return { error: "domain is required." };
   }
   if (!WEB_LOOKUP_ALLOWLIST.has(domain)) {
-    return { error: `Domain '${domain}' is not allowlisted.` };
+    return { error: `Domain '${domain}' is not allowlisted.`, sourcePolicy: buildSourcePolicy(domain) };
   }
   if (!query) {
     return { error: "query is required." };
@@ -356,6 +404,7 @@ export async function webLookup(
     return {
       tool: "web_lookup",
       cache: { hit: true, ttlMs: cached.expiresAt - Date.now() },
+      sourcePolicy: buildSourcePolicy(domain),
       observability: snapshotWebLookupMetrics(),
       ...cached.payload,
     };
@@ -369,6 +418,7 @@ export async function webLookup(
     return {
       error: `Rate limit exceeded for ${domain}.`,
       retryAfterMs: rate.retryAfterMs ?? 0,
+      sourcePolicy: buildSourcePolicy(domain),
       observability: snapshotWebLookupMetrics(),
     };
   }
@@ -380,18 +430,22 @@ export async function webLookup(
     return {
       error: `robots.txt policy blocks lookup for ${domain}.`,
       robots,
+      sourcePolicy: buildSourcePolicy(domain),
       observability: snapshotWebLookupMetrics(),
     };
   }
 
   const payload = domain.endsWith("fandom.com")
     ? await lookupFandom(domain, query, entityType)
-    : await lookupStfcSpace(domain, query, entityType);
+    : domain === "stfc.space"
+      ? await lookupStfcSpace(domain, query, entityType)
+      : await lookupGenericHtmlDomain(domain, query, entityType);
 
   const result = {
     tool: "web_lookup",
     cache: { hit: false, ttlMs: WEB_LOOKUP_CACHE_TTL_MS },
     robots,
+    sourcePolicy: buildSourcePolicy(domain),
     observability: snapshotWebLookupMetrics(),
     ...payload,
   };

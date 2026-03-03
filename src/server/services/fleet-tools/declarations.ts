@@ -301,7 +301,7 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       properties: {
         domain: {
           type: Type.STRING,
-          enum: ["stfc.space", "memory-alpha.fandom.com", "stfc.fandom.com"],
+          enum: ["stfc.space", "spocks.club", "memory-alpha.fandom.com", "stfc.fandom.com"],
           description: "Allowlisted domain to query.",
         },
         query: {
@@ -534,6 +534,14 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "get_agent_experience_metrics",
+    description:
+      "Summarize Ariadne agent-experience KPIs from current target/correction data and policy thresholds. " +
+      "Returns correction delta activity, source mix, and ETA confidence policy status for sprint tracking. " +
+      "Call this when the Admiral asks for progress on the Agent Experience Policy sprint.",
+    // No parameters
+  },
+  {
     name: "suggest_targets",
     description:
       "Gather comprehensive fleet state to suggest new acquisition and progression targets. " +
@@ -663,6 +671,43 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ["target_id"],
+    },
+  },
+  {
+    name: "record_target_delta",
+    description:
+      "Record a correction delta against an active target and trigger immediate projection recalibration. " +
+      "Use this when the Admiral reports progress changes like blueprint drops, daily gains, or revised counts. " +
+      "Persists immediately with silent logging; confirmation is only needed for contradiction cases.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        target_id: {
+          type: Type.INTEGER,
+          description: "Target ID to update with a progress correction delta (from list_targets).",
+        },
+        metric: {
+          type: Type.STRING,
+          description: "Progress metric name (e.g. 'voyager_blueprints', 'officer_shards', 'ore_stock').",
+        },
+        delta: {
+          type: Type.NUMBER,
+          description: "Signed delta amount (+1 gain, -1 spend/loss).",
+        },
+        absolute_value: {
+          type: Type.NUMBER,
+          description: "Optional absolute metric value after applying delta (authoritative latest count).",
+        },
+        source: {
+          type: Type.STRING,
+          description: "Optional correction source label (manual, stfc.space, spocks.club). Default: manual.",
+        },
+        note: {
+          type: Type.STRING,
+          description: "Optional short context note for this correction event.",
+        },
+      },
+      required: ["target_id", "metric", "delta"],
     },
   },
 

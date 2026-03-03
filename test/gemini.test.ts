@@ -24,6 +24,12 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("1932–2008");
     });
 
+    it("keeps Ariadne as self-chosen name within the Majel project lineage", () => {
+      const prompt = buildSystemPrompt();
+      expect(prompt).toContain("self-chosen mission name");
+      expect(prompt).toContain("The project is Majel");
+    });
+
     it("establishes personality traits", () => {
       const prompt = buildSystemPrompt();
       expect(prompt).toContain("PERSONALITY:");
@@ -96,6 +102,14 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("OPERATING RULES");
       expect(prompt).toContain("SOURCE ATTRIBUTION");
       expect(prompt).toContain("CONFIDENCE SIGNALING");
+    });
+
+    it("includes datastream policy for approved streams and tos-safe guidance", () => {
+      const prompt = buildSystemPrompt();
+      expect(prompt).toContain("DATASTREAM POLICY");
+      expect(prompt).toContain("stfc.space");
+      expect(prompt).toContain("spocks.club");
+      expect(prompt).toContain("DLL injection");
     });
 
     it("signals uncertainty is expected behavior", () => {

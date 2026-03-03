@@ -250,6 +250,8 @@ function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStor
     update: vi.fn(),
     delete: vi.fn(),
     markAchieved: vi.fn(),
+    recordDelta: vi.fn(),
+    listDeltas: vi.fn().mockResolvedValue([]),
     listByRef: vi.fn(),
     counts: vi.fn().mockResolvedValue({
       total: 3, active: 2, achieved: 1, abandoned: 0,
@@ -499,6 +501,12 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("create_target");
     expect(names).toContain("update_target");
     expect(names).toContain("complete_target");
+    expect(names).toContain("record_target_delta");
+  });
+
+  it("includes agent experience metrics read tool", () => {
+    const names = FLEET_TOOL_DECLARATIONS.map((t) => t.name);
+    expect(names).toContain("get_agent_experience_metrics");
   });
 
   it("includes overlay mutation tools", () => {
@@ -521,6 +529,10 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     const lookup = FLEET_TOOL_DECLARATIONS.find((t) => t.name === "web_lookup");
     expect(lookup?.parameters?.required).toContain("domain");
     expect(lookup?.parameters?.required).toContain("query");
+
+    const domainEnum = (lookup?.parameters?.properties?.domain as { enum?: string[] } | undefined)?.enum ?? [];
+    expect(domainEnum).toContain("stfc.space");
+    expect(domainEnum).toContain("spocks.club");
   });
 
   it("search tools have required query parameter", () => {
@@ -683,6 +695,7 @@ describe("web_lookup", () => {
 
     expect(first.error).toBeUndefined();
     expect(first.tool).toBe("web_lookup");
+    expect((first.sourcePolicy as Record<string, unknown>).approvedStream).toBe(false);
     expect((first.cache as Record<string, unknown>).hit).toBe(false);
     expect(first).toHaveProperty("observability");
     expect((first.result as Record<string, unknown>).title).toBe("Spock");
@@ -745,6 +758,42 @@ describe("web_lookup", () => {
     expect((result.result as Record<string, unknown>).rarity).toBe("Epic");
     expect((result.result as Record<string, unknown>).faction).toBe("Federation");
     expect((result.result as Record<string, unknown>).grade).toBe("3");
+    expect(result).toHaveProperty("observability");
+    vi.unstubAllGlobals();
+  });
+
+  it("supports allowlisted generic domains like spocks.club", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue("User-agent: *\nDisallow:\n") })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: vi.fn().mockResolvedValue(`
+          <html>
+            <head>
+              <title>Voyager Blueprints Guide</title>
+              <meta name="description" content="Daily loops to improve Voyager blueprint intake." />
+            </head>
+            <body>
+              <h1>Voyager Blueprint Routes</h1>
+              <p>Use Away Teams and Hirogen loops to steadily gain blueprints.</p>
+            </body>
+          </html>
+        `),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await executeFleetTool("web_lookup", {
+      domain: "spocks.club",
+      query: "Voyager blueprints",
+      entity_type: "ship",
+    }, {}) as Record<string, unknown>;
+
+    expect(result.error).toBeUndefined();
+    expect(result.tool).toBe("web_lookup");
+    expect((result.sourcePolicy as Record<string, unknown>).approvedStream).toBe(true);
+    expect((result.sourcePolicy as Record<string, unknown>).sourceTier).toBe("approved_stream");
+    expect((result.result as Record<string, unknown>).title).toContain("Voyager");
+    expect((result.result as Record<string, unknown>).type).toBe("ship");
     expect(result).toHaveProperty("observability");
     vi.unstubAllGlobals();
   });
@@ -1564,9 +1613,46 @@ describe("estimate_acquisition_time", () => {
     const summary = result.summary as Record<string, unknown>;
     expect(summary.feasible).toBe(true);
     expect(summary.estimatedDays).toBe(10);
+    expect(summary.etaMode).toBe("numeric");
+    expect(summary.confidenceThreshold).toBe(0.75);
+    expect(Number(summary.confidenceScore)).toBeGreaterThanOrEqual(0.75);
 
     const perResource = result.perResource as Array<Record<string, unknown>>;
     expect(perResource[0]).toMatchObject({ name: "3★ Ore", gap: 250, dailyRate: 25, days: 10 });
+  });
+
+  it("falls back to qualitative ETA when confidence is below threshold", async () => {
+    const shipWithTiers = {
+      ...FIXTURE_SHIP,
+      maxTier: 10,
+      tiers: [
+        {
+          tier: 6,
+          components: [
+            { build_cost: [{ resource_id: 101, amount: 300, name: "3★ Ore" }] },
+          ],
+        },
+      ],
+    } as ReferenceShip;
+
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(shipWithTiers) }),
+      overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP_OVERLAY, tier: 5 }) }),
+      inventoryStore: createMockInventoryStore({
+        listItems: vi.fn().mockResolvedValue([{ id: 1, category: "ore", name: "3★ Ore", grade: null, quantity: 50, unit: null, source: "manual", capturedAt: "2026-02-18T00:00:00Z", updatedAt: "2026-02-18T00:00:00Z" }]),
+      }),
+    };
+
+    const result = await executeFleetTool(
+      "estimate_acquisition_time",
+      { ship_id: "ship-enterprise", target_tier: 6, daily_income: { ore: 0 } },
+      ctx,
+    ) as Record<string, unknown>;
+
+    const summary = result.summary as Record<string, unknown>;
+    expect(summary.etaMode).toBe("qualitative");
+    expect(summary.estimatedDays).toBeNull();
+    expect(summary.qualitativeGuidance).toBeTruthy();
   });
 
   it("returns ship-not-found error from upgrade path", async () => {
@@ -2167,11 +2253,51 @@ describe("list_targets", () => {
       status: "active",
       autoSuggested: false,
       achievedAt: null,
+      recentDeltas: [],
     });
   });
 
   it("returns error when target store unavailable", async () => {
     const result = await executeFleetTool("list_targets", {}, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("get_agent_experience_metrics", () => {
+  it("returns policy and observed correction metrics", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([
+          { id: 11, targetType: "ship", refId: "ship-voyager", status: "active" },
+        ]),
+        listDeltas: vi.fn().mockResolvedValue([
+          {
+            id: 1,
+            targetId: 11,
+            metric: "voyager_blueprints",
+            delta: 1,
+            absoluteValue: 33,
+            source: "spocks.club",
+            note: null,
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+      }),
+    };
+
+    const result = await executeFleetTool("get_agent_experience_metrics", {}, ctx) as Record<string, unknown>;
+    const policy = result.policy as Record<string, unknown>;
+    const observed = result.observed as Record<string, unknown>;
+
+    expect(policy.etaConfidenceThreshold).toBe(0.75);
+    expect(policy.sourceAttributionTargetPct).toBe(90);
+    expect(observed.totalCorrectionDeltas).toBe(1);
+    expect(observed.etaPolicyMode).toBe("thresholded_numeric_or_qualitative");
+    expect(observed.sourceMix).toBeDefined();
+  });
+
+  it("returns error when target store unavailable", async () => {
+    const result = await executeFleetTool("get_agent_experience_metrics", {}, {});
     expect(result).toHaveProperty("error");
   });
 });
@@ -2987,6 +3113,63 @@ describe("complete_target", () => {
 
   it("returns error when target store unavailable", async () => {
     const result = await executeFleetTool("complete_target", { target_id: 1 }, {});
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("record_target_delta", () => {
+  it("persists correction delta and returns recalibration summary", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        get: vi.fn().mockResolvedValue({ id: 11, targetType: "ship", refId: "ship-voyager", status: "active" }),
+        recordDelta: vi.fn().mockResolvedValue({
+          id: 90,
+          targetId: 11,
+          metric: "voyager_blueprints",
+          delta: 1,
+          absoluteValue: 33,
+          source: "manual",
+          note: "Hirogen refinery chest",
+          createdAt: "2026-03-03T10:00:00.000Z",
+        }),
+        listDeltas: vi.fn().mockResolvedValue([
+          {
+            id: 90,
+            targetId: 11,
+            metric: "voyager_blueprints",
+            delta: 1,
+            absoluteValue: 33,
+            source: "manual",
+            note: "Hirogen refinery chest",
+            createdAt: "2026-03-03T10:00:00.000Z",
+          },
+        ]),
+      }),
+    };
+
+    const result = await executeFleetTool("record_target_delta", {
+      target_id: 11,
+      metric: "voyager_blueprints",
+      delta: 1,
+      absolute_value: 33,
+      note: "Hirogen refinery chest",
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("record_target_delta");
+    expect(result.persisted).toBe(true);
+    expect((result.recalibration as Record<string, unknown>).mode).toBe("immediate");
+    expect((result.logging as Record<string, unknown>).mode).toBe("silent");
+  });
+
+  it("returns error when target is missing", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({ get: vi.fn().mockResolvedValue(null) }),
+    };
+    const result = await executeFleetTool("record_target_delta", {
+      target_id: 404,
+      metric: "voyager_blueprints",
+      delta: 1,
+    }, ctx) as Record<string, unknown>;
     expect(result).toHaveProperty("error");
   });
 });

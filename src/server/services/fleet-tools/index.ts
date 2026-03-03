@@ -44,6 +44,7 @@ import {
   resolveConflict,
   whatIfRemoveOfficer,
   listTargets,
+  getAgentExperienceMetrics,
   suggestTargets,
   detectConflicts,
   searchGameReference,
@@ -63,6 +64,7 @@ import {
   createTargetTool,
   updateTargetTool,
   completeTargetTool,
+  recordTargetDeltaTool,
   setShipOverlayTool,
   setOfficerOverlayTool,
   updateInventoryTool,
@@ -183,6 +185,8 @@ async function dispatchTool(
     // Target/goal tracking tools
     case "list_targets":
       return listTargets(args.target_type as string | undefined, args.status as string | undefined, ctx);
+    case "get_agent_experience_metrics":
+      return getAgentExperienceMetrics(ctx);
     case "suggest_targets":
       return suggestTargets(ctx);
     case "detect_target_conflicts":
@@ -194,6 +198,8 @@ async function dispatchTool(
       return updateTargetTool(args, ctx);
     case "complete_target":
       return completeTargetTool(args, ctx);
+    case "record_target_delta":
+      return recordTargetDeltaTool(args, ctx);
     // ADR-025 mutation tools
     case "create_bridge_core":
       return createBridgeCoreTool(args, ctx);

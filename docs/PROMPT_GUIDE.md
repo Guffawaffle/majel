@@ -293,6 +293,24 @@ Admiral corrections will accumulate into durable behavioral adjustments via a Ba
 
 ## 6. Future Prompt Features
 
+### Agent Experience Requests (Ariadne Work Order)
+
+Recent feedback from Ariadne maps cleanly to three concrete implementation tracks:
+
+1. **Interface Calibration ("Geordi") — reduce manual reporting friction**
+	- Goal: ingest approved streams automatically so Aria doesn't rely on manual updates for core state.
+	- Preferred sources: `stfc.space`, `spocks.club`, and other robots/TOS-safe integrations.
+	- Prompt implication: prefer approved streams first; avoid recommending ToS-risk data extraction methods.
+
+2. **Memory Synthesis ("Data") — better episodic continuity**
+	- Goal: strengthen Lex recall/summarization so Aria carries mission threads (Ops transitions, blueprint targets, pending reminders) across sessions with less user repetition.
+	- Runtime implication: tighter MicroRunner context manifests and selective recall injection for active goals.
+
+3. **Predictive Modeling — probabilistic progress estimates**
+	- Goal: move from static countdowns to confidence-based ETAs (e.g., blueprint acquisition odds under current loops).
+	- Data need: event cadence + inventory/resource deltas + historical yield snapshots.
+	- Safety implication: explicitly label probability outputs as modeled estimates, not guaranteed outcomes.
+
 ### Dynamic Context (planned)
 - Inject Lex memory recall results into the system prompt
 - "You last discussed X with the Admiral 3 days ago"

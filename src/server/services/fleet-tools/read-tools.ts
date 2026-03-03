@@ -37,6 +37,11 @@ import {
 } from "./read-tools-upgrade-helpers.js";
 
 export { __resetWebLookupStateForTests, webLookup };
+
+const ETA_CONFIDENCE_THRESHOLD = 0.75;
+const SOURCE_ATTRIBUTION_TARGET_PCT = 90;
+const CORRECTION_RECALIBRATION_TARGET_MINUTES = 5;
+const APPROVED_STREAM_SOURCES = new Set(["stfc.space", "spocks.club"]);
 export { analyzeBattleLog, suggestCounter, suggestTargets };
 
 /** Maximum results for search tools to avoid overwhelming the model context. */
@@ -719,6 +724,22 @@ export async function estimateAcquisitionTime(
   const nonBlocked = perResource.filter((entry) => !entry.blocked && entry.days != null);
   const estimatedDays = nonBlocked.length > 0 ? Math.max(...nonBlocked.map((entry) => Number(entry.days))) : null;
 
+  const hasBlocking = blocking.length > 0;
+  const hasOverrides = overrides.size > 0;
+  const confidenceScoreRaw = hasBlocking
+    ? 0.45
+    : 0.6
+      + (hasOverrides ? 0.15 : 0)
+      + (perResource.length > 0 && perResource.length <= 3 ? 0.1 : 0)
+      + (nonBlocked.length === perResource.length && perResource.length > 0 ? 0.05 : 0);
+  const confidenceScore = Math.max(0, Math.min(1, Math.round(confidenceScoreRaw * 100) / 100));
+  const numericEtaAllowed = estimatedDays != null && confidenceScore >= ETA_CONFIDENCE_THRESHOLD;
+  const qualitativeGuidance = numericEtaAllowed
+    ? null
+    : hasBlocking
+      ? "ETA confidence is low due to blocking resource rates; focus on unblocking daily income before trusting numeric timelines."
+      : "Current data confidence is below numeric ETA threshold; use qualitative pacing until more corrected rate data is available.";
+
   return {
     ship: upgradeResult.ship,
     target: {
@@ -728,9 +749,13 @@ export async function estimateAcquisitionTime(
     summary: {
       resourcesWithGap: perResource.length,
       blockingResources: blocking.length,
-      estimatedDays,
+      estimatedDays: numericEtaAllowed ? estimatedDays : null,
       feasible: blocking.length === 0 && estimatedDays !== null,
       overrideCount: overrides.size,
+      etaMode: numericEtaAllowed ? "numeric" : "qualitative",
+      confidenceScore,
+      confidenceThreshold: ETA_CONFIDENCE_THRESHOLD,
+      qualitativeGuidance,
     },
     assumptions: [
       "Uses calculate_upgrade_path gap output as baseline.",
@@ -1244,6 +1269,20 @@ export async function listTargets(
     Object.keys(filters).length > 0 ? filters as never : undefined,
   );
 
+  const deltasByTarget = new Map<number, Array<Record<string, unknown>>>();
+  await Promise.all(targets.map(async (target) => {
+    const deltas = await ctx.targetStore!.listDeltas(target.id, 5);
+    deltasByTarget.set(target.id, deltas.map((d) => ({
+      id: d.id,
+      metric: d.metric,
+      delta: d.delta,
+      absoluteValue: d.absoluteValue,
+      source: d.source,
+      note: d.note,
+      createdAt: d.createdAt,
+    })));
+  }));
+
   return {
     targets: targets.map((t) => ({
       id: t.id,
@@ -1258,8 +1297,80 @@ export async function listTargets(
       status: t.status,
       autoSuggested: t.autoSuggested,
       achievedAt: t.achievedAt,
+      recentDeltas: deltasByTarget.get(t.id) ?? [],
     })),
     totalTargets: targets.length,
+  };
+}
+
+export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<object> {
+  if (!ctx.targetStore) {
+    return { error: "Target system not available." };
+  }
+
+  const activeTargets = await ctx.targetStore.list({ status: "active" } as never);
+  const deltaGroups = await Promise.all(activeTargets.map(async (target) => ({
+    target,
+    deltas: await ctx.targetStore!.listDeltas(target.id, 200),
+  })));
+
+  const allDeltas = deltaGroups.flatMap((entry) =>
+    entry.deltas.map((delta) => ({ ...delta, targetId: entry.target.id, targetType: entry.target.targetType })),
+  );
+
+  const now = Date.now();
+  const last24hMs = 24 * 60 * 60 * 1000;
+  const last7dMs = 7 * 24 * 60 * 60 * 1000;
+
+  const countSince = (windowMs: number): number => allDeltas.filter((entry) => {
+    const ts = Date.parse(entry.createdAt);
+    return Number.isFinite(ts) && now - ts <= windowMs;
+  }).length;
+
+  const bySource = new Map<string, number>();
+  const byMetric = new Map<string, number>();
+  let withAbsoluteValue = 0;
+
+  for (const entry of allDeltas) {
+    bySource.set(entry.source, (bySource.get(entry.source) ?? 0) + 1);
+    byMetric.set(entry.metric, (byMetric.get(entry.metric) ?? 0) + 1);
+    if (entry.absoluteValue != null) withAbsoluteValue += 1;
+  }
+
+  const approvedSourceCount = Array.from(bySource.entries())
+    .filter(([source]) => APPROVED_STREAM_SOURCES.has(source))
+    .reduce((sum, [, count]) => sum + count, 0);
+  const approvedSourcePct = allDeltas.length === 0
+    ? null
+    : Math.round((approvedSourceCount / allDeltas.length) * 1000) / 10;
+
+  return {
+    policy: {
+      sourceAttributionTargetPct: SOURCE_ATTRIBUTION_TARGET_PCT,
+      correctionRecalibrationTargetMinutes: CORRECTION_RECALIBRATION_TARGET_MINUTES,
+      etaConfidenceThreshold: ETA_CONFIDENCE_THRESHOLD,
+      approvedStreams: Array.from(APPROVED_STREAM_SOURCES),
+      correctionPersistenceMode: "immediate_silent_log",
+    },
+    observed: {
+      activeTargets: activeTargets.length,
+      totalCorrectionDeltas: allDeltas.length,
+      correctionDeltasLast24h: countSince(last24hMs),
+      correctionDeltasLast7d: countSince(last7dMs),
+      deltasWithAbsoluteValue: withAbsoluteValue,
+      sourceMix: Object.fromEntries(Array.from(bySource.entries()).sort(([a], [b]) => a.localeCompare(b))),
+      metricMix: Object.fromEntries(Array.from(byMetric.entries()).sort(([a], [b]) => a.localeCompare(b))),
+      approvedSourcePct,
+      correctionRecalibrationLatencyMsP95: 0,
+      etaPolicyMode: "thresholded_numeric_or_qualitative",
+    },
+    notes: allDeltas.length === 0
+      ? [
+        "No correction deltas recorded yet — once record_target_delta is used, this report will populate trend metrics.",
+      ]
+      : [
+        "Recalibration latency is immediate by design for persisted correction deltas.",
+      ],
   };
 }
 

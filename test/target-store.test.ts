@@ -55,6 +55,22 @@ describe("schema", () => {
     expect(cols).toContain("achieved_at");
   });
 
+  it("creates target_deltas table on init", async () => {
+    const result = await pool.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'target_deltas' ORDER BY ordinal_position`,
+    );
+    const cols = result.rows.map((r: Record<string, unknown>) => r.column_name);
+    expect(cols).toContain("id");
+    expect(cols).toContain("target_id");
+    expect(cols).toContain("metric");
+    expect(cols).toContain("delta");
+    expect(cols).toContain("absolute_value");
+    expect(cols).toContain("source");
+    expect(cols).toContain("note");
+    expect(cols).toContain("created_at");
+  });
+
   it("is idempotent (double init)", async () => {
     const store2 = await createTargetStore(pool);
     const { total } = await store2.counts();
@@ -319,6 +335,48 @@ describe("counts", () => {
     expect(counts.total).toBe(0);
     expect(counts.active).toBe(0);
     expect(counts.byType.officer).toBe(0);
+  });
+});
+
+describe("deltas", () => {
+  it("records and lists target progress deltas", async () => {
+    const target = await store.create({ targetType: "ship", refId: "wiki:ship:voyager", targetTier: 1 });
+
+    const first = await store.recordDelta({
+      targetId: target.id,
+      metric: "voyager_blueprints",
+      delta: 1,
+      absoluteValue: 33,
+      source: "manual",
+      note: "Hirogen chest",
+    });
+
+    const second = await store.recordDelta({
+      targetId: target.id,
+      metric: "voyager_blueprints",
+      delta: 2,
+      absoluteValue: 35,
+      source: "spocks.club",
+      note: "Event pull",
+    });
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+
+    const deltas = await store.listDeltas(target.id, 10);
+    expect(deltas).toHaveLength(2);
+    expect(deltas[0].delta).toBe(2);
+    expect(deltas[0].absoluteValue).toBe(35);
+    expect(deltas[1].delta).toBe(1);
+  });
+
+  it("returns null when recording delta for missing target", async () => {
+    const delta = await store.recordDelta({
+      targetId: 999999,
+      metric: "voyager_blueprints",
+      delta: 1,
+    });
+    expect(delta).toBeNull();
   });
 });
 

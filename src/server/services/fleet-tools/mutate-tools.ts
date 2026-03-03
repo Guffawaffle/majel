@@ -41,6 +41,7 @@ import {
   type SyncOverlayOfficerInput,
   type SyncOverlayShipInput,
 } from "./mutate-tools-import-helpers.js";
+import { log } from "../../logger.js";
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -1447,6 +1448,131 @@ export async function completeTargetTool(
     nextSteps: [
       "Use suggest_targets for new acquisition recommendations.",
       "Use list_targets with status 'achieved' to review accomplishments.",
+    ],
+  };
+}
+
+export async function recordTargetDeltaTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.targetStore) {
+    return { tool: "record_target_delta", error: "Target system not available." };
+  }
+
+  const targetId = Number(args.target_id);
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return {
+      tool: "record_target_delta",
+      error: "Valid target_id is required.",
+      input: { target_id: args.target_id ?? null },
+    };
+  }
+
+  const metric = str(args, "metric");
+  if (!metric) {
+    return {
+      tool: "record_target_delta",
+      error: "metric is required.",
+      input: { metric: args.metric ?? null },
+    };
+  }
+
+  const delta = Number(args.delta);
+  if (!Number.isFinite(delta) || delta === 0) {
+    return {
+      tool: "record_target_delta",
+      error: "delta must be a non-zero number.",
+      input: { delta: args.delta ?? null },
+    };
+  }
+
+  const absoluteValue = args.absolute_value == null ? null : Number(args.absolute_value);
+  if (absoluteValue != null && (!Number.isFinite(absoluteValue) || absoluteValue < 0)) {
+    return {
+      tool: "record_target_delta",
+      error: "absolute_value must be a non-negative number when provided.",
+      input: { absolute_value: args.absolute_value },
+    };
+  }
+
+  const existing = await ctx.targetStore.get(targetId);
+  if (!existing) {
+    return {
+      tool: "record_target_delta",
+      error: `Target not found with ID ${targetId}.`,
+      input: { target_id: targetId },
+    };
+  }
+
+  const source = str(args, "source") || "manual";
+  const note = str(args, "note") || null;
+
+  const deltaRecord = await ctx.targetStore.recordDelta({
+    targetId,
+    metric,
+    delta,
+    absoluteValue,
+    source,
+    note,
+  });
+
+  if (!deltaRecord) {
+    return {
+      tool: "record_target_delta",
+      error: `Failed to persist correction delta for target ${targetId}.`,
+      input: { target_id: targetId, metric, delta },
+    };
+  }
+
+  log.fleet.info(
+    {
+      event: "target.delta_recorded",
+      userId: ctx.userId,
+      targetId,
+      metric,
+      delta,
+      absoluteValue,
+      source,
+    },
+    "silent correction delta persisted",
+  );
+
+  const recent = await ctx.targetStore.listDeltas(targetId, 20);
+  const metricRecent = recent.filter((entry) => entry.metric === metric);
+  const netDelta = Math.round(metricRecent.reduce((sum, entry) => sum + entry.delta, 0) * 1000) / 1000;
+
+  return {
+    tool: "record_target_delta",
+    persisted: true,
+    target: {
+      id: existing.id,
+      targetType: existing.targetType,
+      refId: existing.refId,
+      status: existing.status,
+    },
+    delta: {
+      id: deltaRecord.id,
+      metric: deltaRecord.metric,
+      delta: deltaRecord.delta,
+      absoluteValue: deltaRecord.absoluteValue,
+      source: deltaRecord.source,
+      note: deltaRecord.note,
+      createdAt: deltaRecord.createdAt,
+    },
+    recalibration: {
+      mode: "immediate",
+      metric,
+      netDelta,
+      latestAbsoluteValue: absoluteValue,
+    },
+    logging: {
+      mode: "silent",
+      confirmationRequired: false,
+    },
+    nextSteps: [
+      "Use list_targets to view updated recent delta history.",
+      "If an absolute count is known, include absolute_value on the next delta for tighter ETA confidence.",
     ],
   };
 }

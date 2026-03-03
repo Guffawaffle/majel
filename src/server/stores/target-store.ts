@@ -67,6 +67,26 @@ export interface UpdateTargetInput {
   status?: TargetStatus;
 }
 
+export interface TargetProgressDelta {
+  id: number;
+  targetId: number;
+  metric: string;
+  delta: number;
+  absoluteValue: number | null;
+  source: string;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface RecordTargetDeltaInput {
+  targetId: number;
+  metric: string;
+  delta: number;
+  absoluteValue?: number | null;
+  source?: string;
+  note?: string | null;
+}
+
 // ─── Store Interface ────────────────────────────────────────
 
 export interface TargetStore {
@@ -81,6 +101,8 @@ export interface TargetStore {
   update(id: number, fields: UpdateTargetInput): Promise<Target | null>;
   delete(id: number): Promise<boolean>;
   markAchieved(id: number): Promise<Target | null>;
+  recordDelta(input: RecordTargetDeltaInput): Promise<TargetProgressDelta | null>;
+  listDeltas(targetId: number, limit?: number): Promise<TargetProgressDelta[]>;
   listByRef(refId: string): Promise<Target[]>;
   counts(): Promise<{
     total: number;
@@ -146,6 +168,32 @@ const SCHEMA_STATEMENTS = [
         WITH CHECK (user_id = current_setting('app.current_user_id', true));
     END IF;
   END $$`,
+
+  `CREATE TABLE IF NOT EXISTS target_deltas (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'local',
+    target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+    metric TEXT NOT NULL,
+    delta DOUBLE PRECISION NOT NULL,
+    absolute_value DOUBLE PRECISION,
+    source TEXT NOT NULL DEFAULT 'manual',
+    note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_target_deltas_target_created ON target_deltas(target_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_target_deltas_user_created ON target_deltas(user_id, created_at DESC)`,
+  `ALTER TABLE target_deltas ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE target_deltas FORCE ROW LEVEL SECURITY`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies
+      WHERE tablename = 'target_deltas' AND policyname = 'target_deltas_user_isolation'
+    ) THEN
+      CREATE POLICY target_deltas_user_isolation ON target_deltas
+        USING (user_id = current_setting('app.current_user_id', true))
+        WITH CHECK (user_id = current_setting('app.current_user_id', true));
+    END IF;
+  END $$`,
 ];
 
 // ─── SQL ────────────────────────────────────────────────────
@@ -162,6 +210,14 @@ const SQL = {
     RETURNING ${COLS}`,
   delete: `DELETE FROM targets WHERE id = $1`,
   markAchieved: `UPDATE targets SET status = 'achieved', achieved_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING ${COLS}`,
+  recordDelta: `INSERT INTO target_deltas (user_id, target_id, metric, delta, absolute_value, source, note)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id, target_id, metric, delta, absolute_value, source, note, created_at`,
+  listDeltas: `SELECT id, target_id, metric, delta, absolute_value, source, note, created_at
+    FROM target_deltas
+    WHERE target_id = $1
+    ORDER BY created_at DESC, id DESC
+    LIMIT $2`,
   counts: `SELECT
     COUNT(*) AS total,
     COUNT(*) FILTER (WHERE status = 'active') AS active,
@@ -191,6 +247,19 @@ function mapRow(row: Record<string, unknown>): Target {
     createdAt: (row.created_at as Date).toISOString(),
     updatedAt: (row.updated_at as Date).toISOString(),
     achievedAt: row.achieved_at ? (row.achieved_at as Date).toISOString() : null,
+  };
+}
+
+function mapDeltaRow(row: Record<string, unknown>): TargetProgressDelta {
+  return {
+    id: row.id as number,
+    targetId: row.target_id as number,
+    metric: String(row.metric),
+    delta: Number(row.delta),
+    absoluteValue: row.absolute_value == null ? null : Number(row.absolute_value),
+    source: String(row.source),
+    note: row.note == null ? null : String(row.note),
+    createdAt: (row.created_at as Date).toISOString(),
   };
 }
 
@@ -317,6 +386,37 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
       return withUserScope(pool, userId, async (client) => {
         const result = await client.query(SQL.markAchieved, [id]);
         return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
+      });
+    },
+
+    async recordDelta(input) {
+      return withUserScope(pool, userId, async (client) => {
+        const targetResult = await client.query(SQL.get, [input.targetId]);
+        if (targetResult.rows.length === 0) {
+          return null;
+        }
+
+        const metric = input.metric.trim();
+        const source = (input.source ?? "manual").trim() || "manual";
+        const note = input.note == null ? null : String(input.note).trim().slice(0, 500);
+
+        const result = await client.query(SQL.recordDelta, [
+          userId,
+          input.targetId,
+          metric,
+          input.delta,
+          input.absoluteValue ?? null,
+          source,
+          note,
+        ]);
+        return mapDeltaRow(result.rows[0]);
+      });
+    },
+
+    async listDeltas(targetId, limit = 25) {
+      return withUserRead(pool, userId, async (client) => {
+        const result = await client.query(SQL.listDeltas, [targetId, Math.max(1, Math.min(limit, 200))]);
+        return result.rows.map(mapDeltaRow);
       });
     },
 

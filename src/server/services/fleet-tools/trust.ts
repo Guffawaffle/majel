@@ -34,6 +34,7 @@ const DEFAULT_TRUST: Record<string, TrustLevel> = {
   create_target: "auto",
   update_target: "auto",
   complete_target: "auto",
+  record_target_delta: "auto",
 
   // Approve: structural mutations
   create_bridge_core: "approve",

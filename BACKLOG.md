@@ -66,6 +66,50 @@ Ship a single, production-ready realtime operation stack where long-running chat
 
 ---
 
+## Planned Next Sprint — Agent Experience Policy (ADR-038)
+
+**Sprint umbrella:** ADR-038 execution sprint  
+**Linked doc:** [docs/ADR-038-agent-experience-policy.md](docs/ADR-038-agent-experience-policy.md)
+
+### Sprint Objective
+
+Ship the first operational slice of Ariadne’s agent-experience policy: stable identity behavior, approved-stream-first external lookup, correction feedback loops, and measurable telemetry for memory/reminder/prediction quality.
+
+### Sequenced Plan (single sprint)
+
+| Day | Track | Scope | Status |
+|---|---|---|---|
+| 1 | Policy | Finalize ADR-038 acceptance thresholds + non-goals | [x] Done |
+| 2 | Tooling | Source-trust observability fields + source labeling in tool outputs | [ ] Not started |
+| 3 | Corrections | Define and wire correction-delta ingest path for tracked goals | [ ] Not started |
+| 4 | Memory | Persist correction events in episodic continuity path for active goals | [ ] Not started |
+| 5 | Validation | Add regression tests + metric snapshots + runbook notes | [ ] Not started |
+
+### Confirmed Sprint Gates (locked)
+
+- Source attribution gate: >=90% on external/community-derived claims
+- Correction-to-recalibration gate: <=5 minutes
+- Sprint cadence: 5-day execution slice
+- Prediction gate: numeric ETA only when confidence threshold is met; otherwise qualitative guidance
+- ETA confidence threshold: 0.75 for numeric output
+- Correction persistence: immediate persistence with silent logging; interactive confirmation only on contradiction cases
+
+### Definition of Done
+
+- [ ] Identity contract holds in prompt tests (Ariadne persona, Majel lineage)
+- [ ] Approved-stream policy enforced and observable for external lookup paths
+- [ ] Correction delta path updates active projections within agreed latency budget
+- [ ] Reminder/prediction telemetry emitted for weekly review
+- [ ] Targeted tests pass and sprint notes recorded
+
+### Risk Controls
+
+- [ ] Keep prediction outputs estimate-labeled unless confidence threshold is met
+- [ ] Avoid expanding scope into full live-account integrations in this sprint
+- [ ] Keep correction schema minimal to reduce noisy/ambiguous updates
+
+---
+
 ## Critical — Must Fix Before Merge
 
 ### [x] Security Hardening (e685c09)
