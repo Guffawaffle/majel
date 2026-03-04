@@ -71,6 +71,8 @@ Ship a single, production-ready realtime operation stack where long-running chat
 **Sprint umbrella:** ADR-038 execution sprint  
 **Linked doc:** [docs/ADR-038-agent-experience-policy.md](docs/ADR-038-agent-experience-policy.md)
 
+**Sprint status:** [x] Complete (2026-03-04)
+
 ### Sprint Objective
 
 Ship the first operational slice of Ariadne’s agent-experience policy: stable identity behavior, approved-stream-first external lookup, correction feedback loops, and measurable telemetry for memory/reminder/prediction quality.
@@ -102,11 +104,21 @@ Ship the first operational slice of Ariadne’s agent-experience policy: stable 
 - [x] Reminder/prediction telemetry emitted for weekly review
 - [x] Targeted tests pass and sprint notes recorded
 
+### Delivered Outcomes (checkpoint)
+
+- [x] Identity + datastream policy hardened in prompt behavior and regression tests
+- [x] Approved-source lookup observability shipped (`stfc.space`, `spocks.club`)
+- [x] Correction loop contract shipped (`record_target_delta`) with immediate silent persistence
+- [x] Reminder usefulness contract shipped (`record_reminder_feedback`) and KPI aggregation
+- [x] Episodic continuity shipped in `list_targets` (`recentDeltas`, `recentReminderFeedback`, `continuity`)
+- [x] Repeat-question reduction proxy shipped (`record_goal_restatement` + metrics aggregation)
+- [x] Runbook/changelog updated and CI gates passed on each checkpoint
+
 ### Risk Controls
 
-- [ ] Keep prediction outputs estimate-labeled unless confidence threshold is met
-- [ ] Avoid expanding scope into full live-account integrations in this sprint
-- [ ] Keep correction schema minimal to reduce noisy/ambiguous updates
+- [x] Keep prediction outputs estimate-labeled unless confidence threshold is met
+- [x] Avoid expanding scope into full live-account integrations in this sprint
+- [x] Keep correction schema minimal to reduce noisy/ambiguous updates
 
 ---
 
