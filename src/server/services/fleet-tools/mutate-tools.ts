@@ -1680,6 +1680,96 @@ export async function recordReminderFeedbackTool(
   };
 }
 
+export async function recordGoalRestatementTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<object> {
+  if (!ctx.targetStore) {
+    return { tool: "record_goal_restatement", error: "Target system not available." };
+  }
+
+  const goalKey = str(args, "goal_key");
+  if (!goalKey) {
+    return {
+      tool: "record_goal_restatement",
+      error: "goal_key is required.",
+      input: { goal_key: args.goal_key ?? null },
+    };
+  }
+
+  const targetId = args.target_id == null ? null : Number(args.target_id);
+  if (targetId != null && (!Number.isInteger(targetId) || targetId <= 0)) {
+    return {
+      tool: "record_goal_restatement",
+      error: "target_id must be a positive integer when provided.",
+      input: { target_id: args.target_id },
+    };
+  }
+
+  if (targetId != null) {
+    const existing = await ctx.targetStore.get(targetId);
+    if (!existing) {
+      return {
+        tool: "record_goal_restatement",
+        error: `Target not found with ID ${targetId}.`,
+        input: { target_id: targetId },
+      };
+    }
+  }
+
+  const source = str(args, "source") || "manual";
+  const note = str(args, "note") || null;
+
+  const restatement = await ctx.targetStore.recordGoalRestatement({
+    targetId,
+    goalKey,
+    source,
+    note,
+  });
+
+  if (!restatement) {
+    return {
+      tool: "record_goal_restatement",
+      error: "Failed to persist goal restatement event.",
+      input: {
+        goal_key: goalKey,
+        target_id: targetId,
+      },
+    };
+  }
+
+  log.fleet.info(
+    {
+      event: "goal.restatement_recorded",
+      userId: ctx.userId,
+      targetId,
+      goalKey,
+      source,
+    },
+    "silent goal restatement persisted",
+  );
+
+  return {
+    tool: "record_goal_restatement",
+    persisted: true,
+    restatement: {
+      id: restatement.id,
+      targetId: restatement.targetId,
+      goalKey: restatement.goalKey,
+      source: restatement.source,
+      note: restatement.note,
+      createdAt: restatement.createdAt,
+    },
+    logging: {
+      mode: "silent",
+      confirmationRequired: false,
+    },
+    nextSteps: [
+      "Use get_agent_experience_metrics to review repeat-question reduction proxy metrics.",
+    ],
+  };
+}
+
 // ─── Overlay Mutation Tools ─────────────────────────────────
 
 /**

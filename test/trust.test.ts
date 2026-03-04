@@ -49,6 +49,7 @@ describe("getDefaultTrustMap", () => {
     expect(map.set_officer_overlay).toBe("auto");
     expect(map.set_ship_overlay).toBe("auto");
     expect(map.create_target).toBe("auto");
+    expect(map.record_goal_restatement).toBe("auto");
   });
 
   it("contains known approve-tier tools", () => {

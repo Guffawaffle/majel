@@ -42,6 +42,7 @@ const ETA_CONFIDENCE_THRESHOLD = 0.75;
 const SOURCE_ATTRIBUTION_TARGET_PCT = 90;
 const CORRECTION_RECALIBRATION_TARGET_MINUTES = 5;
 const REMINDER_USEFULNESS_TARGET_PCT = 70;
+const REPEAT_QUESTION_REDUCTION_TARGET_DIRECTION = "downward";
 const APPROVED_STREAM_SOURCES = new Set(["stfc.space", "spocks.club"]);
 export { analyzeBattleLog, suggestCounter, suggestTargets };
 
@@ -1389,10 +1390,26 @@ export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<objec
     return Number.isFinite(ts) && now - ts <= last7dMs;
   }).length;
 
+  const goalRestatements = await ctx.targetStore.listGoalRestatements(1000);
+  const goalRestatementsLast7d = goalRestatements.filter((entry) => {
+    const ts = Date.parse(entry.createdAt);
+    return Number.isFinite(ts) && now - ts <= last7dMs;
+  }).length;
+  const restatementsByGoal = new Map<string, number>();
+  for (const entry of goalRestatements) {
+    restatementsByGoal.set(entry.goalKey, (restatementsByGoal.get(entry.goalKey) ?? 0) + 1);
+  }
+  const repeatedGoalKeyCount = Array.from(restatementsByGoal.values()).filter((count) => count > 1).length;
+  const uniqueGoalKeyCount = restatementsByGoal.size;
+  const restatementsPerActiveTarget = activeTargets.length === 0
+    ? null
+    : Math.round((goalRestatements.length / activeTargets.length) * 100) / 100;
+
   return {
     policy: {
       sourceAttributionTargetPct: SOURCE_ATTRIBUTION_TARGET_PCT,
       reminderUsefulnessTargetPct: REMINDER_USEFULNESS_TARGET_PCT,
+      repeatQuestionReductionTargetDirection: REPEAT_QUESTION_REDUCTION_TARGET_DIRECTION,
       correctionRecalibrationTargetMinutes: CORRECTION_RECALIBRATION_TARGET_MINUTES,
       etaConfidenceThreshold: ETA_CONFIDENCE_THRESHOLD,
       approvedStreams: Array.from(APPROVED_STREAM_SOURCES),
@@ -1413,6 +1430,12 @@ export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<objec
       reminderNotUsefulCount,
       reminderUsefulnessPct,
       reminderFeedbackLast7d,
+      goalRestatementTotal: goalRestatements.length,
+      goalRestatementLast7d: goalRestatementsLast7d,
+      uniqueRestatedGoalKeys: uniqueGoalKeyCount,
+      repeatedGoalKeyCount,
+      restatementsPerActiveTarget,
+      repeatQuestionReductionSignal: repeatedGoalKeyCount === 0 ? "stable_or_improving" : "needs_reduction",
       etaPolicyMode: "thresholded_numeric_or_qualitative",
     },
     notes: [
@@ -1426,6 +1449,11 @@ export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<objec
       ...(reminderFeedback.length === 0
         ? [
           "No reminder feedback recorded yet — use record_reminder_feedback to populate usefulness KPI metrics.",
+        ]
+        : []),
+      ...(goalRestatements.length === 0
+        ? [
+          "No goal restatement events recorded yet — use record_goal_restatement to start repeat-question reduction tracking.",
         ]
         : []),
     ],

@@ -107,6 +107,22 @@ export interface RecordReminderFeedbackInput {
   note?: string | null;
 }
 
+export interface GoalRestatement {
+  id: number;
+  targetId: number | null;
+  goalKey: string;
+  source: string;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface RecordGoalRestatementInput {
+  targetId?: number | null;
+  goalKey: string;
+  source?: string;
+  note?: string | null;
+}
+
 // ─── Store Interface ────────────────────────────────────────
 
 export interface TargetStore {
@@ -125,6 +141,8 @@ export interface TargetStore {
   listDeltas(targetId: number, limit?: number): Promise<TargetProgressDelta[]>;
   recordReminderFeedback(input: RecordReminderFeedbackInput): Promise<ReminderFeedback | null>;
   listReminderFeedback(limit?: number): Promise<ReminderFeedback[]>;
+  recordGoalRestatement(input: RecordGoalRestatementInput): Promise<GoalRestatement | null>;
+  listGoalRestatements(limit?: number): Promise<GoalRestatement[]>;
   listByRef(refId: string): Promise<Target[]>;
   counts(): Promise<{
     total: number;
@@ -241,6 +259,30 @@ const SCHEMA_STATEMENTS = [
         WITH CHECK (user_id = current_setting('app.current_user_id', true));
     END IF;
   END $$`,
+
+  `CREATE TABLE IF NOT EXISTS target_goal_restatements (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'local',
+    target_id INTEGER REFERENCES targets(id) ON DELETE SET NULL,
+    goal_key TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_target_goal_restatements_user_created ON target_goal_restatements(user_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_target_goal_restatements_target_created ON target_goal_restatements(target_id, created_at DESC)`,
+  `ALTER TABLE target_goal_restatements ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE target_goal_restatements FORCE ROW LEVEL SECURITY`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies
+      WHERE tablename = 'target_goal_restatements' AND policyname = 'target_goal_restatements_user_isolation'
+    ) THEN
+      CREATE POLICY target_goal_restatements_user_isolation ON target_goal_restatements
+        USING (user_id = current_setting('app.current_user_id', true))
+        WITH CHECK (user_id = current_setting('app.current_user_id', true));
+    END IF;
+  END $$`,
 ];
 
 // ─── SQL ────────────────────────────────────────────────────
@@ -270,6 +312,13 @@ const SQL = {
     RETURNING id, target_id, reminder_key, usefulness, source, note, created_at`,
   listReminderFeedback: `SELECT id, target_id, reminder_key, usefulness, source, note, created_at
     FROM target_reminder_feedback
+    ORDER BY created_at DESC, id DESC
+    LIMIT $1`,
+  recordGoalRestatement: `INSERT INTO target_goal_restatements (user_id, target_id, goal_key, source, note)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING id, target_id, goal_key, source, note, created_at`,
+  listGoalRestatements: `SELECT id, target_id, goal_key, source, note, created_at
+    FROM target_goal_restatements
     ORDER BY created_at DESC, id DESC
     LIMIT $1`,
   counts: `SELECT
@@ -323,6 +372,17 @@ function mapReminderFeedbackRow(row: Record<string, unknown>): ReminderFeedback 
     targetId: row.target_id == null ? null : Number(row.target_id),
     reminderKey: String(row.reminder_key),
     usefulness: row.usefulness as ReminderUsefulness,
+    source: String(row.source),
+    note: row.note == null ? null : String(row.note),
+    createdAt: (row.created_at as Date).toISOString(),
+  };
+}
+
+function mapGoalRestatementRow(row: Record<string, unknown>): GoalRestatement {
+  return {
+    id: row.id as number,
+    targetId: row.target_id == null ? null : Number(row.target_id),
+    goalKey: String(row.goal_key),
     source: String(row.source),
     note: row.note == null ? null : String(row.note),
     createdAt: (row.created_at as Date).toISOString(),
@@ -516,6 +576,38 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
       return withUserRead(pool, userId, async (client) => {
         const result = await client.query(SQL.listReminderFeedback, [Math.max(1, Math.min(limit, 1000))]);
         return result.rows.map(mapReminderFeedbackRow);
+      });
+    },
+
+    async recordGoalRestatement(input) {
+      return withUserScope(pool, userId, async (client) => {
+        const goalKey = input.goalKey.trim();
+        const source = (input.source ?? "manual").trim() || "manual";
+        const note = input.note == null ? null : String(input.note).trim().slice(0, 500);
+        const targetId = input.targetId ?? null;
+
+        if (targetId != null) {
+          const targetResult = await client.query(SQL.get, [targetId]);
+          if (targetResult.rows.length === 0) {
+            return null;
+          }
+        }
+
+        const result = await client.query(SQL.recordGoalRestatement, [
+          userId,
+          targetId,
+          goalKey,
+          source,
+          note,
+        ]);
+        return mapGoalRestatementRow(result.rows[0]);
+      });
+    },
+
+    async listGoalRestatements(limit = 200) {
+      return withUserRead(pool, userId, async (client) => {
+        const result = await client.query(SQL.listGoalRestatements, [Math.max(1, Math.min(limit, 1000))]);
+        return result.rows.map(mapGoalRestatementRow);
       });
     },
 

@@ -66,6 +66,7 @@ import {
   completeTargetTool,
   recordTargetDeltaTool,
   recordReminderFeedbackTool,
+  recordGoalRestatementTool,
   setShipOverlayTool,
   setOfficerOverlayTool,
   updateInventoryTool,
@@ -203,6 +204,8 @@ async function dispatchTool(
       return recordTargetDeltaTool(args, ctx);
     case "record_reminder_feedback":
       return recordReminderFeedbackTool(args, ctx);
+    case "record_goal_restatement":
+      return recordGoalRestatementTool(args, ctx);
     // ADR-025 mutation tools
     case "create_bridge_core":
       return createBridgeCoreTool(args, ctx);

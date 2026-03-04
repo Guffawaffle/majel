@@ -743,6 +743,34 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["usefulness", "reminder_key"],
     },
   },
+  {
+    name: "record_goal_restatement",
+    description:
+      "Record when the Admiral restates an existing goal/target in chat so repeat-question reduction can be measured over time. " +
+      "Use this only for explicit restatement signals, not for normal discussion.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        goal_key: {
+          type: Type.STRING,
+          description: "Stable goal identifier label (e.g. 'voyager_blueprints', 'ops_40_push').",
+        },
+        target_id: {
+          type: Type.INTEGER,
+          description: "Optional related target ID when restatement maps to an active tracked goal.",
+        },
+        source: {
+          type: Type.STRING,
+          description: "Optional source label. Default: manual.",
+        },
+        note: {
+          type: Type.STRING,
+          description: "Optional context note (e.g. repeated due to reminder miss or unclear next step).",
+        },
+      },
+      required: ["goal_key"],
+    },
+  },
 
   // ─── ADR-025 Mutation Tools (Phase 3) ─────────────────────
 

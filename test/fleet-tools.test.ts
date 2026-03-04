@@ -254,6 +254,8 @@ function createMockTargetStore(overrides: Partial<TargetStore> = {}): TargetStor
     listDeltas: vi.fn().mockResolvedValue([]),
     recordReminderFeedback: vi.fn(),
     listReminderFeedback: vi.fn().mockResolvedValue([]),
+    recordGoalRestatement: vi.fn(),
+    listGoalRestatements: vi.fn().mockResolvedValue([]),
     listByRef: vi.fn(),
     counts: vi.fn().mockResolvedValue({
       total: 3, active: 2, achieved: 1, abandoned: 0,
@@ -505,6 +507,7 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
     expect(names).toContain("complete_target");
     expect(names).toContain("record_target_delta");
     expect(names).toContain("record_reminder_feedback");
+    expect(names).toContain("record_goal_restatement");
   });
 
   it("includes agent experience metrics read tool", () => {
@@ -2351,6 +2354,24 @@ describe("get_agent_experience_metrics", () => {
             createdAt: new Date().toISOString(),
           },
         ]),
+        listGoalRestatements: vi.fn().mockResolvedValue([
+          {
+            id: 12,
+            targetId: 11,
+            goalKey: "voyager_blueprints",
+            source: "manual",
+            note: null,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 13,
+            targetId: null,
+            goalKey: "voyager_blueprints",
+            source: "manual",
+            note: null,
+            createdAt: new Date().toISOString(),
+          },
+        ]),
       }),
     };
 
@@ -2361,9 +2382,12 @@ describe("get_agent_experience_metrics", () => {
     expect(policy.etaConfidenceThreshold).toBe(0.75);
     expect(policy.sourceAttributionTargetPct).toBe(90);
     expect(policy.reminderUsefulnessTargetPct).toBe(70);
+    expect(policy.repeatQuestionReductionTargetDirection).toBe("downward");
     expect(observed.totalCorrectionDeltas).toBe(1);
     expect(observed.reminderFeedbackTotal).toBe(2);
     expect(observed.reminderUsefulnessPct).toBe(50);
+    expect(observed.goalRestatementTotal).toBe(2);
+    expect(observed.repeatedGoalKeyCount).toBe(1);
     expect(observed.etaPolicyMode).toBe("thresholded_numeric_or_qualitative");
     expect(observed.sourceMix).toBeDefined();
   });
@@ -3282,6 +3306,45 @@ describe("record_reminder_feedback", () => {
     const result = await executeFleetTool("record_reminder_feedback", {
       reminder_key: "voyager_daily_loop",
       usefulness: "meh",
+    }, ctx) as Record<string, unknown>;
+
+    expect(result).toHaveProperty("error");
+  });
+});
+
+describe("record_goal_restatement", () => {
+  it("persists goal restatement events", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        recordGoalRestatement: vi.fn().mockResolvedValue({
+          id: 81,
+          targetId: 11,
+          goalKey: "voyager_blueprints",
+          source: "manual",
+          note: null,
+          createdAt: "2026-03-04T12:00:00.000Z",
+        }),
+        get: vi.fn().mockResolvedValue({ id: 11, targetType: "ship", refId: "ship-voyager", status: "active" }),
+      }),
+    };
+
+    const result = await executeFleetTool("record_goal_restatement", {
+      goal_key: "voyager_blueprints",
+      target_id: 11,
+    }, ctx) as Record<string, unknown>;
+
+    expect(result.tool).toBe("record_goal_restatement");
+    expect(result.persisted).toBe(true);
+    expect((result.logging as Record<string, unknown>).mode).toBe("silent");
+  });
+
+  it("returns validation error for missing goal_key", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore(),
+    };
+
+    const result = await executeFleetTool("record_goal_restatement", {
+      goal_key: "",
     }, ctx) as Record<string, unknown>;
 
     expect(result).toHaveProperty("error");

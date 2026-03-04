@@ -86,6 +86,20 @@ describe("schema", () => {
     expect(cols).toContain("created_at");
   });
 
+  it("creates target_goal_restatements table on init", async () => {
+    const result = await pool.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'target_goal_restatements' ORDER BY ordinal_position`,
+    );
+    const cols = result.rows.map((r: Record<string, unknown>) => r.column_name);
+    expect(cols).toContain("id");
+    expect(cols).toContain("target_id");
+    expect(cols).toContain("goal_key");
+    expect(cols).toContain("source");
+    expect(cols).toContain("note");
+    expect(cols).toContain("created_at");
+  });
+
   it("is idempotent (double init)", async () => {
     const store2 = await createTargetStore(pool);
     const { total } = await store2.counts();
@@ -431,6 +445,41 @@ describe("reminder feedback", () => {
     });
 
     expect(feedback).toBeNull();
+  });
+});
+
+describe("goal restatements", () => {
+  it("records and lists goal restatement events", async () => {
+    const target = await store.create({ targetType: "ship", refId: "wiki:ship:voyager", targetTier: 1 });
+
+    const first = await store.recordGoalRestatement({
+      targetId: target.id,
+      goalKey: "voyager_blueprints",
+      source: "manual",
+    });
+
+    const second = await store.recordGoalRestatement({
+      goalKey: "ops_40_push",
+      source: "manual",
+      note: "Repeated question after session resume",
+    });
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+
+    const restatements = await store.listGoalRestatements(10);
+    expect(restatements).toHaveLength(2);
+    expect(restatements[0].goalKey).toBe("ops_40_push");
+    expect(restatements[1].targetId).toBe(target.id);
+  });
+
+  it("returns null when recording restatement for missing target", async () => {
+    const restatement = await store.recordGoalRestatement({
+      targetId: 999999,
+      goalKey: "voyager_blueprints",
+    });
+
+    expect(restatement).toBeNull();
   });
 });
 
