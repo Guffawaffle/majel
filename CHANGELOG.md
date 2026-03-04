@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Realtime SSE replay hardening (ADR-036/ADR-037 Day 5)
+- Added strict replay cursor parsing for `Last-Event-ID` in `/api/events/stream`, including malformed and array-shaped header handling that safely falls back to cursor `0`. (`src/server/routes/events.ts`)
+- Added SSE replay regressions for malformed `Last-Event-ID` handling and `lastEventId` query cursor behavior to protect reconnect semantics. (`test/events-routes.test.ts`)
+
 #### Realtime async chat hardening (ADR-036/ADR-037 Day 4)
 - Added stale-run recovery behavior for `chat_runs` so stale `running` entries with `cancel_requested=true` are terminalized as `cancelled` instead of remaining stuck. (`src/server/stores/chat-run-store.ts`, `test/chat-run-store.test.ts`)
 - Added durable-state reconciliation in `GET /api/chat/runs/:runId` and cancel preflight checks so route responses prefer `chat_run_store` state when event stream status lags behind. (`src/server/routes/chat.ts`, `test/api.test.ts`)

@@ -41,7 +41,7 @@ Ship a single, production-ready realtime operation stack where long-running chat
 | 2 | Platform | `/api/events/stream`, keepalive, snapshot endpoint, replay (`Last-Event-ID`) | #174 | [x] Done |
 | 3 | Chat Runs | `chat_runs` + `chat_run_events`, submit endpoint (`202 + runId`) | #172 | [~] In progress (submit+status via `chat_run` stream plane landed) |
 | 4 | Chat Runs | worker claim loop/watchdog + SSE event integration + cancel flow | #172 | [~] In progress (stale-run recovery + durable status reconciliation shipped) |
-| 5 | Hardening | privacy tests, reconnect behavior, runbook updates, CI gates | #172 + #174 | [ ] Not started |
+| 5 | Hardening | privacy tests, reconnect behavior, runbook updates, CI gates | #172 + #174 | [~] In progress (strict replay cursor parsing + malformed replay regression coverage landed) |
 
 ### Sprint Progress Notes
 
@@ -49,6 +49,7 @@ Ship a single, production-ready realtime operation stack where long-running chat
 - [x] Chat run lifecycle emits `run.queued`, `run.started`, `run.completed`, `run.failed` with routing tuple `(runId, sessionId, tabId)`.
 - [~] Async submit contract shipped behind client opt-in (`POST /api/chat` with `async: true` returns `202` + `runId`; `GET /api/chat/runs/:runId` provides status snapshot).
 - [~] Stale running run recovery now terminalizes cancel-requested runs and status route reconciles against durable `chat_runs` state when event stream is stale.
+- [~] Replay hardening now treats malformed `Last-Event-ID` as cursor `0` and validates query/header replay cursor behavior in SSE route tests.
 
 ### Definition of Done
 

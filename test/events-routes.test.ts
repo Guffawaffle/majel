@@ -86,6 +86,74 @@ describe("event routes — replay + snapshot", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
+
+  it("treats malformed Last-Event-ID as 0 and replays from start", async () => {
+    const localStore = factory.forUser("local");
+    await localStore.register("chat_run", "run-replay-malformed", { sessionId: "session-malformed", tabId: "tab-malformed" });
+    const first = await localStore.emit({ topic: "chat_run", operationId: "run-replay-malformed", routing: { sessionId: "session-malformed", tabId: "tab-malformed" }, eventType: "run.started", status: "running" });
+    const second = await localStore.emit({ topic: "chat_run", operationId: "run-replay-malformed", routing: { sessionId: "session-malformed", tabId: "tab-malformed" }, eventType: "run.progress", status: "running", payloadJson: { completedSteps: 1, totalSteps: 2 } });
+
+    const app = createApp(makeState({ operationEventStoreFactory: factory, operationEventStore: localStore }));
+    const server = app.listen(0);
+    try {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") throw new Error("unable to read test server address");
+
+      const controller = new AbortController();
+      const response = await fetch(
+        `http://127.0.0.1:${addr.port}/api/events/stream?topic=chat_run&id=run-replay-malformed`,
+        {
+          headers: { "Last-Event-ID": `${first.seq}junk` },
+          signal: controller.signal,
+        },
+      );
+
+      expect(response.status).toBe(200);
+      const reader = response.body?.getReader();
+      expect(reader).toBeDefined();
+      const chunk = await reader!.read();
+      const text = new TextDecoder().decode(chunk.value ?? new Uint8Array());
+
+      expect(text).toContain(`id: ${first.seq}`);
+      expect(text).toContain(`id: ${second.seq}`);
+      controller.abort();
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("supports replay cursor via lastEventId query param", async () => {
+    const localStore = factory.forUser("local");
+    await localStore.register("chat_run", "run-replay-query-cursor", { sessionId: "session-query", tabId: "tab-query" });
+    const first = await localStore.emit({ topic: "chat_run", operationId: "run-replay-query-cursor", routing: { sessionId: "session-query", tabId: "tab-query" }, eventType: "run.started", status: "running" });
+    const second = await localStore.emit({ topic: "chat_run", operationId: "run-replay-query-cursor", routing: { sessionId: "session-query", tabId: "tab-query" }, eventType: "run.progress", status: "running", payloadJson: { completedSteps: 1, totalSteps: 3 } });
+
+    const app = createApp(makeState({ operationEventStoreFactory: factory, operationEventStore: localStore }));
+    const server = app.listen(0);
+    try {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") throw new Error("unable to read test server address");
+
+      const controller = new AbortController();
+      const response = await fetch(
+        `http://127.0.0.1:${addr.port}/api/events/stream?topic=chat_run&id=run-replay-query-cursor&lastEventId=${first.seq}`,
+        { signal: controller.signal },
+      );
+
+      expect(response.status).toBe(200);
+      const reader = response.body?.getReader();
+      expect(reader).toBeDefined();
+      const chunk = await reader!.read();
+      const text = new TextDecoder().decode(chunk.value ?? new Uint8Array());
+
+      expect(text).toContain(`id: ${second.seq}`);
+      expect(text).not.toContain(`id: ${first.seq}`);
+      controller.abort();
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("allows streaming before first event when operation is registered", async () => {
     const localStore = factory.forUser("local");
     await localStore.register("chat_run", "run-empty", { sessionId: "session-empty", tabId: "tab-empty" });

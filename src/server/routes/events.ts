@@ -30,8 +30,11 @@ function parseOperationId(value: unknown): string | null {
 }
 
 function parseLastEventId(value: unknown): number {
-  if (typeof value !== "string") return 0;
-  const parsed = Number.parseInt(value, 10);
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") return 0;
+  const trimmed = raw.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return 0;
+  const parsed = Number.parseInt(trimmed, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
