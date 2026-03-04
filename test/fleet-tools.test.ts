@@ -2239,6 +2239,7 @@ describe("list_targets", () => {
     const ctx: ToolContext = {
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([FIXTURE_TARGET]),
+        listReminderFeedback: vi.fn().mockResolvedValue([]),
       }),
     };
     const result = await executeFleetTool("list_targets", {}, ctx) as Record<string, unknown>;
@@ -2257,7 +2258,52 @@ describe("list_targets", () => {
       autoSuggested: false,
       achievedAt: null,
       recentDeltas: [],
+      recentReminderFeedback: [],
+      continuity: {
+        hasRecentCorrections: false,
+        hasReminderFeedback: false,
+        lastContinuityEventAt: null,
+      },
     });
+  });
+
+  it("includes per-target reminder continuity context", async () => {
+    const ctx: ToolContext = {
+      targetStore: createMockTargetStore({
+        list: vi.fn().mockResolvedValue([FIXTURE_TARGET]),
+        listDeltas: vi.fn().mockResolvedValue([
+          {
+            id: 10,
+            targetId: 1,
+            metric: "officer_shards",
+            delta: 3,
+            absoluteValue: 73,
+            source: "manual",
+            note: null,
+            createdAt: "2026-03-04T10:00:00.000Z",
+          },
+        ]),
+        listReminderFeedback: vi.fn().mockResolvedValue([
+          {
+            id: 201,
+            targetId: 1,
+            reminderKey: "kirk_shard_checkin",
+            usefulness: "useful",
+            source: "manual",
+            note: null,
+            createdAt: "2026-03-04T11:00:00.000Z",
+          },
+        ]),
+      }),
+    };
+
+    const result = await executeFleetTool("list_targets", {}, ctx) as Record<string, unknown>;
+    const target = (result.targets as Array<Record<string, unknown>>)[0];
+
+    expect((target.recentReminderFeedback as Array<Record<string, unknown>>).length).toBe(1);
+    expect((target.continuity as Record<string, unknown>).hasRecentCorrections).toBe(true);
+    expect((target.continuity as Record<string, unknown>).hasReminderFeedback).toBe(true);
+    expect((target.continuity as Record<string, unknown>).lastContinuityEventAt).toBe("2026-03-04T11:00:00.000Z");
   });
 
   it("returns error when target store unavailable", async () => {

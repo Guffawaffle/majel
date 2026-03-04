@@ -80,10 +80,10 @@ Ship the first operational slice of Ariadne’s agent-experience policy: stable 
 | Day | Track | Scope | Status |
 |---|---|---|---|
 | 1 | Policy | Finalize ADR-038 acceptance thresholds + non-goals | [x] Done |
-| 2 | Tooling | Source-trust observability fields + source labeling in tool outputs | [ ] Not started |
-| 3 | Corrections | Define and wire correction-delta ingest path for tracked goals | [ ] Not started |
-| 4 | Memory | Persist correction events in episodic continuity path for active goals | [ ] Not started |
-| 5 | Validation | Add regression tests + metric snapshots + runbook notes | [ ] Not started |
+| 2 | Tooling | Source-trust observability fields + source labeling in tool outputs | [x] Done |
+| 3 | Corrections | Define and wire correction-delta ingest path for tracked goals | [x] Done |
+| 4 | Memory | Persist correction events in episodic continuity path for active goals | [x] Done |
+| 5 | Validation | Add regression tests + metric snapshots + runbook notes | [x] Done |
 
 ### Confirmed Sprint Gates (locked)
 
@@ -96,11 +96,11 @@ Ship the first operational slice of Ariadne’s agent-experience policy: stable 
 
 ### Definition of Done
 
-- [ ] Identity contract holds in prompt tests (Ariadne persona, Majel lineage)
-- [ ] Approved-stream policy enforced and observable for external lookup paths
-- [ ] Correction delta path updates active projections within agreed latency budget
-- [ ] Reminder/prediction telemetry emitted for weekly review
-- [ ] Targeted tests pass and sprint notes recorded
+- [x] Identity contract holds in prompt tests (Ariadne persona, Majel lineage)
+- [x] Approved-stream policy enforced and observable for external lookup paths
+- [x] Correction delta path updates active projections within agreed latency budget
+- [x] Reminder/prediction telemetry emitted for weekly review
+- [x] Targeted tests pass and sprint notes recorded
 
 ### Risk Controls
 

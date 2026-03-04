@@ -1284,8 +1284,42 @@ export async function listTargets(
     })));
   }));
 
+  const reminderFeedback = await ctx.targetStore.listReminderFeedback(1000);
+  const reminderByTarget = new Map<number, Array<Record<string, unknown>>>();
+  for (const entry of reminderFeedback) {
+    if (entry.targetId == null) continue;
+    const bucket = reminderByTarget.get(entry.targetId) ?? [];
+    bucket.push({
+      id: entry.id,
+      reminderKey: entry.reminderKey,
+      usefulness: entry.usefulness,
+      source: entry.source,
+      note: entry.note,
+      createdAt: entry.createdAt,
+    });
+    reminderByTarget.set(entry.targetId, bucket);
+  }
+
   return {
     targets: targets.map((t) => ({
+      ...(() => {
+        const recentDeltas = deltasByTarget.get(t.id) ?? [];
+        const recentReminderFeedback = (reminderByTarget.get(t.id) ?? []).slice(0, 5);
+        const lastContinuityEventAt = [
+          ...recentDeltas.map((entry) => String(entry.createdAt ?? "")),
+          ...recentReminderFeedback.map((entry) => String(entry.createdAt ?? "")),
+        ].filter(Boolean).sort().reverse()[0] ?? null;
+
+        return {
+          recentDeltas,
+          recentReminderFeedback,
+          continuity: {
+            hasRecentCorrections: recentDeltas.length > 0,
+            hasReminderFeedback: recentReminderFeedback.length > 0,
+            lastContinuityEventAt,
+          },
+        };
+      })(),
       id: t.id,
       targetType: t.targetType,
       refId: t.refId,
@@ -1298,7 +1332,6 @@ export async function listTargets(
       status: t.status,
       autoSuggested: t.autoSuggested,
       achievedAt: t.achievedAt,
-      recentDeltas: deltasByTarget.get(t.id) ?? [],
     })),
     totalTargets: targets.length,
   };
