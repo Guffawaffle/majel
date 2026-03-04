@@ -268,7 +268,9 @@ describe("event routes — auth-enabled isolation", () => {
     userBSessionToken = (await userStore.signIn("events-b@test.com", "securePassword12345!")).sessionToken;
     admiralSessionToken = (await userStore.signIn("events-admiral@test.com", "securePassword12345!")).sessionToken;
 
-    await factory.forUser(userAId).emit({
+    const userAStore = factory.forUser(userAId);
+    await userAStore.register("chat_run", "run-owned-by-a", { sessionId: "session-a", tabId: "tab-a" });
+    await userAStore.emit({
       topic: "chat_run",
       operationId: "run-owned-by-a",
       routing: { sessionId: "session-a", tabId: "tab-a" },

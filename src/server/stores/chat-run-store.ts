@@ -1,5 +1,12 @@
 /**
  * chat-run-store.ts — Durable queue for async chat runs (ADR-036 Day 4).
+ *
+ * NOTE: This table intentionally does NOT use RLS (Row Level Security).
+ * Unlike operation_events/operation_streams, the chat_runs table is a
+ * system-level work queue where the worker claim loop (claimNext,
+ * heartbeat, finish, requeueStaleRunning) must read/write across all
+ * users. User-facing access is always filtered by user_id in WHERE
+ * clauses (getForUser, requestCancel). See sprint review P1.
  */
 
 import { initSchema, withTransaction, type Pool } from "../db.js";

@@ -187,17 +187,8 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
       assertOperationId(input.operationId);
       assertRouting(input.routing);
       return withUserScope(pool, userId, async (client) => {
-        await client.query(
-          `INSERT INTO operation_streams
-             (topic, operation_id, user_id, session_id, tab_id)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (topic, operation_id, user_id)
-           DO UPDATE SET
-             session_id = EXCLUDED.session_id,
-             tab_id = EXCLUDED.tab_id`,
-          [input.topic, input.operationId, userId, input.routing.sessionId, input.routing.tabId],
-        );
-
+        // NOTE: register() must be called before first emit().
+        // Routing upsert removed here (P3) — register() handles it.
         const result = await client.query(
           `INSERT INTO operation_events
              (topic, operation_id, user_id, session_id, tab_id, event_type, status, payload_json)

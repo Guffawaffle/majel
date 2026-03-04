@@ -39,33 +39,39 @@ Ship a single, production-ready realtime operation stack where long-running chat
 |---|---|---|---|---|
 | 1 | Platform | `operation_events` schema + event emitter helper | #174 | [x] Done |
 | 2 | Platform | `/api/events/stream`, keepalive, snapshot endpoint, replay (`Last-Event-ID`) | #174 | [x] Done |
-| 3 | Chat Runs | `chat_runs` + `chat_run_events`, submit endpoint (`202 + runId`) | #172 | [~] In progress (submit+status via `chat_run` stream plane landed) |
-| 4 | Chat Runs | worker claim loop/watchdog + SSE event integration + cancel flow | #172 | [~] In progress (stale-run recovery + durable status reconciliation shipped) |
-| 5 | Hardening | privacy tests, reconnect behavior, runbook updates, CI gates | #172 + #174 | [~] In progress (strict replay cursor parsing + malformed replay regression coverage landed) |
+| 3 | Chat Runs | `chat_runs` + `operation_events` (topic: `chat_run`), submit endpoint (`202 + runId`) | #172 | [x] Done |
+| 4 | Chat Runs | worker claim loop/watchdog + SSE event integration + cancel flow | #172 | [x] Done |
+| 5 | Hardening | privacy tests, reconnect behavior, runbook updates, CI gates, review findings | #172 + #174 | [x] Done |
 
 ### Sprint Progress Notes
 
 - [x] Event stream plane is live (`/api/events/snapshot`, `/api/events/stream`) with owner-only access tests.
 - [x] Chat run lifecycle emits `run.queued`, `run.started`, `run.completed`, `run.failed` with routing tuple `(runId, sessionId, tabId)`.
-- [~] Async submit contract shipped behind client opt-in (`POST /api/chat` with `async: true` returns `202` + `runId`; `GET /api/chat/runs/:runId` provides status snapshot).
-- [~] Stale running run recovery now terminalizes cancel-requested runs and status route reconciles against durable `chat_runs` state when event stream is stale.
-- [~] Replay hardening now treats malformed `Last-Event-ID` as cursor `0` and validates query/header replay cursor behavior in SSE route tests.
-- [~] Replay privacy edges now include malformed-header/query fallback coverage and explicit cross-user replay denial tests (including admiral) plus runbook troubleshooting notes.
+- [x] Async submit contract shipped behind client opt-in (`POST /api/chat` with `async: true` returns `202` + `runId`; `GET /api/chat/runs/:runId` provides status snapshot).
+- [x] Stale running run recovery now terminalizes cancel-requested runs and status route reconciles against durable `chat_runs` state when event stream is stale.
+- [x] Replay hardening now treats malformed `Last-Event-ID` as cursor `0` and validates query/header replay cursor behavior in SSE route tests.
+- [x] Replay privacy edges now include malformed-header/query fallback coverage and explicit cross-user replay denial tests (including admiral) plus runbook troubleshooting notes.
+- [x] Sprint review findings: P1 (RLS documented), P3 (emit upsert removed), P4 (keepalive stripped), P6/P7 (docs cleaned). P2/P5 deferred.
 
 ### Definition of Done
 
-- [ ] Live operation progress streams to UI (SSE-first)
-- [ ] Chat completion survives refresh/reconnect with replay/snapshot recovery
-- [ ] No multi-minute blocking `/api/chat` responses
-- [ ] No timeout-triggered double-send response race
-- [ ] Cross-user access denied for streams and runs (including admiral)
-- [ ] `npm run ax -- affected --run` and `npm run ax -- ci` both pass
+- [x] Live operation progress streams to UI (SSE-first)
+- [x] Chat completion survives refresh/reconnect with replay/snapshot recovery
+- [x] No multi-minute blocking `/api/chat` responses
+- [x] No timeout-triggered double-send response race
+- [x] Cross-user access denied for streams and runs (including admiral)
+- [x] `npm run ax -- affected --run` and `npm run ax -- ci` both pass
 
 ### Risk Controls
 
-- [ ] Keep API contracts stable across incremental merges
-- [ ] If replay semantics block timeline, ship snapshot fallback with explicit follow-up checklist
-- [ ] Preserve owner-only visibility for all run/stream payloads
+- [x] Keep API contracts stable across incremental merges
+- [x] If replay semantics block timeline, ship snapshot fallback with explicit follow-up checklist
+- [x] Preserve owner-only visibility for all run/stream payloads
+
+### Deferred Follow-ups (from Day 5 sprint review)
+
+- [ ] **P2 — Multi-worker claim concurrency.** Current claim loop is single-worker, single-run (`claimInFlight` serialization). Fine for current scale; revisit when throughput requires concurrent run execution. Add configurable concurrency cap at that time.
+- [ ] **P5 — Stream termination sentinel.** SSE connections stay open after terminal events. Consider emitting a `stream.done` sentinel and auto-closing server-side after a grace period. Requires client-side coordination.
 
 ---
 

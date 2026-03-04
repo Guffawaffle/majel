@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added explicit cross-user replay denial regression coverage (including admiral role) when cursor hints are provided. (`test/events-routes.test.ts`)
 - Added runbook guidance for replay cursor precedence and privacy guardrails during reconnect diagnostics. (`docs/RUNBOOK.md`)
 
+#### Sprint review findings (Day 5 closeout)
+- **P1:** Documented intentional RLS bypass on `chat_runs` — worker claim loop requires cross-user access; user-facing queries are always user-scoped via WHERE clauses. (`src/server/stores/chat-run-store.ts`)
+- **P3:** Removed redundant `operation_streams` upsert from `emit()` — `register()` already handles routing; one fewer write per event. (`src/server/stores/operation-event-store.ts`)
+- **P4:** Stripped keepalive SSE payload to timestamp-only — no user-scoped routing metadata in health pings. (`src/server/routes/events.ts`)
+- **P6:** Fixed stale backlog Day 3 scope text (was `chat_run_events`, now correctly references `operation_events` topic-based routing). (`BACKLOG.md`)
+- **P7:** Flipped all sprint DoD and risk control checkboxes to done. (`BACKLOG.md`)
+- **P2 (deferred):** Single-worker claim loop documented as intentional constraint; revisit at scale. (`BACKLOG.md`)
+- **P5 (deferred):** Stream termination sentinel logged as follow-up; requires client coordination. (`BACKLOG.md`)
+
 #### Realtime async chat hardening (ADR-036/ADR-037 Day 4)
 - Added stale-run recovery behavior for `chat_runs` so stale `running` entries with `cancel_requested=true` are terminalized as `cancelled` instead of remaining stuck. (`src/server/stores/chat-run-store.ts`, `test/chat-run-store.test.ts`)
 - Added durable-state reconciliation in `GET /api/chat/runs/:runId` and cancel preflight checks so route responses prefer `chat_run_store` state when event stream status lags behind. (`src/server/routes/chat.ts`, `test/api.test.ts`)

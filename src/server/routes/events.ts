@@ -178,11 +178,8 @@ export function createEventRoutes(appState: AppState): Router {
 
     keepaliveTimer = setInterval(() => {
       if (closed) return;
+      // P4: keepalive carries only timestamp — no user-scoped routing metadata
       writeSse("keepalive", {
-        topic,
-        id: operationId,
-        sessionId: routing.sessionId,
-        tabId: routing.tabId,
         timestamp: new Date().toISOString(),
       });
     }, KEEPALIVE_MS);
