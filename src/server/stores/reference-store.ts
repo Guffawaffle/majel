@@ -17,6 +17,13 @@
 import { initSchema, withTransaction, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import { serializeNormalizedJson } from "../services/json-number-normalize.js";
+import type {
+  CreateReferenceResearchInput,
+  CreateReferenceBuildingInput,
+  CreateReferenceHostileInput,
+  CreateReferenceConsumableInput,
+  CreateReferenceSystemInput,
+} from "../services/cdn-mappers.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -249,6 +256,11 @@ export interface ReferenceStore {
 
   bulkUpsertOfficers(officers: CreateReferenceOfficerInput[]): Promise<{ created: number; updated: number }>;
   bulkUpsertShips(ships: CreateReferenceShipInput[]): Promise<{ created: number; updated: number }>;
+  bulkUpsertResearch(items: CreateReferenceResearchInput[]): Promise<{ created: number; updated: number }>;
+  bulkUpsertBuildings(items: CreateReferenceBuildingInput[]): Promise<{ created: number; updated: number }>;
+  bulkUpsertHostiles(items: CreateReferenceHostileInput[]): Promise<{ created: number; updated: number }>;
+  bulkUpsertConsumables(items: CreateReferenceConsumableInput[]): Promise<{ created: number; updated: number }>;
+  bulkUpsertSystems(items: CreateReferenceSystemInput[]): Promise<{ created: number; updated: number }>;
 
   /** Delete legacy `raw:*` / `wiki:*` ship and officer entries superseded by CDN data. */
   purgeLegacyEntries(): Promise<{ ships: number; officers: number }>;
@@ -613,26 +625,46 @@ const SQL = {
   countShips: `SELECT COUNT(*) AS count FROM reference_ships`,
 
   // Research
+  insertResearch: `INSERT INTO reference_research (id, name, research_tree, unlock_level, max_level, buffs, requirements, row, col, game_id, source, license, attribution, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+  updateResearch: `UPDATE reference_research SET name = $1, research_tree = $2, unlock_level = $3, max_level = $4, buffs = $5, requirements = $6, row = $7, col = $8, game_id = $9, source = $10, license = $11, attribution = $12, updated_at = $13 WHERE id = $14`,
+  researchExists: `SELECT 1 FROM reference_research WHERE id = $1`,
   getResearch: `SELECT ${RESEARCH_COLS} FROM reference_research WHERE id = $1`,
   searchResearch: `SELECT ${RESEARCH_COLS} FROM reference_research WHERE name ILIKE $1 ORDER BY name`,
   countResearch: `SELECT COUNT(*) AS count FROM reference_research`,
 
   // Buildings
+  insertBuilding: `INSERT INTO reference_buildings (id, name, max_level, unlock_level, buffs, requirements, game_id, source, license, attribution, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+  updateBuilding: `UPDATE reference_buildings SET name = $1, max_level = $2, unlock_level = $3, buffs = $4, requirements = $5, game_id = $6, source = $7, license = $8, attribution = $9, updated_at = $10 WHERE id = $11`,
+  buildingExists: `SELECT 1 FROM reference_buildings WHERE id = $1`,
   getBuilding: `SELECT ${BUILDING_COLS} FROM reference_buildings WHERE id = $1`,
   searchBuildings: `SELECT ${BUILDING_COLS} FROM reference_buildings WHERE name ILIKE $1 ORDER BY name`,
   countBuildings: `SELECT COUNT(*) AS count FROM reference_buildings`,
 
   // Hostiles
+  insertHostile: `INSERT INTO reference_hostiles (id, name, faction, level, ship_type, hull_type, rarity, strength, systems, warp, resources, game_id, source, license, attribution, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+  updateHostile: `UPDATE reference_hostiles SET name = $1, faction = $2, level = $3, ship_type = $4, hull_type = $5, rarity = $6, strength = $7, systems = $8, warp = $9, resources = $10, game_id = $11, source = $12, license = $13, attribution = $14, updated_at = $15 WHERE id = $16`,
+  hostileExists: `SELECT 1 FROM reference_hostiles WHERE id = $1`,
   getHostile: `SELECT ${HOSTILE_COLS} FROM reference_hostiles WHERE id = $1`,
   searchHostiles: `SELECT ${HOSTILE_COLS} FROM reference_hostiles WHERE name ILIKE $1 ORDER BY name`,
   countHostiles: `SELECT COUNT(*) AS count FROM reference_hostiles`,
 
   // Consumables
+  insertConsumable: `INSERT INTO reference_consumables (id, name, rarity, grade, requires_slot, buff, duration_seconds, category, game_id, source, license, attribution, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+  updateConsumable: `UPDATE reference_consumables SET name = $1, rarity = $2, grade = $3, requires_slot = $4, buff = $5, duration_seconds = $6, category = $7, game_id = $8, source = $9, license = $10, attribution = $11, updated_at = $12 WHERE id = $13`,
+  consumableExists: `SELECT 1 FROM reference_consumables WHERE id = $1`,
   getConsumable: `SELECT ${CONSUMABLE_COLS} FROM reference_consumables WHERE id = $1`,
   searchConsumables: `SELECT ${CONSUMABLE_COLS} FROM reference_consumables WHERE name ILIKE $1 ORDER BY name`,
   countConsumables: `SELECT COUNT(*) AS count FROM reference_consumables`,
 
   // Systems
+  insertSystem: `INSERT INTO reference_systems (id, name, est_warp, is_deep_space, factions, level, coords_x, coords_y, has_mines, has_planets, has_missions, mine_resources, hostile_count, node_sizes, hazard_level, game_id, source, license, attribution, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+  updateSystem: `UPDATE reference_systems SET name = $1, est_warp = $2, is_deep_space = $3, factions = $4, level = $5, coords_x = $6, coords_y = $7, has_mines = $8, has_planets = $9, has_missions = $10, mine_resources = $11, hostile_count = $12, node_sizes = $13, hazard_level = $14, game_id = $15, source = $16, license = $17, attribution = $18, updated_at = $19 WHERE id = $20`,
+  systemExists: `SELECT 1 FROM reference_systems WHERE id = $1`,
   getSystem: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE id = $1`,
   searchSystems: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE name ILIKE $1 ORDER BY name`,
   countSystems: `SELECT COUNT(*) AS count FROM reference_systems`,
@@ -965,6 +997,162 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
         }
       });
       log.fleet.info({ created, updated, total: ships.length }, "bulk upsert reference ships");
+      return { created, updated };
+    },
+
+    async bulkUpsertResearch(items) {
+      let created = 0;
+      let updated = 0;
+      await withTransaction(pool, async (client) => {
+        for (const r of items) {
+          const existsRes = await client.query(SQL.researchExists, [r.id]);
+          const now = new Date().toISOString();
+          if (existsRes.rows.length > 0) {
+            await client.query(SQL.updateResearch, [
+              r.name, r.researchTree, r.unlockLevel, r.maxLevel,
+              serializeNormalizedJson(r.buffs, "reference_research.buffs"),
+              serializeNormalizedJson(r.requirements, "reference_research.requirements"),
+              r.row, r.col, r.gameId,
+              r.source, r.license, r.attribution, now, r.id,
+            ]);
+            updated++;
+          } else {
+            await client.query(SQL.insertResearch, [
+              r.id, r.name, r.researchTree, r.unlockLevel, r.maxLevel,
+              serializeNormalizedJson(r.buffs, "reference_research.buffs"),
+              serializeNormalizedJson(r.requirements, "reference_research.requirements"),
+              r.row, r.col, r.gameId,
+              r.source, r.license, r.attribution, now, now,
+            ]);
+            created++;
+          }
+        }
+      });
+      log.fleet.info({ created, updated, total: items.length }, "bulk upsert reference research");
+      return { created, updated };
+    },
+
+    async bulkUpsertBuildings(items) {
+      let created = 0;
+      let updated = 0;
+      await withTransaction(pool, async (client) => {
+        for (const b of items) {
+          const existsRes = await client.query(SQL.buildingExists, [b.id]);
+          const now = new Date().toISOString();
+          if (existsRes.rows.length > 0) {
+            await client.query(SQL.updateBuilding, [
+              b.name, b.maxLevel, b.unlockLevel,
+              serializeNormalizedJson(b.buffs, "reference_buildings.buffs"),
+              serializeNormalizedJson(b.requirements, "reference_buildings.requirements"),
+              b.gameId, b.source, b.license, b.attribution, now, b.id,
+            ]);
+            updated++;
+          } else {
+            await client.query(SQL.insertBuilding, [
+              b.id, b.name, b.maxLevel, b.unlockLevel,
+              serializeNormalizedJson(b.buffs, "reference_buildings.buffs"),
+              serializeNormalizedJson(b.requirements, "reference_buildings.requirements"),
+              b.gameId, b.source, b.license, b.attribution, now, now,
+            ]);
+            created++;
+          }
+        }
+      });
+      log.fleet.info({ created, updated, total: items.length }, "bulk upsert reference buildings");
+      return { created, updated };
+    },
+
+    async bulkUpsertHostiles(items) {
+      let created = 0;
+      let updated = 0;
+      await withTransaction(pool, async (client) => {
+        for (const h of items) {
+          const existsRes = await client.query(SQL.hostileExists, [h.id]);
+          const now = new Date().toISOString();
+          if (existsRes.rows.length > 0) {
+            await client.query(SQL.updateHostile, [
+              h.name, h.faction, h.level, h.shipType, h.hullType, h.rarity, h.strength,
+              h.systems, h.warp,
+              serializeNormalizedJson(h.resources, "reference_hostiles.resources"),
+              h.gameId, h.source, h.license, h.attribution, now, h.id,
+            ]);
+            updated++;
+          } else {
+            await client.query(SQL.insertHostile, [
+              h.id, h.name, h.faction, h.level, h.shipType, h.hullType, h.rarity, h.strength,
+              h.systems, h.warp,
+              serializeNormalizedJson(h.resources, "reference_hostiles.resources"),
+              h.gameId, h.source, h.license, h.attribution, now, now,
+            ]);
+            created++;
+          }
+        }
+      });
+      log.fleet.info({ created, updated, total: items.length }, "bulk upsert reference hostiles");
+      return { created, updated };
+    },
+
+    async bulkUpsertConsumables(items) {
+      let created = 0;
+      let updated = 0;
+      await withTransaction(pool, async (client) => {
+        for (const c of items) {
+          const existsRes = await client.query(SQL.consumableExists, [c.id]);
+          const now = new Date().toISOString();
+          if (existsRes.rows.length > 0) {
+            await client.query(SQL.updateConsumable, [
+              c.name, c.rarity, c.grade, c.requiresSlot,
+              serializeNormalizedJson(c.buff, "reference_consumables.buff"),
+              c.durationSeconds, c.category, c.gameId,
+              c.source, c.license, c.attribution, now, c.id,
+            ]);
+            updated++;
+          } else {
+            await client.query(SQL.insertConsumable, [
+              c.id, c.name, c.rarity, c.grade, c.requiresSlot,
+              serializeNormalizedJson(c.buff, "reference_consumables.buff"),
+              c.durationSeconds, c.category, c.gameId,
+              c.source, c.license, c.attribution, now, now,
+            ]);
+            created++;
+          }
+        }
+      });
+      log.fleet.info({ created, updated, total: items.length }, "bulk upsert reference consumables");
+      return { created, updated };
+    },
+
+    async bulkUpsertSystems(items) {
+      let created = 0;
+      let updated = 0;
+      await withTransaction(pool, async (client) => {
+        for (const s of items) {
+          const existsRes = await client.query(SQL.systemExists, [s.id]);
+          const now = new Date().toISOString();
+          if (existsRes.rows.length > 0) {
+            await client.query(SQL.updateSystem, [
+              s.name, s.estWarp, s.isDeepSpace, s.factions, s.level,
+              s.coordsX, s.coordsY, s.hasMines, s.hasPlanets, s.hasMissions,
+              serializeNormalizedJson(s.mineResources, "reference_systems.mine_resources"),
+              s.hostileCount,
+              serializeNormalizedJson(s.nodeSizes, "reference_systems.node_sizes"),
+              s.hazardLevel, s.gameId, s.source, s.license, s.attribution, now, s.id,
+            ]);
+            updated++;
+          } else {
+            await client.query(SQL.insertSystem, [
+              s.id, s.name, s.estWarp, s.isDeepSpace, s.factions, s.level,
+              s.coordsX, s.coordsY, s.hasMines, s.hasPlanets, s.hasMissions,
+              serializeNormalizedJson(s.mineResources, "reference_systems.mine_resources"),
+              s.hostileCount,
+              serializeNormalizedJson(s.nodeSizes, "reference_systems.node_sizes"),
+              s.hazardLevel, s.gameId, s.source, s.license, s.attribution, now, now,
+            ]);
+            created++;
+          }
+        }
+      });
+      log.fleet.info({ created, updated, total: items.length }, "bulk upsert reference systems");
       return { created, updated };
     },
 

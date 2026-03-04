@@ -38,6 +38,15 @@ import { createCrewStoreFactory } from "./stores/crew-store.js";
 import { createReceiptStoreFactory } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
+import {
+  syncCdnShips,
+  syncCdnOfficers,
+  syncCdnResearch,
+  syncCdnBuildings,
+  syncCdnHostiles,
+  syncCdnConsumables,
+  syncCdnSystems,
+} from "./services/gamedata-ingest.js";
 import { createOverlayStoreFactory } from "./stores/overlay-store.js";
 import { createInviteStore } from "./stores/invite-store.js";
 import { createUserStore } from "./stores/user-store.js";
@@ -382,8 +391,7 @@ async function boot(): Promise<void> {
   }
 
   // 2c. Initialize reference store (must precede crew store — FK deps on reference_officers/ships)
-  // Data is seeded externally via scripts/seed-cloud-db.ts (ADR-028).
-  // No boot-time sync — DB is the source of truth, not local snapshot files.
+  // CDN snapshot data is synced on first boot or when tables are empty.
   try {
     state.referenceStore = await createReferenceStore(adminPool, pool);
     // Purge legacy raw:* entries that duplicate CDN data (different IDs, different casing)
@@ -396,6 +404,36 @@ async function boot(): Promise<void> {
       systems: refCounts.systems,
       purgedShips: purged.ships, purgedOfficers: purged.officers,
     }, "reference store online");
+
+    // Auto-sync from CDN snapshot if any reference tables are empty
+    const needsSync = refCounts.officers === 0 || refCounts.ships === 0 ||
+      refCounts.research === 0 || refCounts.buildings === 0 ||
+      refCounts.hostiles === 0 || refCounts.consumables === 0 ||
+      refCounts.systems === 0;
+    if (needsSync) {
+      log.boot.info("empty reference tables detected — running CDN snapshot sync");
+      try {
+        const syncResults = await Promise.allSettled([
+          refCounts.officers === 0 ? syncCdnOfficers(state.referenceStore) : null,
+          refCounts.ships === 0 ? syncCdnShips(state.referenceStore) : null,
+          refCounts.research === 0 ? syncCdnResearch(state.referenceStore) : null,
+          refCounts.buildings === 0 ? syncCdnBuildings(state.referenceStore) : null,
+          refCounts.hostiles === 0 ? syncCdnHostiles(state.referenceStore) : null,
+          refCounts.consumables === 0 ? syncCdnConsumables(state.referenceStore) : null,
+          refCounts.systems === 0 ? syncCdnSystems(state.referenceStore) : null,
+        ].filter(Boolean) as Promise<unknown>[]);
+        const failed = syncResults.filter((r) => r.status === "rejected");
+        if (failed.length > 0) {
+          for (const f of failed) {
+            log.boot.error({ err: (f as PromiseRejectedResult).reason }, "CDN sync failed for one entity type");
+          }
+        }
+        const postSyncCounts = await state.referenceStore.counts();
+        log.boot.info(postSyncCounts, "CDN snapshot sync complete");
+      } catch (syncErr) {
+        log.boot.error({ err: syncErr instanceof Error ? syncErr.message : String(syncErr) }, "CDN sync failed");
+      }
+    }
   } catch (err) {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
   }

@@ -18,6 +18,21 @@ import {
   formatAbilityDescription,
   mapCdnShipToReferenceInput,
   mapCdnOfficerToReferenceInput,
+  mapCdnResearchToReferenceInput,
+  mapCdnBuildingToReferenceInput,
+  mapCdnHostileToReferenceInput,
+  mapCdnConsumableToReferenceInput,
+  mapCdnSystemToReferenceInput,
+  type CdnResearchSummary,
+  type CdnBuildingSummary,
+  type CdnHostileSummary,
+  type CdnConsumableSummary,
+  type CdnSystemSummary,
+  type CreateReferenceResearchInput,
+  type CreateReferenceBuildingInput,
+  type CreateReferenceHostileInput,
+  type CreateReferenceConsumableInput,
+  type CreateReferenceSystemInput,
 } from "./cdn-mappers.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -332,6 +347,242 @@ export async function syncCdnOfficers(
 
   return {
     officers: { ...result, total: inputs.length },
+    source: "game-data-cdn",
+  };
+}
+
+// ─── CDN Research Ingest ────────────────────────────────────
+
+/**
+ * Sync research from CDN snapshot (data/.stfc-snapshot/).
+ * Uses `cdn:research:<gameId>` as the entity ID.
+ */
+export async function syncCdnResearch(
+  store: ReferenceStore,
+): Promise<{ research: { created: number; updated: number; total: number }; source: string }> {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const projectRoot = join(moduleDir, "..", "..", "..");
+  const snapshotDir = join(projectRoot, "data", ".stfc-snapshot");
+
+  try {
+    await access(join(snapshotDir, "research", "summary.json"));
+  } catch {
+    log.fleet.warn("CDN research snapshot not found, skipping CDN research sync");
+    return { research: { created: 0, updated: 0, total: 0 }, source: "cdn (not available)" };
+  }
+
+  log.fleet.info("loading CDN research snapshot");
+
+  const summaryRaw = await readFile(join(snapshotDir, "research", "summary.json"), "utf-8");
+  const summary: CdnResearchSummary[] = JSON.parse(summaryRaw);
+
+  const researchTrans = await loadTranslationPack(snapshotDir, "research");
+  const nameMap = buildNameMap(researchTrans, "research_project_name");
+  const treeNameMap = buildNameMap(researchTrans, "research_tree_name");
+
+  const inputs: CreateReferenceResearchInput[] = [];
+  for (const research of summary) {
+    inputs.push(mapCdnResearchToReferenceInput({ research, nameMap, treeNameMap }));
+  }
+
+  log.fleet.info({ count: inputs.length }, "parsed CDN research, starting bulk upsert");
+  const result = await store.bulkUpsertResearch(inputs);
+
+  log.fleet.info(
+    { created: result.created, updated: result.updated, total: inputs.length },
+    "CDN research sync complete",
+  );
+
+  return {
+    research: { ...result, total: inputs.length },
+    source: "game-data-cdn",
+  };
+}
+
+// ─── CDN Building Ingest ────────────────────────────────────
+
+/**
+ * Sync buildings from CDN snapshot (data/.stfc-snapshot/).
+ * Uses `cdn:building:<gameId>` as the entity ID.
+ */
+export async function syncCdnBuildings(
+  store: ReferenceStore,
+): Promise<{ buildings: { created: number; updated: number; total: number }; source: string }> {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const projectRoot = join(moduleDir, "..", "..", "..");
+  const snapshotDir = join(projectRoot, "data", ".stfc-snapshot");
+
+  try {
+    await access(join(snapshotDir, "building", "summary.json"));
+  } catch {
+    log.fleet.warn("CDN building snapshot not found, skipping CDN building sync");
+    return { buildings: { created: 0, updated: 0, total: 0 }, source: "cdn (not available)" };
+  }
+
+  log.fleet.info("loading CDN building snapshot");
+
+  const summaryRaw = await readFile(join(snapshotDir, "building", "summary.json"), "utf-8");
+  const summary: CdnBuildingSummary[] = JSON.parse(summaryRaw);
+
+  const buildingTrans = await loadTranslationPack(snapshotDir, "starbase_modules");
+  const nameMap = buildNameMap(buildingTrans, "starbase_module_name");
+
+  const inputs: CreateReferenceBuildingInput[] = [];
+  for (const building of summary) {
+    inputs.push(mapCdnBuildingToReferenceInput({ building, nameMap }));
+  }
+
+  log.fleet.info({ count: inputs.length }, "parsed CDN buildings, starting bulk upsert");
+  const result = await store.bulkUpsertBuildings(inputs);
+
+  log.fleet.info(
+    { created: result.created, updated: result.updated, total: inputs.length },
+    "CDN building sync complete",
+  );
+
+  return {
+    buildings: { ...result, total: inputs.length },
+    source: "game-data-cdn",
+  };
+}
+
+// ─── CDN Hostile Ingest ─────────────────────────────────────
+
+/**
+ * Sync hostiles from CDN snapshot (data/.stfc-snapshot/).
+ * Uses `cdn:hostile:<gameId>` as the entity ID.
+ */
+export async function syncCdnHostiles(
+  store: ReferenceStore,
+): Promise<{ hostiles: { created: number; updated: number; total: number }; source: string }> {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const projectRoot = join(moduleDir, "..", "..", "..");
+  const snapshotDir = join(projectRoot, "data", ".stfc-snapshot");
+
+  try {
+    await access(join(snapshotDir, "hostile", "summary.json"));
+  } catch {
+    log.fleet.warn("CDN hostile snapshot not found, skipping CDN hostile sync");
+    return { hostiles: { created: 0, updated: 0, total: 0 }, source: "cdn (not available)" };
+  }
+
+  log.fleet.info("loading CDN hostile snapshot");
+
+  const summaryRaw = await readFile(join(snapshotDir, "hostile", "summary.json"), "utf-8");
+  const summary: CdnHostileSummary[] = JSON.parse(summaryRaw);
+
+  const hostileTrans = await loadTranslationPack(snapshotDir, "navigation");
+  const nameMap = buildNameMap(hostileTrans, "marauder_name_only");
+
+  const inputs: CreateReferenceHostileInput[] = [];
+  for (const hostile of summary) {
+    inputs.push(mapCdnHostileToReferenceInput({ hostile, nameMap, factionLabels: FACTION_NAMES }));
+  }
+
+  log.fleet.info({ count: inputs.length }, "parsed CDN hostiles, starting bulk upsert");
+  const result = await store.bulkUpsertHostiles(inputs);
+
+  log.fleet.info(
+    { created: result.created, updated: result.updated, total: inputs.length },
+    "CDN hostile sync complete",
+  );
+
+  return {
+    hostiles: { ...result, total: inputs.length },
+    source: "game-data-cdn",
+  };
+}
+
+// ─── CDN Consumable Ingest ──────────────────────────────────
+
+/**
+ * Sync consumables from CDN snapshot (data/.stfc-snapshot/).
+ * Uses `cdn:consumable:<gameId>` as the entity ID.
+ */
+export async function syncCdnConsumables(
+  store: ReferenceStore,
+): Promise<{ consumables: { created: number; updated: number; total: number }; source: string }> {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const projectRoot = join(moduleDir, "..", "..", "..");
+  const snapshotDir = join(projectRoot, "data", ".stfc-snapshot");
+
+  try {
+    await access(join(snapshotDir, "consumable", "summary.json"));
+  } catch {
+    log.fleet.warn("CDN consumable snapshot not found, skipping CDN consumable sync");
+    return { consumables: { created: 0, updated: 0, total: 0 }, source: "cdn (not available)" };
+  }
+
+  log.fleet.info("loading CDN consumable snapshot");
+
+  const summaryRaw = await readFile(join(snapshotDir, "consumable", "summary.json"), "utf-8");
+  const summary: CdnConsumableSummary[] = JSON.parse(summaryRaw);
+
+  const consumableTrans = await loadTranslationPack(snapshotDir, "consumables");
+  const nameMap = buildNameMap(consumableTrans, "consumable_name");
+
+  const inputs: CreateReferenceConsumableInput[] = [];
+  for (const consumable of summary) {
+    inputs.push(mapCdnConsumableToReferenceInput({ consumable, nameMap }));
+  }
+
+  log.fleet.info({ count: inputs.length }, "parsed CDN consumables, starting bulk upsert");
+  const result = await store.bulkUpsertConsumables(inputs);
+
+  log.fleet.info(
+    { created: result.created, updated: result.updated, total: inputs.length },
+    "CDN consumable sync complete",
+  );
+
+  return {
+    consumables: { ...result, total: inputs.length },
+    source: "game-data-cdn",
+  };
+}
+
+// ─── CDN System Ingest ──────────────────────────────────────
+
+/**
+ * Sync systems from CDN snapshot (data/.stfc-snapshot/).
+ * Uses `cdn:system:<gameId>` as the entity ID.
+ */
+export async function syncCdnSystems(
+  store: ReferenceStore,
+): Promise<{ systems: { created: number; updated: number; total: number }; source: string }> {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const projectRoot = join(moduleDir, "..", "..", "..");
+  const snapshotDir = join(projectRoot, "data", ".stfc-snapshot");
+
+  try {
+    await access(join(snapshotDir, "system", "summary.json"));
+  } catch {
+    log.fleet.warn("CDN system snapshot not found, skipping CDN system sync");
+    return { systems: { created: 0, updated: 0, total: 0 }, source: "cdn (not available)" };
+  }
+
+  log.fleet.info("loading CDN system snapshot");
+
+  const summaryRaw = await readFile(join(snapshotDir, "system", "summary.json"), "utf-8");
+  const summary: CdnSystemSummary[] = JSON.parse(summaryRaw);
+
+  const systemTrans = await loadTranslationPack(snapshotDir, "systems");
+  const nameMap = buildNameMap(systemTrans, "title");
+
+  const inputs: CreateReferenceSystemInput[] = [];
+  for (const system of summary) {
+    inputs.push(mapCdnSystemToReferenceInput({ system, nameMap, factionLabels: FACTION_NAMES }));
+  }
+
+  log.fleet.info({ count: inputs.length }, "parsed CDN systems, starting bulk upsert");
+  const result = await store.bulkUpsertSystems(inputs);
+
+  log.fleet.info(
+    { created: result.created, updated: result.updated, total: inputs.length },
+    "CDN system sync complete",
+  );
+
+  return {
+    systems: { ...result, total: inputs.length },
     source: "game-data-cdn",
   };
 }
