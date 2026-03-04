@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added first-pass repeat-question reduction instrumentation via `record_goal_restatement` events and KPI aggregation in `get_agent_experience_metrics` (`goalRestatementTotal`, `repeatedGoalKeyCount`, `restatementsPerActiveTarget`, reduction signal). (`src/server/stores/target-store.ts`, `src/server/services/fleet-tools/declarations.ts`, `src/server/services/fleet-tools/mutate-tools.ts`, `src/server/services/fleet-tools/read-tools.ts`, `src/server/services/fleet-tools/index.ts`, `test/target-store.test.ts`, `test/fleet-tools.test.ts`)
 - Added confidence-threshold ETA mode (`0.75`) and KPI summary read tool for sprint telemetry visibility. (`src/server/services/fleet-tools/read-tools.ts`, `src/server/services/fleet-tools/declarations.ts`, `src/server/services/fleet-tools/index.ts`, `test/fleet-tools.test.ts`)
 - Added runbook operations guidance for ADR-038 reminder feedback capture and KPI/log review procedures. (`docs/RUNBOOK.md`)
+- Added PM sweep closeout report for ADR-038 completion and next-sprint handoff. (`docs/PM_SWEEP_2026-03-04.md`)
 
 #### Local PG startup reliability + docs structure sweep (2026-02-24)
 - Added `pg:autofix` helper command to force-create/start local Postgres service and enforce `unless-stopped` restart policy on the compose container. (`package.json`, `scripts/pg-autofix.mjs`)
