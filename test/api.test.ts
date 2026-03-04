@@ -277,6 +277,55 @@ describe("POST /api/chat", () => {
     expect(statusRes.status).toBe(404);
   });
 
+  it("prefers durable run status when event stream status is stale", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const state = makeState({
+      geminiEngine: makeMockEngine("noop"),
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const runId = "crun_status_reconcile";
+    const sessionId = "session-reconcile";
+    const tabId = "tab-reconcile";
+
+    await chatRunStore.enqueue({
+      id: runId,
+      userId: "local",
+      sessionId,
+      tabId,
+      requestJson: { message: "reconcile" },
+    });
+    await chatRunStore.claimNext("lock-reconcile");
+    await chatRunStore.requestCancel(runId, "local");
+    await pool.query(
+      `UPDATE chat_runs SET updated_at = NOW() - INTERVAL '10 minutes' WHERE id = $1`,
+      [runId],
+    );
+    await chatRunStore.requeueStaleRunning(60_000);
+
+    const eventStore = eventFactory.forUser("local");
+    await eventStore.register("chat_run", runId, { sessionId, tabId });
+    await eventStore.emit({
+      topic: "chat_run",
+      operationId: runId,
+      routing: { sessionId, tabId },
+      eventType: "run.started",
+      status: "running",
+      payloadJson: { phase: "chat.running", traceId: runId },
+    });
+
+    const statusRes = await testRequest(app).get(`/api/chat/runs/${runId}`);
+    expect(statusRes.status).toBe(200);
+    expect(statusRes.body.data.status).toBe("cancelled");
+    expect(statusRes.body.data.phase).toBe("chat.running");
+    expect(statusRes.body.data.cancelReason).toBe("cancel_requested");
+  });
+
   it("exposes traceable error fields on failed async run status", async () => {
     await cleanDatabase(pool);
     const eventFactory = await createOperationEventStoreFactory(pool);

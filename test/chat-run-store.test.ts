@@ -86,6 +86,36 @@ describe("chat-run-store", () => {
     expect(run?.status).toBe("queued");
   });
 
+  it("terminalizes stale running jobs when cancel was requested", async () => {
+    const store = await createChatRunStore(pool);
+
+    await store.enqueue({
+      id: "crun_stale_cancel_requested",
+      userId: "user-a",
+      sessionId: "s1",
+      tabId: "t1",
+      requestJson: { message: "cancel stale" },
+    });
+
+    const claimed = await store.claimNext("lock-stale-cancel");
+    expect(claimed?.run.status).toBe("running");
+
+    const cancelState = await store.requestCancel("crun_stale_cancel_requested", "user-a");
+    expect(cancelState).toBe("running");
+
+    await pool.query(
+      `UPDATE chat_runs SET updated_at = NOW() - INTERVAL '10 minutes' WHERE id = $1`,
+      ["crun_stale_cancel_requested"],
+    );
+
+    const recovered = await store.requeueStaleRunning(60_000);
+    expect(recovered).toBe(1);
+
+    const run = await store.get("crun_stale_cancel_requested");
+    expect(run?.status).toBe("cancelled");
+    expect(run?.finishedAt).not.toBeNull();
+  });
+
   it("handles concurrent queued cancellations deterministically", async () => {
     const store = await createChatRunStore(pool);
 

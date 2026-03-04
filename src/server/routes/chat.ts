@@ -325,7 +325,7 @@ export function createChatRoutes(appState: AppState): Router {
     try {
       const requeued = await appState.chatRunStore.requeueStaleRunning(RUN_STALE_REQUEUE_MS);
       if (requeued > 0) {
-        log.gemini.warn({ event: "chat_run.requeue_stale", requeued, staleAfterMs: RUN_STALE_REQUEUE_MS }, "requeued stale running chat runs");
+        log.gemini.warn({ event: "chat_run.recover_stale", recovered: requeued, staleAfterMs: RUN_STALE_REQUEUE_MS }, "recovered stale running chat runs");
       }
       const lockToken = `lock_${randomUUID()}`;
       const claimed = await appState.chatRunStore.claimNext(lockToken);
@@ -550,24 +550,41 @@ export function createChatRoutes(appState: AppState): Router {
     if (!routing) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Run not found", 404);
     }
+
+    const durableRun = appState.chatRunStore
+      ? await appState.chatRunStore.getForUser(runId, userId)
+      : null;
     const latest = await store.latest("chat_run", runId);
     const payload = (latest?.payloadJson ?? {}) as Record<string, unknown>;
+    const status = durableRun?.status ?? latest?.status ?? "queued";
+    const inferredPhase =
+      status === "queued" ? "chat.queued"
+        : status === "running" ? "chat.running"
+          : status === "succeeded" ? "chat.completed"
+            : status === "failed" ? "chat.failed"
+              : status === "cancelled" ? "chat.cancelled"
+                : status === "timed_out" ? "chat.timed_out"
+                  : null;
+    const inferredCancelReason =
+      status === "timed_out" ? "watchdog_timeout"
+        : status === "cancelled" && durableRun?.cancelRequested ? "cancel_requested"
+          : null;
 
     sendOk(res, {
       runId,
       sessionId: routing.sessionId,
       tabId: routing.tabId,
-      status: latest?.status ?? "queued",
-      phase: typeof payload.phase === "string" ? payload.phase : null,
+      status,
+      phase: typeof payload.phase === "string" ? payload.phase : inferredPhase,
       traceId: typeof payload.traceId === "string" ? payload.traceId : null,
       requestId: typeof payload.requestId === "string" ? payload.requestId : null,
       errorCode: typeof payload.errorCode === "string" ? payload.errorCode : null,
       errorMessage: typeof payload.errorMessage === "string" ? payload.errorMessage : null,
-      cancelReason: typeof payload.reason === "string" ? payload.reason : null,
+      cancelReason: typeof payload.reason === "string" ? payload.reason : inferredCancelReason,
       answer: typeof payload.answer === "string" ? payload.answer : null,
       proposals: Array.isArray(payload.proposals) ? payload.proposals : [],
       trace: payload.trace ?? null,
-      updatedAt: latest?.createdAt ?? null,
+      updatedAt: durableRun?.updatedAt ?? latest?.createdAt ?? null,
     });
   });
 
@@ -594,7 +611,10 @@ export function createChatRoutes(appState: AppState): Router {
     }
 
     const latest = await store.latest("chat_run", runId);
-    const status = latest?.status ?? "queued";
+    const durableRun = appState.chatRunStore
+      ? await appState.chatRunStore.getForUser(runId, userId)
+      : null;
+    const status = durableRun?.status ?? latest?.status ?? "queued";
     if (["succeeded", "failed", "cancelled", "timed_out"].includes(status)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Run is already in a terminal state", 409);
     }

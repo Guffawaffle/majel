@@ -40,7 +40,7 @@ Ship a single, production-ready realtime operation stack where long-running chat
 | 1 | Platform | `operation_events` schema + event emitter helper | #174 | [x] Done |
 | 2 | Platform | `/api/events/stream`, keepalive, snapshot endpoint, replay (`Last-Event-ID`) | #174 | [x] Done |
 | 3 | Chat Runs | `chat_runs` + `chat_run_events`, submit endpoint (`202 + runId`) | #172 | [~] In progress (submit+status via `chat_run` stream plane landed) |
-| 4 | Chat Runs | worker claim loop/watchdog + SSE event integration + cancel flow | #172 | [ ] Not started |
+| 4 | Chat Runs | worker claim loop/watchdog + SSE event integration + cancel flow | #172 | [~] In progress (stale-run recovery + durable status reconciliation shipped) |
 | 5 | Hardening | privacy tests, reconnect behavior, runbook updates, CI gates | #172 + #174 | [ ] Not started |
 
 ### Sprint Progress Notes
@@ -48,6 +48,7 @@ Ship a single, production-ready realtime operation stack where long-running chat
 - [x] Event stream plane is live (`/api/events/snapshot`, `/api/events/stream`) with owner-only access tests.
 - [x] Chat run lifecycle emits `run.queued`, `run.started`, `run.completed`, `run.failed` with routing tuple `(runId, sessionId, tabId)`.
 - [~] Async submit contract shipped behind client opt-in (`POST /api/chat` with `async: true` returns `202` + `runId`; `GET /api/chat/runs/:runId` provides status snapshot).
+- [~] Stale running run recovery now terminalizes cancel-requested runs and status route reconciles against durable `chat_runs` state when event stream is stale.
 
 ### Definition of Done
 

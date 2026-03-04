@@ -206,11 +206,11 @@ export async function createChatRunStore(adminPool: Pool, runtimePool?: Pool): P
     async requeueStaleRunning(staleAfterMs) {
       const result = await pool.query(
         `UPDATE public.chat_runs
-         SET status = 'queued',
+         SET status = CASE WHEN cancel_requested THEN 'cancelled' ELSE 'queued' END,
              lock_token = NULL,
+             finished_at = CASE WHEN cancel_requested THEN COALESCE(finished_at, NOW()) ELSE finished_at END,
              updated_at = NOW()
          WHERE status = 'running'
-           AND cancel_requested = FALSE
            AND updated_at < NOW() - ($1::bigint * INTERVAL '1 millisecond')`,
         [Math.max(1, staleAfterMs)],
       );

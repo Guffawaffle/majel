@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Realtime async chat hardening (ADR-036/ADR-037 Day 4)
+- Added stale-run recovery behavior for `chat_runs` so stale `running` entries with `cancel_requested=true` are terminalized as `cancelled` instead of remaining stuck. (`src/server/stores/chat-run-store.ts`, `test/chat-run-store.test.ts`)
+- Added durable-state reconciliation in `GET /api/chat/runs/:runId` and cancel preflight checks so route responses prefer `chat_run_store` state when event stream status lags behind. (`src/server/routes/chat.ts`, `test/api.test.ts`)
+
 #### Agent Experience Policy sprint checkpoint (ADR-038) — 2026-03-03
 - Added ADR-038 policy record for identity integrity, approved-stream trust, correction-loop behavior, and KPI acceptance gates. ([docs/ADR-038-agent-experience-policy.md](docs/ADR-038-agent-experience-policy.md))
 - Added prompt-level policy hardening for Ariadne/Majel identity framing, source-officiality guardrails, and approved-stream-first datastream rules. (`src/server/services/gemini/system-prompt.ts`, `test/gemini.test.ts`)
