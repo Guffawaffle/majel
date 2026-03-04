@@ -38,6 +38,12 @@ function parseLastEventId(value: unknown): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+function parseReplayCursor(headerValue: unknown, queryValue: unknown): number {
+  const fromHeader = parseLastEventId(headerValue);
+  if (fromHeader > 0) return fromHeader;
+  return parseLastEventId(queryValue);
+}
+
 export function createEventRoutes(appState: AppState): Router {
   const router = createSafeRouter();
 
@@ -107,7 +113,7 @@ export function createEventRoutes(appState: AppState): Router {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders?.();
 
-    let cursor = parseLastEventId(req.header("Last-Event-ID") ?? req.query.lastEventId);
+    let cursor = parseReplayCursor(req.header("Last-Event-ID"), req.query.lastEventId);
     let closed = false;
     let inFlight = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;

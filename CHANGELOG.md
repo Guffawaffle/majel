@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added strict replay cursor parsing for `Last-Event-ID` in `/api/events/stream`, including malformed and array-shaped header handling that safely falls back to cursor `0`. (`src/server/routes/events.ts`)
 - Added SSE replay regressions for malformed `Last-Event-ID` handling and `lastEventId` query cursor behavior to protect reconnect semantics. (`test/events-routes.test.ts`)
 - Added PM review checkpoint report for Day 5 hardening pause/resume handoff. (`docs/PM_REVIEW_2026-03-04_DAY5_CHECKPOINT.md`)
+- Added replay cursor-source precedence hardening so malformed `Last-Event-ID` headers fall back to a valid `lastEventId` query cursor before replaying from start. (`src/server/routes/events.ts`, `test/events-routes.test.ts`)
+- Added explicit cross-user replay denial regression coverage (including admiral role) when cursor hints are provided. (`test/events-routes.test.ts`)
+- Added runbook guidance for replay cursor precedence and privacy guardrails during reconnect diagnostics. (`docs/RUNBOOK.md`)
 
 #### Realtime async chat hardening (ADR-036/ADR-037 Day 4)
 - Added stale-run recovery behavior for `chat_runs` so stale `running` entries with `cancel_requested=true` are terminalized as `cancelled` instead of remaining stuck. (`src/server/stores/chat-run-store.ts`, `test/chat-run-store.test.ts`)

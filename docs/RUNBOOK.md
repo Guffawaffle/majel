@@ -536,6 +536,21 @@ jsonPayload.event=~"chat_run.failed|chat_run.worker.failed"
 4. If status is `failed`, check Query G and verify upstream Gemini/tool errors.
 5. If status is `cancelled`, confirm expected source (`queued` vs `running`) from cancellation events.
 
+### SSE Replay Cursor Notes (Day 5)
+
+- `/api/events/stream` replay cursor accepts either `Last-Event-ID` header or `lastEventId` query param.
+- Cursor parsing is strict numeric-only; malformed values are ignored.
+- Precedence is:
+   1. valid `Last-Event-ID` header
+   2. valid `lastEventId` query value
+   3. fallback cursor `0` (replay from start)
+
+### Privacy Guardrail (Replay)
+
+- Reconnect diagnostics must be run using the same owner session that created the run.
+- Cross-user replay attempts (including admiral role) are denied with `404`, even when cursor hints are supplied.
+- Never copy another user's run identifiers or replay cursors into your own debugging session.
+
 ### Escalation Thresholds
 
 - More than 5 `chat_run.claim_loop.error` events in 10 minutes.

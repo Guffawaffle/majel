@@ -50,6 +50,7 @@ Ship a single, production-ready realtime operation stack where long-running chat
 - [~] Async submit contract shipped behind client opt-in (`POST /api/chat` with `async: true` returns `202` + `runId`; `GET /api/chat/runs/:runId` provides status snapshot).
 - [~] Stale running run recovery now terminalizes cancel-requested runs and status route reconciles against durable `chat_runs` state when event stream is stale.
 - [~] Replay hardening now treats malformed `Last-Event-ID` as cursor `0` and validates query/header replay cursor behavior in SSE route tests.
+- [~] Replay privacy edges now include malformed-header/query fallback coverage and explicit cross-user replay denial tests (including admiral) plus runbook troubleshooting notes.
 
 ### Definition of Done
 

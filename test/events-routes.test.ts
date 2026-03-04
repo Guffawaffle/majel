@@ -154,6 +154,41 @@ describe("event routes — replay + snapshot", () => {
     }
   });
 
+  it("falls back to query replay cursor when Last-Event-ID header is malformed", async () => {
+    const localStore = factory.forUser("local");
+    await localStore.register("chat_run", "run-replay-header-query-fallback", { sessionId: "session-hq", tabId: "tab-hq" });
+    const first = await localStore.emit({ topic: "chat_run", operationId: "run-replay-header-query-fallback", routing: { sessionId: "session-hq", tabId: "tab-hq" }, eventType: "run.started", status: "running" });
+    const second = await localStore.emit({ topic: "chat_run", operationId: "run-replay-header-query-fallback", routing: { sessionId: "session-hq", tabId: "tab-hq" }, eventType: "run.progress", status: "running", payloadJson: { completedSteps: 2, totalSteps: 3 } });
+
+    const app = createApp(makeState({ operationEventStoreFactory: factory, operationEventStore: localStore }));
+    const server = app.listen(0);
+    try {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") throw new Error("unable to read test server address");
+
+      const controller = new AbortController();
+      const response = await fetch(
+        `http://127.0.0.1:${addr.port}/api/events/stream?topic=chat_run&id=run-replay-header-query-fallback&lastEventId=${first.seq}`,
+        {
+          headers: { "Last-Event-ID": `oops-${first.seq}` },
+          signal: controller.signal,
+        },
+      );
+
+      expect(response.status).toBe(200);
+      const reader = response.body?.getReader();
+      expect(reader).toBeDefined();
+      const chunk = await reader!.read();
+      const text = new TextDecoder().decode(chunk.value ?? new Uint8Array());
+
+      expect(text).toContain(`id: ${second.seq}`);
+      expect(text).not.toContain(`id: ${first.seq}`);
+      controller.abort();
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("allows streaming before first event when operation is registered", async () => {
     const localStore = factory.forUser("local");
     await localStore.register("chat_run", "run-empty", { sessionId: "session-empty", tabId: "tab-empty" });
@@ -275,5 +310,27 @@ describe("event routes — auth-enabled isolation", () => {
       .get("/api/events/stream?topic=chat_run&id=run-owned-by-a")
       .set("Cookie", `majel_session=${admiralSessionToken}`);
     expect(admiralStream.status).toBe(404);
+  });
+
+  it("denies cross-user replay stream access even with cursor hints", async () => {
+    const app = createApp(makeState({
+      startupComplete: true,
+      userStore,
+      operationEventStoreFactory: factory,
+      operationEventStore: factory.forUser("local"),
+      config: makeConfig({ authEnabled: true, adminToken: ADMIN_TOKEN }),
+    }));
+
+    const otherReplay = await testRequest(app)
+      .get("/api/events/stream?topic=chat_run&id=run-owned-by-a&lastEventId=1")
+      .set("Last-Event-ID", "2")
+      .set("Cookie", `majel_session=${userBSessionToken}`);
+    expect(otherReplay.status).toBe(404);
+
+    const admiralReplay = await testRequest(app)
+      .get("/api/events/stream?topic=chat_run&id=run-owned-by-a&lastEventId=1")
+      .set("Last-Event-ID", "2")
+      .set("Cookie", `majel_session=${admiralSessionToken}`);
+    expect(admiralReplay.status).toBe(404);
   });
 });
