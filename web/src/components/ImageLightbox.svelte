@@ -201,7 +201,7 @@
   .lightbox-btn {
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: rgba(255, 255, 255, 0.07);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: rgba(255, 255, 255, 0.7);
@@ -246,7 +246,7 @@
     max-width: 95vw;
     max-height: calc(100vh - 72px);
     object-fit: contain;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     box-shadow: 0 4px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
     cursor: zoom-in;
     animation: lbScaleIn 0.2s ease-out;

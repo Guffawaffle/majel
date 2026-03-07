@@ -139,17 +139,17 @@
 .fleet-xref {
   font-size: 11px;
   padding: 2px 6px;
-  background: rgba(100, 181, 246, 0.1);
-  color: var(--accent-blue, #64b5f6);
-  border-radius: 3px;
-  border: 1px solid rgba(100, 181, 246, 0.2);
+  background: var(--accent-blue-dim, rgba(96, 160, 255, 0.1));
+  color: var(--accent-blue);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-blue-dim, rgba(96, 160, 255, 0.2));
 }
 .fleet-reservation-badge {
   font-size: 11px;
   padding: 2px 6px;
-  background: rgba(240, 160, 48, 0.1);
+  background: var(--accent-gold-dim, rgba(240, 160, 48, 0.1));
   color: var(--accent-gold);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* Inline Fields */
@@ -169,7 +169,7 @@
   padding: 4px 6px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
@@ -190,7 +190,7 @@
   padding: 6px 8px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 12px;
   resize: vertical;
@@ -235,7 +235,7 @@
   padding: 4px 8px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 12px;
 }
@@ -303,7 +303,7 @@
   padding: 3px 6px;
   background: var(--bg-secondary);
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
@@ -316,7 +316,7 @@
   cursor: pointer;
   font-size: 14px;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .fleet-target-btn.active { background: rgba(240, 160, 48, 0.15); }
 
@@ -324,17 +324,17 @@
 .fleet-xref-sm {
   font-size: 10px;
   padding: 1px 5px;
-  background: rgba(100, 181, 246, 0.1);
-  color: var(--accent-blue, #64b5f6);
-  border-radius: 2px;
+  background: var(--accent-blue-dim, rgba(96, 160, 255, 0.1));
+  color: var(--accent-blue);
+  border-radius: var(--radius-sm);
 }
 .fleet-xref-conflict { color: var(--accent-red, #f44); font-size: 12px; }
 .fleet-xref-dock {
   font-size: 10px;
   padding: 1px 5px;
-  background: rgba(76, 175, 80, 0.1);
+  background: var(--accent-green-dim, rgba(52, 211, 153, 0.1));
   color: var(--accent-green);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* Empty State */

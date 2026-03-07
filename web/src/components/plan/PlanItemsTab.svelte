@@ -251,7 +251,7 @@
   .pl-badge {
     display: inline-block;
     padding: 1px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-size: 0.72rem;
     font-weight: 600;
     text-transform: uppercase;

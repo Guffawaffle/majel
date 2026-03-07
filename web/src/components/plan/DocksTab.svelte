@@ -177,7 +177,7 @@
   .pl-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 12px 14px;
   }
   .pl-card-header {
@@ -190,7 +190,7 @@
     font-size: 0.88rem;
     background: var(--bg-tertiary);
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
   .pl-dock-lock { font-size: 0.88rem; }
   .pl-card-notes {

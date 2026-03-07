@@ -193,7 +193,7 @@
 
   .action-btn {
     background: none; border: 1px solid transparent; color: var(--text-muted);
-    padding: 4px 8px; border-radius: 4px; font-size: 0.72rem; cursor: pointer;
+    padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.72rem; cursor: pointer;
     display: flex; align-items: center; gap: 4px; transition: color var(--transition), border-color var(--transition);
   }
   .action-btn:hover { color: var(--text-primary); border-color: var(--border); }
@@ -220,7 +220,7 @@
     margin: 8px 0 0;
     padding: 10px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--bg-tertiary);
     color: var(--text-primary);
     font-size: 0.75rem;
@@ -241,8 +241,8 @@
   }
   .image-zoom-hint {
     position: absolute; bottom: 16px; right: 8px;
-    width: 28px; height: 28px; border-radius: 6px;
-    background: rgba(6, 8, 18, 0.7); backdrop-filter: blur(6px);
+    width: 28px; height: 28px; border-radius: var(--radius-sm);
+    background: var(--bg-primary, rgba(6, 8, 18, 0.7)); backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: rgba(255, 255, 255, 0.6);

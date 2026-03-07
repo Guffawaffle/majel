@@ -257,7 +257,7 @@
     align-items: center;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 10px 14px;
   }
   .res-info {

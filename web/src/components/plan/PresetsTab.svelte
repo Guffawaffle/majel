@@ -228,7 +228,7 @@
   .pl-slot-chip {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     background: var(--bg-tertiary);
     font-size: 0.78rem;
   }

@@ -30,10 +30,10 @@
 
 /* ── Error / Loading ── */
 .diag-error {
-  color: var(--accent-red, #e55);
-  background: rgba(255, 50, 50, 0.08);
+  color: var(--accent-red);
+  background: var(--accent-red-dim, rgba(248, 113, 113, 0.08));
   padding: 8px 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-bottom: 12px;
   font-size: 0.85rem;
 }
@@ -52,7 +52,7 @@
 .diag-section {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 14px 16px;
 }
 .diag-section h4 {
@@ -80,7 +80,7 @@
 .diag-summary-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 14px;
 }
 .diag-summary-header {
@@ -117,7 +117,7 @@
 .diag-preset-btn {
   padding: 5px 12px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 0.8rem;
@@ -136,7 +136,7 @@
   flex: 1;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: monospace;
@@ -146,7 +146,7 @@
 .diag-run-btn {
   padding: 8px 16px;
   border: 1px solid var(--accent-blue-dim);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--accent-blue-dim);
   color: var(--bg-primary);
   font-weight: 600;
@@ -193,7 +193,7 @@
 .diag-schema-table {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   margin-bottom: 8px;
   overflow: hidden;
 }
@@ -222,7 +222,7 @@
 }
 .diag-index {
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   background: rgba(255, 255, 255, 0.04);
   color: var(--text-muted);

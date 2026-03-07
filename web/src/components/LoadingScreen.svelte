@@ -110,7 +110,7 @@
     flex-direction: column;
     height: 100vh;
     background: var(--bg-primary, #0a0e1a);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-family: inherit;
     overflow: hidden;
     user-select: none;
     -webkit-font-smoothing: antialiased;

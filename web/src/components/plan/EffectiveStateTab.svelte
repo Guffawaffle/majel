@@ -260,7 +260,7 @@
   .pl-planning-note {
     background: var(--bg-tertiary);
     border: 1px solid var(--accent-gold-dim);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 10px 14px;
     margin-bottom: 14px;
     font-size: 0.88rem;
@@ -269,13 +269,13 @@
 
   /* ── Conflicts ── */
   .pl-conflicts {
-    background: rgba(255, 80, 80, 0.06);
-    border: 1px solid var(--accent-red, #e55);
-    border-radius: 6px;
+    background: var(--accent-red-dim, rgba(248, 113, 113, 0.06));
+    border: 1px solid var(--accent-red);
+    border-radius: var(--radius);
     padding: 12px 14px;
     margin-bottom: 14px;
   }
-  .pl-conflicts h4 { margin: 0 0 8px; font-size: 0.92rem; color: var(--accent-red, #e55); }
+  .pl-conflicts h4 { margin: 0 0 8px; font-size: 0.92rem; color: var(--accent-red); }
   .pl-conflict-row {
     display: flex;
     align-items: baseline;
@@ -297,7 +297,7 @@
   .pl-dock-card {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -337,7 +337,7 @@
   .pl-away-card {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding: 10px 12px;
   }
   .pl-away-header {
@@ -362,7 +362,7 @@
   .pl-badge {
     display: inline-block;
     padding: 1px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -374,7 +374,7 @@
     padding: 3px 10px;
     background: none;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
     font-size: 0.78rem;
     cursor: pointer;
@@ -394,7 +394,7 @@
   .pl-overlay-form {
     background: var(--bg-secondary);
     border: 1px solid var(--accent-gold-dim);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 20px;
     max-width: 560px;
     width: 100%;
@@ -409,7 +409,7 @@
   .pl-btn {
     padding: 7px 18px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-size: 0.85rem;

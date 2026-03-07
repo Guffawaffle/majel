@@ -64,7 +64,7 @@
 .cat-search-clear {
   position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
   background: none; border: none; color: var(--text-muted); cursor: pointer;
-  font-size: 13px; padding: 2px 4px; border-radius: 4px;
+  font-size: 13px; padding: 2px 4px; border-radius: var(--radius-sm);
 }
 .cat-search-clear:hover { color: var(--text-primary); background: var(--bg-hover); }
 .cat-result-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
@@ -80,7 +80,7 @@
   padding: 3px 7px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   font-size: 11px;
   cursor: pointer;
@@ -251,7 +251,7 @@
 }
 .cat-action-btn:hover { color: var(--text-primary); border-color: var(--accent-gold); }
 .cat-action-btn.active {
-  background: rgba(76, 175, 80, 0.15);
+  background: var(--accent-green-dim, rgba(52, 211, 153, 0.15));
   color: var(--accent-green);
   border-color: var(--accent-green);
 }

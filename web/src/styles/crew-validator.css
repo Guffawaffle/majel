@@ -21,7 +21,7 @@
 .cv-slot-card {
   border: 1px solid var(--border);
   background: var(--bg-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -80,9 +80,9 @@
   font-weight: 600;
   text-transform: uppercase;
 }
-.cv-verdict-works { background: rgba(76, 175, 80, 0.2); color: #66bb6a; }
-.cv-verdict-partial { background: rgba(255, 183, 77, 0.2); color: #ffb74d; }
-.cv-verdict-blocked { background: rgba(239, 83, 80, 0.2); color: #ef5350; }
+.cv-verdict-works { background: var(--accent-green-dim, rgba(52, 211, 153, 0.2)); color: var(--accent-green); }
+.cv-verdict-partial { background: var(--accent-orange-dim, rgba(251, 146, 60, 0.2)); color: var(--accent-orange); }
+.cv-verdict-blocked { background: var(--accent-red-dim, rgba(248, 113, 113, 0.2)); color: var(--accent-red); }
 .cv-verdict-unknown { background: var(--bg-tertiary); color: var(--text-muted); }
 
 /* ── Validation Matrix ── */
@@ -96,7 +96,7 @@
 .cv-officer-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 14px 16px;
 }
 
@@ -132,7 +132,7 @@
 
 .cv-ability {
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   background: var(--bg-primary);
 }
@@ -178,9 +178,9 @@
   font-size: 0.72rem;
   font-weight: 500;
 }
-.cv-effect-works { background: rgba(76, 175, 80, 0.15); color: #81c784; }
-.cv-effect-conditional { background: rgba(255, 183, 77, 0.15); color: #ffb74d; }
-.cv-effect-blocked { background: rgba(239, 83, 80, 0.15); color: #ef5350; }
+.cv-effect-works { background: var(--accent-green-dim, rgba(52, 211, 153, 0.15)); color: var(--accent-green); }
+.cv-effect-conditional { background: var(--accent-orange-dim, rgba(251, 146, 60, 0.15)); color: var(--accent-orange); }
+.cv-effect-blocked { background: var(--accent-red-dim, rgba(248, 113, 113, 0.15)); color: var(--accent-red); }
 
 .cv-effect-key { font-weight: 600; }
 .cv-effect-magnitude { opacity: 0.8; }
@@ -202,8 +202,8 @@
   gap: 4px;
 }
 .cv-issue-icon { font-size: 0.68rem; }
-.cv-issue-blocker { color: #ef5350; }
-.cv-issue-conditional { color: #ffb74d; }
+.cv-issue-blocker { color: var(--accent-red); }
+.cv-issue-conditional { color: var(--accent-orange); }
 .cv-issue-info { color: var(--text-muted); }
 
 /* ── Summary ── */
@@ -211,7 +211,7 @@
 .cv-summary {
   border: 1px solid var(--border);
   background: var(--bg-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 12px;
   margin-bottom: 12px;
 }
@@ -253,7 +253,7 @@
   flex-direction: column;
   background: var(--bg-secondary);
   border: 1px solid var(--accent-gold-dim);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   z-index: 910;
   padding: 16px;
@@ -280,7 +280,7 @@
 }
 .cv-pick {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--bg-secondary);
   color: var(--text-primary);
   padding: 8px 10px;

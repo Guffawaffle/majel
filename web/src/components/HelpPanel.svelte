@@ -305,7 +305,7 @@
     font-family: monospace;
     padding: 2px 7px;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-size: 0.78rem;
@@ -330,7 +330,7 @@
     text-align: center;
     padding: 8px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: none;
     color: var(--accent-gold);
     font-size: 0.85rem;
@@ -357,7 +357,7 @@
     gap: 4px;
     padding: 10px 6px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: none;
     color: var(--text-muted);
     cursor: pointer;

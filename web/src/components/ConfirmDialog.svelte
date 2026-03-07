@@ -127,7 +127,7 @@
     animation: confirm-slide-in 0.2s ease;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   }
-  .confirm-dialog.danger { border-color: #c0392b; }
+  .confirm-dialog.danger { border-color: var(--accent-red); }
   .confirm-dialog.warning { border-color: var(--accent-gold-dim); }
 
   /* ── Header ── */
@@ -158,7 +158,7 @@
     margin-bottom: 12px;
     padding: 10px 12px;
     background: var(--bg-secondary);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
   }
   .confirm-section { margin-bottom: 8px; }
@@ -209,11 +209,11 @@
     border-color: var(--accent-gold);
   }
   .confirm-btn.approve.danger {
-    background: #c0392b;
-    border-color: #c0392b;
-    color: #fff;
+    background: var(--accent-red);
+    border-color: var(--accent-red);
+    color: var(--bg-primary);
   }
-  .confirm-btn.approve.danger:hover { background: #e74c3c; border-color: #e74c3c; }
+  .confirm-btn.approve.danger:hover { background: var(--accent-red); border-color: var(--accent-red); opacity: 0.85; }
   .confirm-btn.approve.warning:hover { background: var(--accent-gold-bright, #ffd54f); }
 
   /* ── Animations ── */

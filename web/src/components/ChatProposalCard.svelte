@@ -187,7 +187,7 @@
     color: var(--text-primary);
     padding: 4px 6px;
     background: var(--bg-primary);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
   }
   .item-icon {
     flex-shrink: 0;

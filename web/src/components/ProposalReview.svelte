@@ -281,7 +281,7 @@
     margin-bottom: 12px;
     padding: 10px 12px;
     background: var(--bg-secondary);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
   }
   .review-section-heading {
@@ -351,7 +351,7 @@
     gap: 8px;
     font-size: 0.78rem;
     padding: 3px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--bg-primary);
   }
   .change-ref {
@@ -369,7 +369,7 @@
   .field-badge {
     display: inline-block;
     padding: 1px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--accent-gold);
     color: var(--bg-primary);
     font-size: 0.7rem;
@@ -409,7 +409,7 @@
     text-align: center;
     margin-bottom: 14px;
     padding: 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--bg-secondary);
   }
   .review-expiry.expired {

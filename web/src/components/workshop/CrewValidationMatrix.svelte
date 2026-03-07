@@ -164,8 +164,8 @@
 <style>
   .qc-validation {
     margin-top: 1rem;
-    border: 1px solid var(--ws-border, #2a3a4a);
-    border-radius: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     padding: 0.75rem;
   }
 

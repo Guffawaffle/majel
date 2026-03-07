@@ -66,7 +66,7 @@
     display: inline-flex;
     align-items: center;
     padding: 0.15em 0.45em;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: capitalize;
@@ -77,25 +77,25 @@
   .badge-rarity {
     border: 1px solid currentColor;
   }
-  .rarity-common { color: var(--lcars-text-dim, #889); }
-  .rarity-uncommon { color: #4caf50; }
-  .rarity-rare { color: #2196f3; }
-  .rarity-epic { color: #9c27b0; }
-  .rarity-legendary { color: var(--lcars-gold, #f1a731); }
+  .rarity-common { color: var(--text-muted); }
+  .rarity-uncommon { color: var(--accent-green); }
+  .rarity-rare { color: var(--accent-blue); }
+  .rarity-epic { color: var(--accent-purple); }
+  .rarity-legendary { color: var(--accent-gold); }
 
   .badge-class {
-    color: #fff;
+    color: var(--text-primary);
     font-size: 0.7rem;
   }
-  .class-cmd { background: #c62828; }
-  .class-sci { background: #1565c0; }
-  .class-eng { background: #2e7d32; }
+  .class-cmd { background: var(--accent-red); }
+  .class-sci { background: var(--accent-blue); }
+  .class-eng { background: var(--accent-green); }
 
-  .badge-hull { color: var(--lcars-blue, #99f); }
-  .badge-faction { color: var(--lcars-blue, #99f); }
-  .badge-group { color: var(--lcars-text-dim, #889); }
+  .badge-hull { color: var(--accent-blue); }
+  .badge-faction { color: var(--accent-blue); }
+  .badge-group { color: var(--text-muted); }
   .badge-target { background: none; padding: 0; }
   .badge-conflict { background: none; padding: 0; }
-  .badge-reservation { color: var(--lcars-gold, #f1a731); background: none; padding: 0; }
-  .badge-dock { color: var(--lcars-blue, #99f); font-size: 0.7rem; }
+  .badge-reservation { color: var(--accent-gold); background: none; padding: 0; }
+  .badge-dock { color: var(--accent-blue); font-size: 0.7rem; }
 </style>
