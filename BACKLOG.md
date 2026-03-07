@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-02-22 | Branch: `main`
+> Updated: 2026-03-07 | Branch: `main`
 
 ---
 
@@ -16,15 +16,17 @@
 
 ---
 
-## Next Cloud Deploy Marker (Queued)
+## Current PM Focus
 
-- **Do not deploy yet.**
-- **Deploy checkpoint:** after ADR-026a A1 Guided Setup Templates (#70) is complete and validated.
-- **Validation gate:** targeted tests for Start/Sync guided setup + catalog bulk receipt behavior pass.
+- **Top active implementation target:** #187 — improve `stfc.space` crawler ETag handling and reduce unnecessary traffic.
+- **Top QA tranche:** #161, #162, #163, #165, #167, #169.
+- **Recently shipped:** boot alignment (#186), password minimum update (#164), LCARS theme (#188), and review-driven theme fixes.
+- **Operational note:** deploys are live again; use normal `ax ci` + push gate, not the old guided-setup hold marker.
+
 
 ---
 
-## Active Sprint — Realtime Async Operations (ADR-036 + ADR-037, #175)
+## Completed Sprint — Realtime Async Operations (ADR-036 + ADR-037, #175)
 
 **Sprint umbrella:** #175  
 **Linked implementation issues:** #174 (SSE stream plane), #172 (async chat runs)
@@ -61,6 +63,11 @@ Ship a single, production-ready realtime operation stack where long-running chat
 - [x] No timeout-triggered double-send response race
 - [x] Cross-user access denied for streams and runs (including admiral)
 - [x] `npm run ax -- affected --run` and `npm run ax -- ci` both pass
+
+### Completion Checkpoint
+
+- [x] Delivered to `main` and validated in CI.
+- [x] Ready for GitHub issue closure sweep on #172, #174, and #175.
 
 ### Risk Controls
 
