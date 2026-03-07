@@ -5,10 +5,80 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Majel — Fleet Intelligence</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
-    <meta name="theme-color" content="#14161e">
+    <meta name="theme-color" content="#0a0e1a">
+    <link rel="stylesheet" href="/boot.css">
   </head>
   <body>
+    <!-- LCARS boot screen — visible immediately, removed by Svelte on mount -->
+    <div id="boot-screen" class="lcars-boot" role="status" aria-live="polite" aria-label="System loading">
+      <div class="lcars-frame-top">
+        <div class="lcars-elbow lcars-elbow-tl"></div>
+        <div class="lcars-bar lcars-bar-top"></div>
+        <div class="lcars-cap lcars-cap-tr"></div>
+      </div>
+      <div class="lcars-body">
+        <div class="lcars-rail">
+          <div class="lcars-block lcars-block-gold"></div>
+          <div class="lcars-block lcars-block-blue"></div>
+          <div class="lcars-block lcars-block-purple"></div>
+          <div class="lcars-block lcars-block-gold lcars-block-grow"></div>
+        </div>
+        <div class="lcars-content">
+          <div class="lcars-header">
+            <span class="lcars-title">ARIADNE</span>
+            <span class="lcars-subtitle">FLEET INTELLIGENCE SYSTEM</span>
+          </div>
+          <div class="lcars-readout">
+            <div class="lcars-readout-row">
+              <span class="lcars-label">STARDATE</span>
+              <span class="lcars-value" id="boot-stardate"></span>
+            </div>
+            <div class="lcars-readout-row">
+              <span class="lcars-label">STATUS</span>
+              <span class="lcars-value" id="boot-status">INITIALIZING</span>
+            </div>
+          </div>
+          <div class="lcars-steps" id="boot-steps">
+            <div class="lcars-step step-active" data-step="load">
+              <span class="step-indicator"><span class="step-sweep"></span></span>
+              <span class="step-id">01</span>
+              <span class="step-label">LOADING CORE SYSTEMS</span>
+            </div>
+            <div class="lcars-step step-pending" data-step="auth">
+              <span class="step-indicator">□</span>
+              <span class="step-id">02</span>
+              <span class="step-label">AUTHENTICATING</span>
+            </div>
+            <div class="lcars-step step-pending" data-step="prefs">
+              <span class="step-indicator">□</span>
+              <span class="step-id">03</span>
+              <span class="step-label">LOADING PREFERENCES</span>
+            </div>
+            <div class="lcars-step step-pending" data-step="cache">
+              <span class="step-indicator">□</span>
+              <span class="step-id">04</span>
+              <span class="step-label">INITIALIZING DATA CACHE</span>
+            </div>
+            <div class="lcars-step step-pending" data-step="ready">
+              <span class="step-indicator">□</span>
+              <span class="step-id">05</span>
+              <span class="step-label">SYSTEMS ONLINE</span>
+            </div>
+          </div>
+          <div class="lcars-scan">
+            <div class="lcars-scanline"></div>
+          </div>
+        </div>
+      </div>
+      <div class="lcars-frame-bottom">
+        <div class="lcars-elbow lcars-elbow-bl"></div>
+        <div class="lcars-bar lcars-bar-bottom"></div>
+        <div class="lcars-cap lcars-cap-br"></div>
+      </div>
+    </div>
+
     <div id="app"></div>
+    <script src="/boot-init.js"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

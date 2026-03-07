@@ -18,6 +18,7 @@
   import { getOnline } from "./lib/network-status.svelte.js";
   import { getQueue, replayQueue } from "./lib/cache/sync-queue.svelte.js";
   import { loadUserSetting, saveUserSetting } from "./lib/api/user-settings.js";
+  import { bootStepActive, bootStepDone, bootStepError, bootScreenDismiss } from "./lib/boot-screen.js";
   import type { Role } from "./lib/types.js";
 
   import ChatView from "./views/ChatView.svelte";
@@ -71,13 +72,39 @@
   }
 
   onMount(async () => {
+    // Step 1: "Loading core systems" is already active from HTML.
+    bootStepDone("load");
+
+    // Step 2: Authenticate
+    bootStepActive("auth");
     await fetchMe();
+    if (getError()) {
+      bootStepError("auth");
+      return;
+    }
+    bootStepDone("auth");
+
+    // Step 3: Load preferences
+    bootStepActive("prefs");
     const pinnedSetting = await loadUserSetting("display.helpPinned", "false");
     helpPinned = pinnedSetting === "true" || pinnedSetting === "1";
+    bootStepDone("prefs");
+
+    // Step 4: Initialize data cache
+    bootStepActive("cache");
     const user = getUser();
     if (user) {
       await initCache(user.id);
     }
+    bootStepDone("cache");
+
+    // Step 5: Ready
+    bootStepActive("ready");
+    bootStepDone("ready");
+
+    // Fade out boot screen
+    bootScreenDismiss();
+
     window.addEventListener("online", handleOnline);
   });
 
@@ -88,15 +115,9 @@
 </script>
 
 {#if isLoading()}
-  <div class="app-loading">
-    <span class="loading-logo">⟐ ARIADNE</span>
-    <span class="loading-text">Authenticating…</span>
-  </div>
+  <!-- Boot screen is in index.html; keep DOM empty while loading -->
 {:else if getError()}
-  <div class="app-loading" aria-live="assertive" role="alert">
-    <span class="loading-logo">⟐ ARIADNE</span>
-    <span class="loading-error">{getError()}</span>
-  </div>
+  <!-- Boot screen shows the error via bootStepError(); nothing else to render -->
 {:else}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="app-shell" onkeydown={handleGlobalKeydown}>
@@ -149,42 +170,6 @@
 {/if}
 
 <style>
-  .app-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    gap: 16px;
-    background: var(--bg-primary);
-  }
-
-  .loading-logo {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--accent-gold);
-    letter-spacing: 4px;
-    animation: pulse 1.5s infinite;
-  }
-
-  .loading-text {
-    font-size: 14px;
-    color: var(--text-muted);
-  }
-
-  .loading-error {
-    font-size: 14px;
-    color: var(--accent-red, #e74c3c);
-    text-align: center;
-    max-width: 400px;
-    line-height: 1.5;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
-
   .sidebar-overlay {
     position: fixed;
     inset: 0;
