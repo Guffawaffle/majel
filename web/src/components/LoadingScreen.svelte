@@ -3,6 +3,8 @@
   Shows animated system initialization steps during app startup.
 -->
 <script lang="ts">
+  import { fade } from "svelte/transition";
+
   export type BootStep = { label: string; status: "pending" | "active" | "done" | "error" };
 
   interface Props {
@@ -20,7 +22,7 @@
   })();
 </script>
 
-<div class="lcars-boot" role="status" aria-live="polite" aria-label="System loading">
+<div class="lcars-boot" role="status" aria-live="polite" aria-label="System loading" transition:fade={{ duration: 300 }}>
   <!-- Top frame bar -->
   <div class="lcars-frame-top">
     <div class="lcars-elbow lcars-elbow-tl"></div>
@@ -108,7 +110,7 @@
     flex-direction: column;
     height: 100vh;
     background: var(--bg-primary, #0a0e1a);
-    font-family: "Century Gothic", "URW Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     overflow: hidden;
     user-select: none;
     -webkit-font-smoothing: antialiased;
@@ -123,7 +125,7 @@
   }
 
   .lcars-elbow {
-    width: 120px;
+    width: var(--sidebar-width, 240px);
     height: 40px;
     flex-shrink: 0;
   }
@@ -182,12 +184,14 @@
 
   /* ── Left rail (color blocks) ──────────────────────────── */
   .lcars-rail {
-    width: 120px;
+    width: var(--sidebar-width, 240px);
     display: flex;
     flex-direction: column;
     gap: 4px;
     padding: 6px 0;
     flex-shrink: 0;
+    background: var(--bg-secondary, #111827);
+    border-right: 1px solid var(--border, #1e293b);
   }
 
   .lcars-block {
@@ -395,7 +399,7 @@
 
   /* ── Mobile ────────────────────────────────────────────── */
   @media (max-width: 600px) {
-    .lcars-rail { width: 60px; }
+    .lcars-rail { width: 60px; background: none; border-right: none; }
     .lcars-elbow { width: 60px; height: 28px; }
     .lcars-title { font-size: 24px; letter-spacing: 8px; text-indent: 8px; }
     .lcars-subtitle { font-size: 9px; letter-spacing: 4px; }
