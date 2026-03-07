@@ -18,8 +18,22 @@
   import { getOnline } from "./lib/network-status.svelte.js";
   import { getQueue, replayQueue } from "./lib/cache/sync-queue.svelte.js";
   import { loadUserSetting, saveUserSetting } from "./lib/api/user-settings.js";
-  import { bootStepActive, bootStepDone, bootStepError, bootScreenDismiss } from "./lib/boot-screen.js";
+  import LoadingScreen from "./components/LoadingScreen.svelte";
+  import type { BootStep } from "./components/LoadingScreen.svelte";
   import type { Role } from "./lib/types.js";
+
+  // Reactive boot steps — drives the LoadingScreen component.
+  let bootSteps: BootStep[] = $state([
+    { label: "Loading core systems",  status: "active"  },
+    { label: "Authenticating",        status: "pending" },
+    { label: "Loading preferences",   status: "pending" },
+    { label: "Initializing cache",    status: "pending" },
+    { label: "Ready",                 status: "pending" },
+  ]);
+
+  function advanceBoot(index: number, status: BootStep["status"]) {
+    bootSteps[index] = { ...bootSteps[index], status };
+  }
 
   import ChatView from "./views/ChatView.svelte";
   import CatalogView from "./views/CatalogView.svelte";
@@ -72,38 +86,35 @@
   }
 
   onMount(async () => {
-    // Step 1: "Loading core systems" is already active from HTML.
-    bootStepDone("load");
+    // Step 1 complete: Svelte has mounted
+    advanceBoot(0, "done");
 
     // Step 2: Authenticate
-    bootStepActive("auth");
+    advanceBoot(1, "active");
     await fetchMe();
     if (getError()) {
-      bootStepError("auth");
+      advanceBoot(1, "error");
       return;
     }
-    bootStepDone("auth");
+    advanceBoot(1, "done");
 
     // Step 3: Load preferences
-    bootStepActive("prefs");
+    advanceBoot(2, "active");
     const pinnedSetting = await loadUserSetting("display.helpPinned", "false");
     helpPinned = pinnedSetting === "true" || pinnedSetting === "1";
-    bootStepDone("prefs");
+    advanceBoot(2, "done");
 
     // Step 4: Initialize data cache
-    bootStepActive("cache");
+    advanceBoot(3, "active");
     const user = getUser();
     if (user) {
       await initCache(user.id);
     }
-    bootStepDone("cache");
+    advanceBoot(3, "done");
 
     // Step 5: Ready
-    bootStepActive("ready");
-    bootStepDone("ready");
-
-    // Fade out boot screen
-    bootScreenDismiss();
+    advanceBoot(4, "active");
+    advanceBoot(4, "done");
 
     window.addEventListener("online", handleOnline);
   });
@@ -115,9 +126,9 @@
 </script>
 
 {#if isLoading()}
-  <!-- Boot screen is in index.html; keep DOM empty while loading -->
+  <LoadingScreen steps={bootSteps} error={getError()} />
 {:else if getError()}
-  <!-- Boot screen shows the error via bootStepError(); nothing else to render -->
+  <LoadingScreen steps={bootSteps} error={getError()} />
 {:else}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="app-shell" onkeydown={handleGlobalKeydown}>
