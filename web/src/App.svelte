@@ -18,6 +18,7 @@
   import { getOnline } from "./lib/network-status.svelte.js";
   import { getQueue, replayQueue } from "./lib/cache/sync-queue.svelte.js";
   import { loadUserSetting, saveUserSetting } from "./lib/api/user-settings.js";
+  import { loadTheme } from "./lib/theme.svelte.js";
   import LoadingScreen from "./components/LoadingScreen.svelte";
   import type { BootStep } from "./components/LoadingScreen.svelte";
   import type { Role } from "./lib/types.js";
@@ -102,6 +103,7 @@
     advanceBoot(2, "active");
     const pinnedSetting = await loadUserSetting("display.helpPinned", "false");
     helpPinned = pinnedSetting === "true" || pinnedSetting === "1";
+    await loadTheme();
     advanceBoot(2, "done");
 
     // Step 4: Initialize data cache

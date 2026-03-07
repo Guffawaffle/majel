@@ -5,6 +5,7 @@
 <script lang="ts">
   import { views, getCurrentView, navigate } from "../lib/router.svelte.js";
   import { getUser, hasRole, logout } from "../lib/auth.svelte.js";
+  import { getTheme, toggleTheme } from "../lib/theme.svelte.js";
   import { checkHealth as apiCheckHealth } from "../lib/api/health.js";
   import { getSessionId } from "../lib/chat.svelte.js";
   import { getCacheReady, getCacheError } from "../lib/cache/index.js";
@@ -132,6 +133,12 @@
 
   <!-- Spacer -->
   <div class="sidebar-spacer"></div>
+
+  <!-- Theme toggle -->
+  <button class="sidebar-nav-btn theme-btn" onclick={toggleTheme} title="Switch theme">
+    <span class="icon">{getTheme() === 'lcars' ? '🖖' : '🌑'}</span>
+    {getTheme() === 'lcars' ? 'LCARS' : 'Dark'}
+  </button>
 
   <!-- Logout -->
   <button class="sidebar-nav-btn logout-btn" onclick={handleLogout}>
@@ -313,6 +320,14 @@
   .sidebar-spacer { flex: 0; }
 
   .logout-btn { color: var(--text-muted); }
+
+  .theme-btn {
+    color: var(--accent-purple);
+    font-size: 12px;
+  }
+  .theme-btn:hover {
+    color: var(--accent-gold);
+  }
 
   .sidebar-footer {
     padding-top: 12px;

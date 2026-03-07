@@ -1,0 +1,218 @@
+/* ═══════════════════════════════════════════════════════════
+   LCARS Theme — CSS Custom Property overrides + structural styles
+   Applied when [data-theme="lcars"] is on <html>.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Variable overrides ──────────────────────────────────── */
+
+[data-theme="lcars"] {
+  /* Typography: geometric sans-serif for the LCARS aesthetic */
+  --font-lcars: "Century Gothic", "URW Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+
+  /* Structure: rounder, bolder shapes */
+  --radius:     16px;
+  --radius-sm:  12px;
+  --radius-md:  20px;
+
+  /* Slightly warmer backgrounds for panel depth */
+  --bg-secondary:  #0f1729;
+  --bg-tertiary:   #162040;
+  --bg-hover:      #1a2850;
+
+  /* Bolder border for frame elements */
+  --border:        #1a2850;
+  --border-light:  #263770;
+}
+
+/* ── Font application ────────────────────────────────────── */
+
+[data-theme="lcars"] body {
+  font-family: var(--font-lcars);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+
+[data-theme="lcars"] :global(.sidebar) {
+  border-right: none;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  gap: 0;
+  position: relative;
+  overflow: visible;
+}
+
+/* LCARS color-block rail overlay on sidebar */
+[data-theme="lcars"] :global(.sidebar)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  bottom: 0;
+  background:
+    linear-gradient(
+      to bottom,
+      var(--accent-gold)   0,
+      var(--accent-gold)   35%,
+      transparent          35%,
+      transparent          36%,
+      var(--accent-blue)   36%,
+      var(--accent-blue)   58%,
+      transparent          58%,
+      transparent          59%,
+      var(--accent-purple) 59%,
+      var(--accent-purple) 72%,
+      transparent          72%,
+      transparent          73%,
+      var(--accent-gold)   73%,
+      var(--accent-gold)   100%
+    );
+  border-radius: 3px;
+  z-index: 1;
+}
+
+/* Logo gets the LCARS font + bigger letter-spacing */
+[data-theme="lcars"] :global(.sidebar-logo) {
+  font-family: var(--font-lcars);
+  letter-spacing: 4px;
+  font-size: 18px;
+  border-bottom: 2px solid var(--accent-gold);
+  padding-bottom: 12px;
+}
+
+/* Nav buttons: pill-shaped in LCARS */
+[data-theme="lcars"] :global(.sidebar-nav-btn) {
+  border-radius: 20px;
+  padding: 8px 16px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+[data-theme="lcars"] :global(.sidebar-nav-btn.active) {
+  border-left: none;
+  border-right: 3px solid var(--accent-gold);
+  background: var(--bg-tertiary);
+}
+
+/* Section labels: LCARS-style readout labels */
+[data-theme="lcars"] :global(.sidebar-section-label) {
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  padding: 16px 8px 6px;
+}
+
+/* Footer border uses a gold accent */
+[data-theme="lcars"] :global(.sidebar-footer) {
+  border-top: 2px solid var(--accent-gold);
+}
+
+/* ── Title Bar ───────────────────────────────────────────── */
+
+[data-theme="lcars"] :global(.title-bar) {
+  border-bottom: 2px solid var(--accent-blue);
+  position: relative;
+}
+
+/* LCARS elbow cap on the left edge of the title bar */
+[data-theme="lcars"] :global(.title-bar)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: var(--accent-gold);
+  border-bottom-right-radius: 12px;
+}
+
+[data-theme="lcars"] :global(.title-bar h1) {
+  font-family: var(--font-lcars);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-size: 16px;
+  padding-left: 12px;
+}
+
+/* Help button: pill-shaped */
+[data-theme="lcars"] :global(.title-bar .help-btn) {
+  border-radius: 20px;
+  border-width: 2px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+/* ── Mobile Header ───────────────────────────────────────── */
+
+[data-theme="lcars"] :global(.mobile-header) {
+  border-bottom: 2px solid var(--accent-blue);
+}
+
+[data-theme="lcars"] :global(.mobile-header .title) {
+  font-family: var(--font-lcars);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+/* ── Cards & Panels ──────────────────────────────────────── */
+
+/* Generic card/panel styling: rounded LCARS bezels */
+[data-theme="lcars"] :global(.card),
+[data-theme="lcars"] :global(.panel),
+[data-theme="lcars"] :global(.stat-card),
+[data-theme="lcars"] :global(.fleet-card),
+[data-theme="lcars"] :global(.plan-card) {
+  border-radius: 16px;
+  border-left: 4px solid var(--accent-gold);
+}
+
+/* ── Dialogs ─────────────────────────────────────────────── */
+
+[data-theme="lcars"] dialog {
+  border: 2px solid var(--accent-blue);
+  border-radius: 20px;
+}
+
+[data-theme="lcars"] dialog::backdrop {
+  background: rgba(10, 14, 26, 0.85);
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+
+[data-theme="lcars"] :global(button.primary),
+[data-theme="lcars"] :global(.btn-primary) {
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+/* ── Inputs ──────────────────────────────────────────────── */
+
+[data-theme="lcars"] :global(input),
+[data-theme="lcars"] :global(textarea),
+[data-theme="lcars"] :global(select) {
+  border-radius: 12px;
+  border-width: 2px;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+
+[data-theme="lcars"] ::-webkit-scrollbar-thumb {
+  background: var(--accent-gold-dim);
+  border-radius: 6px;
+}
+
+[data-theme="lcars"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-gold);
+}
+
+/* ── Focus ring: gold in LCARS mode ──────────────────────── */
+
+[data-theme="lcars"] {
+  --focus-ring: 0 0 0 2px var(--accent-gold);
+}
