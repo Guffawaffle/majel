@@ -17,10 +17,10 @@ describe("validatePassword", () => {
     expect(result.reason).toContain("string");
   });
 
-  it("rejects password shorter than 15 chars", () => {
+  it("rejects password shorter than 10 chars", () => {
     const result = validatePassword("short");
     expect(result.valid).toBe(false);
-    expect(result.reason).toContain("at least 15");
+    expect(result.reason).toContain("at least 10");
   });
 
   it("rejects password longer than 128 chars", () => {
@@ -29,8 +29,8 @@ describe("validatePassword", () => {
     expect(result.reason).toContain("at most 128");
   });
 
-  it("accepts a valid 15-char password", () => {
-    expect(validatePassword("a".repeat(15)).valid).toBe(true);
+  it("accepts a valid 10-char password", () => {
+    expect(validatePassword("a".repeat(10)).valid).toBe(true);
   });
 
   it("accepts a valid 128-char password", () => {

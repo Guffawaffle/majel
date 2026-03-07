@@ -108,8 +108,8 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!password || typeof password !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "Password is required", 400);
     }
-    if (password.length < 15) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be at least 15 characters", 400);
+    if (password.length < 10) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be at least 10 characters", 400);
     }
     if (password.length > 200) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Password must be 200 characters or fewer", 400);
@@ -364,8 +364,8 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!newPassword || typeof newPassword !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "New password is required", 400);
     }
-    if (newPassword.length < 15) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 15 characters", 400);
+    if (newPassword.length < 10) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 10 characters", 400);
     }
     if (newPassword.length > 200) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be 200 characters or fewer", 400);
@@ -443,8 +443,8 @@ export function createAuthRoutes(appState: AppState): Router {
     if (!newPassword || typeof newPassword !== "string") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "New password is required", 400);
     }
-    if (newPassword.length < 15) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 15 characters", 400);
+    if (newPassword.length < 10) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be at least 10 characters", 400);
     }
     if (newPassword.length > 200) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be 200 characters or fewer", 400);

@@ -32,7 +32,7 @@ const ARGON2_OPTIONS: argon2.Options & { raw: false } = {
 
 // ─── Password Policy ────────────────────────────────────────────
 
-const MIN_LENGTH = 15;
+const MIN_LENGTH = 10;
 const MAX_LENGTH = 128;
 
 export interface PasswordValidation {
@@ -44,7 +44,7 @@ export interface PasswordValidation {
  * Validate a password against NIST SP800-63B policy.
  *
  * Rules:
- * - 15–128 characters (no MFA at launch, so 15 minimum)
+ * - 10–128 characters
  * - No composition rules (no forced uppercase/numbers/symbols)
  * - Unicode and whitespace allowed
  * - Breached password check: Phase 4 (not yet)

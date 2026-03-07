@@ -101,10 +101,10 @@ describe("Auth routes — signup validation", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects password < 15 chars", async () => {
+  it("rejects password < 10 chars", async () => {
     const res = await testRequest(app).post("/api/auth/signup").send({ email: "a@b.com", password: "short", displayName: "X" });
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toContain("15 characters");
+    expect(res.body.error.message).toContain("10 characters");
   });
 
   it("rejects password > 200 chars", async () => {
@@ -309,7 +309,7 @@ describe("Auth routes — reset-password validation", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects newPassword < 15 chars", async () => {
+  it("rejects newPassword < 10 chars", async () => {
     const res = await testRequest(app).post("/api/auth/reset-password").send({ token: "abc", newPassword: "short" });
     expect(res.status).toBe(400);
   });
@@ -557,7 +557,7 @@ describe("Auth routes — change-password validation", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects newPassword < 15 chars", async () => {
+  it("rejects newPassword < 10 chars", async () => {
     const res = await testRequest(app).post("/api/auth/change-password")
       .set("Cookie", `majel_session=${sessionToken}`)
       .send({ currentPassword: "oldPassword12345!!!", newPassword: "short" });
