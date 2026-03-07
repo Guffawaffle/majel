@@ -115,6 +115,8 @@ function createMockReferenceStore(overrides: Partial<ReferenceStore> = {}): Refe
     deleteShip: vi.fn(),
     bulkUpsertOfficers: vi.fn(),
     bulkUpsertShips: vi.fn(),
+    listSystemsByResource: vi.fn().mockResolvedValue([]),
+    searchSystemsByMining: vi.fn().mockResolvedValue([]),
     counts: vi.fn().mockResolvedValue({ officers: 42, ships: 18 }),
     close: vi.fn(),
     ...overrides,

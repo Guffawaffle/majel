@@ -52,7 +52,7 @@ export interface CdnOfficerSummaryForMapping {
   loca_id: number;
   rarity: number;
   class: number;
-  faction?: { id?: number | null; loca_id?: number | null } | null;
+  faction?: number | { id?: number | null; loca_id?: number | null } | null;
   captain_ability?: CdnOfficerAbilityRefForMapping | null;
   ability?: CdnOfficerAbilityRefForMapping | null;
   below_decks_ability?: CdnOfficerAbilityRefForMapping | null;
@@ -231,9 +231,15 @@ export function mapCdnOfficerToReferenceInput(options: OfficerMapperOptions): Cr
   } = options;
 
   const name = officerNameMap.get(officer.loca_id) ?? `Officer ${officer.id}`;
-  const factionId = officer.faction?.id ?? null;
+  // CDN stores faction as bare number (game ID); older types used {id, loca_id} objects.
+  // Handle both shapes defensively.
+  const rawFaction = officer.faction;
+  const factionId = typeof rawFaction === "number" ? rawFaction
+    : (rawFaction?.id ?? null);
+  const factionLocaId = typeof rawFaction === "number" ? null
+    : (rawFaction?.loca_id ?? null);
   const factionName = factionId != null
-    ? (factionLabels[factionId] ?? factionNameMap.get(officer.faction?.loca_id ?? -1) ?? null)
+    ? (factionLabels[factionId] ?? factionNameMap.get(factionLocaId ?? -1) ?? null)
     : null;
   const rarityStr = rarityLabels[officer.rarity] ?? String(officer.rarity);
   const className = officerClassLabels[officer.class] ?? null;
@@ -513,7 +519,7 @@ export interface CdnSystemSummary {
   has_missions: boolean;
   mine_resources: unknown[];
   hostiles: unknown[];
-  node_sizes: Record<string, unknown>[];
+  node_sizes: unknown[];
   hazard_level?: number;
 }
 
@@ -543,7 +549,9 @@ export function mapCdnSystemToReferenceInput(options: SystemMapperOptions): Crea
     hasMines: system.has_mines,
     hasPlanets: system.has_planets,
     hasMissions: system.has_missions,
-    mineResources: (system.mine_resources as Record<string, unknown>[]) ?? null,
+    mineResources: system.mine_resources?.map((r) =>
+      typeof r === "number" ? { id: r } : (r as Record<string, unknown>),
+    ) ?? null,
     hostileCount: system.hostiles?.length ?? 0,
     nodeSizes: system.node_sizes ?? null,
     hazardLevel: system.hazard_level ?? null,

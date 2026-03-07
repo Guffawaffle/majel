@@ -17,6 +17,7 @@ import type { ReceiptStore } from "../../stores/receipt-store.js";
 import type { ResearchStore } from "../../stores/research-store.js";
 import type { InventoryStore } from "../../stores/inventory-store.js";
 import type { UserSettingsStore } from "../../stores/user-settings-store.js";
+import type { ResourceDef } from "../resource-defs.js";
 
 // ─── Tool Context ───────────────────────────────────────────
 
@@ -38,6 +39,8 @@ export interface ToolContext {
   researchStore?: ResearchStore | null;
   inventoryStore?: InventoryStore | null;
   userSettingsStore?: UserSettingsStore | null;
+  /** Resource definition map for resolving mine resource IDs to human names. */
+  resourceDefs?: Map<number, ResourceDef> | null;
 }
 
 /**

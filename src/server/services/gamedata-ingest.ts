@@ -182,7 +182,7 @@ interface CdnOfficerSummary {
   id: number;
   art_id: number;
   loca_id: number;
-  faction: { id: number; loca_id: number } | null;
+  faction: number | { id: number; loca_id: number } | null;
   rarity: number;
   synergy_id: number;
   max_rank: number;

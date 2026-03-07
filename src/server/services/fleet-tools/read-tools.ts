@@ -10,6 +10,7 @@
 
 import type { ToolContext } from "./declarations.js";
 import { detectTargetConflicts } from "../target-conflicts.js";
+import { resolveResourceId, type ResolvedResource } from "../resource-defs.js";
 import { SEED_INTENTS, type SeedIntent } from "../../types/crew-types.js";
 import { hullTypeLabel, officerClassLabel } from "../game-enums.js";
 import type { InventoryCategory } from "../../stores/inventory-store.js";
@@ -1499,6 +1500,37 @@ export async function detectConflicts(ctx: ToolContext): Promise<object> {
 
 type ReferenceCategory = "research" | "building" | "hostile" | "consumable" | "system";
 
+/**
+ * Resolve raw mineResources JSONB (array of `{id: number}`) to human-readable
+ * objects via the resource definition map. Returns null if no data, and
+ * provides safe fallbacks for unknown IDs.
+ *
+ * Guardrail: if resourceDefs is missing/empty, returns a diagnostic marker
+ * so Aria never invents resource names.
+ */
+function resolveSystemMineResources(
+  raw: Record<string, unknown>[] | null,
+  ctx: ToolContext,
+): ResolvedResource[] | null {
+  if (!raw || raw.length === 0) return null;
+  const defs = ctx.resourceDefs;
+  if (!defs || defs.size === 0) {
+    // Guardrail: resource map unavailable — return raw IDs with diagnostic
+    return raw.map((r) => ({
+      id: typeof r.id === "number" ? r.id : 0,
+      name: "I can't verify from Majel dataset",
+      grade: -1,
+      category: "other" as const,
+      resourceKey: "unresolved",
+    }));
+  }
+  return raw.map((r) => {
+    // Handle both {id: number} objects and bare numbers (defense in depth)
+    const gameId = typeof r === "number" ? r : (typeof r.id === "number" ? r.id : 0);
+    return resolveResourceId(gameId, defs);
+  });
+}
+
 export async function searchGameReference(
   category: ReferenceCategory,
   query: string,
@@ -1555,6 +1587,7 @@ export async function searchGameReference(
         id: s.id, name: s.name, level: s.level, estWarp: s.estWarp,
         isDeepSpace: s.isDeepSpace, factions: s.factions,
         hasMines: s.hasMines, hasPlanets: s.hasPlanets,
+        mineResources: resolveSystemMineResources(s.mineResources, ctx),
       }));
       return { category, results, totalFound: rows.length, truncated: rows.length > cap };
     }
@@ -1599,7 +1632,12 @@ export async function getGameReference(
     case "system": {
       const row = await ctx.referenceStore.getSystem(id);
       if (!row) return { error: `System not found: ${id}` };
-      return { reference: row };
+      // Resolve mineResources IDs to human-readable names
+      const resolved = {
+        ...row,
+        mineResources: resolveSystemMineResources(row.mineResources, ctx),
+      };
+      return { reference: resolved };
     }
     default:
       return { error: `Unknown category: ${category}` };

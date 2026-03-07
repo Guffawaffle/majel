@@ -225,7 +225,7 @@ export interface ReferenceSystem {
   hasMissions: boolean | null;
   mineResources: Record<string, unknown>[] | null;
   hostileCount: number | null;
-  nodeSizes: Record<string, unknown>[] | null;
+  nodeSizes: unknown[] | null;
   hazardLevel: number | null;
   gameId: number | null;
   source: string;
@@ -276,6 +276,15 @@ export interface ReferenceStore {
   searchConsumables(query: string): Promise<ReferenceConsumable[]>;
   getSystem(id: string): Promise<ReferenceSystem | null>;
   searchSystems(query: string): Promise<ReferenceSystem[]>;
+  /** Find systems whose mine_resources JSONB contains a given resource game ID. */
+  listSystemsByResource(resourceGameId: number): Promise<ReferenceSystem[]>;
+  /** Composite mining query: filter by resource + optional warp/level/deepSpace constraints. */
+  searchSystemsByMining(opts: {
+    resourceGameId: number;
+    maxWarp?: number;
+    minLevel?: number;
+    maxLevel?: number;
+  }): Promise<ReferenceSystem[]>;
 
   counts(): Promise<ReferenceCounts>;
   close(): void;
@@ -538,6 +547,7 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ref_systems_name ON reference_systems(name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_systems_level ON reference_systems(level)`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_systems_mine_resources ON reference_systems USING GIN (mine_resources)`,
 ];
 
 const OFFICER_COLS = `id, name, rarity, group_name AS "groupName", captain_maneuver AS "captainManeuver",
@@ -667,6 +677,7 @@ const SQL = {
   systemExists: `SELECT 1 FROM reference_systems WHERE id = $1`,
   getSystem: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE id = $1`,
   searchSystems: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE name ILIKE $1 ORDER BY name`,
+  listSystemsByResource: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE mine_resources @> $1::jsonb ORDER BY est_warp ASC NULLS LAST, name`,
   countSystems: `SELECT COUNT(*) AS count FROM reference_systems`,
 };
 
@@ -1227,6 +1238,39 @@ export async function createReferenceStore(adminPool: Pool, runtimePool?: Pool):
 
     async searchSystems(query) {
       const result = await pool.query(SQL.searchSystems, [`%${query}%`]);
+      return result.rows as ReferenceSystem[];
+    },
+
+    async listSystemsByResource(resourceGameId) {
+      if (!Number.isFinite(resourceGameId)) return [];
+      const containment = JSON.stringify([{ id: resourceGameId }]);
+      const result = await pool.query(SQL.listSystemsByResource, [containment]);
+      return result.rows as ReferenceSystem[];
+    },
+
+    async searchSystemsByMining(opts) {
+      if (!Number.isFinite(opts.resourceGameId)) return [];
+      const containment = JSON.stringify([{ id: opts.resourceGameId }]);
+      const clauses: string[] = [`mine_resources @> $1::jsonb`];
+      const params: (string | number)[] = [containment];
+      let paramIdx = 2;
+
+      if (opts.maxWarp != null) {
+        clauses.push(`est_warp <= $${paramIdx++}`);
+        params.push(opts.maxWarp);
+      }
+      if (opts.minLevel != null) {
+        clauses.push(`level >= $${paramIdx++}`);
+        params.push(opts.minLevel);
+      }
+      if (opts.maxLevel != null) {
+        clauses.push(`level <= $${paramIdx++}`);
+        params.push(opts.maxLevel);
+      }
+
+      const where = clauses.join(" AND ");
+      const sql = `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE ${where} ORDER BY est_warp ASC NULLS LAST, name`;
+      const result = await pool.query(sql, params);
       return result.rows as ReferenceSystem[];
     },
 

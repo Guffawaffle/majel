@@ -342,6 +342,17 @@ describe("mapCdnOfficerToReferenceInput", () => {
     expect(result.faction).toEqual({ id: 5, name: "Federation" });
   });
 
+  it("maps faction from bare number (real CDN shape)", () => {
+    const officer = { ...baseOfficer, faction: 2064723306 };
+    const opts = {
+      ...baseOptions,
+      officer,
+      factionLabels: { 2064723306: "Federation" } as Record<number, string>,
+    };
+    const result = mapCdnOfficerToReferenceInput(opts);
+    expect(result.faction).toEqual({ id: 2064723306, name: "Federation" });
+  });
+
   it("falls back to factionNameMap when factionLabels miss", () => {
     const officer = { ...baseOfficer, faction: { id: 5, loca_id: 5001 } };
     const opts = {
@@ -675,7 +686,7 @@ describe("mapCdnSystemToReferenceInput", () => {
     has_mines: true,
     has_planets: true,
     has_missions: false,
-    mine_resources: [{ type: "parsteel" }],
+    mine_resources: [1957060718],
     hostiles: [{}, {}, {}],
     node_sizes: [{ size: "large" }],
   };
@@ -699,7 +710,7 @@ describe("mapCdnSystemToReferenceInput", () => {
     expect(result.hasMines).toBe(true);
     expect(result.hasPlanets).toBe(true);
     expect(result.hasMissions).toBe(false);
-    expect(result.mineResources).toEqual([{ type: "parsteel" }]);
+    expect(result.mineResources).toEqual([{ id: 1957060718 }]);
     expect(result.hostileCount).toBe(3);
     expect(result.nodeSizes).toEqual([{ size: "large" }]);
     expect(result.source).toBe("cdn:game-data");

@@ -60,6 +60,7 @@ import { createOperationEventStoreFactory } from "./stores/operation-event-store
 import { createChatRunStore } from "./stores/chat-run-store.js";
 import { createEffectStore } from "./stores/effect-store.js";
 import { loadEffectSeedData } from "./services/effect-seed-loader.js";
+import { loadResourceDefs } from "./services/resource-defs.js";
 import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
@@ -438,6 +439,11 @@ async function boot(): Promise<void> {
     log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
   }
 
+  // 2c′. Load resource definitions (Phase 1 — #183)
+  const snapshotDir = path.join(__dirname, "../../data/.stfc-snapshot");
+  const resourceDefs = loadResourceDefs(snapshotDir);
+  log.boot.info({ count: resourceDefs.size }, "resource definitions loaded");
+
   // 2d. Initialize crew store (ADR-025 — unified composition model, #94 user-scoped)
   try {
     state.crewStoreFactory = await createCrewStoreFactory(adminPool, pool);
@@ -609,6 +615,7 @@ async function boot(): Promise<void> {
           researchStore: state.researchStoreFactory?.forUser(userId) ?? null,
           inventoryStore: state.inventoryStoreFactory?.forUser(userId) ?? null,
           userSettingsStore: state.userSettingsStore,
+          resourceDefs: resourceDefs.size > 0 ? resourceDefs : null,
         };
       },
     } : null;
