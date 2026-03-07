@@ -2,8 +2,11 @@
  * theme.svelte.ts — Reactive theme state with user-settings persistence.
  *
  * Themes:
- *   "dark"  — current default (clean dark UI)
+ *   "dark"  — clean dark UI
  *   "lcars" — LCARS visual treatment
+ *
+ * Default:
+ *   "lcars" — primary theme unless user preference overrides it
  */
 
 import { loadUserSetting, saveUserSetting } from "./api/user-settings.js";

@@ -22,8 +22,11 @@
   --accent-blue:     #60a0ff;
   --accent-blue-dim: #3070cc;
   --accent-green:    #34d399;
+  --accent-green-dim: rgba(52, 211, 153, 0.18);
   --accent-red:      #f87171;
+  --accent-red-dim:   rgba(248, 113, 113, 0.16);
   --accent-orange:   #fb923c;
+  --accent-orange-dim: rgba(251, 146, 60, 0.18);
   --accent-purple:   #a78bfa;
 
   /* Structure */

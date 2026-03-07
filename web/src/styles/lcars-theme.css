@@ -32,7 +32,7 @@
 
 /* ── Sidebar ─────────────────────────────────────────────── */
 
-[data-theme="lcars"] :global(.sidebar) {
+[data-theme="lcars"] .sidebar {
   border-right: none;
   padding-top: 8px;
   padding-bottom: 8px;
@@ -42,7 +42,7 @@
 }
 
 /* LCARS color-block rail overlay on sidebar */
-[data-theme="lcars"] :global(.sidebar)::before {
+[data-theme="lcars"] .sidebar::before {
   content: "";
   position: absolute;
   top: 0;
@@ -72,7 +72,7 @@
 }
 
 /* Logo gets the LCARS font + bigger letter-spacing */
-[data-theme="lcars"] :global(.sidebar-logo) {
+[data-theme="lcars"] .sidebar-logo {
   font-family: var(--font-lcars);
   letter-spacing: 4px;
   font-size: 18px;
@@ -81,7 +81,7 @@
 }
 
 /* Nav buttons: pill-shaped in LCARS */
-[data-theme="lcars"] :global(.sidebar-nav-btn) {
+[data-theme="lcars"] .sidebar-nav-btn {
   border-radius: 20px;
   padding: 8px 16px;
   letter-spacing: 0.5px;
@@ -90,14 +90,14 @@
   font-weight: 600;
 }
 
-[data-theme="lcars"] :global(.sidebar-nav-btn.active) {
+[data-theme="lcars"] .sidebar-nav-btn.active {
   border-left: none;
   border-right: 3px solid var(--accent-gold);
   background: var(--bg-tertiary);
 }
 
 /* Section labels: LCARS-style readout labels */
-[data-theme="lcars"] :global(.sidebar-section-label) {
+[data-theme="lcars"] .sidebar-section-label {
   text-transform: uppercase;
   letter-spacing: 2px;
   font-size: 10px;
@@ -107,19 +107,19 @@
 }
 
 /* Footer border uses a gold accent */
-[data-theme="lcars"] :global(.sidebar-footer) {
+[data-theme="lcars"] .sidebar-footer {
   border-top: 2px solid var(--accent-gold);
 }
 
 /* ── Title Bar ───────────────────────────────────────────── */
 
-[data-theme="lcars"] :global(.title-bar) {
+[data-theme="lcars"] .title-bar {
   border-bottom: 2px solid var(--accent-blue);
   position: relative;
 }
 
 /* LCARS elbow cap on the left edge of the title bar */
-[data-theme="lcars"] :global(.title-bar)::before {
+[data-theme="lcars"] .title-bar::before {
   content: "";
   position: absolute;
   left: 0;
@@ -130,7 +130,7 @@
   border-bottom-right-radius: 12px;
 }
 
-[data-theme="lcars"] :global(.title-bar h1) {
+[data-theme="lcars"] .title-bar h1 {
   font-family: var(--font-lcars);
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -139,7 +139,7 @@
 }
 
 /* Help button: pill-shaped */
-[data-theme="lcars"] :global(.title-bar .help-btn) {
+[data-theme="lcars"] .title-bar .help-btn {
   border-radius: 20px;
   border-width: 2px;
   font-weight: 700;
@@ -148,11 +148,11 @@
 
 /* ── Mobile Header ───────────────────────────────────────── */
 
-[data-theme="lcars"] :global(.mobile-header) {
+[data-theme="lcars"] .mobile-header {
   border-bottom: 2px solid var(--accent-blue);
 }
 
-[data-theme="lcars"] :global(.mobile-header .title) {
+[data-theme="lcars"] .mobile-header .title {
   font-family: var(--font-lcars);
   letter-spacing: 4px;
   text-transform: uppercase;
@@ -161,11 +161,11 @@
 /* ── Cards & Panels ──────────────────────────────────────── */
 
 /* Generic card/panel styling: rounded LCARS bezels */
-[data-theme="lcars"] :global(.card),
-[data-theme="lcars"] :global(.panel),
-[data-theme="lcars"] :global(.stat-card),
-[data-theme="lcars"] :global(.fleet-card),
-[data-theme="lcars"] :global(.plan-card) {
+[data-theme="lcars"] .card,
+[data-theme="lcars"] .panel,
+[data-theme="lcars"] .stat-card,
+[data-theme="lcars"] .fleet-card,
+[data-theme="lcars"] .plan-card {
   border-radius: 16px;
   border-left: 4px solid var(--accent-gold);
 }
@@ -183,8 +183,8 @@
 
 /* ── Buttons ─────────────────────────────────────────────── */
 
-[data-theme="lcars"] :global(button.primary),
-[data-theme="lcars"] :global(.btn-primary) {
+[data-theme="lcars"] button.primary,
+[data-theme="lcars"] .btn-primary {
   border-radius: 20px;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -193,9 +193,9 @@
 
 /* ── Inputs ──────────────────────────────────────────────── */
 
-[data-theme="lcars"] :global(input),
-[data-theme="lcars"] :global(textarea),
-[data-theme="lcars"] :global(select) {
+[data-theme="lcars"] input,
+[data-theme="lcars"] textarea,
+[data-theme="lcars"] select {
   border-radius: 12px;
   border-width: 2px;
 }
