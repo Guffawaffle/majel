@@ -15,9 +15,12 @@ import {
 import captainViabilityKeysV0 from "./data/captain-viability-keys.v0.json";
 import scoringContractV0 from "./data/scoring-contract.v0.json";
 
+export type ReservationExclusionMode = "allow" | "exclude_locked" | "exclude_all_reserved";
+
 export interface CrewRecommendInput {
   officers: CatalogOfficer[];
   reservations: OfficerReservation[];
+  reservationExclusionMode?: ReservationExclusionMode;
   intentKey: string;
   shipClass?: string | null;
   targetClass?: "explorer" | "interceptor" | "battleship" | "any";
@@ -45,7 +48,7 @@ export interface CrewRecommendation {
   factors: CrewRecommendationFactor[];
 }
 
-interface OfficerScoreBreakdown {
+export interface OfficerScoreBreakdown {
   goalFit: number;
   shipFit: number;
   counterFit: number;
@@ -53,6 +56,7 @@ interface OfficerScoreBreakdown {
   readiness: number;
   reservation: number;
   captainBonus: number;
+  captainReason: string | null;
 }
 
 type IntentGroup = "combat" | "economy";
@@ -92,6 +96,37 @@ function getReservationPenalty(officerId: string, reservations: OfficerReservati
   const reservation = reservations.find((r) => r.officerId === officerId);
   if (!reservation) return 0;
   return reservation.locked ? -6 : -3;
+}
+
+function getReservationForOfficer(officerId: string, reservations: OfficerReservation[]): OfficerReservation | undefined {
+  return reservations.find((reservation) => reservation.officerId === officerId);
+}
+
+function isExcludedByReservationMode(
+  officerId: string,
+  reservations: OfficerReservation[],
+  mode: ReservationExclusionMode,
+): boolean {
+  if (mode === "allow") return false;
+  const reservation = getReservationForOfficer(officerId, reservations);
+  if (!reservation) return false;
+  if (mode === "exclude_all_reserved") return true;
+  return reservation.locked;
+}
+
+function reservationExclusionSummary(
+  reservations: OfficerReservation[],
+  mode: ReservationExclusionMode,
+): string | null {
+  if (mode === "allow") return null;
+  const excluded = reservations.filter((reservation) => {
+    if (mode === "exclude_all_reserved") return true;
+    return reservation.locked;
+  });
+  if (excluded.length === 0) return null;
+  return mode === "exclude_locked"
+    ? `Excluded ${excluded.length} locked reserved officer${excluded.length === 1 ? "" : "s"} from suggestions.`
+    : `Excluded ${excluded.length} reserved officer${excluded.length === 1 ? "" : "s"} from suggestions.`;
 }
 
 function normalizeLevel(value: number | null): number {
@@ -163,6 +198,36 @@ function isCaptainViable(
     }
   }
   return false;
+}
+
+function hasNoBenefitCaptainText(rawText: string | null): boolean {
+  const normalized = rawText?.toLowerCase() ?? "";
+  return normalized.includes("provides no benefit")
+    || normalized.includes("does not have a captain")
+    || normalized.includes("does not have a captain maneuver")
+    || normalized.includes("does not have a captain's maneuver");
+}
+
+function getCaptainViability(
+  abilities: OfficerAbility[],
+  ctx: TargetContext,
+  intentWeights: Record<string, number>,
+  intentGroup: IntentGroup,
+): { viable: boolean; reason: string | null } {
+  const cmAbilities = abilities.filter((a) => a.slot === "cm");
+  const activeCmAbilities = cmAbilities.filter((a) => !a.isInert);
+  if (activeCmAbilities.length === 0) {
+    if (cmAbilities.some((ability) => ability.isInert && hasNoBenefitCaptainText(ability.rawText))) {
+      return { viable: false, reason: "Captain Maneuver provides no benefit for this objective." };
+    }
+    return { viable: false, reason: "No usable Captain Maneuver for this objective." };
+  }
+
+  if (isCaptainViable(abilities, ctx, intentWeights, intentGroup)) {
+    return { viable: true, reason: null };
+  }
+
+  return { viable: false, reason: "Captain Maneuver has no useful effect for this objective." };
 }
 
 /**
@@ -286,8 +351,11 @@ function scoreOfficerForSlotEffect(
   const reservation = getReservationPenalty(officer.id, opts.reservations);
 
   let captainBonus = 0;
+  let captainReason: string | null = null;
   if (opts.slot === "captain") {
-    captainBonus = isCaptainViable(abilities, ctx, weights, intentGroup) ? 2 : -3;
+    const captainViability = getCaptainViability(abilities, ctx, weights, intentGroup);
+    captainBonus = captainViability.viable ? 2 : -3;
+    captainReason = captainViability.reason;
   }
 
   return {
@@ -298,6 +366,7 @@ function scoreOfficerForSlotEffect(
     readiness,
     reservation,
     captainBonus,
+    captainReason,
   };
 }
 
@@ -327,8 +396,11 @@ function buildEffectReasons(
   bridge2Name: string,
   bridge2Breakdown: EffectScoreEntry[],
   captainViable: boolean,
+  captainReason: string | null,
   captainFallbackInRun: boolean,
   includeFallbackWarning: boolean,
+  reservationModeReason: string | null,
+  preferredCaptainOverrideReason: string | null,
   synergyPairs: number,
   reservationTotal: number,
 ): string[] {
@@ -359,11 +431,19 @@ function buildEffectReasons(
     reasons.push(`${bridge2Name} (Bridge): ${bridge2Works}.`);
   }
 
-  if (!captainViable && !captainFallbackInRun) {
-    reasons.push(`⚠ ${captainName} has no useful Captain Maneuver for this objective.`);
+  if (!captainViable && captainReason) {
+    reasons.push(`⚠ ${captainName}: ${captainReason}`);
   }
   if (includeFallbackWarning) {
     reasons.push("No viable captains found; using best available fallback.");
+  }
+
+  if (reservationModeReason) {
+    reasons.push(reservationModeReason);
+  }
+
+  if (preferredCaptainOverrideReason) {
+    reasons.push(preferredCaptainOverrideReason);
   }
 
   if (synergyPairs > 0) {
@@ -407,9 +487,23 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
   });
   const intentGroup = deriveIntentGroup(input.intentKey, ctx);
   const weights = resolved.weights;
+  const reservationExclusionMode = input.reservationExclusionMode ?? "allow";
+
+  const preferredCaptain = input.captainId ? byId.get(input.captainId) : null;
+  const reservationModeReason = reservationExclusionSummary(input.reservations, reservationExclusionMode);
+  const preferredCaptainOverrideReason = preferredCaptain
+    && isExcludedByReservationMode(preferredCaptain.id, input.reservations, reservationExclusionMode)
+    ? "Preferred captain override kept a reserved officer eligible despite reservation exclusion mode."
+    : null;
+  const recommendationPool = pool.filter((officer) => (
+    !isExcludedByReservationMode(officer.id, input.reservations, reservationExclusionMode)
+    || officer.id === preferredCaptain?.id
+  ));
+
+  if (recommendationPool.length < 3) return [];
 
   // Score all officers for captain slot with gating
-  const captainScored = pool.map((o) => {
+  const captainScored = recommendationPool.map((o) => {
     const abilities = bundle.officerAbilities.get(o.id) ?? [];
     const evaluation = evaluateOfficer(o.id, abilities, ctx, weights, "captain");
     const breakdown = buildEffectBreakdown(abilities, evaluation, weights);
@@ -421,10 +515,21 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
       ) * 10,
     ) / 10;
     const reservation = getReservationPenalty(o.id, input.reservations);
-    const viable = isCaptainViable(abilities, ctx, weights, intentGroup);
+    const captainViability = getCaptainViability(abilities, ctx, weights, intentGroup);
+    const viable = captainViability.viable;
     const captainBonus = viable ? 2 : -3;
     const total = effectScore + readiness + reservation + captainBonus;
-    return { officer: o, effectScore, readiness, reservation, captainBonus, total, viable, breakdown };
+    return {
+      officer: o,
+      effectScore,
+      readiness,
+      reservation,
+      captainBonus,
+      total,
+      viable,
+      captainReason: captainViability.reason,
+      breakdown,
+    };
   });
 
   // Sort: viable captains first, then by total score
@@ -433,7 +538,6 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
     return b.total - a.total;
   });
 
-  const preferredCaptain = input.captainId ? byId.get(input.captainId) : null;
   const viableCaptains = captainScored.filter((entry) => entry.viable);
   const captainFallbackUsed = !preferredCaptain && viableCaptains.length === 0;
   const captainCandidates = preferredCaptain
@@ -446,7 +550,7 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
     const captain = captainInfo.officer;
 
     // Score bridge candidates
-    const bridgeScored = pool
+    const bridgeScored = recommendationPool
       .filter((o) => o.id !== captain.id)
       .map((o) => {
         const abilities = bundle.officerAbilities.get(o.id) ?? [];
@@ -498,8 +602,11 @@ function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendati
           b2.officer.name,
           b2.breakdown,
           captainInfo.viable,
+          captainInfo.captainReason,
           captainFallbackUsed,
           captainFallbackUsed && !fallbackWarningEmitted,
+          reservationModeReason,
+          preferredCaptainOverrideReason,
           synergyPairs,
           captainInfo.reservation + b1.reservation + b2.reservation,
         );

@@ -258,8 +258,35 @@
   <div class="diag-summary-grid">
     {@render summaryCard("Officers", s.reference.officers.total, s.reference.officers.byRarity.map((r) => [r.rarity ?? "Unknown", Number(r.count)]))}
     {@render summaryCard("Ships", s.reference.ships.total, s.reference.ships.byClass.map((r) => [r.ship_class ?? "Unknown", Number(r.count)]))}
-    {@render summaryCard("Officer Overlays", s.overlay.officers.total, s.overlay.officers.byOwnership.map((r) => [r.ownership_state, Number(r.count)]))}
-    {@render summaryCard("Ship Overlays", s.overlay.ships.total, s.overlay.ships.byOwnership.map((r) => [r.ownership_state, Number(r.count)]))}
+  </div>
+
+  <div class="diag-section diag-scope-section">
+    <h4>Overlay Scope</h4>
+    <p class="diag-muted">
+      User-scoped counts come from the current authenticated overlay store. System-scoped counts are raw overlay rows across all users.
+    </p>
+
+    {#if s.overlay.user.available}
+      <p class="diag-muted">{s.overlay.user.label}</p>
+      <div class="diag-summary-grid">
+        {@render summaryCard("User Officer Overlays", s.overlay.user.officers.total, s.overlay.user.officers.byOwnership.map((r) => [r.ownership_state, Number(r.count)]))}
+        {@render summaryCard("User Ship Overlays", s.overlay.user.ships.total, s.overlay.user.ships.byOwnership.map((r) => [r.ownership_state, Number(r.count)]))}
+      </div>
+    {:else}
+      <p class="diag-muted">Current user overlay store is unavailable.</p>
+    {/if}
+
+    {#if (s.overlay.user.officers.total + s.overlay.user.ships.total === 0) && (s.overlay.system.officers.total + s.overlay.system.ships.total > 0)}
+      <p class="diag-warn diag-scope-warning">
+        A zero user-scoped total does not mean the system has no overlay rows.
+      </p>
+    {/if}
+
+    <p class="diag-muted">{s.overlay.system.label}</p>
+    <div class="diag-summary-grid">
+      {@render summaryCard("System Officer Overlays", s.overlay.system.officers.total, s.overlay.system.officers.byOwnership.map((r) => [r.ownership_state, Number(r.count)]))}
+      {@render summaryCard("System Ship Overlays", s.overlay.system.ships.total, s.overlay.system.ships.byOwnership.map((r) => [r.ownership_state, Number(r.count)]))}
+    </div>
   </div>
 
   {#if s.samples.officers.length > 0 || s.samples.ships.length > 0}

@@ -77,6 +77,12 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
 }
+.diag-scope-section {
+  margin-top: 16px;
+}
+.diag-scope-warning {
+  margin: 12px 0;
+}
 .diag-summary-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);

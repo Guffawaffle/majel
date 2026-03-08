@@ -5,7 +5,7 @@
 A fleet intelligence and AI advisor for **Star Trek Fleet Command**, powered by **Gemini 2.5** and **[Lex](https://github.com/Guffawaffle/lex)** episodic memory. The in-character assistant, **Ariadne** ("Aria"), combines CDN-sourced reference data (530+ ships, 278+ officers), your personal fleet overlays, an effect-taxonomy-based crew recommender, and full game/lore knowledge into a conversational interface that actually knows your fleet.
 
 > **Status:** v0.6.0 alpha — functional, cloud-deployed, actively developed.  
-> **Tests:** 1,930 (1,361 server + 174 frontend + 395 effects/data) via Vitest  
+> **Tests:** 1,978 via Vitest  
 > **Production:** [majel-bbqfhcihga-uc.a.run.app](https://majel-bbqfhcihga-uc.a.run.app)
 
 ---
@@ -44,12 +44,13 @@ Majel is an **eight-view single-page application** with an LCARS-inspired UI, 42
 | **Workshop** | Crew composition workshop — bridge cores, loadouts, below-deck policies, variants, officer reservations. Quick Crew and advanced modes. |
 | **Plan** | Fleet planning — dock assignments, fleet presets, plan items, effective state views. |
 | **Start/Sync** | Onboarding — guided setup templates by activity type, ops level config, import history, Aria introduction. |
-| **Diagnostics** | Admin — system health, data summary, SQL query console with presets, schema browser, cache metrics. |
+| **Diagnostics** | Admin — system health, explicit user-vs-system overlay scope summary, SQL query console with presets, schema browser, cache metrics. |
 | **Admiral** | Admin — user management (roles, lock/unlock/delete), invite code generation, session management, audit log. |
 
 ### Key Features
 
 - **42 AI fleet tools** — Aria can search officers/ships, suggest crews, analyze battles, simulate removals, plan upgrades, manage targets, create loadouts, and sync fleet data — all via Gemini function calling
+- **Humanized fleet-tool outputs** — systems, ship build-cost resources, dock ships, and crew references are returned with readable names first while preserving traceable IDs where needed
 - **Effect-taxonomy crew recommender** — 49+ effect types, intent-based scoring with synergy multipliers, CM hard gate, per-officer "why this crew" evidence
 - **CDN-sourced reference data** — officer and ship catalogs synced from community game data, with canonical entity IDs (`cdn:officer:<gameId>`, `cdn:ship:<gameId>`)
 - **Personal overlays** — your levels, tiers, notes, and target priorities stored separately from reference data. Never lost on re-sync.
@@ -57,6 +58,7 @@ Majel is an **eight-view single-page application** with an LCARS-inspired UI, 42
 - **Conversation memory** — every turn stored via Lex with per-user RLS isolation. Persists across restarts, supports semantic recall.
 - **Realtime async operations** — long-running AI calls stream progress via SSE. Survives refresh/reconnect with replay and snapshot recovery.
 - **Local-first cache** — IndexedDB with stale-while-revalidate, ETag/304 conditional revalidation, multi-tab sync via BroadcastChannel. Zero network calls on tab switch.
+- **Review-driven output hardening** — diagnostics distinguish user/system overlay scopes, and unverified nested resource labels now fall back to deterministic names instead of trusting raw source text
 - **Multi-timer overlay** — 10 concurrent timers with Web Audio alerts for mining cycles, research, ship travel
 - **CSV/XLSX/JSON import** — bulk fleet data import with receipt tracking, undo, and translator configs
 - **In-character** — Aria is the ship's computer. Configurable personality (humor, lore, verbosity, confirmation, proactive, formality). Dry wit, quiet authority, Trek references.
@@ -164,7 +166,10 @@ npm run health       # Curl the health endpoint
 ```bash
 npm run cloud                    # Show all commands, tiers, and usage
 npm run cloud:status             # Service status, URL, revision, scaling
-npm run cloud:deploy             # Full pipeline: local-ci → build → deploy → health → post-deploy checklist
+npm run cloud:deploy             # Full pipeline: local-ci → build → deploy → health → default feed ingest
+npm run cloud:deploy -- --run-canonical-seed  # Deploy + explicit canonical snapshot seed
+npm run cloud:deploy -- --skip-ingest         # Deploy without feed ingest
+npm run cloud:db:auth            # Allow current public IP in Cloud SQL
 npm run cloud:logs               # Tail production logs
 npm run cloud:metrics            # Log-based metrics (latency, errors, 1h window)
 npm run cloud:costs              # Estimated monthly costs

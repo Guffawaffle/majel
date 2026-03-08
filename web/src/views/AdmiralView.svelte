@@ -8,6 +8,8 @@
     adminSetRole,
     adminSetLock,
     adminDeleteUser,
+    adminResendVerification,
+    adminVerifyUser,
     adminListInvites,
     adminCreateInvite,
     adminRevokeInvite,
@@ -143,6 +145,22 @@
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Delete failed."; }
   }
 
+  async function handleApprove(email: string) {
+    if (!(await confirm({ title: `Approve ${email}?`, subtitle: "This will mark the account as verified.", approveLabel: "Approve" }))) return;
+    try {
+      await adminVerifyUser(email);
+      await refreshUsers();
+    } catch (err: unknown) { error = err instanceof Error ? err.message : "Approve failed."; }
+  }
+
+  async function handleResendVerification(email: string) {
+    if (!(await confirm({ title: `Resend verification to ${email}?`, approveLabel: "Resend" }))) return;
+    try {
+      await adminResendVerification(email);
+      await refreshUsers();
+    } catch (err: unknown) { error = err instanceof Error ? err.message : "Resend verification failed."; }
+  }
+
   // ── Actions: Invites ──
 
   async function handleCreateInvite() {
@@ -233,6 +251,14 @@
               <td class="adm-cell-date">{fmtDate(u.createdAt)}</td>
               <td class="adm-cell-actions">
                 {#if !isSelf}
+                  {#if !u.emailVerified}
+                    <button class="adm-btn adm-btn-primary" onclick={() => handleApprove(u.email)}>
+                      Approve
+                    </button>
+                    <button class="adm-btn" onclick={() => handleResendVerification(u.email)}>
+                      Resend Verification
+                    </button>
+                  {/if}
                   <button class="adm-btn" onclick={() => handleLock(u.email, !!u.lockedAt)}>
                     {u.lockedAt ? "🔓 Unlock" : "🔒 Lock"}
                   </button>

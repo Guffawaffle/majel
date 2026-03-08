@@ -18,9 +18,10 @@
 
 ## Current PM Focus
 
-- **Top active implementation target:** #187 — improve `stfc.space` crawler ETag handling and reduce unnecessary traffic.
-- **Top QA tranche:** #161, #162, #163, #165, #167, #169.
-- **Recently shipped:** boot alignment (#186), password minimum update (#164), LCARS theme (#188), and review-driven theme fixes.
+- **Recently completed implementation target:** #187 — `stfc.space` crawler now persists validator metadata incrementally, reports conditional-request effectiveness, forces IPv4 on this WSL2 host, and enforces polite once-per-24h crawl cadence.
+- **Top active implementation target:** crawler handoff workflow hardening — keep feed export aligned with daily crawl policy and avoid redundant producer artifacts.
+- **Top QA tranche:** #161, #165.
+- **Recently shipped:** diagnostics overlay scope clarity (#162), Admiral verification actions (#163), recommender exclusion mode (#167), captain/resource-specific mining fixes (#169), and review-driven fleet-tool output hardening.
 - **Operational note:** deploys are live again; use normal `ax ci` + push gate, not the old guided-setup hold marker.
 
 

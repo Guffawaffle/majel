@@ -52,8 +52,22 @@ export interface DiagnosticSummary {
     ships: { total: number; byClass: { ship_class: string | null; count: number }[]; byFaction: { faction: string | null; count: number }[] };
   };
   overlay: {
-    officers: { total: number; byOwnership: { ownership_state: string; count: number }[] };
-    ships: { total: number; byOwnership: { ownership_state: string; count: number }[] };
+    user: {
+      source: "user";
+      label: string;
+      userId: string | null;
+      available: boolean;
+      officers: { total: number; byOwnership: { ownership_state: string; count: number }[] };
+      ships: { total: number; byOwnership: { ownership_state: string; count: number }[] };
+    };
+    system: {
+      source: "system";
+      label: string;
+      userId: null;
+      available: boolean;
+      officers: { total: number; byOwnership: { ownership_state: string; count: number }[] };
+      ships: { total: number; byOwnership: { ownership_state: string; count: number }[] };
+    };
   };
   samples: {
     officers: Record<string, unknown>[];

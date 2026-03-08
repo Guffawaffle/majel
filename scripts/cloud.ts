@@ -77,6 +77,12 @@ interface DeploySmokeCheck {
   error?: string;
 }
 
+interface AuthorizedNetworkEntry {
+  name?: string;
+  value?: string;
+  expirationTime?: string;
+}
+
 let AX_MODE = false;
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -322,7 +328,8 @@ async function cmdDeploy(): Promise<void> {
   const start = Date.now();
   const args = process.argv.slice(2);
   const skipSeed = args.includes("--skip-seed");
-  const runCdn = args.includes("--run-cdn");
+  const runCanonicalSeed = args.includes("--run-canonical-seed") || args.includes("--run-cdn");
+  const skipIngest = args.includes("--skip-ingest");
   const explicitFeed = getFlagValue(args, "seed-feed") ?? getFlagValue(args, "feed");
   const feedsRootFlag = getFlagValue(args, "feeds-root");
   const retentionKeepRunsRaw = getFlagValue(args, "retention-keep-runs");
@@ -404,31 +411,35 @@ async function cmdDeploy(): Promise<void> {
   let deploySmokePass = false;
 
   if (healthOk && !skipSeed) {
-    // Step 5: Idempotent canonical upsert seed (officers/ships) — requires --run-cdn
-    if (runCdn) {
+    // Step 5: Optional canonical snapshot seed (officers/ships) — requires --run-canonical-seed
+    if (runCanonicalSeed) {
       humanLog("\n🌱 Step 5/7: Seeding canonical reference data (idempotent upsert)...");
       const canonicalSeed = runCanonicalSeedScript(start, "deploy");
       canonicalSeedOutput = canonicalSeed.output;
     } else {
-      humanLog("\n⏭️  Step 5/7: Skipped CDN canonical seed (pass --run-cdn to enable)");
+      humanLog("\n⏭️  Step 5/7: Skipped canonical snapshot seed (pass --run-canonical-seed to enable)");
     }
 
-    // Step 6: Idempotent crawler feed load (all entities + runtime dataset)
-    humanLog("\n🧩 Step 6/7: Loading crawler feed data (idempotent add/update)...");
-    const discovered = resolveDeployFeedSelection({
-      explicitFeed,
-      feedsRootFlag,
-    });
-    seededFeedPath = discovered.feedPath;
-    seededFeedSource = discovered.source;
-    const cloudDbUrl = getCloudDbUrl();
-    const ingestion = runCrawlerFeedLoad(start, "deploy", {
-      feedPath: discovered.feedPath,
-      feedsRoot: discovered.feedsRoot,
-      dbUrl: cloudDbUrl,
-      retentionKeepRuns,
-    });
-    ingestionOutput = ingestion.output;
+    // Step 6: Ingest latest feed export into Majel (idempotent add/update) — runs by default
+    if (!skipIngest) {
+      humanLog("\n🧩 Step 6/7: Ingesting latest feed export (idempotent add/update)...");
+      const discovered = resolveDeployFeedSelection({
+        explicitFeed,
+        feedsRootFlag,
+      });
+      seededFeedPath = discovered.feedPath;
+      seededFeedSource = discovered.source;
+      const cloudDbUrl = getCloudDbUrl();
+      const ingestion = runCrawlerFeedLoad(start, "deploy", {
+        feedPath: discovered.feedPath,
+        feedsRoot: discovered.feedsRoot,
+        dbUrl: cloudDbUrl,
+        retentionKeepRuns,
+      });
+      ingestionOutput = ingestion.output;
+    } else {
+      humanLog("\n⏭️  Step 6/7: Skipped feed ingest (pass no flag, or remove --skip-ingest, to enable)");
+    }
   }
 
   if (healthOk) {
@@ -464,8 +475,10 @@ async function cmdDeploy(): Promise<void> {
       version: getPackageVersion(),
       seed: {
         skipped: skipSeed,
-        canonicalApplied: healthOk && !skipSeed && runCdn,
-        cdnFlagPassed: runCdn,
+        canonicalApplied: healthOk && !skipSeed && runCanonicalSeed,
+        ingestApplied: healthOk && !skipSeed && !skipIngest,
+        canonicalSeedFlagPassed: runCanonicalSeed,
+        ingestSkipped: skipIngest,
         feedPath: seededFeedPath,
         feedSource: seededFeedSource,
         retentionKeepRuns,
@@ -500,7 +513,12 @@ async function cmdDeploy(): Promise<void> {
       humanLog(`✅ Deploy complete (seed skipped). ${url}`);
       return;
     }
-    humanLog(`✅ Deploy + idempotent data sync complete! ${url}`);
+    if (skipIngest && !runCanonicalSeed) {
+      humanLog(`✅ Deploy complete (post-deploy ingest skipped). ${url}`);
+      humanLog(`   Feed ingest runs by default; use --run-canonical-seed if you also want snapshot seed.`);
+      return;
+    }
+    humanLog(`✅ Deploy + requested data sync complete! ${url}`);
     if (seededFeedPath) {
       humanLog(`   Feed loaded: ${seededFeedPath} (${seededFeedSource})`);
     }
@@ -593,7 +611,7 @@ function resolveDeployFeedSelection(input: {
     }
   }
 
-  throw new Error("No crawler feed found for deploy sync. Provide --seed-feed <feedId-or-path> and optionally --feeds-root <path>.");
+  throw new Error("No feed export found for deploy ingest. Provide --seed-feed <feedId-or-path> and optionally --feeds-root <path>.");
 }
 
 function runCrawlerFeedLoad(
@@ -630,19 +648,19 @@ function runCrawlerFeedLoad(
   if (result.status !== 0) {
     if (AX_MODE) {
       axOutput(commandName, start, {
-        step: "crawler-feed-load",
+        step: "feed-ingest",
         feedPath: options.feedPath,
         feedsRoot: options.feedsRoot,
       }, {
         success: false,
-        errors: ["Crawler feed load failed", result.stderr || "Unknown error"],
+        errors: ["Feed ingest failed", result.stderr || "Unknown error"],
         hints: [
           "Verify feed path has feed.json",
           "Try explicit feed: npm run cloud:deploy -- --seed-feed <feedId-or-path> --feeds-root <path>",
         ],
       });
     } else {
-      humanError("❌ Crawler feed load failed");
+      humanError("❌ Feed ingest failed");
       humanError(`   feed=${options.feedPath}`);
       humanError(`   feedsRoot=${options.feedsRoot}`);
     }
@@ -1451,6 +1469,68 @@ function getCloudSqlPrimaryIp(): string {
     throw new Error("Could not find Cloud SQL public IP");
   }
   return publicIp;
+}
+
+function getCloudSqlAuthorizedNetworks(): AuthorizedNetworkEntry[] {
+  const instance = gcloudJson<{
+    settings?: { ipConfiguration?: { authorizedNetworks?: AuthorizedNetworkEntry[] } };
+  }>(`sql instances describe majel-pg --project ${PROJECT}`);
+  return instance.settings?.ipConfiguration?.authorizedNetworks ?? [];
+}
+
+function detectPublicIpv4(): string {
+  const ip = runCapture("curl -4 -fsS https://ifconfig.me").trim();
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)) {
+    throw new Error(`Could not determine a valid public IPv4 address (got: ${ip || "empty"})`);
+  }
+  return ip;
+}
+
+function normalizeAuthorizedNetwork(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Authorized network value cannot be empty");
+  }
+  return trimmed.includes("/") ? trimmed : `${trimmed}/32`;
+}
+
+async function cmdDbAuth(): Promise<void> {
+  const start = Date.now();
+  const args = process.argv.slice(2);
+  const requestedIp = getFlagValue(args, "ip");
+  const requestedCidr = normalizeAuthorizedNetwork(requestedIp || detectPublicIpv4());
+  const existing = getCloudSqlAuthorizedNetworks();
+  const existingCidrs = existing
+    .map((entry) => entry.value?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  if (existingCidrs.includes(requestedCidr)) {
+    if (AX_MODE) {
+      axOutput("db:auth", start, {
+        status: "unchanged",
+        added: requestedCidr,
+        authorizedNetworks: existing,
+      });
+    } else {
+      humanLog(`✅ Cloud SQL already allows ${requestedCidr}`);
+    }
+    return;
+  }
+
+  const mergedCidrs = [...existingCidrs, requestedCidr].join(",");
+  gcloud(`sql instances patch majel-pg --project ${PROJECT} --authorized-networks=${mergedCidrs} --quiet`);
+
+  const updated = getCloudSqlAuthorizedNetworks();
+
+  if (AX_MODE) {
+    axOutput("db:auth", start, {
+      status: "updated",
+      added: requestedCidr,
+      authorizedNetworks: updated,
+    });
+  } else {
+    humanLog(`✅ Added Cloud SQL authorized network: ${requestedCidr}`);
+  }
 }
 
 function runCanonicalSeedScript(start: number, commandName: string): { output: string } {
@@ -2655,10 +2735,16 @@ async function cmdHelp(): Promise<void> {
     humanLog(`    --force             Force overwrite (cloud:init)`);
     humanLog(`    --percent <n>       Canary traffic % (cloud:canary, default 10)`);
     humanLog(`    --min <n> --max <n> Set scaling (cloud:scale)`);
+    humanLog(`    --run-canonical-seed  Run canonical snapshot seed during deploy`);
+    humanLog(`    --skip-ingest         Skip feed ingest during deploy (ingest runs by default)`);
+    humanLog(`    --ip <addr|cidr>    Cloud SQL authorized IP/CIDR (cloud:db:auth)`);
     humanLog(`    -n <count>          Warmup requests (cloud:warm, default 3)`);
     humanLog(`\n  Examples:`);
     humanLog(`    npm run cloud:init                    # One-time auth setup`);
     humanLog(`    npm run cloud:deploy                  # Full deploy pipeline`);
+    humanLog(`    npm run cloud:deploy -- --run-canonical-seed  # Deploy + explicit snapshot seed`);
+    humanLog(`    npm run cloud:deploy -- --skip-ingest         # Deploy without feed ingest`);
+    humanLog(`    npm run cloud:db:auth                 # Allow current public IP in Cloud SQL`);
     humanLog(`    npm run cloud:canary -- --percent 20  # 20% canary deploy`);
     humanLog(`    npm run cloud:status -- --ax          # Structured JSON`);
     humanLog(`    npm run cloud:warm -- -n 5            # 5 warmup pings`);
@@ -2727,13 +2813,15 @@ const COMMANDS: Record<string, CommandDef> = {
     fn: cmdDeploy,
     tier: "write",
     alias: "cloud:deploy",
-    description: "Full pipeline: local-ci → build → deploy → health → idempotent canonical+crawler sync",
+    description: "Full pipeline: local-ci → build → deploy → health → default feed ingest + optional canonical seed",
     args: [
       { name: "--skip-seed", type: "boolean", description: "Skip all post-deploy DB sync steps" },
-      { name: "--run-cdn", type: "boolean", description: "Run CDN canonical seed (officers/ships) — skipped by default" },
-      { name: "--seed-feed", type: "string", description: "Feed ID/path for crawler sync (auto-discovered if omitted)" },
+      { name: "--run-canonical-seed", type: "boolean", description: "Run canonical snapshot seed (officers/ships) — skipped by default" },
+      { name: "--run-cdn", type: "boolean", description: "Backward-compatible alias for --run-canonical-seed" },
+      { name: "--skip-ingest", type: "boolean", description: "Skip feed ingest during deploy (ingest runs by default)" },
+      { name: "--seed-feed", type: "string", description: "Feed ID/path for ingest (auto-discovered if omitted)" },
       { name: "--feeds-root", type: "string", description: "Feeds root when using feed IDs (default auto-detect)" },
-      { name: "--retention-keep-runs", type: "integer", default: "10", description: "Runtime dataset retention window for feed load" },
+      { name: "--retention-keep-runs", type: "integer", default: "10", description: "Runtime dataset retention window for feed ingest" },
     ],
   },
   build:     { fn: cmdBuild,     tier: "write", alias: "cloud:build",     description: "Build container image via Cloud Build" },
@@ -2765,6 +2853,13 @@ const COMMANDS: Record<string, CommandDef> = {
   },
   ssh:       { fn: cmdSsh,       tier: "write", alias: "cloud:ssh",       description: "Start Cloud SQL Auth Proxy for local psql" },
   // DB operations (requires IP authorization)
+  "db:auth":          {
+    fn: cmdDbAuth,
+    tier: "write",
+    alias: "cloud:db:auth",
+    description: "Add the current public IP (or --ip) to the Cloud SQL authorized network list",
+    args: [{ name: "--ip", type: "string", description: "Optional IPv4 or CIDR to allow; defaults to current public IPv4/32" }],
+  },
   "db:seed":           { fn: cmdDbSeed,          tier: "write", alias: "cloud:db:seed",           description: "Seed Cloud DB from CDN snapshot (alias for db:seed:canonical)" },
   "db:seed:canonical": { fn: cmdDbSeedCanonical, tier: "write", alias: "cloud:db:seed:canonical", description: "Seed Cloud DB from CDN snapshot" },
   "db:seed:effects":   {

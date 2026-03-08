@@ -73,7 +73,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_gas": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }
@@ -92,7 +93,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_crystal": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }
@@ -111,7 +113,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_ore": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }
@@ -130,7 +133,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_tri": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }
@@ -149,7 +153,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_dil": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }
@@ -168,7 +173,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_para": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }
@@ -187,7 +193,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_lat": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }
@@ -206,7 +213,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_iso": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }
@@ -225,7 +233,8 @@
         }
       },
       "weights": {
-        "mining_rate": 3,
+        "mining_rate_data": 3,
+        "mining_rate": 0.75,
         "mining_protection": 1.5,
         "cargo_capacity": 1
       }

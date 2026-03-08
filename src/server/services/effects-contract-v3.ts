@@ -230,7 +230,13 @@ function deriveInertReason(isInert: boolean, rawText: string): "no_effect" | "no
   if (!isInert) return null;
   const normalized = rawText.toLowerCase();
   if (normalized.includes("not applicable") || normalized.includes("cannot be used")) return "not_applicable";
-  if (normalized.includes("no effect") || normalized.includes("does nothing") || normalized.includes("inert")) return "no_effect";
+  if (
+    normalized.includes("no effect")
+    || normalized.includes("does nothing")
+    || normalized.includes("inert")
+    || normalized.includes("provides no benefit")
+    || normalized.includes("does not have a captain")
+  ) return "no_effect";
   return "unknown";
 }
 

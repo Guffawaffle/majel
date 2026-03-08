@@ -222,9 +222,11 @@ function abilityFromRecord(
   const locaId = normalizeId(payload.loca_id);
   const translation = locaId ? translationByExternalId.get(locaId) : undefined;
   const rawText = translation?.text ?? (locaId ? `loca_id:${locaId}` : `ability_id:${abilityNumericId}`);
-  const normalized = rawText.toLowerCase();
-  const isNoCaptainManeuver = normalized.includes("does not have a captain")
-    || normalized.includes("provides no benefit");
+  const normalized = rawText.toLowerCase().replace(/[^a-z0-9\s']/g, " ").replace(/\s+/g, " ").trim();
+  const isNoCaptainManeuver = normalized.includes("provides no benefit")
+    || normalized.includes("does not have a captain")
+    || normalized.includes("does not have a captain maneuver")
+    || normalized.includes("does not have a captain's maneuver");
 
   return {
     abilityId,

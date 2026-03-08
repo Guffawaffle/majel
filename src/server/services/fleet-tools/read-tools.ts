@@ -236,8 +236,8 @@ export async function getShipDetail(shipId: string, ctx: ToolContext): Promise<o
       maxTier: ship.maxTier,
       maxLevel: ship.maxLevel,
       blueprintsRequired: ship.blueprintsRequired,
-      buildRequirements: ship.buildRequirements,
-      tiers: ship.tiers,
+      buildRequirements: annotateBuildCostResources(ship.buildRequirements, ctx),
+      tiers: annotateBuildCostResources(ship.tiers, ctx),
       buildTimeInSeconds: ship.buildTimeInSeconds,
       officerBonus: ship.officerBonus,
       crewSlots: ship.crewSlots,
@@ -271,6 +271,11 @@ export async function listDocks(ctx: ToolContext): Promise<object> {
   }
 
   const state = await ctx.crewStore.getEffectiveDockState();
+  const shipNames = await buildShipNameMap(state.docks.map((dock) => dock.loadout?.shipId ?? ""), ctx);
+  const officerNames = await buildOfficerNameMap(
+    state.docks.flatMap((dock) => dock.loadout ? Object.values(dock.loadout.bridge).filter((value): value is string => Boolean(value)) : []),
+    ctx,
+  );
   const results = state.docks.map((d) => ({
     dockNumber: d.dockNumber,
     intentKeys: d.intentKeys,
@@ -281,7 +286,13 @@ export async function listDocks(ctx: ToolContext): Promise<object> {
           loadoutId: d.loadout.loadoutId,
           loadoutName: d.loadout.name,
           shipId: d.loadout.shipId,
+          shipName: shipNames.get(d.loadout.shipId) ?? null,
           bridge: d.loadout.bridge,
+          bridgeNames: Object.fromEntries(
+            Object.entries(d.loadout.bridge)
+              .filter(([, officerId]) => Boolean(officerId))
+              .map(([slot, officerId]) => [slot, officerNames.get(officerId as string) ?? officerId]),
+          ),
           belowDeckPolicy: d.loadout.belowDeckPolicy
             ? { name: d.loadout.belowDeckPolicy.name, mode: d.loadout.belowDeckPolicy.mode }
             : null,
@@ -298,9 +309,11 @@ export async function getOfficerConflicts(ctx: ToolContext): Promise<object> {
   }
 
   const state = await ctx.crewStore.getEffectiveDockState();
+  const officerNames = await buildOfficerNameMap(state.conflicts.map((conflict) => conflict.officerId), ctx);
   return {
     conflicts: state.conflicts.map((c) => ({
       officerId: c.officerId,
+      officerName: officerNames.get(c.officerId) ?? null,
       locations: c.locations.map((loc) => ({
         type: loc.type,
         entityId: loc.entityId,
@@ -319,6 +332,7 @@ export async function validatePlan(ctx: ToolContext): Promise<object> {
 
   const state = await ctx.crewStore.getEffectiveDockState();
   const planItems = await ctx.crewStore.listPlanItems({ active: true });
+  const officerNames = await buildOfficerNameMap(state.conflicts.map((conflict) => conflict.officerId), ctx);
 
   const emptyDocks = state.docks.filter((d) => !d.loadout);
   const unassignedPlanItems = planItems.filter((p) => p.dockNumber == null && !p.awayOfficers?.length);
@@ -327,6 +341,7 @@ export async function validatePlan(ctx: ToolContext): Promise<object> {
     valid: state.conflicts.length === 0 && unassignedPlanItems.length === 0,
     officerConflicts: state.conflicts.map((c) => ({
       officerId: c.officerId,
+      officerName: officerNames.get(c.officerId) ?? null,
       locations: c.locations.length,
     })),
     emptyDocks: emptyDocks.map((d) => d.dockNumber),
@@ -396,11 +411,14 @@ export async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Pro
   }
 
   const variants = await ctx.crewStore.listVariants(loadoutId);
+  const officerNames = await buildOfficerNameMap(loadout.bridgeCore?.members.map((member) => member.officerId) ?? [], ctx);
+  const shipNames = await buildShipNameMap(loadout.shipId ? [loadout.shipId] : [], ctx);
 
   return {
     id: loadout.id,
     name: loadout.name,
     shipId: loadout.shipId,
+    shipName: shipNames.get(loadout.shipId) ?? null,
     priority: loadout.priority,
     isActive: loadout.isActive,
     intentKeys: loadout.intentKeys,
@@ -412,6 +430,7 @@ export async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Pro
           name: loadout.bridgeCore.name,
           members: loadout.bridgeCore.members.map((m) => ({
             officerId: m.officerId,
+            officerName: officerNames.get(m.officerId) ?? null,
             slot: m.slot,
           })),
         }
@@ -1531,6 +1550,124 @@ function resolveSystemMineResources(
   });
 }
 
+async function buildOfficerNameMap(
+  officerIds: Iterable<string>,
+  ctx: ToolContext,
+): Promise<Map<string, string>> {
+  const ids = Array.from(new Set(Array.from(officerIds).filter(Boolean)));
+  const map = new Map<string, string>();
+  if (ids.length === 0 || !ctx.referenceStore) return map;
+
+  const officers = await ctx.referenceStore.listOfficers();
+  const lookup = new Map(officers.map((officer) => [officer.id, officer.name]));
+  for (const id of ids) {
+    const name = lookup.get(id);
+    if (name) map.set(id, name);
+  }
+  return map;
+}
+
+async function buildShipNameMap(
+  shipIds: Iterable<string>,
+  ctx: ToolContext,
+): Promise<Map<string, string>> {
+  const ids = Array.from(new Set(Array.from(shipIds).filter(Boolean)));
+  const map = new Map<string, string>();
+  if (ids.length === 0 || !ctx.referenceStore) return map;
+
+  const ships = await ctx.referenceStore.listShips();
+  const lookup = new Map(ships.map((ship) => [ship.id, ship.name]));
+  for (const id of ids) {
+    const name = lookup.get(id);
+    if (name) map.set(id, name);
+  }
+  return map;
+}
+
+function isUnsafeObjectKey(key: string): boolean {
+  return key === "__proto__" || key === "constructor" || key === "prototype";
+}
+
+function annotateBuildCostEntries(raw: unknown, ctx: ToolContext): unknown {
+  if (!Array.isArray(raw)) return raw;
+
+  return raw.map((entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+    const item = entry as Record<string, unknown>;
+    const rawId = item.resource_id ?? item.resourceId ?? item.id ?? item.type;
+    const numericId = typeof rawId === "number"
+      ? rawId
+      : (typeof rawId === "string" && rawId.trim() ? Number(rawId) : NaN);
+
+    if (!Number.isFinite(numericId)) return entry;
+
+    const hasVerifiedResource = Boolean(ctx.resourceDefs?.has(numericId));
+    const resolved = ctx.resourceDefs ? resolveResourceId(numericId, ctx.resourceDefs) : null;
+    const existingName = typeof item.name === "string" && item.name.trim() ? item.name.trim() : null;
+    const resolvedName = resolved?.name ?? `Unknown resource (${numericId})`;
+    const next = Object.create(null) as Record<string, unknown>;
+
+    for (const [key, value] of Object.entries(item)) {
+      if (isUnsafeObjectKey(key)) continue;
+      next[key] = value;
+    }
+
+    next.name = resolvedName;
+    next.resourceName = resolvedName;
+    next.resourceNameVerified = hasVerifiedResource;
+    if (!hasVerifiedResource && existingName) {
+      next.unverifiedSourceNamePresent = true;
+    }
+
+    return next;
+  });
+}
+
+function annotateBuildCostResources(raw: unknown, ctx: ToolContext): unknown {
+  if (Array.isArray(raw)) {
+    return raw.map((entry) => annotateBuildCostResources(entry, ctx));
+  }
+  if (!raw || typeof raw !== "object") {
+    return raw;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const next = Object.create(null) as Record<string, unknown>;
+  for (const [key, value] of Object.entries(record)) {
+    if (isUnsafeObjectKey(key)) {
+      continue;
+    }
+    if (key === "build_cost" || key === "buildCost") {
+      next[key] = annotateBuildCostEntries(value, ctx);
+      continue;
+    }
+    next[key] = annotateBuildCostResources(value, ctx);
+  }
+  return next;
+}
+
+async function resolveHostileSystems(
+  rawSystemIds: string[] | null,
+  ctx: ToolContext,
+): Promise<{ names: string[] | null; refs: { id: string; name: string }[] | null }> {
+  if (!rawSystemIds || rawSystemIds.length === 0 || !ctx.referenceStore) {
+    return { names: null, refs: null };
+  }
+
+  const refs = await Promise.all(rawSystemIds.map(async (rawId) => {
+    const system = await ctx.referenceStore!.getSystem(`cdn:system:${rawId}`);
+    return {
+      id: rawId,
+      name: system?.name ?? `System ${rawId}`,
+    };
+  }));
+
+  return {
+    names: refs.map((ref) => ref.name),
+    refs,
+  };
+}
+
 export async function searchGameReference(
   category: ReferenceCategory,
   query: string,
@@ -1622,7 +1759,14 @@ export async function getGameReference(
     case "hostile": {
       const row = await ctx.referenceStore.getHostile(id);
       if (!row) return { error: `Hostile not found: ${id}` };
-      return { reference: row };
+      const resolvedSystems = await resolveHostileSystems(row.systems, ctx);
+      return {
+        reference: {
+          ...row,
+          systems: resolvedSystems.names,
+          systemRefs: resolvedSystems.refs,
+        },
+      };
     }
     case "consumable": {
       const row = await ctx.referenceStore.getConsumable(id);

@@ -154,6 +154,42 @@
         "category": "mining"
       },
       {
+        "id": "mining_rate_gas",
+        "category": "mining"
+      },
+      {
+        "id": "mining_rate_crystal",
+        "category": "mining"
+      },
+      {
+        "id": "mining_rate_ore",
+        "category": "mining"
+      },
+      {
+        "id": "mining_rate_tri",
+        "category": "mining"
+      },
+      {
+        "id": "mining_rate_dil",
+        "category": "mining"
+      },
+      {
+        "id": "mining_rate_para",
+        "category": "mining"
+      },
+      {
+        "id": "mining_rate_lat",
+        "category": "mining"
+      },
+      {
+        "id": "mining_rate_iso",
+        "category": "mining"
+      },
+      {
+        "id": "mining_rate_data",
+        "category": "mining"
+      },
+      {
         "id": "mining_protection",
         "category": "mining"
       },
@@ -516,8 +552,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_gas",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",
@@ -543,8 +583,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_crystal",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",
@@ -570,8 +614,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_ore",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",
@@ -597,8 +645,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_tri",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",
@@ -624,8 +676,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_dil",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",
@@ -651,8 +707,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_para",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",
@@ -678,8 +738,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_lat",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",
@@ -705,8 +769,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_iso",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",
@@ -732,8 +800,12 @@
       },
       "effectWeights": [
         {
-          "effectKey": "mining_rate",
+          "effectKey": "mining_rate_data",
           "weight": 3
+        },
+        {
+          "effectKey": "mining_rate",
+          "weight": 0.75
         },
         {
           "effectKey": "mining_protection",

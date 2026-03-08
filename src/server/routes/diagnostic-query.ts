@@ -18,6 +18,23 @@ import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral } from "../services/auth.js";
 import { log } from "../logger.js";
 
+type OwnershipBreakdownRow = { ownership_state: string; count: string | number };
+
+function normalizeOwnershipBreakdown(rows: OwnershipBreakdownRow[]): { ownership_state: string; count: number }[] {
+  return rows.map((row) => ({
+    ownership_state: row.ownership_state,
+    count: Number(row.count),
+  }));
+}
+
+function buildOwnershipBreakdownFromCounts(counts: { owned: number; unowned: number; unknown: number }): { ownership_state: string; count: number }[] {
+  return [
+    { ownership_state: "owned", count: counts.owned },
+    { ownership_state: "unowned", count: counts.unowned },
+    { ownership_state: "unknown", count: counts.unknown },
+  ].filter((row) => row.count > 0);
+}
+
 // ─── Safety ─────────────────────────────────────────────────
 
 const MAX_ROWS = 1000;
@@ -257,23 +274,51 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
       );
       const shipsByFaction = shipsByFactionRes.rows as { faction: string | null; count: string | number }[];
 
-      // Overlay stats (may be empty if tables don't exist yet)
-      let officerOverlayCount = 0;
-      let shipOverlayCount = 0;
-      let officerOwnershipBreakdown: { ownership_state: string; count: string | number }[] = [];
-      let shipOwnershipBreakdown: { ownership_state: string; count: string | number }[] = [];
+      // Overlay stats: keep user-scoped and system-wide counts separate.
+      const userId = typeof res.locals.userId === "string" ? res.locals.userId : null;
+
+      let systemOfficerOverlayCount = 0;
+      let systemShipOverlayCount = 0;
+      let systemOfficerOwnershipBreakdown: OwnershipBreakdownRow[] = [];
+      let systemShipOwnershipBreakdown: OwnershipBreakdownRow[] = [];
 
       try {
         const oocRes = await pool.query(`SELECT COUNT(*) AS c FROM officer_overlay`);
-        officerOverlayCount = Number((oocRes.rows[0] as { c: string | number }).c);
+        systemOfficerOverlayCount = Number((oocRes.rows[0] as { c: string | number }).c);
         const socRes = await pool.query(`SELECT COUNT(*) AS c FROM ship_overlay`);
-        shipOverlayCount = Number((socRes.rows[0] as { c: string | number }).c);
+        systemShipOverlayCount = Number((socRes.rows[0] as { c: string | number }).c);
         const oobRes = await pool.query(`SELECT ownership_state, COUNT(*) AS count FROM officer_overlay GROUP BY ownership_state`);
-        officerOwnershipBreakdown = oobRes.rows as { ownership_state: string; count: string | number }[];
+        systemOfficerOwnershipBreakdown = oobRes.rows as OwnershipBreakdownRow[];
         const sobRes = await pool.query(`SELECT ownership_state, COUNT(*) AS count FROM ship_overlay GROUP BY ownership_state`);
-        shipOwnershipBreakdown = sobRes.rows as { ownership_state: string; count: string | number }[];
+        systemShipOwnershipBreakdown = sobRes.rows as OwnershipBreakdownRow[];
       } catch {
         // Overlay tables may not exist yet
+      }
+
+      let userOfficerOverlayCount = 0;
+      let userShipOverlayCount = 0;
+      let userOfficerOwnershipBreakdown: OwnershipBreakdownRow[] = [];
+      let userShipOwnershipBreakdown: OwnershipBreakdownRow[] = [];
+
+      if (userId) {
+        try {
+          const userOfficerCountRes = await pool.query(`SELECT COUNT(*) AS c FROM officer_overlay WHERE user_id = $1`, [userId]);
+          userOfficerOverlayCount = Number((userOfficerCountRes.rows[0] as { c: string | number }).c);
+          const userShipCountRes = await pool.query(`SELECT COUNT(*) AS c FROM ship_overlay WHERE user_id = $1`, [userId]);
+          userShipOverlayCount = Number((userShipCountRes.rows[0] as { c: string | number }).c);
+          const userOfficerBreakdownRes = await pool.query(
+            `SELECT ownership_state, COUNT(*) AS count FROM officer_overlay WHERE user_id = $1 GROUP BY ownership_state`,
+            [userId],
+          );
+          userOfficerOwnershipBreakdown = userOfficerBreakdownRes.rows as OwnershipBreakdownRow[];
+          const userShipBreakdownRes = await pool.query(
+            `SELECT ownership_state, COUNT(*) AS count FROM ship_overlay WHERE user_id = $1 GROUP BY ownership_state`,
+            [userId],
+          );
+          userShipOwnershipBreakdown = userShipBreakdownRes.rows as OwnershipBreakdownRow[];
+        } catch {
+          // Overlay tables may not exist yet
+        }
       }
 
       const sampleOfficersRes = await pool.query(
@@ -289,8 +334,34 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
           ships: { total: shipCount, byClass: shipsByClass, byFaction: shipsByFaction },
         },
         overlay: {
-          officers: { total: officerOverlayCount, byOwnership: officerOwnershipBreakdown },
-          ships: { total: shipOverlayCount, byOwnership: shipOwnershipBreakdown },
+          user: {
+            source: "user",
+            label: userId ? `Current user overlays (${userId})` : "Current user overlays",
+            userId,
+            available: Boolean(userId),
+            officers: {
+              total: userOfficerOverlayCount,
+              byOwnership: normalizeOwnershipBreakdown(userOfficerOwnershipBreakdown),
+            },
+            ships: {
+              total: userShipOverlayCount,
+              byOwnership: normalizeOwnershipBreakdown(userShipOwnershipBreakdown),
+            },
+          },
+          system: {
+            source: "system",
+            label: "System overlay rows (all users)",
+            userId: null,
+            available: true,
+            officers: {
+              total: systemOfficerOverlayCount,
+              byOwnership: normalizeOwnershipBreakdown(systemOfficerOwnershipBreakdown),
+            },
+            ships: {
+              total: systemShipOverlayCount,
+              byOwnership: normalizeOwnershipBreakdown(systemShipOwnershipBreakdown),
+            },
+          },
         },
         samples: {
           officers: sampleOfficersRes.rows,

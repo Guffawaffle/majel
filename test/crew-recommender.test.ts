@@ -79,13 +79,14 @@ function makeTestAbility(opts: {
   slot: "cm" | "oa" | "bda";
   effects: Partial<EffectTag>[];
   isInert?: boolean;
+  rawText?: string | null;
 }): OfficerAbility {
   return {
     id: opts.id,
     officerId: opts.officerId,
     slot: opts.slot,
     name: opts.id,
-    rawText: null,
+    rawText: opts.rawText ?? null,
     isInert: opts.isInert ?? false,
     effects: opts.effects.map((e, i) => ({
       id: `${opts.id}-e${i}`,
@@ -470,6 +471,46 @@ describe("effect-based captain gating", () => {
     expect(score.captainBonus).toBeLessThan(0);
   });
 
+  it("explains no-benefit captain maneuvers as captain-negative", () => {
+    const inertBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { weapon_damage: 2.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-inert": [
+          makeTestAbility({
+            id: "inert:cm",
+            officerId: "o-inert",
+            slot: "cm",
+            isInert: true,
+            rawText: "Provides no benefit.",
+            effects: [],
+          }),
+          makeTestAbility({
+            id: "inert:oa",
+            officerId: "o-inert",
+            slot: "oa",
+            effects: [{ effectKey: "weapon_damage", magnitude: 0.4, applicableTargetKinds: ["hostile"] }],
+          }),
+        ],
+      },
+    });
+
+    const score = scoreOfficerForSlot(makeOfficer({ id: "o-inert", name: "Inert", userLevel: 60, userPower: 1000 }), {
+      intentKey: "grinding",
+      reservations: [],
+      maxPower: 1000,
+      slot: "captain",
+      effectBundle: inertBundle,
+    });
+
+    expect(score.captainBonus).toBeLessThan(0);
+    expect(score.captainReason).toContain("provides no benefit");
+  });
+
   it("bridge slot gets zero captainBonus", () => {
     const kirk = makeOfficer({ id: "o-kirk", name: "Kirk", userLevel: 60, userPower: 1000 });
     const score = scoreOfficerForSlot(kirk, {
@@ -720,6 +761,306 @@ describe("effect-based captain gating", () => {
     });
 
     expect(score.captainBonus).toBeGreaterThan(0);
+  });
+
+  it("matches mining recommendations to the requested resource", () => {
+    const miningBundle = makeEffectBundle({
+      intents: {
+        "mining-gas": {
+          weights: { mining_rate_gas: 3, mining_rate: 0.75, mining_protection: 1.5, cargo_capacity: 1 },
+          ctx: { targetKind: "hostile", engagement: "any", targetTags: ["pve"], shipContext: { shipClass: "survey" } },
+        },
+        "mining-crystal": {
+          weights: { mining_rate_crystal: 3, mining_rate: 0.75, mining_protection: 1.5, cargo_capacity: 1 },
+          ctx: { targetKind: "hostile", engagement: "any", targetTags: ["pve"], shipContext: { shipClass: "survey" } },
+        },
+      },
+      officers: {
+        "o-gas": [makeTestAbility({
+          id: "gas:cm",
+          officerId: "o-gas",
+          slot: "cm",
+          effects: [{ effectKey: "mining_rate_gas", magnitude: 0.5 }],
+        })],
+        "o-crystal": [makeTestAbility({
+          id: "crystal:cm",
+          officerId: "o-crystal",
+          slot: "cm",
+          effects: [{ effectKey: "mining_rate_crystal", magnitude: 0.5 }],
+        })],
+        "o-b1": [makeTestAbility({
+          id: "b1:oa",
+          officerId: "o-b1",
+          slot: "oa",
+          effects: [{ effectKey: "cargo_capacity", magnitude: 0.25 }],
+        })],
+        "o-b2": [makeTestAbility({
+          id: "b2:oa",
+          officerId: "o-b2",
+          slot: "oa",
+          effects: [{ effectKey: "mining_protection", magnitude: 0.2 }],
+        })],
+      },
+    });
+
+    const officers = [
+      makeOfficer({ id: "o-gas", name: "Gas Miner", userLevel: 40, userPower: 700 }),
+      makeOfficer({ id: "o-crystal", name: "Crystal Miner", userLevel: 40, userPower: 700 }),
+      makeOfficer({ id: "o-b1", name: "Cargo", userLevel: 40, userPower: 700 }),
+      makeOfficer({ id: "o-b2", name: "Protection", userLevel: 40, userPower: 700 }),
+    ];
+
+    const gasRecs = recommendBridgeTrios({
+      officers,
+      reservations: [],
+      intentKey: "mining-gas",
+      limit: 1,
+      effectBundle: miningBundle,
+    });
+    const crystalRecs = recommendBridgeTrios({
+      officers,
+      reservations: [],
+      intentKey: "mining-crystal",
+      limit: 1,
+      effectBundle: miningBundle,
+    });
+
+    expect(gasRecs[0]?.captainId).toBe("o-gas");
+    expect(crystalRecs[0]?.captainId).toBe("o-crystal");
+  });
+
+  it("does not treat wrong-resource mining captains as viable", () => {
+    const miningBundle = makeEffectBundle({
+      intents: {
+        "mining-gas": {
+          weights: { mining_rate_gas: 3, mining_rate: 0.75, mining_protection: 1.5, cargo_capacity: 1 },
+          ctx: { targetKind: "hostile", engagement: "any", targetTags: ["pve"], shipContext: { shipClass: "survey" } },
+        },
+      },
+      officers: {
+        "o-crystal": [makeTestAbility({
+          id: "crystal:cm",
+          officerId: "o-crystal",
+          slot: "cm",
+          effects: [{ effectKey: "mining_rate_crystal", magnitude: 0.5 }],
+        })],
+      },
+    });
+
+    const score = scoreOfficerForSlot(makeOfficer({ id: "o-crystal", name: "Crystal Miner", userLevel: 40, userPower: 700 }), {
+      intentKey: "mining-gas",
+      reservations: [],
+      maxPower: 700,
+      slot: "captain",
+      effectBundle: miningBundle,
+    });
+
+    expect(score.captainBonus).toBeLessThan(0);
+    expect(score.captainReason).toContain("no useful effect");
+  });
+
+  it("keeps no-benefit captain reason visible even in fallback runs", () => {
+    const fallbackBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { weapon_damage: 2.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-inert": [
+          makeTestAbility({
+            id: "inert:cm",
+            officerId: "o-inert",
+            slot: "cm",
+            isInert: true,
+            rawText: "Provides no benefit.",
+            effects: [],
+          }),
+          makeTestAbility({
+            id: "inert:oa",
+            officerId: "o-inert",
+            slot: "oa",
+            effects: [{ effectKey: "weapon_damage", magnitude: 0.4, applicableTargetKinds: ["hostile"] }],
+          }),
+        ],
+        "o-b1": [makeTestAbility({
+          id: "b1:oa",
+          officerId: "o-b1",
+          slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.25, applicableTargetKinds: ["hostile"] }],
+        })],
+        "o-b2": [makeTestAbility({
+          id: "b2:oa",
+          officerId: "o-b2",
+          slot: "oa",
+          effects: [{ effectKey: "weapon_damage", magnitude: 0.2, applicableTargetKinds: ["hostile"] }],
+        })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-inert", name: "Inert", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-b1", name: "Bridge 1", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-b2", name: "Bridge 2", userLevel: 40, userPower: 700 }),
+      ],
+      reservations: [],
+      intentKey: "grinding",
+      limit: 1,
+      effectBundle: fallbackBundle,
+    });
+
+    const joinedReasons = recs[0]?.reasons.join(" ") ?? "";
+    expect(joinedReasons).toContain("No viable captains found");
+    expect(joinedReasons).toContain("provides no benefit");
+  });
+
+  it("allow mode still permits reserved officers with penalty reasoning", () => {
+    const reservationBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { weapon_damage: 2.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-cap": [makeTestAbility({ id: "cap:cm", officerId: "o-cap", slot: "cm", effects: [{ effectKey: "weapon_damage", magnitude: 0.4, applicableTargetKinds: ["hostile"] }] })],
+        "o-b1": [makeTestAbility({ id: "b1:oa", officerId: "o-b1", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.25, applicableTargetKinds: ["hostile"] }] })],
+        "o-b2": [makeTestAbility({ id: "b2:oa", officerId: "o-b2", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.2, applicableTargetKinds: ["hostile"] }] })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-cap", name: "Captain", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-b1", name: "Reserved Bridge", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-b2", name: "Bridge 2", userLevel: 40, userPower: 700 }),
+      ],
+      reservations: [{ officerId: "o-b1", reservedFor: "Dock 1", locked: false, notes: null, createdAt: "2026-03-07T00:00:00.000Z" }],
+      reservationExclusionMode: "allow",
+      intentKey: "grinding",
+      limit: 1,
+      effectBundle: reservationBundle,
+    });
+
+    expect(recs[0]).toBeDefined();
+    expect([recs[0]?.captainId, recs[0]?.bridge1Id, recs[0]?.bridge2Id]).toContain("o-b1");
+    expect(recs[0]?.reasons.join(" ")).toContain("reserved officer");
+  });
+
+  it("exclude_locked mode filters locked officers but keeps soft reservations eligible", () => {
+    const reservationBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { weapon_damage: 2.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-cap": [makeTestAbility({ id: "cap:cm", officerId: "o-cap", slot: "cm", effects: [{ effectKey: "weapon_damage", magnitude: 0.4, applicableTargetKinds: ["hostile"] }] })],
+        "o-soft": [makeTestAbility({ id: "soft:oa", officerId: "o-soft", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.25, applicableTargetKinds: ["hostile"] }] })],
+        "o-locked": [makeTestAbility({ id: "locked:oa", officerId: "o-locked", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.3, applicableTargetKinds: ["hostile"] }] })],
+        "o-b2": [makeTestAbility({ id: "b2:oa", officerId: "o-b2", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.2, applicableTargetKinds: ["hostile"] }] })],
+        "o-b3": [makeTestAbility({ id: "b3:oa", officerId: "o-b3", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.18, applicableTargetKinds: ["hostile"] }] })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-cap", name: "Captain", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-soft", name: "Soft Reserved", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-locked", name: "Locked Reserved", userLevel: 40, userPower: 900 }),
+        makeOfficer({ id: "o-b2", name: "Bridge 2", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-b3", name: "Bridge 3", userLevel: 40, userPower: 680 }),
+      ],
+      reservations: [
+        { officerId: "o-soft", reservedFor: "Dock 1", locked: false, notes: null, createdAt: "2026-03-07T00:00:00.000Z" },
+        { officerId: "o-locked", reservedFor: "Dock 2", locked: true, notes: null, createdAt: "2026-03-07T00:00:00.000Z" },
+      ],
+      reservationExclusionMode: "exclude_locked",
+      intentKey: "grinding",
+      limit: 1,
+      effectBundle: reservationBundle,
+    });
+
+    expect(recs[0]).toBeDefined();
+    expect([recs[0]?.captainId, recs[0]?.bridge1Id, recs[0]?.bridge2Id]).not.toContain("o-locked");
+    expect(recs[0]?.reasons.join(" ")).toContain("locked reserved officer");
+  });
+
+  it("exclude_all_reserved mode filters both soft and locked reservations", () => {
+    const reservationBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { weapon_damage: 2.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-cap": [makeTestAbility({ id: "cap:cm", officerId: "o-cap", slot: "cm", effects: [{ effectKey: "weapon_damage", magnitude: 0.4, applicableTargetKinds: ["hostile"] }] })],
+        "o-soft": [makeTestAbility({ id: "soft:oa", officerId: "o-soft", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.25, applicableTargetKinds: ["hostile"] }] })],
+        "o-locked": [makeTestAbility({ id: "locked:oa", officerId: "o-locked", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.3, applicableTargetKinds: ["hostile"] }] })],
+        "o-b2": [makeTestAbility({ id: "b2:oa", officerId: "o-b2", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.2, applicableTargetKinds: ["hostile"] }] })],
+        "o-b3": [makeTestAbility({ id: "b3:oa", officerId: "o-b3", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.18, applicableTargetKinds: ["hostile"] }] })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-cap", name: "Captain", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-soft", name: "Soft Reserved", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-locked", name: "Locked Reserved", userLevel: 40, userPower: 900 }),
+        makeOfficer({ id: "o-b2", name: "Bridge 2", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-b3", name: "Bridge 3", userLevel: 40, userPower: 680 }),
+      ],
+      reservations: [
+        { officerId: "o-soft", reservedFor: "Dock 1", locked: false, notes: null, createdAt: "2026-03-07T00:00:00.000Z" },
+        { officerId: "o-locked", reservedFor: "Dock 2", locked: true, notes: null, createdAt: "2026-03-07T00:00:00.000Z" },
+      ],
+      reservationExclusionMode: "exclude_all_reserved",
+      intentKey: "grinding",
+      limit: 1,
+      effectBundle: reservationBundle,
+    });
+
+    expect(recs[0]).toBeDefined();
+    expect([recs[0]?.captainId, recs[0]?.bridge1Id, recs[0]?.bridge2Id]).not.toContain("o-soft");
+    expect([recs[0]?.captainId, recs[0]?.bridge1Id, recs[0]?.bridge2Id]).not.toContain("o-locked");
+    expect(recs[0]?.reasons.join(" ")).toContain("reserved officers from suggestions");
+  });
+
+  it("preferred captain override keeps reserved captain eligible under exclusion mode", () => {
+    const reservationBundle = makeEffectBundle({
+      intents: {
+        grinding: {
+          weights: { weapon_damage: 2.5 },
+          ctx: { targetKind: "hostile", engagement: "attacking", targetTags: ["pve"] },
+        },
+      },
+      officers: {
+        "o-cap": [makeTestAbility({ id: "cap:cm", officerId: "o-cap", slot: "cm", effects: [{ effectKey: "weapon_damage", magnitude: 0.4, applicableTargetKinds: ["hostile"] }] })],
+        "o-b1": [makeTestAbility({ id: "b1:oa", officerId: "o-b1", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.25, applicableTargetKinds: ["hostile"] }] })],
+        "o-b2": [makeTestAbility({ id: "b2:oa", officerId: "o-b2", slot: "oa", effects: [{ effectKey: "weapon_damage", magnitude: 0.2, applicableTargetKinds: ["hostile"] }] })],
+      },
+    });
+
+    const recs = recommendBridgeTrios({
+      officers: [
+        makeOfficer({ id: "o-cap", name: "Captain", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-b1", name: "Bridge 1", userLevel: 40, userPower: 700 }),
+        makeOfficer({ id: "o-b2", name: "Bridge 2", userLevel: 40, userPower: 700 }),
+      ],
+      reservations: [{ officerId: "o-cap", reservedFor: "Dock 1", locked: true, notes: null, createdAt: "2026-03-07T00:00:00.000Z" }],
+      reservationExclusionMode: "exclude_all_reserved",
+      intentKey: "grinding",
+      captainId: "o-cap",
+      limit: 1,
+      effectBundle: reservationBundle,
+    });
+
+    expect(recs[0]?.captainId).toBe("o-cap");
+    expect(recs[0]?.reasons.join(" ")).toContain("Preferred captain override kept a reserved officer eligible");
   });
 
   it("emits a single run-level fallback warning", () => {

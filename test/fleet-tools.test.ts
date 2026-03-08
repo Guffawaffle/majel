@@ -15,7 +15,7 @@ import {
   executeFleetTool,
   type ToolContext,
 } from "../src/server/services/fleet-tools/index.js";
-import type { ReferenceStore, ReferenceOfficer, ReferenceShip } from "../src/server/stores/reference-store.js";
+import type { ReferenceStore, ReferenceOfficer, ReferenceShip, ReferenceHostile, ReferenceSystem } from "../src/server/stores/reference-store.js";
 import type { OverlayStore, OfficerOverlay, ShipOverlay } from "../src/server/stores/overlay-store.js";
 import type { CrewStore } from "../src/server/stores/crew-store.js";
 import type { TargetStore } from "../src/server/stores/target-store.js";
@@ -71,6 +71,50 @@ const FIXTURE_SHIP: ReferenceShip = {
   updatedAt: "2024-01-01T00:00:00Z",
 };
 
+const FIXTURE_HOSTILE: ReferenceHostile = {
+  id: "cdn:hostile:9001",
+  name: "Gorn Hunter",
+  faction: "Gorn",
+  level: 60,
+  shipType: 1,
+  hullType: 2,
+  rarity: 4,
+  strength: 3500000000,
+  systems: ["1244614683", "1181687125"],
+  warp: 700,
+  resources: null,
+  gameId: 9001,
+  source: "cdn:game-data",
+  license: "CC-BY-NC 4.0",
+  attribution: "STFC community data",
+  createdAt: "2024-01-01T00:00:00Z",
+  updatedAt: "2024-01-01T00:00:00Z",
+};
+
+const FIXTURE_SYSTEM: ReferenceSystem = {
+  id: "cdn:system:1244614683",
+  name: "Aurelia",
+  estWarp: 700,
+  isDeepSpace: true,
+  factions: ["Gorn"],
+  level: 60,
+  coordsX: 0,
+  coordsY: 0,
+  hasMines: false,
+  hasPlanets: false,
+  hasMissions: false,
+  mineResources: null,
+  hostileCount: 1,
+  nodeSizes: null,
+  hazardLevel: null,
+  gameId: 1244614683,
+  source: "cdn:game-data",
+  license: "CC-BY-NC 4.0",
+  attribution: "STFC community data",
+  createdAt: "2024-01-01T00:00:00Z",
+  updatedAt: "2024-01-01T00:00:00Z",
+};
+
 const FIXTURE_OFFICER_OVERLAY: OfficerOverlay = {
   refId: "officer-kirk",
   ownershipState: "owned",
@@ -111,6 +155,14 @@ function createMockReferenceStore(overrides: Partial<ReferenceStore> = {}): Refe
     findShipByName: vi.fn(),
     listShips: vi.fn().mockResolvedValue([FIXTURE_SHIP]),
     searchShips: vi.fn().mockResolvedValue([FIXTURE_SHIP]),
+    getHostile: vi.fn().mockResolvedValue(FIXTURE_HOSTILE),
+    searchHostiles: vi.fn().mockResolvedValue([FIXTURE_HOSTILE]),
+    getSystem: vi.fn().mockImplementation(async (id: string) => {
+      if (id === FIXTURE_SYSTEM.id) return FIXTURE_SYSTEM;
+      if (id === "cdn:system:1181687125") return { ...FIXTURE_SYSTEM, id, name: "Krona Rift", gameId: 1181687125 };
+      return null;
+    }),
+    searchSystems: vi.fn().mockResolvedValue([FIXTURE_SYSTEM]),
     upsertShip: vi.fn(),
     deleteShip: vi.fn(),
     bulkUpsertOfficers: vi.fn(),
@@ -1064,6 +1116,99 @@ describe("get_ship_detail", () => {
     expect(overlay.tier).toBe(8);
   });
 
+  it("resolves nested build-cost resource names in ship detail", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        getShip: vi.fn().mockResolvedValue({
+          ...FIXTURE_SHIP,
+          buildRequirements: [
+            { build_cost: [{ resource_id: 2964093937, amount: 1200 }] },
+          ],
+          tiers: [
+            { tier: 2, components: [{ build_cost: [{ resource_id: 2964093937, amount: 800 }] }] },
+          ],
+        }),
+      }),
+      resourceDefs: new Map([[2964093937, {
+        gameId: 2964093937,
+        resourceKey: "Resource_G4_Ore_Raw",
+        name: "4★ Raw Ore",
+        grade: 4,
+        rarity: 1,
+        category: "ore",
+        locaId: 1,
+      }]]),
+    };
+
+    const result = await executeFleetTool(
+      "get_ship_detail", { ship_id: "ship-enterprise" }, ctx,
+    ) as Record<string, unknown>;
+
+    const ref = result.reference as Record<string, unknown>;
+    const buildRequirements = ref.buildRequirements as Array<Record<string, unknown>>;
+    const buildCost = buildRequirements[0].build_cost as Array<Record<string, unknown>>;
+    expect(buildCost[0].name).toBe("4★ Raw Ore");
+    expect(buildCost[0].resourceName).toBe("4★ Raw Ore");
+
+    const tiers = ref.tiers as Array<Record<string, unknown>>;
+    const tierBuildCost = ((tiers[0].components as Array<Record<string, unknown>>)[0].build_cost as Array<Record<string, unknown>>);
+    expect(tierBuildCost[0].name).toBe("4★ Raw Ore");
+  });
+
+  it("does not trust unverified nested resource names when catalog resolution is missing", async () => {
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        getShip: vi.fn().mockResolvedValue({
+          ...FIXTURE_SHIP,
+          buildRequirements: [
+            { build_cost: [{ resource_id: 999999, amount: 50, name: "<script>alert(1)</script>" }] },
+          ],
+        }),
+      }),
+      resourceDefs: new Map(),
+    };
+
+    const result = await executeFleetTool(
+      "get_ship_detail", { ship_id: "ship-enterprise" }, ctx,
+    ) as Record<string, unknown>;
+
+    const ref = result.reference as Record<string, unknown>;
+    const buildRequirements = ref.buildRequirements as Array<Record<string, unknown>>;
+    const buildCost = buildRequirements[0].build_cost as Array<Record<string, unknown>>;
+    expect(buildCost[0].name).toBe("Unknown resource (999999)");
+    expect(buildCost[0].resourceNameVerified).toBe(false);
+    expect(buildCost[0].unverifiedSourceNamePresent).toBe(true);
+  });
+
+  it("skips special object keys while annotating nested build-cost resources", async () => {
+    const maliciousRequirement = JSON.parse('{"__proto__":{"polluted":true},"build_cost":[{"resource_id":2964093937,"amount":1}]}') as Record<string, unknown>;
+    const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        getShip: vi.fn().mockResolvedValue({
+          ...FIXTURE_SHIP,
+          buildRequirements: [maliciousRequirement],
+        }),
+      }),
+      resourceDefs: new Map([[2964093937, {
+        gameId: 2964093937,
+        resourceKey: "Resource_G4_Ore_Raw",
+        name: "4★ Raw Ore",
+        grade: 4,
+        rarity: 1,
+        category: "ore",
+        locaId: 1,
+      }]]),
+    };
+
+    const result = await executeFleetTool(
+      "get_ship_detail", { ship_id: "ship-enterprise" }, ctx,
+    ) as Record<string, unknown>;
+
+    const ref = result.reference as Record<string, unknown>;
+    const buildRequirements = ref.buildRequirements as Array<Record<string, unknown>>;
+    expect("polluted" in buildRequirements[0]).toBe(false);
+  });
+
   it("returns error for unknown ship", async () => {
     const ctx: ToolContext = {
       referenceStore: createMockReferenceStore({
@@ -1078,15 +1223,38 @@ describe("get_ship_detail", () => {
   });
 });
 
+describe("get_game_reference", () => {
+  it("resolves hostile system names and preserves raw ids for tracing", async () => {
+    const referenceStore = createMockReferenceStore();
+    const ctx: ToolContext = { userId: "local", referenceStore };
+
+    const result = await executeFleetTool(
+      "get_game_reference",
+      { category: "hostile", id: "cdn:hostile:9001" },
+      ctx,
+    ) as Record<string, unknown>;
+
+    const reference = result.reference as Record<string, unknown>;
+    expect(reference.name).toBe("Gorn Hunter");
+    expect(reference.systems).toEqual(["Aurelia", "Krona Rift"]);
+    expect(reference.systemRefs).toEqual([
+      { id: "1244614683", name: "Aurelia" },
+      { id: "1181687125", name: "Krona Rift" },
+    ]);
+  });
+});
+
 describe("list_docks", () => {
   it("returns dock assignments", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx: ToolContext = { crewStore: createMockCrewStore(), referenceStore: createMockReferenceStore() };
     const result = await executeFleetTool("list_docks", {}, ctx) as Record<string, unknown>;
     const docks = result.docks as Array<Record<string, unknown>>;
     expect(docks).toHaveLength(2);
     expect(docks[0].dockNumber).toBe(1);
     expect(docks[0].assignment).toBeDefined();
     expect((docks[0].assignment as Record<string, unknown>).loadoutName).toBe("Kirk Crew");
+    expect((docks[0].assignment as Record<string, unknown>).shipName).toBe("USS Enterprise");
+    expect(((docks[0].assignment as Record<string, unknown>).bridgeNames as Record<string, unknown>).captain).toBe("James T. Kirk");
     expect(docks[1].dockNumber).toBe(2);
     expect((docks[1] as Record<string, unknown>).assignment).toBeNull();
   });
@@ -1099,11 +1267,12 @@ describe("list_docks", () => {
 
 describe("get_officer_conflicts", () => {
   it("returns conflict data", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx: ToolContext = { crewStore: createMockCrewStore(), referenceStore: createMockReferenceStore() };
     const result = await executeFleetTool("get_officer_conflicts", {}, ctx) as Record<string, unknown>;
     expect(result.totalConflicts).toBe(1);
     const conflicts = result.conflicts as Array<Record<string, unknown>>;
     expect(conflicts[0].officerId).toBe("officer-kirk");
+    expect(conflicts[0].officerName).toBe("James T. Kirk");
     expect((conflicts[0].locations as unknown[]).length).toBe(2);
   });
 
@@ -1246,6 +1415,9 @@ describe("list_owned_officers", () => {
 describe("get_loadout_detail", () => {
   it("returns full loadout with crew members", async () => {
     const ctx: ToolContext = {
+      referenceStore: createMockReferenceStore({
+        listOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER, FIXTURE_SPOCK_OFFICER, { ...FIXTURE_OFFICER, id: "officer-bones", name: "Leonard McCoy" }]),
+      }),
       crewStore: createMockCrewStore({
         getLoadout: vi.fn().mockResolvedValue(FIXTURE_LOADOUT_WITH_REFS),
       }),
@@ -1253,12 +1425,14 @@ describe("get_loadout_detail", () => {
     const result = await executeFleetTool("get_loadout_detail", { loadout_id: 10 }, ctx) as Record<string, unknown>;
     expect(result.name).toBe("Kirk Crew");
     expect(result.shipId).toBe("ship-enterprise");
+    expect(result.shipName).toBe("USS Enterprise");
     expect(result.intentKeys).toEqual(["pvp"]);
     const bc = result.bridgeCore as Record<string, unknown>;
     expect(bc).not.toBeNull();
     const members = bc.members as Array<Record<string, unknown>>;
     expect(members).toHaveLength(3);
     expect(members[0].officerId).toBe("officer-kirk");
+    expect(members[0].officerName).toBe("James T. Kirk");
     expect(members[0].slot).toBe("captain");
   });
 

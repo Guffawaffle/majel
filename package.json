@@ -58,6 +58,7 @@
     "cloud:metrics": "tsx scripts/cloud.ts metrics",
     "cloud:costs": "tsx scripts/cloud.ts costs",
     "cloud:warm": "tsx scripts/cloud.ts warm",
+    "cloud:db:auth": "tsx scripts/cloud.ts db:auth",
     "cloud:db:seed": "tsx scripts/cloud.ts db:seed",
     "cloud:db:seed:canonical": "tsx scripts/cloud.ts db:seed:canonical",
     "cloud:db:seed:effects": "tsx scripts/cloud.ts db:seed:effects",

@@ -49,6 +49,26 @@ export async function adminDeleteUser(email: string): Promise<void> {
   });
 }
 
+export async function adminResendVerification(email: string): Promise<void> {
+  await runLockedMutation({
+    label: `Resend verification ${email}`,
+    lockKey: `admiral:user:${email}`,
+    mutate: async () => {
+      await apiPost("/api/auth/admiral/resend-verification", { email });
+    },
+  });
+}
+
+export async function adminVerifyUser(email: string): Promise<void> {
+  await runLockedMutation({
+    label: `Verify user ${email}`,
+    lockKey: `admiral:user:${email}`,
+    mutate: async () => {
+      await apiPost("/api/auth/admiral/verify-user", { email });
+    },
+  });
+}
+
 // ─── Invite Management ──────────────────────────────────────
 
 export interface InviteOpts {

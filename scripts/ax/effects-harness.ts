@@ -325,6 +325,34 @@ const EFFECT_TEXT_SYNONYMS: Record<string, string[]> = {
   stack_rate_bonus: ["stack rate", "stacking rate", "cumulative"],
 };
 
+const MINING_RESOURCE_SYNONYMS: Record<string, string[]> = {
+  gas: [" gas ", "raw gas", "hydrocarbon"],
+  crystal: [" crystal ", "raw crystal"],
+  ore: [" ore ", "raw ore"],
+  tri: ["tritanium"],
+  dil: ["dilithium"],
+  para: ["parsteel"],
+  lat: ["latinum"],
+  iso: ["isogen"],
+  data: ["data mining", "decoded data", "encoded data", "parsed data"],
+};
+
+function detectSpecificMiningRateKey(normalized: string, knownKeys: Set<string>): string | null {
+  if (!EFFECT_TEXT_SYNONYMS.mining_rate.some((phrase) => normalized.includes(phrase))) {
+    return null;
+  }
+
+  for (const [resourceKey, phrases] of Object.entries(MINING_RESOURCE_SYNONYMS)) {
+    if (!phrases.some((phrase) => normalized.includes(phrase))) continue;
+    const effectKey = `mining_rate_${resourceKey}`;
+    if (knownKeys.has(effectKey)) {
+      return effectKey;
+    }
+  }
+
+  return null;
+}
+
 function normalizeEffectText(input: string): string {
   return input
     .toLowerCase()
@@ -346,6 +374,11 @@ function inferEffectKeysFromRawText(
   const taxonomyKeys = taxonomy.effectKeys.map((entry) => entry.id);
   const knownKeys = new Set(taxonomyKeys);
   const scoreByKey = new Map<string, number>();
+
+  const specificMiningRateKey = detectSpecificMiningRateKey(normalized, knownKeys);
+  if (specificMiningRateKey) {
+    scoreByKey.set(specificMiningRateKey, 4);
+  }
 
   for (const key of taxonomyKeys) {
     const phrase = key.replace(/_/g, " ");

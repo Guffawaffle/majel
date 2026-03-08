@@ -5,20 +5,33 @@ Out of scope: `hostile`, `consumable`
 
 ## Deploy Automation
 
-`npm run cloud:deploy` now runs this sequence automatically after a healthy deploy:
+`npm run cloud:deploy` now runs this sequence after a healthy deploy:
 
-1. Idempotent canonical seed (`officer` + `ship` upsert path)
-2. Idempotent crawler feed load (`officer`, `ship`, `research`, `system`, `building`, translations) with runtime dataset activation
+1. Optional canonical snapshot seed (`officer` + `ship` upsert path) when `--run-canonical-seed` is passed
+2. Default feed ingest of the most recent feed export (`officer`, `ship`, `research`, `system`, `building`, translations) with runtime dataset activation
 3. Post-deploy smoke checklist (`/api/health`, `/api`, `/api/auth/me`, `/api/catalog/counts`)
 
-Behavior is add/update only (upsert) and supports idempotent replay/no-op for unchanged feed content hashes.
+Terminology:
+
+- `crawl` means fetching fresh data from the CDN in the `stfc.space` producer repo
+- `ingest` means loading the most recent already-produced feed into Majel during deploy
+
+Feed ingest is add/update only (upsert) and supports idempotent replay/no-op for unchanged feed content hashes.
 
 Optional deploy flags:
 
 - `--skip-seed` to bypass post-deploy data sync
-- `--seed-feed <feed-id-or-path>` to force a specific feed run
+- `--run-canonical-seed` to run canonical snapshot seed explicitly
+- `--run-cdn` as a backward-compatible alias for `--run-canonical-seed`
+- `--skip-ingest` to skip feed ingest for a deploy
+- `--seed-feed <feed-id-or-path>` to force a specific feed run for ingest
 - `--feeds-root <path>` to resolve feed IDs
 - `--retention-keep-runs <n>` for runtime dataset retention
+
+Cloud SQL allowlist helper:
+
+- `npm run cloud:db:auth` adds the current public IPv4 as a `/32` authorized network
+- `npm run cloud:db:auth -- --ip <addr-or-cidr>` adds a specific address or CIDR
 
 ## Preconditions
 

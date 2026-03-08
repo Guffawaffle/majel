@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Fleet-tool output clarity + hardening
+- Added human-readable hostile system resolution in `get_game_reference`, so hostile/system answers surface system names first while preserving raw IDs in a traceable `systemRefs` field. (`src/server/services/fleet-tools/read-tools.ts`, `test/fleet-tools.test.ts`)
+- Added human-readable ship/dock/loadout/conflict naming in fleet tool outputs (`shipName`, `bridgeNames`, `officerName`) to reduce raw-ID leakage into Aria responses. (`src/server/services/fleet-tools/read-tools.ts`, `test/fleet-tools.test.ts`)
+- Added deterministic build-cost resource naming for ship detail payloads so nested requirement data resolves catalog-backed names such as `4★ Raw Ore` instead of opaque resource IDs. (`src/server/services/fleet-tools/read-tools.ts`, `test/fleet-tools.test.ts`)
+- Added review-driven hardening for nested build-cost annotation by skipping unsafe object keys and refusing to trust unverified upstream resource labels as display names. (`src/server/services/fleet-tools/read-tools.ts`, `test/fleet-tools.test.ts`)
+
+#### Diagnostics overlay scope clarity
+- Added explicit `overlay.user` and `overlay.system` diagnostics summary buckets plus UI labeling so zero user-scoped overlays are no longer ambiguous when system overlay rows still exist. (`src/server/routes/diagnostic-query.ts`, `web/src/views/DiagnosticsView.svelte`, `web/src/lib/types/misc-domain.ts`, `web/src/styles/diagnostics-view.css`, `test/diagnostic-query.test.ts`)
+- Added PM sweep handoff note for the QA closeout and review-driven output hardening follow-up. (`docs/PM_SWEEP_2026-03-07.md`)
+
+#### stfc.space crawler traffic hardening
+- Added richer validator cache persistence for the `stfc.space` crawler, including incremental on-disk writes, `Last-Modified` fallback, endpoint-level conditional request metrics, bytes-saved estimates, and graceful flush-on-shutdown behavior. (`/srv/crawlers/stfc.space/src/transport/transport.ts`, `/srv/crawlers/stfc.space/src/transport/basicTransport.ts`, `/srv/crawlers/stfc.space/src/transport/etagCache.ts`, `/srv/crawlers/stfc.space/src/index.ts`, `/srv/crawlers/stfc.space/src/feed/core.ts`, `/srv/crawlers/stfc.space/test/transport/basicTransport.test.ts`, `/srv/crawlers/stfc.space/test/transport/etagCache.test.ts`, `/srv/crawlers/stfc.space/test/pipeline/connectorPipeline.test.ts`)
+- Added crawl run-policy state and a daily self-throttling mode so scheduled crawler runs can skip source access until the minimum interval has elapsed. (`/srv/crawlers/stfc.space/src/policy/runPolicy.ts`, `/srv/crawlers/stfc.space/src/index.ts`, `/srv/crawlers/stfc.space/package.json`, `/srv/crawlers/stfc.space/test/policy/runPolicy.test.ts`)
+- Added operator documentation for the WSL2 forced-IPv4 runtime requirement and the recommended hourly-cron-plus-24h-throttle scheduling pattern. (`/srv/crawlers/stfc.space/README.md`)
+
 #### Realtime SSE replay hardening (ADR-036/ADR-037 Day 5)
 - Added strict replay cursor parsing for `Last-Event-ID` in `/api/events/stream`, including malformed and array-shaped header handling that safely falls back to cursor `0`. (`src/server/routes/events.ts`)
 - Added SSE replay regressions for malformed `Last-Event-ID` handling and `lastEventId` query cursor behavior to protect reconnect semantics. (`test/events-routes.test.ts`)

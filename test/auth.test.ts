@@ -9,14 +9,16 @@
  *   - Admin routes: invite CRUD, session management
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { testRequest } from "./helpers/test-request.js";
 import { createInviteStore, type InviteStore } from "../src/server/stores/invite-store.js";
+import { createUserStore, type UserStore } from "../src/server/stores/user-store.js";
+import { createAuditStore, type AuditStore } from "../src/server/stores/audit-store.js";
 import { createApp, type AppState } from "../src/server/index.js";
 import { envelopeMiddleware, sendOk } from "../src/server/envelope.js";
-import { requireAdmiral, requireVisitor, TENANT_COOKIE } from "../src/server/services/auth.js";
+import { requireAdmiral, requireVisitor, SESSION_COOKIE, TENANT_COOKIE } from "../src/server/services/auth.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
 let pool: Pool;
@@ -31,6 +33,15 @@ afterAll(async () => {
 import { makeReadyState as makeState, makeConfig } from "./helpers/make-state.js";
 
 const ADMIN_TOKEN = "test-admiral-token-12345";
+
+async function waitForAuditEvent(auditStore: AuditStore, event: Parameters<AuditStore["queryByEvent"]>[0]) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const entries = await auditStore.queryByEvent(event, 5);
+    if (entries.length > 0) return entries;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return auditStore.queryByEvent(event, 5);
+}
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -223,6 +234,82 @@ describe("Admin Routes", () => {
 
   const authConfig = () => makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true });
   const authHeaders = () => ({ Authorization: `Bearer ${ADMIN_TOKEN}` });
+
+  describe("POST /api/auth/admiral verify + resend verification", () => {
+    let userStore: UserStore;
+    let auditStore: AuditStore;
+    let adminSessionToken: string;
+    let adminUserId: string;
+    let targetUserId: string;
+
+    beforeEach(async () => {
+      await cleanDatabase(pool);
+      inviteStore = await createInviteStore(pool);
+      userStore = await createUserStore(pool);
+      auditStore = await createAuditStore(pool);
+
+      const adminSignup = await userStore.signUp({
+        email: "admiral@example.com",
+        password: "securePassword12345!",
+        displayName: "Admiral",
+      });
+      adminUserId = adminSignup.user.id;
+      await userStore.setEmailVerified(adminUserId, true);
+      await userStore.setRole(adminUserId, "admiral");
+      adminSessionToken = (await userStore.signIn("admiral@example.com", "securePassword12345!")).sessionToken;
+
+      const targetSignup = await userStore.signUp({
+        email: "pending@example.com",
+        password: "securePassword12345!",
+        displayName: "Pending User",
+      });
+      targetUserId = targetSignup.user.id;
+    });
+
+    it("admiral can approve an unverified user and audit actor/target are recorded", async () => {
+      const app = createApp(makeState({
+        config: authConfig(),
+        inviteStore,
+        userStore,
+        auditStore,
+        startupComplete: true,
+      }));
+
+      const res = await testRequest(app)
+        .post("/api/auth/admiral/verify-user")
+        .set("Cookie", `${SESSION_COOKIE}=${adminSessionToken}`)
+        .send({ email: "pending@example.com" });
+
+      expect(res.status).toBe(200);
+      const target = await userStore.getUserByEmail("pending@example.com");
+      expect(target?.emailVerified).toBe(true);
+
+      const entries = await waitForAuditEvent(auditStore, "admin.verify_user");
+      expect(entries[0]?.actorId).toBe(adminUserId);
+      expect(entries[0]?.targetId).toBe(targetUserId);
+    });
+
+    it("admiral can resend verification for an unverified user and audit actor/target are recorded", async () => {
+      const app = createApp(makeState({
+        config: authConfig(),
+        inviteStore,
+        userStore,
+        auditStore,
+        startupComplete: true,
+      }));
+
+      const res = await testRequest(app)
+        .post("/api/auth/admiral/resend-verification")
+        .set("Cookie", `${SESSION_COOKIE}=${adminSessionToken}`)
+        .send({ email: "pending@example.com" });
+
+      expect(res.status).toBe(200);
+
+      const entries = await waitForAuditEvent(auditStore, "admin.resend_verification");
+      expect(entries[0]?.actorId).toBe(adminUserId);
+      expect(entries[0]?.targetId).toBe(targetUserId);
+    });
+  });
 
   describe("POST /api/admiral/invites", () => {
     it("creates an invite code", async () => {

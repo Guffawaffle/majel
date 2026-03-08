@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp } from "../src/server/index.js";
 import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
-import { createOverlayStore, type OverlayStore } from "../src/server/stores/overlay-store.js";
+import { createOverlayStoreFactory, type OverlayStore, type OverlayStoreFactory } from "../src/server/stores/overlay-store.js";
 import { makeReadyState as makeState } from "./helpers/make-state.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 
@@ -18,6 +18,7 @@ import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 let pool: Pool;
 let refStore: ReferenceStore;
 let overlayStore: OverlayStore;
+let overlayStoreFactory: OverlayStoreFactory;
 
 // makeState imported from ./helpers/make-state.js (makeReadyState)
 
@@ -73,7 +74,8 @@ beforeAll(() => {
 beforeEach(async () => {
   await cleanDatabase(pool);
   refStore = await createReferenceStore(pool);
-  overlayStore = await createOverlayStore(pool);
+  overlayStoreFactory = await createOverlayStoreFactory(pool);
+  overlayStore = overlayStoreFactory.forUser("local");
 });
 
 afterAll(async () => {
@@ -263,13 +265,31 @@ describe("GET /api/diagnostic/summary", () => {
     await seedData(refStore);
     await overlayStore.setOfficerOverlay({ refId: "cdn:officer:100", ownershipState: "owned" });
     await overlayStore.setOfficerOverlay({ refId: "cdn:officer:101", ownershipState: "unowned" });
-    const app = createApp(makeState({ referenceStore: refStore, overlayStore, pool }));
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, overlayStoreFactory, pool }));
     const res = await testRequest(app).get("/api/diagnostic/summary");
 
     const overlay = res.body.data.overlay;
-    expect(overlay.officers.total).toBe(2);
-    expect(overlay.officers.byOwnership).toBeInstanceOf(Array);
-    expect(overlay.officers.byOwnership.length).toBeGreaterThan(0);
+    expect(overlay.user.officers.total).toBe(2);
+    expect(overlay.user.officers.byOwnership).toBeInstanceOf(Array);
+    expect(overlay.user.officers.byOwnership.length).toBeGreaterThan(0);
+    expect(overlay.system.officers.total).toBe(2);
+    expect(overlay.system.label).toContain("all users");
+  });
+
+  it("makes user and system overlay scope explicit", async () => {
+    await seedData(refStore);
+    await overlayStoreFactory.forUser("local").setOfficerOverlay({ refId: "cdn:officer:100", ownershipState: "owned" });
+    await overlayStoreFactory.forUser("captain:other").setOfficerOverlay({ refId: "cdn:officer:101", ownershipState: "owned" });
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore, overlayStoreFactory, pool }));
+    const res = await testRequest(app).get("/api/diagnostic/summary");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.overlay.user.source).toBe("user");
+    expect(res.body.data.overlay.user.userId).toBe("local");
+    expect(res.body.data.overlay.user.officers.total).toBe(1);
+    expect(res.body.data.overlay.system.source).toBe("system");
+    expect(res.body.data.overlay.system.userId).toBeNull();
+    expect(res.body.data.overlay.system.officers.total).toBe(2);
   });
 
   it("includes sample data", async () => {

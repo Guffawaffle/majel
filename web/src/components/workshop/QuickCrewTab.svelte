@@ -16,6 +16,7 @@
     recommendBridgeTrios,
     scoreOfficerForSlot,
     type CrewRecommendation,
+    type ReservationExclusionMode,
   } from "../../lib/crew-recommender.js";
   import { getEffectBundleManager, type EffectBundleData } from "../../lib/effect-bundle-adapter.js";
   import { validateCrew } from "../../lib/crew-validator.js";
@@ -67,6 +68,11 @@
     { key: "medium", label: "Medium+" },
     { key: "high", label: "High only" },
   ] as const;
+  const RESERVATION_EXCLUSION_OPTS = [
+    { key: "allow", label: "Allow Reserved" },
+    { key: "exclude_locked", label: "Exclude Locked" },
+    { key: "exclude_all_reserved", label: "Exclude All Reserved" },
+  ] as const;
 
   let intentKey = $state("hostile_grinding");
   let shipId = $state("");
@@ -75,6 +81,7 @@
   let modeTag = $state<"auto" | "pve" | "pvp">("auto");
   let targetKind = $state<TargetKind | "auto">("auto");
   let minConfidence = $state<"low" | "medium" | "high">("low");
+  let reservationExclusionMode = $state<ReservationExclusionMode>("allow");
   let captainAssist = $state(false);
   let captainId = $state("");
 
@@ -140,6 +147,7 @@
         targetKind,
       },
       minConfidence,
+      reservationExclusionMode,
       captainId: captainAssist ? captainId || undefined : undefined,
       limit: 5,
       effectBundle,
@@ -233,6 +241,13 @@
       .filter((officer) => {
         if (q && !officer.name.toLowerCase().includes(q)) return false;
         if (SLOTS.some((otherSlot) => otherSlot !== slot && ui.selectedSlots[otherSlot] === officer.id)) return false;
+        const reservation = reservations.find((entry) => entry.officerId === officer.id);
+        if (reservationExclusionMode === "exclude_all_reserved" && reservation && !(slot === "captain" && captainAssist && captainId === officer.id)) {
+          return false;
+        }
+        if (reservationExclusionMode === "exclude_locked" && reservation?.locked && !(slot === "captain" && captainAssist && captainId === officer.id)) {
+          return false;
+        }
         return true;
       })
       .map((officer) => {
@@ -432,6 +447,15 @@
         </select>
       </label>
 
+      <label class="ws-field">
+        <span>Reservations</span>
+        <select bind:value={reservationExclusionMode}>
+          {#each RESERVATION_EXCLUSION_OPTS as opt}
+            <option value={opt.key}>{opt.label}</option>
+          {/each}
+        </select>
+      </label>
+
       <label class="ws-field ws-field-checkbox">
         <input type="checkbox" bind:checked={captainAssist} />
         <span>Captain-first assist</span>
@@ -602,7 +626,10 @@
               {/if}
             </span>
             <span class="qc-pick-score">{item.total}</span>
-              <span class="qc-pick-meta">effect {item.score.effectScore} · ready {item.score.readiness} · res {item.score.reservation}</span>
+            <span class="qc-pick-meta">effect {item.score.effectScore} · ready {item.score.readiness} · res {item.score.reservation}</span>
+            {#if ui.pickerSlot === "captain" && item.score.captainReason}
+              <span class="qc-pick-meta">{item.score.captainReason}</span>
+            {/if}
           </button>
         {/each}
       </div>
