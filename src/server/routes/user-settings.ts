@@ -12,16 +12,19 @@
 import type { Router } from "express";
 import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
-import { log } from "../logger.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireVisitor } from "../services/auth.js";
+import { createContextMiddleware } from "../context-middleware.js";
 
 export function createUserSettingsRoutes(appState: AppState): Router {
   const router = createSafeRouter();
   const visitor = requireVisitor(appState);
 
-  // All user-settings endpoints require auth
+  // All user-settings endpoints require auth, then build RequestContext (ADR-039)
   router.use("/api/user-settings", visitor);
+  if (appState.pool) {
+    router.use("/api/user-settings", createContextMiddleware(appState.pool));
+  }
 
   // GET /api/user-settings — merged view of all user-overridable settings
   router.get("/api/user-settings", async (_req, res) => {
@@ -29,11 +32,12 @@ export function createUserSettingsRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "User settings store not available", 503);
     }
 
-    const userId = res.locals.userId as string | undefined;
-    if (!userId) {
+    const ctx = res.locals.ctx;
+    if (!ctx) {
       return sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401);
     }
 
+    const { userId } = ctx.identity;
     const settings = await appState.userSettingsStore.getAllForUser(userId);
     const overrideCount = await appState.userSettingsStore.countForUser(userId);
 
@@ -46,11 +50,12 @@ export function createUserSettingsRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "User settings store not available", 503);
     }
 
-    const userId = res.locals.userId as string | undefined;
-    if (!userId) {
+    const ctx = res.locals.ctx;
+    if (!ctx) {
       return sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401);
     }
 
+    const { userId } = ctx.identity;
     const key = String(req.params.key);
     if (!key || key.length > 200) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Setting key must be 1–200 characters");
@@ -70,7 +75,7 @@ export function createUserSettingsRoutes(appState: AppState): Router {
       sendOk(res, { key, value: strValue, status: "updated" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      log.settings.error({ err: message, key }, "user-setting update failed");
+      ctx.log.error({ err: message, key }, "user-setting update failed");
       return sendFail(res, ErrorCode.INVALID_PARAM, "Failed to update setting");
     }
   });
@@ -81,11 +86,12 @@ export function createUserSettingsRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.SETTINGS_NOT_AVAILABLE, "User settings store not available", 503);
     }
 
-    const userId = res.locals.userId as string | undefined;
-    if (!userId) {
+    const ctx = res.locals.ctx;
+    if (!ctx) {
       return sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401);
     }
 
+    const { userId } = ctx.identity;
     const key = String(req.params.key);
     const deleted = await appState.userSettingsStore.deleteForUser(userId, key);
 

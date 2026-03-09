@@ -59,12 +59,12 @@ from route → service → store → tool gains requestId + userId correlation.
 
 | Phase | Issue | Title | Status |
 |---|---|---|---|
-| 0 | #189 | Foundation: `RequestContext`, `DbScope`, `QueryExecutor`, `RequestIdentity` types | [ ] Not started |
-| 1 | #190 | `readScope()` / `writeScope()` methods + transaction-local RLS | [ ] Not started |
-| 2 | #191 | Express middleware: `createRequestContext()` from `res.locals` | [ ] Not started |
-| 3 | #192 | ALS convenience layer for scoped logging correlation | [ ] Not started |
-| 4 | #193 | End-to-end proof: one CRUD route migrated (settings or user-settings) | [ ] Not started |
-| 5 | #194 | `TestContextBuilder` + test fixture infrastructure | [ ] Not started |
+| 0 | #189 | Foundation: `RequestContext`, `DbScope`, `QueryExecutor`, `RequestIdentity` types | [x] Done |
+| 1 | #190 | `readScope()` / `writeScope()` methods + transaction-local RLS | [x] Done (shipped with #189) |
+| 2 | #191 | Express middleware: `createRequestContext()` from `res.locals` | [x] Done (shipped with #189) |
+| 3 | #192 | ALS convenience layer for scoped logging correlation | [x] Done (shipped with #189) |
+| 4 | #193 | End-to-end proof: `user-settings` route migrated to `RequestContext` | [x] Done |
+| 5 | #194 | `TestContextBuilder` + test fixture infrastructure | [x] Done (shipped with #189) |
 | 6 | #195 | `ToolContext` → `ToolEnv { ctx, deps }` (Stage 1 transition) | [ ] Not started |
 | 7 | #196 | Tenant-scoped store factories accept `RequestContext` | [ ] Not started |
 | 8 | #197 | Remaining route migration (route-by-route, no flag day) | [ ] Not started |
