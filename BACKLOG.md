@@ -18,12 +18,86 @@
 
 ## Current PM Focus
 
-- **Recently completed implementation target:** #187 — `stfc.space` crawler now persists validator metadata incrementally, reports conditional-request effectiveness, forces IPv4 on this WSL2 host, and enforces polite once-per-24h crawl cadence.
-- **Top active implementation target:** crawler handoff workflow hardening — keep feed export aligned with daily crawl policy and avoid redundant producer artifacts.
+- **Top active program target:** #188 — Request Context & Scoped Database Execution (ADR-039). Foundation-level infrastructure investment.
+- **Recently completed:** #187 — `stfc.space` crawler hardening (polite crawl cadence, conditional requests, IPv4 enforcement).
 - **Top QA tranche:** #161, #165.
-- **Recently shipped:** diagnostics overlay scope clarity (#162), Admiral verification actions (#163), recommender exclusion mode (#167), captain/resource-specific mining fixes (#169), and review-driven fleet-tool output hardening.
+- **Recently shipped:** diagnostics overlay scope clarity (#162), Admiral verification actions (#163), recommender exclusion mode (#167), captain/resource-specific mining fixes (#169), review-driven fleet-tool output hardening, WSL2 auto-start for postgres.
 - **Operational note:** deploys are live again; use normal `ax ci` + push gate, not the old guided-setup hold marker.
 
+
+---
+
+## Active Program — Request Context & Scoped DB Execution (ADR-039, #188)
+
+**Program umbrella:** #188  
+**Linked ADR:** [docs/ADR-039-request-context.md](docs/ADR-039-request-context.md)  
+**External review:** Lex (ChatGPT) — architecture review completed 2026-03-09
+
+### Program Objective
+
+Replace ad-hoc request context threading with a unified `RequestContext` class,
+transaction-scoped RLS via `DbScope`, and a `QueryExecutor` interface that cleanly
+separates boot-time global work from request-time tenant-scoped work. Every log line
+from route → service → store → tool gains requestId + userId correlation.
+
+### Locked Decisions
+
+1. `RequestContext` class — thin, immutable, request-scoped identity/tracing/auth
+2. `RequestIdentity` — frozen object with `userId`, `tenantId` (distinct), `roles: string[]`
+3. `DbScope` — short-lived, transaction-scoped, `SET LOCAL` only (no session-scoped tenant state)
+4. `readScope(fn)` — `BEGIN READ ONLY` → `SET LOCAL` → bundled reads → `COMMIT` → release
+5. `writeScope(fn)` — normal transaction → `SET LOCAL` → mutate → `COMMIT/ROLLBACK` → release
+6. Boot operations use raw pool — no synthetic RequestContext
+7. `QueryExecutor` interface — stores accept this, agnostic to pool vs DbScope
+8. ALS for correlation/logging only — not for auth or tenant enforcement
+9. `ToolContext` → `ToolEnv { ctx, deps }` transition → declaration-driven `defineTool()` end-state
+10. `TestContextBuilder` — builders for tests, not subclasses
+11. No deep class hierarchy — one context class, one DB wrapper, composition for everything else
+12. `isAdmiral` boolean → `roles: readonly string[]` (RBAC-ready)
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| 0 | #189 | Foundation: `RequestContext`, `DbScope`, `QueryExecutor`, `RequestIdentity` types | [ ] Not started |
+| 1 | #190 | `readScope()` / `writeScope()` methods + transaction-local RLS | [ ] Not started |
+| 2 | #191 | Express middleware: `createRequestContext()` from `res.locals` | [ ] Not started |
+| 3 | #192 | ALS convenience layer for scoped logging correlation | [ ] Not started |
+| 4 | #193 | End-to-end proof: one CRUD route migrated (settings or user-settings) | [ ] Not started |
+| 5 | #194 | `TestContextBuilder` + test fixture infrastructure | [ ] Not started |
+| 6 | #195 | `ToolContext` → `ToolEnv { ctx, deps }` (Stage 1 transition) | [ ] Not started |
+| 7 | #196 | Tenant-scoped store factories accept `RequestContext` | [ ] Not started |
+| 8 | #197 | Remaining route migration (route-by-route, no flag day) | [ ] Not started |
+| 9 | #198 | Legacy removal: deprecate `withUserScope` / `withUserRead` | [ ] Not started |
+| 10 | #199 | ToolEnv Stage 2: `defineTool()` with declaration-driven dependency resolution | [ ] Not started |
+
+### Definition of Done
+
+- [ ] `RequestContext` created once per request in Express middleware
+- [ ] All tenant-scoped DB work goes through `readScope` / `writeScope` with `SET LOCAL`
+- [ ] Every log line from route → store includes requestId + userId correlation
+- [ ] Session-scoped `set_config(..., false)` fully replaced with transaction-local `SET LOCAL`
+- [ ] Boot operations unchanged — raw pool, no synthetic context
+- [ ] Global stores unchanged — pool-backed, no forced RequestContext dependency
+- [ ] `ToolEnv { ctx, deps }` in fleet tools dispatcher
+- [ ] Test suite rebuilt with `TestContextBuilder`
+- [ ] `npm run ax -- ci` passes at every phase boundary
+
+### Risk Controls
+
+- [ ] Each phase is a standalone PR that doesn't break the previous state
+- [ ] Dual-mode stores during migration (accept old or new pattern)
+- [ ] No flag-day requirement — routes migrate one at a time
+- [ ] Pool pressure validated: `readScope` serialization measured against current fan-out latency
+- [ ] No mutable state on `RequestContext` — accumulators and operation state live on dedicated objects
+
+### Key Design Constraints (from Lex Review)
+
+- `RequestContext` must NOT become a service locator — stores/services are composed beside it, not resolved from it
+- `DbScope` lifetime must be request-bounded — no caching, no attachment to singletons/emitters
+- `readScope` accepts serialized reads as the default — multi-client fan-out only for measured hotspots with documented justification
+- Read-only scopes still use transactions (`BEGIN READ ONLY`) to guarantee `SET LOCAL` cleanup
+- `tenantId` and `userId` are architecturally distinct even though they're equal today
 
 ---
 
