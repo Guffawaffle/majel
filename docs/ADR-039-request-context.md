@@ -291,6 +291,19 @@ The migration is additive and incremental. No big-bang rewrite.
 | 8 | Legacy `withUserScope` / `withUserRead` removed | Breaking — all stores must be migrated |
 | 9 | ToolEnv Stage 2: declaration-driven deps | Tool declaration format evolves |
 
+### Phase 7 Deferred Routes
+
+Two route files require per-handler middleware insertion rather than per-group wiring:
+
+- **auth.ts:** Mixed public/authenticated endpoints with per-handler `requireRole`.
+  Must insert `createContextMiddleware` into each handler's middleware array after auth.
+  Scheduled with Phase 8 once remaining per-group routes are validated in production.
+
+- **chat.ts:** Per-handler chains include `attachScopedMemory`, `chatRateLimiter`,
+  and `createTimeoutMiddleware`. The POST `/api/chat` handler constructs `ToolContext`,
+  making it the natural coupling point for Phase 5 (ToolEnv). Migrate chat.ts and
+  `attachScopedMemory` together with the ToolContext → ToolEnv transition.
+
 ---
 
 ## Consequences
