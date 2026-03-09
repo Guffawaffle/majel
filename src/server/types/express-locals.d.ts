@@ -10,6 +10,7 @@
  */
 
 import type { MemoryService } from "../services/memory.js";
+import type { RequestContext } from "../request-context.js";
 
 declare global {
   namespace Express {
@@ -26,6 +27,9 @@ declare global {
       isAdmiral?: boolean;
       /** Tenant isolation key — currently same as userId. */
       tenantId?: string;
+
+      // ── Context middleware (set by createContextMiddleware, ADR-039) ──
+      ctx?: RequestContext;
 
       // ── Memory middleware (set by attachScopedMemory) ──
       memory?: MemoryService;
