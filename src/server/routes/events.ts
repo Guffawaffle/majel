@@ -7,6 +7,7 @@ import { createSafeRouter } from "../safe-router.js";
 import { sendFail, sendOk, ErrorCode } from "../envelope.js";
 import { requireVisitor } from "../services/auth.js";
 import type { AppState } from "../app-context.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { log } from "../logger.js";
 
 const TOPIC_RE = /^[a-z0-9_]{2,40}$/i;
@@ -46,8 +47,13 @@ function parseReplayCursor(headerValue: unknown, queryValue: unknown): number {
 
 export function createEventRoutes(appState: AppState): Router {
   const router = createSafeRouter();
+  const visitor = requireVisitor(appState);
+  router.use("/api/events", visitor);
+  if (appState.pool) {
+    router.use("/api/events", createContextMiddleware(appState.pool));
+  }
 
-  router.get("/api/events/snapshot", requireVisitor(appState), async (req, res) => {
+  router.get("/api/events/snapshot", async (req, res) => {
     if (!appState.operationEventStoreFactory) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Event stream not available", 503, {
         hints: ["Retry in a few seconds"],
@@ -82,7 +88,7 @@ export function createEventRoutes(appState: AppState): Router {
     });
   });
 
-  router.get("/api/events/stream", requireVisitor(appState), async (req, res) => {
+  router.get("/api/events/stream", async (req, res) => {
     if (!appState.operationEventStoreFactory) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Event stream not available", 503, {
         hints: ["Retry in a few seconds"],
@@ -95,7 +101,7 @@ export function createEventRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid topic or id", 400);
     }
 
-    const userId = res.locals.userId as string | undefined;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined);
     if (!userId) {
       return sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401);
     }

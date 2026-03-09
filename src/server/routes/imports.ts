@@ -4,6 +4,7 @@ import { createSafeRouter } from "../safe-router.js";
 import { sendFail, sendOk, ErrorCode } from "../envelope.js";
 import { requireVisitor } from "../services/auth.js";
 import { withUserScope } from "../db.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { importAnalyzeRateLimiter, importParseRateLimiter } from "../rate-limit.js";
 import {
   analyzeImport,
@@ -59,7 +60,9 @@ export function createImportRoutes(appState: AppState): Router {
   const visitor = requireVisitor(appState);
 
   router.use("/api/import", visitor);
-
+  if (appState.pool) {
+    router.use("/api/import", createContextMiddleware(appState.pool));
+  }
   router.post("/api/import/analyze", importAnalyzeRateLimiter, async (req, res) => {
     const { fileName, contentBase64, format } = req.body ?? {};
 
@@ -174,7 +177,7 @@ export function createImportRoutes(appState: AppState): Router {
   });
 
   router.post("/api/import/commit", async (req, res) => {
-    const userId = (res.locals.userId as string) || "local";
+    const userId = res.locals.ctx?.identity.userId ?? "local";
     if (!appState.pool) {
       return sendFail(res, ErrorCode.OVERLAY_STORE_NOT_AVAILABLE, "Database pool not available", 503);
     }
@@ -450,7 +453,7 @@ export function createImportRoutes(appState: AppState): Router {
   });
 
   router.post("/api/import/composition/commit", async (req, res) => {
-    const userId = (res.locals.userId as string) || "local";
+    const userId = res.locals.ctx?.identity.userId ?? "local";
     if (!appState.pool) {
       return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Database pool not available", 503);
     }

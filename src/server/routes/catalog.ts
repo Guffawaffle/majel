@@ -17,6 +17,7 @@ import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { VALID_OWNERSHIP_STATES, type OwnershipState } from "../stores/overlay-store.js";
 
 export function createCatalogRoutes(appState: AppState): Router {
@@ -25,6 +26,9 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   // All catalog endpoints require authentication — overlay data is personal
   router.use("/api/catalog", requireVisitor(appState));
+  if (appState.pool) {
+    router.use("/api/catalog", createContextMiddleware(appState.pool));
+  }
 
   // ── Helpers ─────────────────────────────────────────────
 
@@ -46,7 +50,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
   /** #85: Get a user-scoped overlay store for the current request */
   function getOverlayStore(res: import("express").Response) {
-    const userId = (res.locals.userId as string) || "local";
+    const userId = res.locals.ctx?.identity.userId ?? "local";
     return appState.overlayStoreFactory?.forUser(userId) ?? appState.overlayStore;
   }
 

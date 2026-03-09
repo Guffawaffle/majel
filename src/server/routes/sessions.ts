@@ -14,6 +14,7 @@ import type { ChatSession, ChatMessage } from "../sessions.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireVisitor } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { log } from "../logger.js";
 
 /**
@@ -68,6 +69,9 @@ export function createSessionRoutes(appState: AppState): Router {
   const router = createSafeRouter();
   const visitor = requireVisitor(appState);
   router.use("/api/sessions", visitor);
+  if (appState.pool) {
+    router.use("/api/sessions", createContextMiddleware(appState.pool));
+  }
 
   /** Max string length for session title. */
   const MAX_TITLE = 200;
@@ -80,7 +84,7 @@ export function createSessionRoutes(appState: AppState): Router {
     if (isNaN(limit) || limit < 1 || limit > 200) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "limit must be an integer between 1 and 200", 400);
     }
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     sendOk(res, { sessions: await appState.sessionStore.list(limit, userId) });
   });
 
@@ -93,7 +97,7 @@ export function createSessionRoutes(appState: AppState): Router {
     }
     // Ownership check: owner only
     const owner = await appState.sessionStore.getOwner(req.params.id as string);
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     if (owner !== userId) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
@@ -120,7 +124,7 @@ export function createSessionRoutes(appState: AppState): Router {
     }
     // Ownership check: owner only
     const owner = await appState.sessionStore.getOwner(req.params.id as string);
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     if (owner !== userId) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }
@@ -140,7 +144,7 @@ export function createSessionRoutes(appState: AppState): Router {
     }
     // Ownership check: owner only
     const owner = await appState.sessionStore.getOwner(req.params.id as string);
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     if (owner !== userId) {
       return sendFail(res, ErrorCode.NOT_FOUND, "Session not found", 404);
     }

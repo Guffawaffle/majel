@@ -14,6 +14,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { log } from "../logger.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { withUserScope } from "../db.js";
 
 export function createReceiptRoutes(appState: AppState): Router {
@@ -21,10 +22,13 @@ export function createReceiptRoutes(appState: AppState): Router {
   const visitor = requireVisitor(appState);
   const admiral = requireAdmiral(appState);
   router.use("/api/import", visitor);
+  if (appState.pool) {
+    router.use("/api/import", createContextMiddleware(appState.pool));
+  }
 
   /** Guard: return receipt store or 503 */
   function getStore(res: import("express").Response) {
-    const userId = (res.locals.userId as string) || "local";
+    const userId = res.locals.ctx?.identity.userId ?? "local";
     return appState.receiptStoreFactory?.forUser(userId) ?? appState.receiptStore;
   }
 
@@ -71,7 +75,7 @@ export function createReceiptRoutes(appState: AppState): Router {
     }
 
     if (receipt.layer === "composition") {
-      const userId = (res.locals.userId as string) || "local";
+      const userId = res.locals.ctx?.identity.userId ?? "local";
       if (!appState.pool) {
         return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Database pool not available", 503);
       }

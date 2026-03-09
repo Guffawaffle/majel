@@ -14,6 +14,7 @@ import { log } from "../logger.js";
 import { createSafeRouter } from "../safe-router.js";
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES, type TargetType, type TargetStatus } from "../stores/target-store.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { detectTargetConflicts } from "../services/target-conflicts.js";
 
 export function createTargetRoutes(appState: AppState): Router {
@@ -21,10 +22,13 @@ export function createTargetRoutes(appState: AppState): Router {
   const visitor = requireVisitor(appState);
   const admiral = requireAdmiral(appState);
   router.use("/api/targets", visitor);
+  if (appState.pool) {
+    router.use("/api/targets", createContextMiddleware(appState.pool));
+  }
 
   /** Guard: return a user-scoped store or the backward-compat store, or null */
   function getStore(res: import("express").Response) {
-    const userId = (res.locals.userId as string) || "local";
+    const userId = res.locals.ctx?.identity.userId ?? "local";
     return appState.targetStoreFactory?.forUser(userId) ?? appState.targetStore;
   }
 

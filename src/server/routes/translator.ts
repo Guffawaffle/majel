@@ -15,6 +15,7 @@ import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireVisitor } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { listTranslatorConfigs, loadTranslatorConfig, translate } from "../services/translator/index.js";
 import { executeFleetTool } from "../services/fleet-tools/index.js";
 
@@ -28,6 +29,9 @@ export function createTranslatorRoutes(appState: AppState): Router {
   const router = createSafeRouter();
   const visitor = requireVisitor(appState);
   router.use("/api/translate", visitor);
+  if (appState.pool) {
+    router.use("/api/translate", createContextMiddleware(appState.pool));
+  }
 
   // ── List available translator configs ─────────────────────
 
@@ -98,7 +102,7 @@ export function createTranslatorRoutes(appState: AppState): Router {
     }
 
     // Build tool context for sync_overlay execution
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     if (!appState.toolContextFactory) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Tool context factory not available", 503);
     }

@@ -17,6 +17,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { log } from "../logger.js";
 import { requireVisitor } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { executeFleetTool } from "../services/fleet-tools/index.js";
 import { isMutationTool, getTrustLevel } from "../services/fleet-tools/trust.js";
 import { canonicalStringify } from "../util/canonical-json.js";
@@ -28,11 +29,14 @@ export function createProposalRoutes(appState: AppState): Router {
   const router = createSafeRouter();
   const visitor = requireVisitor(appState);
   router.use("/api/mutations", visitor);
+  if (appState.pool) {
+    router.use("/api/mutations", createContextMiddleware(appState.pool));
+  }
 
   // ── List proposals ────────────────────────────────────────
 
   router.get("/api/mutations/proposals", async (req, res) => {
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     const proposalStore = appState.proposalStoreFactory?.forUser(userId);
     if (!proposalStore) {
       return sendFail(res, ErrorCode.PROPOSAL_STORE_NOT_AVAILABLE, "Proposal store not available", 503);
@@ -58,7 +62,7 @@ export function createProposalRoutes(appState: AppState): Router {
   // ── Get proposal detail ───────────────────────────────────
 
   router.get("/api/mutations/proposals/:id", async (req, res) => {
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     const proposalStore = appState.proposalStoreFactory?.forUser(userId);
     if (!proposalStore) {
       return sendFail(res, ErrorCode.PROPOSAL_STORE_NOT_AVAILABLE, "Proposal store not available", 503);
@@ -74,7 +78,7 @@ export function createProposalRoutes(appState: AppState): Router {
   // ── Create proposal (dry-run tools only) ──────────────────
 
   router.post("/api/mutations/proposals", async (req, res) => {
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     const proposalStore = appState.proposalStoreFactory?.forUser(userId);
     if (!proposalStore) {
       return sendFail(res, ErrorCode.PROPOSAL_STORE_NOT_AVAILABLE, "Proposal store not available", 503);
@@ -138,7 +142,7 @@ export function createProposalRoutes(appState: AppState): Router {
   // ── Apply proposal ────────────────────────────────────────
 
   router.post("/api/mutations/proposals/:id/apply", async (req, res) => {
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     const proposalStore = appState.proposalStoreFactory?.forUser(userId);
     if (!proposalStore) {
       return sendFail(res, ErrorCode.PROPOSAL_STORE_NOT_AVAILABLE, "Proposal store not available", 503);
@@ -272,7 +276,7 @@ export function createProposalRoutes(appState: AppState): Router {
   // ── Decline proposal ──────────────────────────────────────
 
   router.post("/api/mutations/proposals/:id/decline", async (req, res) => {
-    const userId = res.locals.userId as string;
+    const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
     const proposalStore = appState.proposalStoreFactory?.forUser(userId);
     if (!proposalStore) {
       return sendFail(res, ErrorCode.PROPOSAL_STORE_NOT_AVAILABLE, "Proposal store not available", 503);
