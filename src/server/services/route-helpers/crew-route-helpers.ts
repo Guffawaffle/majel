@@ -6,6 +6,6 @@ export const MAX_NOTES = 2000;
 export const MAX_LABEL = 200;
 
 export function getCrewStore(appState: AppState, res: Response) {
-  const userId = (res.locals.userId as string) || "local";
+  const userId = (res.locals.ctx?.identity.userId ?? (res.locals.userId as string)) || "local";
   return appState.crewStoreFactory?.forUser(userId) ?? appState.crewStore;
 }

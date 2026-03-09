@@ -16,6 +16,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { log } from "../logger.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { VALID_BRIDGE_SLOTS, VALID_BELOW_DECK_MODES } from "../types/crew-types.js";
 import type { BridgeSlot, BelowDeckMode, VariantPatch, PlanSource } from "../types/crew-types.js";
 import { MAX_NAME, MAX_NOTES, MAX_LABEL, getCrewStore } from "../services/route-helpers/crew-route-helpers.js";
@@ -35,6 +36,19 @@ export function createCrewRoutes(appState: AppState): Router {
   router.use("/api/crew/docks", visitor);
   router.use("/api/crew/plan", visitor);
   router.use("/api/effective-state", visitor);
+
+  // ADR-039: wire RequestContext after auth for all crew paths
+  if (appState.pool) {
+    const ctxMw = createContextMiddleware(appState.pool);
+    router.use("/api/bridge-cores", ctxMw);
+    router.use("/api/below-deck-policies", ctxMw);
+    router.use("/api/crew/loadouts", ctxMw);
+    router.use("/api/fleet-presets", ctxMw);
+    router.use("/api/officer-reservations", ctxMw);
+    router.use("/api/crew/docks", ctxMw);
+    router.use("/api/crew/plan", ctxMw);
+    router.use("/api/effective-state", ctxMw);
+  }
 
   const getStore = (res: import("express").Response) => getCrewStore(appState, res);
 

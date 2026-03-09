@@ -16,6 +16,7 @@ import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral } from "../services/auth.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { log } from "../logger.js";
 
 type OwnershipBreakdownRow = { ownership_state: string; count: string | number };
@@ -76,6 +77,9 @@ function isSafeQuery(sql: string): { safe: boolean; reason?: string } {
 export function createDiagnosticQueryRoutes(appState: AppState): Router {
   const router = createSafeRouter();
   router.use("/api/diagnostic", requireAdmiral(appState));
+  if (appState.pool) {
+    router.use("/api/diagnostic", createContextMiddleware(appState.pool));
+  }
 
   /**
    * Get the pool from app state.
@@ -275,7 +279,7 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
       const shipsByFaction = shipsByFactionRes.rows as { faction: string | null; count: string | number }[];
 
       // Overlay stats: keep user-scoped and system-wide counts separate.
-      const userId = typeof res.locals.userId === "string" ? res.locals.userId : null;
+      const userId = res.locals.ctx?.identity.userId ?? (typeof res.locals.userId === "string" ? res.locals.userId : null);
 
       let systemOfficerOverlayCount = 0;
       let systemShipOverlayCount = 0;
