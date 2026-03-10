@@ -15,6 +15,8 @@
 
 import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
 import { log } from "../logger.js";
+import type { RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -115,11 +117,11 @@ const RECEIPT_COLS = `id, source_type AS "sourceType", source_meta AS "sourceMet
 // Implementation
 // ═══════════════════════════════════════════════════════════
 
-function createScopedReceiptStore(pool: Pool, userId: string): ReceiptStore {
+function createScopedReceiptStore(scope: ScopeProvider, userId: string): ReceiptStore {
 
   const store: ReceiptStore = {
     async createReceipt(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(
           `INSERT INTO import_receipts (user_id, source_type, source_meta, mapping, layer, changeset, inverse, unresolved, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${RECEIPT_COLS}`,
@@ -141,7 +143,7 @@ function createScopedReceiptStore(pool: Pool, userId: string): ReceiptStore {
     },
 
     async listReceipts(limit, layer) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const clauses: string[] = [];
         const params: unknown[] = [];
         let idx = 1;
@@ -158,7 +160,7 @@ function createScopedReceiptStore(pool: Pool, userId: string): ReceiptStore {
     },
 
     async getReceipt(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT ${RECEIPT_COLS} FROM import_receipts WHERE id = $1`, [id],
         );
@@ -167,7 +169,7 @@ function createScopedReceiptStore(pool: Pool, userId: string): ReceiptStore {
     },
 
     async undoReceipt(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const receiptResult = await client.query(
           `SELECT ${RECEIPT_COLS} FROM import_receipts WHERE id = $1`, [id],
         );
@@ -209,7 +211,7 @@ function createScopedReceiptStore(pool: Pool, userId: string): ReceiptStore {
     },
 
     async resolveReceiptItems(id, resolvedItems) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const receiptResult = await client.query(
           `SELECT ${RECEIPT_COLS} FROM import_receipts WHERE id = $1`, [id],
         );
@@ -248,7 +250,7 @@ function createScopedReceiptStore(pool: Pool, userId: string): ReceiptStore {
     },
 
     async counts() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT COUNT(*)::int AS total FROM import_receipts`);
         return { total: result.rows[0].total };
       });
@@ -269,7 +271,14 @@ function createScopedReceiptStore(pool: Pool, userId: string): ReceiptStore {
 export class ReceiptStoreFactory {
   constructor(private pool: Pool) {}
   forUser(userId: string): ReceiptStore {
-    return createScopedReceiptStore(this.pool, userId);
+    const scope: ScopeProvider = {
+      read: (fn) => withUserRead(this.pool, userId, fn),
+      write: (fn) => withUserScope(this.pool, userId, fn),
+    };
+    return createScopedReceiptStore(scope, userId);
+  }
+  forContext(ctx: RequestContext): ReceiptStore {
+    return createScopedReceiptStore(scopeFromContext(ctx), ctx.identity.userId);
   }
 }
 

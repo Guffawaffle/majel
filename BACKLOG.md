@@ -66,7 +66,7 @@ from route → service → store → tool gains requestId + userId correlation.
 | 4 | #193 | End-to-end proof: `user-settings` route migrated to `RequestContext` | [x] Done |
 | 5 | #194 | `TestContextBuilder` + test fixture infrastructure | [x] Done (shipped with #189) |
 | 6 | #195 | `ToolContext` → `ToolEnv { ctx, deps }` (Stage 1 transition) | [x] Done (`97a60c3`) |
-| 7 | #196 | Tenant-scoped store factories accept `RequestContext` | [ ] Not started |
+| 7 | #196 | Tenant-scoped store factories accept `RequestContext` | [x] Done |
 | 8 | #197 | Remaining route migration (route-by-route, no flag day) | [x] Done — 13/13 routes migrated |
 | 9 | #198 | Legacy removal: deprecate `withUserScope` / `withUserRead` | [ ] Not started |
 | 10 | #199 | ToolEnv Stage 2: `defineTool()` with declaration-driven dependency resolution | [ ] Not started |

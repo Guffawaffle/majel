@@ -9,6 +9,8 @@
 
 import { initSchema, withUserRead, withUserScope, type Pool } from "../db.js";
 import { log } from "../logger.js";
+import type { QueryExecutor, RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 
 export interface ResearchBuff {
   kind: "ship" | "officer" | "resource" | "combat" | "other";
@@ -76,6 +78,7 @@ export interface ResearchStore {
 
 export interface ResearchStoreFactory {
   forUser(userId: string): ResearchStore;
+  forContext(ctx: RequestContext): ResearchStore;
 }
 
 const SCHEMA_STATEMENTS = [
@@ -152,10 +155,10 @@ function mapNodeRow(row: Record<string, unknown>): ResearchNodeRecord {
   };
 }
 
-function createScopedResearchStore(pool: Pool, userId: string): ResearchStore {
+function createScopedResearchStore(scope: ScopeProvider, userId: string): ResearchStore {
   return {
     async replaceSnapshot(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         await client.query(SQL.deleteAll, [userId]);
 
         const stateMap = new Map(input.state.map((entry) => [entry.nodeId, entry]));
@@ -184,7 +187,7 @@ function createScopedResearchStore(pool: Pool, userId: string): ResearchStore {
     },
 
     async listNodes() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.listNodes, [userId]);
         return result.rows.map((row) => mapNodeRow(row as Record<string, unknown>));
       });
@@ -230,7 +233,7 @@ function createScopedResearchStore(pool: Pool, userId: string): ResearchStore {
     },
 
     async counts() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.counts, [userId]);
         const row = result.rows[0] as { nodes: string | number; trees: string | number; completed: string | number };
         return {
@@ -252,7 +255,14 @@ export async function createResearchStoreFactory(adminPool: Pool, runtimePool?: 
 
   return {
     forUser(userId: string) {
-      return createScopedResearchStore(pool, userId);
+      const scope: ScopeProvider = {
+        read: (fn) => withUserRead(pool, userId, fn),
+        write: (fn) => withUserScope(pool, userId, fn),
+      };
+      return createScopedResearchStore(scope, userId);
+    },
+    forContext(ctx: RequestContext) {
+      return createScopedResearchStore(scopeFromContext(ctx), ctx.identity.userId);
     },
   };
 }

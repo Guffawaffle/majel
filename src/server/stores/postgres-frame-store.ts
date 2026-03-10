@@ -21,6 +21,8 @@ import {
   type PoolClient,
 } from "../db.js";
 import { log } from "../logger.js";
+import type { QueryExecutor, RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 import type {
   FrameStore,
   FrameSearchCriteria,
@@ -213,20 +215,20 @@ ON CONFLICT (id) DO NOTHING`;
 
 export class PostgresFrameStore implements FrameStore {
   constructor(
-    private pool: Pool,
+    private scope: ScopeProvider,
     private userId: string,
   ) {}
 
   /** Run a query inside a user-scoped transaction (for writes). */
-  private async scoped<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-    return withUserScope(this.pool, this.userId, fn);
+  private async scoped<T>(fn: (client: QueryExecutor) => Promise<T>): Promise<T> {
+    return this.scope.write(fn);
   }
 
-  /** Run a read-only query with user scope but no transaction overhead. */
+  /** Run a read-only query with user scope. */
   private async scopedRead<T>(
-    fn: (client: PoolClient) => Promise<T>,
+    fn: (client: QueryExecutor) => Promise<T>,
   ): Promise<T> {
-    return withUserRead(this.pool, this.userId, fn);
+    return this.scope.read(fn);
   }
 
   /** Map a Frame to the ordered parameter array for INSERT_SQL. */
@@ -667,6 +669,14 @@ export class FrameStoreFactory {
 
   /** Create a FrameStore scoped to a specific user. RLS enforces isolation. */
   forUser(userId: string): FrameStore {
-    return new PostgresFrameStore(this.pool, userId);
+    const scope: ScopeProvider = {
+      read: (fn) => withUserRead(this.pool, userId, fn),
+      write: (fn) => withUserScope(this.pool, userId, fn),
+    };
+    return new PostgresFrameStore(scope, userId);
+  }
+
+  forContext(ctx: RequestContext): FrameStore {
+    return new PostgresFrameStore(scopeFromContext(ctx), ctx.identity.userId);
   }
 }

@@ -9,6 +9,8 @@
 
 import { initSchema, withUserRead, withUserScope, type Pool } from "../db.js";
 import { log } from "../logger.js";
+import type { RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 
 export type InventoryCategory = "ore" | "gas" | "crystal" | "parts" | "currency" | "blueprint" | "other";
 
@@ -57,6 +59,7 @@ export interface InventoryStore {
 
 export interface InventoryStoreFactory {
   forUser(userId: string): InventoryStore;
+  forContext(ctx: RequestContext): InventoryStore;
 }
 
 const SCHEMA_STATEMENTS = [
@@ -131,10 +134,10 @@ function mapInventoryRow(row: Record<string, unknown>): InventoryItemRecord {
   };
 }
 
-function createScopedInventoryStore(pool: Pool, userId: string): InventoryStore {
+function createScopedInventoryStore(scope: ScopeProvider, userId: string): InventoryStore {
   return {
     async upsertItems(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         for (const item of input.items) {
           await client.query(SQL.upsertItem, [
             userId,
@@ -155,7 +158,7 @@ function createScopedInventoryStore(pool: Pool, userId: string): InventoryStore 
     },
 
     async listItems(filters) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const category = filters?.category ?? null;
         const q = filters?.q?.trim() || null;
         const result = await client.query(SQL.listItems, [userId, category, q]);
@@ -185,7 +188,7 @@ function createScopedInventoryStore(pool: Pool, userId: string): InventoryStore 
     },
 
     async counts() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.counts, [userId]);
         const row = result.rows[0] as { items: string | number; categories: string | number };
         return {
@@ -206,7 +209,14 @@ export async function createInventoryStoreFactory(adminPool: Pool, runtimePool?:
 
   return {
     forUser(userId: string) {
-      return createScopedInventoryStore(pool, userId);
+      const scope: ScopeProvider = {
+        read: (fn) => withUserRead(pool, userId, fn),
+        write: (fn) => withUserScope(pool, userId, fn),
+      };
+      return createScopedInventoryStore(scope, userId);
+    },
+    forContext(ctx: RequestContext) {
+      return createScopedInventoryStore(scopeFromContext(ctx), ctx.identity.userId);
     },
   };
 }

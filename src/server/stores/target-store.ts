@@ -20,6 +20,8 @@
 
 import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
 import { log } from "../logger.js";
+import type { RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -420,10 +422,10 @@ function buildFilterQuery(
 
 // ─── Scoped Store Implementation ────────────────────────────
 
-function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
+function createScopedTargetStore(scope: ScopeProvider, userId: string): TargetStore {
   return {
     async list(filters?) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         if (filters && Object.keys(filters).length > 0) {
           const { sql, params } = buildFilterQuery(filters);
           const result = await client.query(sql, params);
@@ -435,14 +437,14 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
     },
 
     async get(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.get, [id]);
         return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
       });
     },
 
     async create(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(SQL.create, [
           userId,
           input.targetType,
@@ -460,7 +462,7 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
     },
 
     async update(id, fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const setClauses: string[] = [];
         const params: unknown[] = [id];
 
@@ -502,21 +504,21 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
     },
 
     async delete(id) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(SQL.delete, [id]);
         return result.rowCount! > 0;
       });
     },
 
     async markAchieved(id) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(SQL.markAchieved, [id]);
         return result.rows.length > 0 ? mapRow(result.rows[0]) : null;
       });
     },
 
     async recordDelta(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const targetResult = await client.query(SQL.get, [input.targetId]);
         if (targetResult.rows.length === 0) {
           return null;
@@ -540,14 +542,14 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
     },
 
     async listDeltas(targetId, limit = 25) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.listDeltas, [targetId, Math.max(1, Math.min(limit, 200))]);
         return result.rows.map(mapDeltaRow);
       });
     },
 
     async recordReminderFeedback(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const reminderKey = input.reminderKey.trim();
         const source = (input.source ?? "manual").trim() || "manual";
         const note = input.note == null ? null : String(input.note).trim().slice(0, 500);
@@ -573,14 +575,14 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
     },
 
     async listReminderFeedback(limit = 200) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.listReminderFeedback, [Math.max(1, Math.min(limit, 1000))]);
         return result.rows.map(mapReminderFeedbackRow);
       });
     },
 
     async recordGoalRestatement(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const goalKey = input.goalKey.trim();
         const source = (input.source ?? "manual").trim() || "manual";
         const note = input.note == null ? null : String(input.note).trim().slice(0, 500);
@@ -605,21 +607,21 @@ function createScopedTargetStore(pool: Pool, userId: string): TargetStore {
     },
 
     async listGoalRestatements(limit = 200) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.listGoalRestatements, [Math.max(1, Math.min(limit, 1000))]);
         return result.rows.map(mapGoalRestatementRow);
       });
     },
 
     async listByRef(refId) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.listByRefId, [refId]);
         return result.rows.map(mapRow);
       });
     },
 
     async counts() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.counts);
         const row = result.rows[0];
         return {
@@ -648,7 +650,15 @@ export class TargetStoreFactory {
   constructor(private pool: Pool) {}
 
   forUser(userId: string): TargetStore {
-    return createScopedTargetStore(this.pool, userId);
+    const scope: ScopeProvider = {
+      read: (fn) => withUserRead(this.pool, userId, fn),
+      write: (fn) => withUserScope(this.pool, userId, fn),
+    };
+    return createScopedTargetStore(scope, userId);
+  }
+
+  forContext(ctx: RequestContext): TargetStore {
+    return createScopedTargetStore(scopeFromContext(ctx), ctx.identity.userId);
   }
 }
 

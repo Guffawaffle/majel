@@ -20,8 +20,10 @@
  * Pattern: CrewStoreFactory.forUser(userId) → CrewStore.
  */
 
-import { initSchema, withUserScope, withUserRead, type Pool, type PoolClient } from "../db.js";
+import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
 import { log } from "../logger.js";
+import type { QueryExecutor, RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 
 import type {
   BridgeSlot,
@@ -424,10 +426,10 @@ const RES_COLS = `officer_id AS "officerId", reserved_for AS "reservedFor", lock
 // Implementation
 // ═══════════════════════════════════════════════════════════
 
-function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
+function createScopedCrewStore(scope: ScopeProvider, userId: string): CrewStore {
 
   // ── Helper: attach members to bridge cores ────────────
-  async function attachMembers(client: PoolClient, cores: BridgeCore[]): Promise<BridgeCoreWithMembers[]> {
+  async function attachMembers(client: QueryExecutor, cores: BridgeCore[]): Promise<BridgeCoreWithMembers[]> {
     if (cores.length === 0) return [];
     const ids = cores.map((c) => c.id);
     const membersResult = await client.query(
@@ -444,7 +446,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
   }
 
   // ── Helper: attach slots to fleet presets ─────────────
-  async function attachSlots(client: PoolClient, presets: FleetPreset[]): Promise<FleetPresetWithSlots[]> {
+  async function attachSlots(client: QueryExecutor, presets: FleetPreset[]): Promise<FleetPresetWithSlots[]> {
     if (presets.length === 0) return [];
     const ids = presets.map((p) => p.id);
     const slotsResult = await client.query(
@@ -461,7 +463,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
   }
 
   // ── Helper: resolve a loadout into a ResolvedLoadout ──
-  async function resolveLoadout(client: PoolClient, loadoutId: number): Promise<ResolvedLoadout | null> {
+  async function resolveLoadout(client: QueryExecutor, loadoutId: number): Promise<ResolvedLoadout | null> {
     const loadoutResult = await client.query(
       `SELECT ${LOADOUT_COLS} FROM loadouts WHERE id = $1`, [loadoutId],
     );
@@ -502,7 +504,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
 
   // ── Self-scoping wrapper for resolveLoadout ───────────
   async function resolveLoadoutScoped(loadoutId: number): Promise<ResolvedLoadout | null> {
-    return withUserRead(pool, userId, async (client) => resolveLoadout(client, loadoutId));
+    return scope.read(async (client) => resolveLoadout(client, loadoutId));
   }
 
   const store: CrewStore = {
@@ -511,14 +513,14 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async listBridgeCores() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${BC_COLS} FROM bridge_cores ORDER BY name`);
         return attachMembers(client, result.rows as BridgeCore[]);
       });
     },
 
     async getBridgeCore(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${BC_COLS} FROM bridge_cores WHERE id = $1`, [id]);
         const cores = await attachMembers(client, result.rows as BridgeCore[]);
         return cores[0] ?? null;
@@ -526,7 +528,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async createBridgeCore(name, members, notes) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const coreResult = await client.query(
           `INSERT INTO bridge_cores (user_id, name, notes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5) RETURNING ${BC_COLS}`,
@@ -549,7 +551,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async updateBridgeCore(id, fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const setClauses: string[] = [];
         const params: unknown[] = [];
         let idx = 1;
@@ -571,14 +573,14 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async deleteBridgeCore(id) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(`DELETE FROM bridge_cores WHERE id = $1`, [id]);
         return (result.rowCount ?? 0) > 0;
       });
     },
 
     async setBridgeCoreMembers(bridgeCoreId, members) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         await client.query(`DELETE FROM bridge_core_members WHERE bridge_core_id = $1`, [bridgeCoreId]);
         const rows: BridgeCoreMember[] = [];
         for (const m of members) {
@@ -601,21 +603,21 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async listBelowDeckPolicies() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${BDP_COLS} FROM below_deck_policies ORDER BY name`);
         return result.rows as BelowDeckPolicy[];
       });
     },
 
     async getBelowDeckPolicy(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${BDP_COLS} FROM below_deck_policies WHERE id = $1`, [id]);
         return (result.rows[0] as BelowDeckPolicy) ?? null;
       });
     },
 
     async createBelowDeckPolicy(name, mode, spec, notes) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const result = await client.query(
           `INSERT INTO below_deck_policies (user_id, name, mode, spec, notes, created_at, updated_at)
@@ -628,7 +630,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async updateBelowDeckPolicy(id, fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const setClauses: string[] = [];
         const params: unknown[] = [];
         let idx = 1;
@@ -652,7 +654,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async deleteBelowDeckPolicy(id) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(`DELETE FROM below_deck_policies WHERE id = $1`, [id]);
         return (result.rowCount ?? 0) > 0;
       });
@@ -663,7 +665,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async listLoadouts(filters) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const clauses: string[] = [];
         const params: unknown[] = [];
         let idx = 1;
@@ -681,7 +683,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async getLoadout(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${LOADOUT_COLS} FROM loadouts WHERE id = $1`, [id]);
         const loadout = result.rows[0] as Loadout | undefined;
         if (!loadout) return null;
@@ -705,7 +707,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
 
     async getLoadoutsByIds(ids) {
       if (ids.length === 0) return new Map();
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT ${LOADOUT_COLS} FROM loadouts WHERE id = ANY($1)`, [ids],
         );
@@ -742,7 +744,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async createLoadout(fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const result = await client.query(
           `INSERT INTO loadouts (user_id, ship_id, bridge_core_id, below_deck_policy_id, name, priority, is_active, intent_keys, tags, notes, created_at, updated_at)
@@ -760,7 +762,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async updateLoadout(id, fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const setClauses: string[] = [];
         const params: unknown[] = [];
         let idx = 1;
@@ -788,7 +790,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async deleteLoadout(id) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(`DELETE FROM loadouts WHERE id = $1`, [id]);
         return (result.rowCount ?? 0) > 0;
       });
@@ -799,7 +801,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async listVariants(baseLoadoutId) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT ${VARIANT_COLS} FROM loadout_variants WHERE base_loadout_id = $1 ORDER BY name`,
           [baseLoadoutId],
@@ -809,7 +811,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async getVariant(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${VARIANT_COLS} FROM loadout_variants WHERE id = $1`, [id]);
         return (result.rows[0] as LoadoutVariant) ?? null;
       });
@@ -817,7 +819,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
 
     async createVariant(baseLoadoutId, name, patch, notes) {
       validatePatch(patch);
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const result = await client.query(
           `INSERT INTO loadout_variants (user_id, base_loadout_id, name, patch, notes, created_at)
@@ -830,7 +832,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async updateVariant(id, fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const setClauses: string[] = [];
         const params: unknown[] = [];
         let idx = 1;
@@ -851,7 +853,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async deleteVariant(id) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(`DELETE FROM loadout_variants WHERE id = $1`, [id]);
         return (result.rowCount ?? 0) > 0;
       });
@@ -862,21 +864,21 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async listDocks() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${DOCK_COLS} FROM docks ORDER BY dock_number`);
         return result.rows as Dock[];
       });
     },
 
     async getDock(dockNumber) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${DOCK_COLS} FROM docks WHERE dock_number = $1`, [dockNumber]);
         return (result.rows[0] as Dock) ?? null;
       });
     },
 
     async upsertDock(dockNumber, fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const result = await client.query(
           `INSERT INTO docks (user_id, dock_number, label, unlocked, notes, created_at, updated_at)
@@ -894,7 +896,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async deleteDock(dockNumber) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(`DELETE FROM docks WHERE dock_number = $1`, [dockNumber]);
         return (result.rowCount ?? 0) > 0;
       });
@@ -905,14 +907,14 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async listFleetPresets() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${FP_COLS} FROM fleet_presets ORDER BY name`);
         return attachSlots(client, result.rows as FleetPreset[]);
       });
     },
 
     async getFleetPreset(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${FP_COLS} FROM fleet_presets WHERE id = $1`, [id]);
         const presets = await attachSlots(client, result.rows as FleetPreset[]);
         return presets[0] ?? null;
@@ -920,7 +922,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async createFleetPreset(name, notes) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const result = await client.query(
           `INSERT INTO fleet_presets (user_id, name, notes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5) RETURNING ${FP_COLS}`,
@@ -932,7 +934,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async updateFleetPreset(id, fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         // If activating this preset, deactivate all others
         if (fields.isActive === true) {
           await client.query(`UPDATE fleet_presets SET is_active = FALSE WHERE is_active = TRUE AND id != $1`, [id]);
@@ -956,14 +958,14 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async deleteFleetPreset(id) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(`DELETE FROM fleet_presets WHERE id = $1`, [id]);
         return (result.rowCount ?? 0) > 0;
       });
     },
 
     async setFleetPresetSlots(presetId, slots) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         await client.query(`DELETE FROM fleet_preset_slots WHERE preset_id = $1`, [presetId]);
         const rows: FleetPresetSlot[] = [];
         for (const s of slots) {
@@ -991,7 +993,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async listPlanItems(filters) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const clauses: string[] = [];
         const params: unknown[] = [];
         let idx = 1;
@@ -1007,14 +1009,14 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async getPlanItem(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${PI_COLS} FROM plan_items WHERE id = $1`, [id]);
         return (result.rows[0] as PlanItem) ?? null;
       });
     },
 
     async createPlanItem(fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const result = await client.query(
           `INSERT INTO plan_items (user_id, intent_key, label, loadout_id, variant_id, dock_number, away_officers, priority, is_active, source, notes, created_at, updated_at)
@@ -1035,7 +1037,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async updatePlanItem(id, fields) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const setClauses: string[] = [];
         const params: unknown[] = [];
         let idx = 1;
@@ -1068,7 +1070,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async deletePlanItem(id) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(`DELETE FROM plan_items WHERE id = $1`, [id]);
         return (result.rowCount ?? 0) > 0;
       });
@@ -1079,21 +1081,21 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async listReservations() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${RES_COLS} FROM officer_reservations ORDER BY officer_id`);
         return result.rows as OfficerReservation[];
       });
     },
 
     async getReservation(officerId) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(`SELECT ${RES_COLS} FROM officer_reservations WHERE officer_id = $1`, [officerId]);
         return (result.rows[0] as OfficerReservation) ?? null;
       });
     },
 
     async setReservation(officerId, reservedFor, locked, notes) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const result = await client.query(
           `INSERT INTO officer_reservations (user_id, officer_id, reserved_for, locked, notes, created_at)
@@ -1108,7 +1110,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     },
 
     async deleteReservation(officerId) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(`DELETE FROM officer_reservations WHERE officer_id = $1`, [officerId]);
         return (result.rowCount ?? 0) > 0;
       });
@@ -1119,7 +1121,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
     // ═══════════════════════════════════════════════════════
 
     async resolveVariant(baseLoadoutId, variantId) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const base = await resolveLoadout(client, baseLoadoutId);
         if (!base) throw new Error(`Base loadout ${baseLoadoutId} not found`);
 
@@ -1268,7 +1270,7 @@ function createScopedCrewStore(pool: Pool, userId: string): CrewStore {
 
     // ── Counts ──────────────────────────────────────────────
     async counts() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT
              (SELECT COUNT(*) FROM bridge_cores)::int AS "bridgeCores",
@@ -1323,7 +1325,14 @@ function validatePatch(patch: VariantPatch): void {
 class CrewStoreFactory {
   constructor(private pool: Pool) {}
   forUser(userId: string): CrewStore {
-    return createScopedCrewStore(this.pool, userId);
+    const scope: ScopeProvider = {
+      read: (fn) => withUserRead(this.pool, userId, fn),
+      write: (fn) => withUserScope(this.pool, userId, fn),
+    };
+    return createScopedCrewStore(scope, userId);
+  }
+  forContext(ctx: RequestContext): CrewStore {
+    return createScopedCrewStore(scopeFromContext(ctx), ctx.identity.userId);
   }
 }
 

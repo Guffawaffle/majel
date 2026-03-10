@@ -27,6 +27,8 @@
 
 import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
 import { log } from "../logger.js";
+import type { RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -287,7 +289,7 @@ function normalizeShipOverlay(raw: RawShipOverlay): ShipOverlay {
   return { ...raw, target: Boolean(raw.target) };
 }
 
-function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
+function createScopedOverlayStore(scope: ScopeProvider, userId: string): OverlayStore {
 
   function buildOfficerFilterQuery(filters: { ownershipState?: OwnershipState; target?: boolean }): { sql: string; params: (string | boolean)[] } {
     const clauses: string[] = [];
@@ -311,7 +313,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
 
   return {
     async getOfficerOverlay(refId) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.getOfficerOverlay, [refId]);
         const raw = result.rows[0] as RawOfficerOverlay | undefined;
         return raw ? normalizeOfficerOverlay(raw) : null;
@@ -319,7 +321,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
     },
 
     async setOfficerOverlay(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const existingRes = await client.query(SQL.getOfficerOverlay, [input.refId]);
         const existing = existingRes.rows[0] as RawOfficerOverlay | undefined;
@@ -341,7 +343,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
     },
 
     async listOfficerOverlays(filters?) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         if (filters && (filters.ownershipState || filters.target !== undefined)) {
           const { sql, params } = buildOfficerFilterQuery(filters);
           const result = await client.query(sql, params);
@@ -353,14 +355,14 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
     },
 
     async deleteOfficerOverlay(refId) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(SQL.deleteOfficerOverlay, [refId]);
         return (result.rowCount ?? 0) > 0;
       });
     },
 
     async getShipOverlay(refId) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(SQL.getShipOverlay, [refId]);
         const raw = result.rows[0] as RawShipOverlay | undefined;
         return raw ? normalizeShipOverlay(raw) : null;
@@ -368,7 +370,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
     },
 
     async setShipOverlay(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const now = new Date().toISOString();
         const existingRes = await client.query(SQL.getShipOverlay, [input.refId]);
         const existing = existingRes.rows[0] as RawShipOverlay | undefined;
@@ -390,7 +392,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
     },
 
     async listShipOverlays(filters?) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         if (filters && (filters.ownershipState || filters.target !== undefined)) {
           const { sql, params } = buildShipFilterQuery(filters);
           const result = await client.query(sql, params);
@@ -402,7 +404,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
     },
 
     async deleteShipOverlay(refId) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(SQL.deleteShipOverlay, [refId]);
         return (result.rowCount ?? 0) > 0;
       });
@@ -410,7 +412,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
 
     async bulkSetOfficerOwnership(refIds, state) {
       const now = new Date().toISOString();
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         for (const refId of refIds) {
           await client.query(SQL.bulkUpsertOfficerOwnership, [userId, refId, state, now]);
         }
@@ -421,7 +423,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
 
     async bulkSetShipOwnership(refIds, state) {
       const now = new Date().toISOString();
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         for (const refId of refIds) {
           await client.query(SQL.bulkUpsertShipOwnership, [userId, refId, state, now]);
         }
@@ -432,7 +434,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
 
     async bulkSetOfficerTarget(refIds, target) {
       const now = new Date().toISOString();
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         for (const refId of refIds) {
           await client.query(SQL.bulkUpsertOfficerTarget, [userId, refId, target, now]);
         }
@@ -443,7 +445,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
 
     async bulkSetShipTarget(refIds, target) {
       const now = new Date().toISOString();
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         for (const refId of refIds) {
           await client.query(SQL.bulkUpsertShipTarget, [userId, refId, target, now]);
         }
@@ -453,7 +455,7 @@ function createScopedOverlayStore(pool: Pool, userId: string): OverlayStore {
     },
 
     async counts() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const officerResult = await client.query(SQL.countOfficers);
         const shipResult = await client.query(SQL.countShips);
         const o = officerResult.rows[0] as Record<string, string>;
@@ -483,7 +485,15 @@ export class OverlayStoreFactory {
   constructor(private pool: Pool) {}
 
   forUser(userId: string): OverlayStore {
-    return createScopedOverlayStore(this.pool, userId);
+    const scope: ScopeProvider = {
+      read: (fn) => withUserRead(this.pool, userId, fn),
+      write: (fn) => withUserScope(this.pool, userId, fn),
+    };
+    return createScopedOverlayStore(scope, userId);
+  }
+
+  forContext(ctx: RequestContext): OverlayStore {
+    return createScopedOverlayStore(scopeFromContext(ctx), ctx.identity.userId);
   }
 }
 

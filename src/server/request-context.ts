@@ -40,6 +40,23 @@ export interface QueryExecutor {
   ): Promise<QueryResult>;
 }
 
+// ─── ScopeProvider ──────────────────────────────────────────────
+
+/**
+ * Abstraction over read/write scope creation.
+ *
+ * Stores accept a ScopeProvider instead of a raw pool — the provider handles
+ * transaction boundaries and RLS setup. Two implementations:
+ *   - Legacy: wraps withUserScope/withUserRead (pool + userId closure)
+ *   - New:    wraps RequestContext.readScope/writeScope (DbScope-backed)
+ *
+ * Phase 9 removes the legacy path.
+ */
+export interface ScopeProvider {
+  read<T>(fn: (db: QueryExecutor) => Promise<T>): Promise<T>;
+  write<T>(fn: (db: QueryExecutor) => Promise<T>): Promise<T>;
+}
+
 // ─── DbScope ────────────────────────────────────────────────────
 
 /**
@@ -171,4 +188,14 @@ export class RequestContext {
       client.release();
     }
   }
+}
+
+// ─── Scope Helpers ──────────────────────────────────────────────
+
+/** Create a ScopeProvider backed by a RequestContext's readScope/writeScope. */
+export function scopeFromContext(ctx: RequestContext): ScopeProvider {
+  return {
+    read: (fn) => ctx.readScope(fn),
+    write: (fn) => ctx.writeScope(fn),
+  };
 }

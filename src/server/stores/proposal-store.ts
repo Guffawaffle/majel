@@ -17,6 +17,8 @@
 import { randomUUID } from "node:crypto";
 import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
 import { log } from "../logger.js";
+import type { RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -156,11 +158,11 @@ function mapProposal(row: Record<string, unknown>): MutationProposal {
 // Implementation
 // ═══════════════════════════════════════════════════════════
 
-function createScopedStore(pool: Pool, userId: string): ProposalStore {
+function createScopedStore(scope: ScopeProvider, userId: string): ProposalStore {
 
   const store: ProposalStore = {
     async create(input) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const id = `prop_${randomUUID()}`;
         const result = await client.query(
           `INSERT INTO mutation_proposals
@@ -184,7 +186,7 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
     },
 
     async get(id) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1 AND user_id = $2`,
           [id, userId],
@@ -196,7 +198,7 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
 
     async apply(id, receiptId) {
       type ApplyResult = { kind: "applied"; proposal: MutationProposal } | { kind: "expired"; expiresAt: string };
-      const result = await withUserScope(pool, userId, async (client): Promise<ApplyResult> => {
+      const result = await scope.write(async (client): Promise<ApplyResult> => {
         // Fetch current state
         const current = await client.query(
           `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1 AND user_id = $2`,
@@ -247,7 +249,7 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
     },
 
     async decline(id, reason) {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         // Fetch current state
         const current = await client.query(
           `SELECT ${PROPOSAL_COLS} FROM mutation_proposals WHERE id = $1 AND user_id = $2`,
@@ -277,7 +279,7 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
     },
 
     async list(options) {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const clauses: string[] = ["user_id = $1"];
         const params: unknown[] = [userId];
         let idx = 2;
@@ -300,7 +302,7 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
     },
 
     async expireStale() {
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         const result = await client.query(
           `UPDATE mutation_proposals
            SET status = 'expired'
@@ -316,7 +318,7 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
     },
 
     async counts() {
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT
             COUNT(*)::int AS total,
@@ -353,7 +355,14 @@ function createScopedStore(pool: Pool, userId: string): ProposalStore {
 export class ProposalStoreFactory {
   constructor(private pool: Pool) {}
   forUser(userId: string): ProposalStore {
-    return createScopedStore(this.pool, userId);
+    const scope: ScopeProvider = {
+      read: (fn) => withUserRead(this.pool, userId, fn),
+      write: (fn) => withUserScope(this.pool, userId, fn),
+    };
+    return createScopedStore(scope, userId);
+  }
+  forContext(ctx: RequestContext): ProposalStore {
+    return createScopedStore(scopeFromContext(ctx), ctx.identity.userId);
   }
 }
 

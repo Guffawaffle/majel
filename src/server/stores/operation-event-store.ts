@@ -5,6 +5,8 @@
  */
 
 import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
+import type { RequestContext, ScopeProvider } from "../request-context.js";
+import { scopeFromContext } from "../request-context.js";
 
 const ALLOWED_TOPICS = new Set(["chat_run", "runner_job"]);
 const TOPIC_RE = /^[a-z0-9_]{2,40}$/;
@@ -70,6 +72,7 @@ export interface OperationEventStore {
 
 export interface OperationEventStoreFactory {
   forUser(userId: string): OperationEventStore;
+  forContext(ctx: RequestContext): OperationEventStore;
   close(): void;
 }
 
@@ -162,13 +165,13 @@ function mapOperationEvent(row: Record<string, unknown>): OperationEvent {
   };
 }
 
-function createScopedStore(pool: Pool, userId: string): OperationEventStore {
+function createScopedStore(scope: ScopeProvider, userId: string): OperationEventStore {
   return {
     async register(topic, operationId, routing) {
       assertTopic(topic);
       assertOperationId(operationId);
       assertRouting(routing);
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         await client.query(
           `INSERT INTO operation_streams
              (topic, operation_id, user_id, session_id, tab_id)
@@ -186,7 +189,7 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
       assertTopic(input.topic);
       assertOperationId(input.operationId);
       assertRouting(input.routing);
-      return withUserScope(pool, userId, async (client) => {
+      return scope.write(async (client) => {
         // NOTE: register() must be called before first emit().
         // Routing upsert removed here (P3) — register() handles it.
         const result = await client.query(
@@ -212,7 +215,7 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
     async listSince(topic, operationId, afterSeq, limit = 100) {
       assertTopic(topic);
       assertOperationId(operationId);
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT ${EVENT_COLS}
            FROM operation_events
@@ -231,7 +234,7 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
     async latest(topic, operationId) {
       assertTopic(topic);
       assertOperationId(operationId);
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT ${EVENT_COLS}
            FROM operation_events
@@ -250,7 +253,7 @@ function createScopedStore(pool: Pool, userId: string): OperationEventStore {
     async getRouting(topic, operationId) {
       assertTopic(topic);
       assertOperationId(operationId);
-      return withUserRead(pool, userId, async (client) => {
+      return scope.read(async (client) => {
         const result = await client.query(
           `SELECT session_id AS "sessionId", tab_id AS "tabId"
            FROM operation_streams
@@ -277,7 +280,14 @@ export async function createOperationEventStoreFactory(adminPool: Pool, runtimeP
 
   return {
     forUser(userId: string): OperationEventStore {
-      return createScopedStore(pool, userId);
+      const scope: ScopeProvider = {
+        read: (fn) => withUserRead(pool, userId, fn),
+        write: (fn) => withUserScope(pool, userId, fn),
+      };
+      return createScopedStore(scope, userId);
+    },
+    forContext(ctx: RequestContext): OperationEventStore {
+      return createScopedStore(scopeFromContext(ctx), ctx.identity.userId);
     },
     close(): void {
       // Pool lifecycle managed externally
