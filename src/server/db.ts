@@ -174,7 +174,8 @@ export async function withTransaction<T>(
  * Sets `app.current_user_id` as a LOCAL (transaction-scoped) session variable
  * so RLS policies can filter by user. Automatically cleared on COMMIT/ROLLBACK.
  *
- * Use for all write operations on user-scoped tables.
+ * @deprecated Use `scopeFromPool(pool, userId).write(fn)` or `ctx.writeScope(fn)` instead.
+ * Scheduled for removal after all callers migrate to ScopeProvider (ADR-039 Phase 9).
  */
 export async function withUserScope<T>(
   pool: Pool,
@@ -193,6 +194,9 @@ export async function withUserScope<T>(
  * Execute a read query with RLS scope but without transactional overhead.
  * Saves 2 round-trips (BEGIN/COMMIT) compared to withUserScope.
  * NOT safe for writes — use withUserScope for mutations.
+ *
+ * @deprecated Use `scopeFromPool(pool, userId).read(fn)` or `ctx.readScope(fn)` instead.
+ * Scheduled for removal after all callers migrate to ScopeProvider (ADR-039 Phase 9).
  */
 export async function withUserRead<T>(
   pool: Pool,

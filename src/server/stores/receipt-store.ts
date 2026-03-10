@@ -13,10 +13,10 @@
  * Pattern: ReceiptStoreFactory.forUser(userId) → ReceiptStore.
  */
 
-import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
+import { initSchema, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import type { RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -271,11 +271,7 @@ function createScopedReceiptStore(scope: ScopeProvider, userId: string): Receipt
 export class ReceiptStoreFactory {
   constructor(private pool: Pool) {}
   forUser(userId: string): ReceiptStore {
-    const scope: ScopeProvider = {
-      read: (fn) => withUserRead(this.pool, userId, fn),
-      write: (fn) => withUserScope(this.pool, userId, fn),
-    };
-    return createScopedReceiptStore(scope, userId);
+    return createScopedReceiptStore(scopeFromPool(this.pool, userId), userId);
   }
   forContext(ctx: RequestContext): ReceiptStore {
     return createScopedReceiptStore(scopeFromContext(ctx), ctx.identity.userId);

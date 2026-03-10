@@ -18,10 +18,10 @@
  * - crew: assemble a specific loadout (links to loadout_id)
  */
 
-import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
+import { initSchema, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import type { RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -650,11 +650,7 @@ export class TargetStoreFactory {
   constructor(private pool: Pool) {}
 
   forUser(userId: string): TargetStore {
-    const scope: ScopeProvider = {
-      read: (fn) => withUserRead(this.pool, userId, fn),
-      write: (fn) => withUserScope(this.pool, userId, fn),
-    };
-    return createScopedTargetStore(scope, userId);
+    return createScopedTargetStore(scopeFromPool(this.pool, userId), userId);
   }
 
   forContext(ctx: RequestContext): TargetStore {

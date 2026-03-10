@@ -7,10 +7,10 @@
  * with RLS scoping and category-based reads for planning tools.
  */
 
-import { initSchema, withUserRead, withUserScope, type Pool } from "../db.js";
+import { initSchema, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import type { RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 
 export type InventoryCategory = "ore" | "gas" | "crystal" | "parts" | "currency" | "blueprint" | "other";
 
@@ -209,11 +209,7 @@ export async function createInventoryStoreFactory(adminPool: Pool, runtimePool?:
 
   return {
     forUser(userId: string) {
-      const scope: ScopeProvider = {
-        read: (fn) => withUserRead(pool, userId, fn),
-        write: (fn) => withUserScope(pool, userId, fn),
-      };
-      return createScopedInventoryStore(scope, userId);
+      return createScopedInventoryStore(scopeFromPool(pool, userId), userId);
     },
     forContext(ctx: RequestContext) {
       return createScopedInventoryStore(scopeFromContext(ctx), ctx.identity.userId);

@@ -68,7 +68,7 @@ from route → service → store → tool gains requestId + userId correlation.
 | 6 | #195 | `ToolContext` → `ToolEnv { ctx, deps }` (Stage 1 transition) | [x] Done (`97a60c3`) |
 | 7 | #196 | Tenant-scoped store factories accept `RequestContext` | [x] Done |
 | 8 | #197 | Remaining route migration (route-by-route, no flag day) | [x] Done — 13/13 routes migrated |
-| 9 | #198 | Legacy removal: deprecate `withUserScope` / `withUserRead` | [ ] Not started |
+| 9 | #198 | Legacy removal: deprecate `withUserScope` / `withUserRead` | [x] Done |
 | 10 | #199 | ToolEnv Stage 2: `defineTool()` with declaration-driven dependency resolution | [ ] Not started |
 
 #### Phase 8 Deferred Routes: auth.ts + chat.ts — COMPLETED

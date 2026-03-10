@@ -4,9 +4,9 @@
  * Durable event log backing SSE replay/snapshot endpoints.
  */
 
-import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
+import { initSchema, type Pool } from "../db.js";
 import type { RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 
 const ALLOWED_TOPICS = new Set(["chat_run", "runner_job"]);
 const TOPIC_RE = /^[a-z0-9_]{2,40}$/;
@@ -280,11 +280,7 @@ export async function createOperationEventStoreFactory(adminPool: Pool, runtimeP
 
   return {
     forUser(userId: string): OperationEventStore {
-      const scope: ScopeProvider = {
-        read: (fn) => withUserRead(pool, userId, fn),
-        write: (fn) => withUserScope(pool, userId, fn),
-      };
-      return createScopedStore(scope, userId);
+      return createScopedStore(scopeFromPool(pool, userId), userId);
     },
     forContext(ctx: RequestContext): OperationEventStore {
       return createScopedStore(scopeFromContext(ctx), ctx.identity.userId);

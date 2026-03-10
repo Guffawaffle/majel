@@ -15,13 +15,11 @@
 
 import {
   initSchema,
-  withUserScope,
-  withUserRead,
   type Pool,
 } from "../db.js";
 import { log } from "../logger.js";
 import type { QueryExecutor, RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 import type {
   FrameStore,
   FrameSearchCriteria,
@@ -197,8 +195,7 @@ function decodeCursor(cursor: string): CursorPayload | null {
   }
 }
 
-// Re-export withUserScope from db.ts for backward compatibility.
-export { withUserScope } from "../db.js";
+
 
 // ─── PostgresFrameStore ─────────────────────────────────────────
 
@@ -668,11 +665,7 @@ export class FrameStoreFactory {
 
   /** Create a FrameStore scoped to a specific user. RLS enforces isolation. */
   forUser(userId: string): FrameStore {
-    const scope: ScopeProvider = {
-      read: (fn) => withUserRead(this.pool, userId, fn),
-      write: (fn) => withUserScope(this.pool, userId, fn),
-    };
-    return new PostgresFrameStore(scope, userId);
+    return new PostgresFrameStore(scopeFromPool(this.pool, userId), userId);
   }
 
   forContext(ctx: RequestContext): FrameStore {

@@ -3,7 +3,6 @@ import type { AppState } from "../app-context.js";
 import { createSafeRouter } from "../safe-router.js";
 import { sendFail, sendOk, ErrorCode } from "../envelope.js";
 import { requireVisitor } from "../services/auth.js";
-import { withUserScope } from "../db.js";
 import { createContextMiddleware } from "../context-middleware.js";
 import { importAnalyzeRateLimiter, importParseRateLimiter } from "../rate-limit.js";
 import {
@@ -177,10 +176,11 @@ export function createImportRoutes(appState: AppState): Router {
   });
 
   router.post("/api/import/commit", async (req, res) => {
-    const userId = res.locals.ctx?.identity.userId ?? "local";
-    if (!appState.pool) {
+    const ctx = res.locals.ctx;
+    if (!ctx) {
       return sendFail(res, ErrorCode.OVERLAY_STORE_NOT_AVAILABLE, "Database pool not available", 503);
     }
+    const userId = ctx.identity.userId;
 
     const {
       resolvedRows,
@@ -228,7 +228,7 @@ export function createImportRoutes(appState: AppState): Router {
       );
     }
 
-    const outcome = await withUserScope(appState.pool, userId, async (client) => {
+    const outcome = await ctx.writeScope(async (db) => {
       const changesAdded: unknown[] = [];
       const changesUpdated: unknown[] = [];
       const inverseByRef = new Map<string, unknown>();
@@ -245,7 +245,7 @@ export function createImportRoutes(appState: AppState): Router {
 
       for (const row of resolvedRows as ResolvedImportRow[]) {
         if (row.officerRefId) {
-          const beforeResult = await client.query<OfficerOverlayRow>(
+          const beforeResult = await db.query<OfficerOverlayRow>(
             `SELECT ref_id AS "refId", ownership_state AS "ownershipState", level, rank, power
              FROM officer_overlay WHERE ref_id = $1`,
             [row.officerRefId],
@@ -269,7 +269,7 @@ export function createImportRoutes(appState: AppState): Router {
         }
 
         if (row.shipRefId) {
-          const beforeResult = await client.query<ShipOverlayRow>(
+          const beforeResult = await db.query<ShipOverlayRow>(
             `SELECT ref_id AS "refId", ownership_state AS "ownershipState", tier, level, power
              FROM ship_overlay WHERE ref_id = $1`,
             [row.shipRefId],
@@ -306,7 +306,7 @@ export function createImportRoutes(appState: AppState): Router {
       }
 
       for (const plan of plannedOfficerUpserts) {
-        await client.query(
+        await db.query(
           `INSERT INTO officer_overlay (user_id, ref_id, ownership_state, target, level, rank, power, target_note, target_priority, updated_at)
            VALUES ($1, $2, $3, COALESCE((SELECT target FROM officer_overlay WHERE ref_id = $2), FALSE), $4, $5, $6,
                    COALESCE((SELECT target_note FROM officer_overlay WHERE ref_id = $2), NULL),
@@ -328,7 +328,7 @@ export function createImportRoutes(appState: AppState): Router {
           ],
         );
 
-        const afterResult = await client.query<OfficerOverlayRow>(
+        const afterResult = await db.query<OfficerOverlayRow>(
           `SELECT ref_id AS "refId", ownership_state AS "ownershipState", level, rank, power
            FROM officer_overlay WHERE ref_id = $1`,
           [plan.refId],
@@ -350,7 +350,7 @@ export function createImportRoutes(appState: AppState): Router {
       }
 
       for (const plan of plannedShipUpserts) {
-        await client.query(
+        await db.query(
           `INSERT INTO ship_overlay (user_id, ref_id, ownership_state, target, tier, level, power, target_note, target_priority, updated_at)
            VALUES ($1, $2, $3, COALESCE((SELECT target FROM ship_overlay WHERE ref_id = $2), FALSE), $4, $5, $6,
                    COALESCE((SELECT target_note FROM ship_overlay WHERE ref_id = $2), NULL),
@@ -372,7 +372,7 @@ export function createImportRoutes(appState: AppState): Router {
           ],
         );
 
-        const afterResult = await client.query<ShipOverlayRow>(
+        const afterResult = await db.query<ShipOverlayRow>(
           `SELECT ref_id AS "refId", ownership_state AS "ownershipState", tier, level, power
            FROM ship_overlay WHERE ref_id = $1`,
           [plan.refId],
@@ -395,7 +395,7 @@ export function createImportRoutes(appState: AppState): Router {
 
       const unchanged = totalEntities - (plannedOfficerUpserts.length + plannedShipUpserts.length);
 
-      const receiptInsert = await client.query<{ id: number }>(
+      const receiptInsert = await db.query<{ id: number }>(
         `INSERT INTO import_receipts (user_id, source_type, source_meta, mapping, layer, changeset, inverse, unresolved, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id`,
@@ -453,10 +453,11 @@ export function createImportRoutes(appState: AppState): Router {
   });
 
   router.post("/api/import/composition/commit", async (req, res) => {
-    const userId = res.locals.ctx?.identity.userId ?? "local";
-    if (!appState.pool) {
+    const ctx = res.locals.ctx;
+    if (!ctx) {
       return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Database pool not available", 503);
     }
+    const userId = ctx.identity.userId;
     if (!appState.referenceStore) {
       return sendFail(res, ErrorCode.REFERENCE_STORE_NOT_AVAILABLE, "Reference store not available", 503);
     }
@@ -590,7 +591,7 @@ export function createImportRoutes(appState: AppState): Router {
       );
     }
 
-    const compositionOutcome = await withUserScope(appState.pool, userId, async (client) => {
+    const compositionOutcome = await ctx.writeScope(async (db) => {
       const bridgeCoreByKey = new Map<string, number>();
       const policyByKey = new Map<string, number>();
       const now = new Date().toISOString();
@@ -599,7 +600,7 @@ export function createImportRoutes(appState: AppState): Router {
       const inverseRemoved: Array<Record<string, unknown>> = [];
 
       for (const input of bridgeCoreInputs) {
-        const insertCore = await client.query<{ id: number; name: string }>(
+        const insertCore = await db.query<{ id: number; name: string }>(
           `INSERT INTO bridge_cores (user_id, name, notes, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING id, name`,
@@ -609,7 +610,7 @@ export function createImportRoutes(appState: AppState): Router {
         bridgeCoreByKey.set(input.key, bridgeCoreId);
 
         for (const member of input.members) {
-          await client.query(
+          await db.query(
             `INSERT INTO bridge_core_members (user_id, bridge_core_id, officer_id, slot)
              VALUES ($1, $2, $3, $4)`,
             [userId, bridgeCoreId, member.officerId, member.slot],
@@ -622,7 +623,7 @@ export function createImportRoutes(appState: AppState): Router {
       }
 
       for (const input of belowDeckPolicyInputs) {
-        const insertPolicy = await client.query<{ id: number; name: string }>(
+        const insertPolicy = await db.query<{ id: number; name: string }>(
           `INSERT INTO below_deck_policies (user_id, name, mode, spec, notes, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING id, name`,
@@ -640,7 +641,7 @@ export function createImportRoutes(appState: AppState): Router {
         const bridgeCoreId = input.bridgeCoreKey ? (bridgeCoreByKey.get(input.bridgeCoreKey) ?? null) : null;
         const belowDeckPolicyId = input.belowDeckPolicyKey ? (policyByKey.get(input.belowDeckPolicyKey) ?? null) : null;
 
-        const insertLoadout = await client.query<{ id: number; name: string }>(
+        const insertLoadout = await db.query<{ id: number; name: string }>(
           `INSERT INTO loadouts (user_id, ship_id, bridge_core_id, below_deck_policy_id, name, priority, is_active, intent_keys, tags, notes, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, 0, TRUE, $6, $7, $8, $9, $10)
            RETURNING id, name`,
@@ -663,7 +664,7 @@ export function createImportRoutes(appState: AppState): Router {
         inverseRemoved.push(item);
       }
 
-      const receiptInsert = await client.query<{ id: number }>(
+      const receiptInsert = await db.query<{ id: number }>(
         `INSERT INTO import_receipts (user_id, source_type, source_meta, mapping, layer, changeset, inverse, unresolved, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8)
          RETURNING id`,

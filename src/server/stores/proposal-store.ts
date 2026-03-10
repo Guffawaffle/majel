@@ -15,10 +15,10 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
+import { initSchema, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import type { RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -355,11 +355,7 @@ function createScopedStore(scope: ScopeProvider, userId: string): ProposalStore 
 export class ProposalStoreFactory {
   constructor(private pool: Pool) {}
   forUser(userId: string): ProposalStore {
-    const scope: ScopeProvider = {
-      read: (fn) => withUserRead(this.pool, userId, fn),
-      write: (fn) => withUserScope(this.pool, userId, fn),
-    };
-    return createScopedStore(scope, userId);
+    return createScopedStore(scopeFromPool(this.pool, userId), userId);
   }
   forContext(ctx: RequestContext): ProposalStore {
     return createScopedStore(scopeFromContext(ctx), ctx.identity.userId);

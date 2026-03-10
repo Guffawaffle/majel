@@ -4,7 +4,7 @@
  * Majel — STFC Fleet Intelligence System
  *
  * Creates a per-request MemoryService scoped to the authenticated user.
- * Auth middleware must run first to set res.locals.userId.
+ * Prefers RequestContext (ctx) when available; falls back to res.locals.userId.
  *
  * Route handlers use `res.locals.memory` — no userId parameter to forget.
  * RLS enforces isolation at the database level (fail-closed).
@@ -37,13 +37,15 @@ declare module "express-serve-static-core" {
  */
 export function attachScopedMemory(appState: AppState): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const userId = res.locals.userId as string | undefined;
+    const ctx = res.locals.ctx;
+    const userId = ctx?.identity.userId ?? (res.locals.userId as string | undefined);
 
     if (userId && appState.frameStoreFactory) {
-      // Create a per-user scoped MemoryService backed by PostgresFrameStore + RLS
-      res.locals.memory = createMemoryService(
-        appState.frameStoreFactory.forUser(userId),
-      );
+      // Prefer ctx-backed store when RequestContext is available
+      const store = ctx
+        ? appState.frameStoreFactory.forContext(ctx)
+        : appState.frameStoreFactory.forUser(userId);
+      res.locals.memory = createMemoryService(store);
     } else if (appState.memoryService) {
       // Fallback: shared (unscoped) memory service (SQLite or system-scoped PG)
       res.locals.memory = appState.memoryService;

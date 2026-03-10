@@ -11,7 +11,8 @@
  * See ADR-039 for design rationale and migration plan.
  */
 
-import type { Pool, PoolClient, QueryResult } from "./db.js";
+import type { Pool, PoolClient } from "./db.js";
+import type pg from "pg";
 import type { Logger } from "pino";
 
 // ─── Public Types ───────────────────────────────────────────────
@@ -34,10 +35,11 @@ export type RequestIdentity = Readonly<{
  * Global/reference stores accept this — agnostic to caller context.
  */
 export interface QueryExecutor {
-  query(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query<T extends pg.QueryResultRow = any>(
     text: string,
     params?: unknown[],
-  ): Promise<QueryResult>;
+  ): Promise<pg.QueryResult<T>>;
 }
 
 // ─── ScopeProvider ──────────────────────────────────────────────
@@ -79,11 +81,12 @@ export class DbScope implements QueryExecutor {
     this.client = client;
   }
 
-  async query(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async query<T extends pg.QueryResultRow = any>(
     text: string,
     params?: unknown[],
-  ): Promise<QueryResult> {
-    return this.client.query(text, params);
+  ): Promise<pg.QueryResult<T>> {
+    return this.client.query<T>(text, params);
   }
 }
 
@@ -197,5 +200,48 @@ export function scopeFromContext(ctx: RequestContext): ScopeProvider {
   return {
     read: (fn) => ctx.readScope(fn),
     write: (fn) => ctx.writeScope(fn),
+  };
+}
+
+/**
+ * Create a ScopeProvider backed by a raw pool + userId.
+ *
+ * Used by store factory `.forUser(userId)` when no RequestContext is available
+ * (e.g. singleton initialization, test helpers, toolContextFactory).
+ * Scopes are transaction-wrapped with SET LOCAL for RLS — same guarantees as
+ * RequestContext.readScope/writeScope.
+ */
+export function scopeFromPool(pool: Pool, userId: string): ScopeProvider {
+  return {
+    async read<T>(fn: (db: QueryExecutor) => Promise<T>): Promise<T> {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN READ ONLY");
+        await client.query("SELECT set_config('app.current_user_id', $1, true)", [userId]);
+        const result = await fn(client);
+        await client.query("COMMIT");
+        return result;
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw e;
+      } finally {
+        client.release();
+      }
+    },
+    async write<T>(fn: (db: QueryExecutor) => Promise<T>): Promise<T> {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT set_config('app.current_user_id', $1, true)", [userId]);
+        const result = await fn(client);
+        await client.query("COMMIT");
+        return result;
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw e;
+      } finally {
+        client.release();
+      }
+    },
   };
 }

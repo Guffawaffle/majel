@@ -20,10 +20,10 @@
  * Pattern: CrewStoreFactory.forUser(userId) → CrewStore.
  */
 
-import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
+import { initSchema, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import type { QueryExecutor, RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 
 import type {
   BridgeSlot,
@@ -1325,11 +1325,7 @@ function validatePatch(patch: VariantPatch): void {
 class CrewStoreFactory {
   constructor(private pool: Pool) {}
   forUser(userId: string): CrewStore {
-    const scope: ScopeProvider = {
-      read: (fn) => withUserRead(this.pool, userId, fn),
-      write: (fn) => withUserScope(this.pool, userId, fn),
-    };
-    return createScopedCrewStore(scope, userId);
+    return createScopedCrewStore(scopeFromPool(this.pool, userId), userId);
   }
   forContext(ctx: RequestContext): CrewStore {
     return createScopedCrewStore(scopeFromContext(ctx), ctx.identity.userId);

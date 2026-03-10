@@ -7,10 +7,10 @@
  * User-scoped via RLS and factory pattern (#85 parity with overlay/targets).
  */
 
-import { initSchema, withUserRead, withUserScope, type Pool } from "../db.js";
+import { initSchema, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import type { RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 
 export interface ResearchBuff {
   kind: "ship" | "officer" | "resource" | "combat" | "other";
@@ -255,11 +255,7 @@ export async function createResearchStoreFactory(adminPool: Pool, runtimePool?: 
 
   return {
     forUser(userId: string) {
-      const scope: ScopeProvider = {
-        read: (fn) => withUserRead(pool, userId, fn),
-        write: (fn) => withUserScope(pool, userId, fn),
-      };
-      return createScopedResearchStore(scope, userId);
+      return createScopedResearchStore(scopeFromPool(pool, userId), userId);
     },
     forContext(ctx: RequestContext) {
       return createScopedResearchStore(scopeFromContext(ctx), ctx.identity.userId);

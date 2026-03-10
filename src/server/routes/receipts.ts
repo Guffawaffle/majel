@@ -15,7 +15,6 @@ import { log } from "../logger.js";
 import { requireVisitor, requireAdmiral } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
 import { createContextMiddleware } from "../context-middleware.js";
-import { withUserScope } from "../db.js";
 
 export function createReceiptRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -75,8 +74,8 @@ export function createReceiptRoutes(appState: AppState): Router {
     }
 
     if (receipt.layer === "composition") {
-      const userId = res.locals.ctx?.identity.userId ?? "local";
-      if (!appState.pool) {
+      const ctx = res.locals.ctx;
+      if (!ctx) {
         return sendFail(res, ErrorCode.CREW_STORE_NOT_AVAILABLE, "Database pool not available", 503);
       }
 
@@ -84,7 +83,7 @@ export function createReceiptRoutes(appState: AppState): Router {
         ? (receipt.inverse.removed as Array<Record<string, unknown>>)
         : [];
 
-      await withUserScope(appState.pool, userId, async (client) => {
+      await ctx.writeScope(async (db) => {
         const loadoutIds = inverseRemoved
           .filter((item) => item.entityType === "loadout" && Number.isInteger(item.id))
           .map((item) => Number(item.id));
@@ -96,13 +95,13 @@ export function createReceiptRoutes(appState: AppState): Router {
           .map((item) => Number(item.id));
 
         if (loadoutIds.length > 0) {
-          await client.query(`DELETE FROM loadouts WHERE id = ANY($1::int[])`, [loadoutIds]);
+          await db.query(`DELETE FROM loadouts WHERE id = ANY($1::int[])`, [loadoutIds]);
         }
         if (policyIds.length > 0) {
-          await client.query(`DELETE FROM below_deck_policies WHERE id = ANY($1::int[])`, [policyIds]);
+          await db.query(`DELETE FROM below_deck_policies WHERE id = ANY($1::int[])`, [policyIds]);
         }
         if (bridgeCoreIds.length > 0) {
-          await client.query(`DELETE FROM bridge_cores WHERE id = ANY($1::int[])`, [bridgeCoreIds]);
+          await db.query(`DELETE FROM bridge_cores WHERE id = ANY($1::int[])`, [bridgeCoreIds]);
         }
       });
 

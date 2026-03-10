@@ -25,10 +25,10 @@
  * User isolation added in #85.
  */
 
-import { initSchema, withUserScope, withUserRead, type Pool } from "../db.js";
+import { initSchema, type Pool } from "../db.js";
 import { log } from "../logger.js";
 import type { RequestContext, ScopeProvider } from "../request-context.js";
-import { scopeFromContext } from "../request-context.js";
+import { scopeFromContext, scopeFromPool } from "../request-context.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -485,11 +485,7 @@ export class OverlayStoreFactory {
   constructor(private pool: Pool) {}
 
   forUser(userId: string): OverlayStore {
-    const scope: ScopeProvider = {
-      read: (fn) => withUserRead(this.pool, userId, fn),
-      write: (fn) => withUserScope(this.pool, userId, fn),
-    };
-    return createScopedOverlayStore(scope, userId);
+    return createScopedOverlayStore(scopeFromPool(this.pool, userId), userId);
   }
 
   forContext(ctx: RequestContext): OverlayStore {
