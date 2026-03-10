@@ -18,12 +18,54 @@
 
 ## Current PM Focus
 
+- **Next program:** #199 — Multi-Provider LLM Engine (ADR-041). Claude via Vertex AI, admiral-only. 5 phases.
+- **Model selector unlocked** — default upgraded to `gemini-3-pro-preview`, admin can switch models. (uncommitted, pre-deploy)
 - **All ADR-039 phases complete.** Phase 10 (defineTool Stage 2, #198) shipped.
 - **Recently completed:** #194 — Security Hardening Post-Audit (ADR-040). All P0–P2 issues resolved.
 - **Top QA tranche:** #161, #165.
-- **Recently shipped:** diagnostics overlay scope clarity (#162), Admiral verification actions (#163), recommender exclusion mode (#167), captain/resource-specific mining fixes (#169), review-driven fleet-tool output hardening, WSL2 auto-start for postgres.
 - **Operational note:** deploys are live again; use normal `ax ci` + push gate, not the old guided-setup hold marker.
 
+
+---
+
+## Planned Program — Multi-Provider LLM Engine (ADR-041, #199)
+
+**Program umbrella:** #199  
+**Linked ADR:** [docs/ADR-041-multi-provider-llm.md](docs/ADR-041-multi-provider-llm.md)  
+**Design date:** 2026-03-10
+
+### Program Objective
+
+Introduce Claude (Anthropic) as an alternative LLM engine alongside Gemini, accessed through Vertex AI Model Garden on the existing GCP project. Claude models are admiral-only and integrated into the existing model selector. Routes and fleet tools remain provider-agnostic.
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| 1 | #200 | ChatEngine interface extraction + provider field in ModelDef | [ ] Not started |
+| 2 | #201 | Tool declaration abstraction — toClaudeTools() | [ ] Not started |
+| 3 | #202 | Claude provider implementation (Vertex AI SDK) | [ ] Not started |
+| 4 | #203 | Engine manager + model registry integration + frontend picker | [ ] Not started |
+| 5 | #204 | GCP Vertex AI setup + E2E validation | [ ] Not started |
+
+### Key Design Decisions
+
+1. `ChatEngine` interface — extracted from `GeminiEngine`, provider-neutral contract
+2. `EngineManager` — delegates to active provider, swaps on cross-provider model switch
+3. `ModelDef.provider` — `"gemini" | "claude"`, `roleGate?: "admiral"` for access control
+4. `ToolRegistry.toClaudeTools()` — translates `ToolDef` → Claude tool format (JSON Schema)
+5. Claude sessions self-managed (stateless API → provider-side history arrays)
+6. Vertex AI auth via GCP Application Default Credentials (same billing)
+7. Graceful fallback: if Claude credentials missing, Gemini-only mode
+
+### Definition of Done
+
+- [ ] Admiral can select Claude models alongside Gemini in the model picker
+- [ ] Claude tool calling works for all existing fleet tools
+- [ ] Provider switching clears sessions cleanly
+- [ ] Non-admiral users see only Gemini models
+- [ ] Graceful fallback if Claude credentials are missing
+- [ ] `npm run ax -- ci` passes at every phase boundary
 
 ---
 
