@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
 import { createApp } from "../src/server/index.js";
-import type { GeminiEngine } from "../src/server/services/gemini/index.js";
+import type { ChatEngine } from "../src/server/services/engine.js";
 import type { MemoryService, Frame } from "../src/server/services/memory.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
 import { createOperationEventStoreFactory } from "../src/server/stores/operation-event-store.js";
@@ -44,7 +44,7 @@ function makeMockMemory(frames: Frame[] = []): MemoryService {
   };
 }
 
-function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
+function makeMockEngine(response = "Aye, Admiral."): ChatEngine {
   const sessions = new Map<string, Array<{ role: string; text: string }>>();
   let currentModel = "gemini-3-pro-preview";
   const getSessionHistory = (sid: string) => {

@@ -20,12 +20,15 @@
 export interface ModelDef {
   id: string;
   name: string;
+  provider: "gemini" | "claude";
   tier: "budget" | "balanced" | "thinking" | "premium" | "frontier";
   description: string;
   thinking: boolean;
   contextWindow: number;
   costRelative: number; // 1 = cheapest, 5 = most expensive
   speed: "fastest" | "fast" | "moderate" | "slow";
+  /** If set, only users with this role can see/select the model. */
+  roleGate?: "admiral";
 }
 
 // ─── Registry ─────────────────────────────────────────────────
@@ -34,6 +37,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
   {
     id: "gemini-2.5-flash-lite",
     name: "Gemini 2.5 Flash-Lite",
+    provider: "gemini",
     tier: "budget",
     description: "Ultra-fast, lowest cost. Great for high-volume chat. No native thinking.",
     thinking: false,
@@ -44,6 +48,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
   {
     id: "gemini-2.5-flash",
     name: "Gemini 2.5 Flash",
+    provider: "gemini",
     tier: "balanced",
     description: "Best price-performance. Thinking-capable with dynamic budget. Solid all-rounder.",
     thinking: true,
@@ -54,6 +59,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
   {
     id: "gemini-3-flash-preview",
     name: "Gemini 3 Flash (Preview)",
+    provider: "gemini",
     tier: "thinking",
     description: "Latest-gen Flash with native thinking. Fast + smart. Preview — may change.",
     thinking: true,
@@ -64,6 +70,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
   {
     id: "gemini-2.5-pro",
     name: "Gemini 2.5 Pro",
+    provider: "gemini",
     tier: "premium",
     description: "Advanced reasoning, deep analysis, long context. Best for complex strategy & code.",
     thinking: true,
@@ -74,6 +81,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
   {
     id: "gemini-3-pro-preview",
     name: "Gemini 3 Pro (Preview)",
+    provider: "gemini",
     tier: "frontier",
     description: "Most intelligent model. State-of-the-art reasoning & multimodal. Preview — may change.",
     thinking: true,

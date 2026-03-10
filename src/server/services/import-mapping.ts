@@ -1,4 +1,4 @@
-import type { GeminiEngine } from "./gemini/index.js";
+import type { ChatEngine } from "./engine.js";
 import ExcelJS from "exceljs";
 
 export type ImportFormat = "csv" | "tsv" | "xlsx";
@@ -127,7 +127,7 @@ const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
 export async function analyzeImport(
   input: ImportAnalyzeInput,
-  geminiEngine: GeminiEngine | null,
+  geminiEngine: ChatEngine | null,
 ): Promise<ImportAnalyzeResult> {
   const rows = await parseRows(input);
   if (rows.length === 0) {
@@ -568,7 +568,7 @@ function buildHeuristicSuggestions(headers: string[], sampleRows: string[][]): I
 async function suggestWithAi(
   headers: string[],
   sampleRows: string[][],
-  geminiEngine: GeminiEngine,
+  geminiEngine: ChatEngine,
 ): Promise<ImportSuggestion[] | null> {
   const prompt = [
     "You are mapping spreadsheet columns to known fleet ownership fields.",

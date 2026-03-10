@@ -5,7 +5,8 @@
  * between the main app factory and route modules.
  */
 
-import type { GeminiEngine, FleetConfig, IntentConfig, IntentMode } from "./services/gemini/index.js";
+import type { ChatEngine } from "./services/engine.js";
+import type { FleetConfig, IntentConfig, IntentMode } from "./services/gemini/index.js";
 import type { MemoryService } from "./services/memory.js";
 import type { FrameStoreFactory } from "./stores/postgres-frame-store.js";
 import type { SettingsStore } from "./stores/settings.js";
@@ -42,7 +43,7 @@ export interface AppState {
   adminPool: Pool | null;
   /** App pool (non-superuser) — all runtime queries, RLS enforced (#39). */
   pool: Pool | null;
-  geminiEngine: GeminiEngine | null;
+  geminiEngine: ChatEngine | null;
   memoryService: MemoryService | null;
   /** ADR-021: Factory that creates per-user RLS-scoped FrameStores. */
   frameStoreFactory: FrameStoreFactory | null;

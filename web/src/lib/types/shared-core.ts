@@ -95,15 +95,19 @@ export interface ChatResponse {
 export type ModelTier = "budget" | "balanced" | "thinking" | "premium" | "frontier";
 export type ModelSpeed = "fastest" | "fast" | "moderate" | "slow";
 
+export type ModelProvider = "gemini" | "claude";
+
 export interface ModelDef {
   id: string;
   name: string;
+  provider: ModelProvider;
   tier: ModelTier;
   description: string;
   thinking: boolean;
   contextWindow: number;
   costRelative: number;
   speed: ModelSpeed;
+  roleGate?: "admiral";
 }
 
 export interface ModelsResponse {

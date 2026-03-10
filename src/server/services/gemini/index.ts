@@ -36,6 +36,7 @@ import { MODEL_REGISTRY, MODEL_REGISTRY_MAP, resolveModelId } from "./model-regi
 import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
 import { sanitizeForModel } from "./sanitize.js";
 import { canonicalStringify } from "../../util/canonical-json.js";
+import type { ChatEngine } from "../engine.js";
 
 // ─── Retry helper for transient Gemini API errors ─────────────
 
@@ -67,6 +68,7 @@ async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
 
 export { MODEL_REGISTRY, MODEL_REGISTRY_MAP, getModelDef, resolveModelId, DEFAULT_MODEL } from "./model-registry.js";
 export type { ModelDef } from "./model-registry.js";
+export type { ChatEngine } from "../engine.js";
 export {
   buildSystemPrompt,
   SAFETY_SETTINGS,
@@ -119,22 +121,11 @@ export interface ChatResult {
   proposals: ProposalSummary[];
 }
 
-export interface GeminiEngine {
-  /** Send a message and get the structured response. Optional sessionId for isolation. Optional image attachment. Optional userId for user-scoped tool access (#85). Optional requestId for end-to-end tracing. */
-  chat(message: string, sessionId?: string, image?: ImagePart, userId?: string, requestId?: string): Promise<ChatResult>;
-  /** Get the full conversation history. Optional sessionId (default: "default"). */
-  getHistory(sessionId?: string): Array<{ role: string; text: string }>;
-  /** Get the number of active sessions. */
-  getSessionCount(): number;
-  /** Close a specific session and free its resources. */
-  closeSession(sessionId: string): void;
-  /** Get the current model ID. */
-  getModel(): string;
-  /** Hot-swap the model. Clears all sessions (new model = fresh context). */
-  setModel(modelId: string): void;
-  /** Clean up resources (cleanup timer). Call on shutdown or in tests. */
-  close(): void;
-}
+/**
+ * @deprecated Use ChatEngine from ../engine.ts for provider-neutral typing.
+ * Retained for backward compatibility — GeminiEngine is identical to ChatEngine.
+ */
+export type GeminiEngine = ChatEngine;
 
 // ─── Constants ────────────────────────────────────────────────
 
