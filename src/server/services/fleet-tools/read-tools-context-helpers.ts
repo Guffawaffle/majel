@@ -1,4 +1,4 @@
-import type { ToolContext } from "./declarations.js";
+import type { ToolEnv } from "./declarations.js";
 import { parseJsonOrFallback, toIsoTimestamp } from "./read-tools-data-helpers.js";
 
 export interface ActiveEventRecord {
@@ -139,21 +139,21 @@ export function normalizeFactionStanding(raw: unknown): FactionStandingRecord[] 
 }
 
 export async function readUserJsonSetting<T>(
-  ctx: ToolContext,
+  ctx: ToolEnv,
   key: string,
   fallback: T,
 ): Promise<{ value: T; source: "user" | "system" | "env" | "default" | "unavailable" }> {
-  if (!ctx.userSettingsStore || !ctx.userId) {
+  if (!ctx.deps.userSettingsStore || !ctx.userId) {
     return { value: fallback, source: "unavailable" };
   }
-  const entry = await ctx.userSettingsStore.getForUser(ctx.userId, key);
+  const entry = await ctx.deps.userSettingsStore.getForUser(ctx.userId, key);
   return {
     value: parseJsonOrFallback(entry.value, fallback),
     source: entry.source,
   };
 }
 
-export async function getAwayTeamLocks(ctx: ToolContext): Promise<AwayTeamLock[]> {
+export async function getAwayTeamLocks(ctx: ToolEnv): Promise<AwayTeamLock[]> {
   const locks: AwayTeamLock[] = [];
 
   const fromSettings = await readUserJsonSetting<unknown[]>(ctx, "fleet.awayTeams", []);
@@ -163,8 +163,8 @@ export async function getAwayTeamLocks(ctx: ToolContext): Promise<AwayTeamLock[]
     locks.push({ ...normalized, source: "settings" });
   }
 
-  if (ctx.crewStore) {
-    const planItems = await ctx.crewStore.listPlanItems();
+  if (ctx.deps.crewStore) {
+    const planItems = await ctx.deps.crewStore.listPlanItems();
     for (const item of planItems) {
       if (!item.isActive || !item.awayOfficers) continue;
       for (const officerId of item.awayOfficers) {

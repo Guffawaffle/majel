@@ -1,10 +1,10 @@
-import type { ToolContext } from "./declarations.js";
+import type { ToolEnv } from "./declarations.js";
 import { parseBattleLog, mapOfficerIdsToAbilities } from "./read-tools-data-helpers.js";
 import { calculateResearchAdvisory, extractRelevantBuffs } from "./read-tools-research-helpers.js";
 
 export async function analyzeBattleLog(
   battleLog: unknown,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
   const parsed = parseBattleLog(battleLog);
   if (!parsed) {
@@ -53,7 +53,7 @@ export async function analyzeBattleLog(
     ctx,
   );
 
-  const researchNodes = ctx.researchStore ? await ctx.researchStore.listNodes() : [];
+  const researchNodes = ctx.deps.researchStore ? await ctx.deps.researchStore.listNodes() : [];
   const researchAdvisory = calculateResearchAdvisory(researchNodes);
   const relevantBuffs = extractRelevantBuffs(researchNodes, "pvp").slice(0, 8);
 
@@ -91,7 +91,7 @@ export async function analyzeBattleLog(
 
 export async function suggestCounter(
   battleLog: unknown,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
   const analysis = await analyzeBattleLog(battleLog, ctx) as Record<string, unknown>;
   if (analysis.error) return analysis;
@@ -100,9 +100,9 @@ export async function suggestCounter(
   const likelyCause = String(failure.likelyCause ?? "sustained_damage_exceeded_defense");
   const officerPool: Array<Record<string, unknown>> = [];
 
-  if (ctx.overlayStore && ctx.referenceStore) {
-    const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
-    const allOfficers = await ctx.referenceStore.listOfficers();
+  if (ctx.deps.overlayStore && ctx.deps.referenceStore) {
+    const overlays = await ctx.deps.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+    const allOfficers = await ctx.deps.referenceStore.listOfficers();
     const refMap = new Map(allOfficers.map((officer) => [officer.id, officer]));
     for (const overlay of overlays) {
       const ref = refMap.get(overlay.refId);

@@ -8,7 +8,7 @@
  * targets, and analysis.
  */
 
-import type { ToolContext } from "./declarations.js";
+import type { ToolEnv } from "./declarations.js";
 import { detectTargetConflicts } from "../target-conflicts.js";
 import { resolveResourceId, type ResolvedResource } from "../resource-defs.js";
 import { SEED_INTENTS, type SeedIntent } from "../../types/crew-types.js";
@@ -52,33 +52,33 @@ const SEARCH_LIMIT = 20;
 
 // ─── Phase 1: Core Read Tools ───────────────────────────────
 
-export async function getFleetOverview(ctx: ToolContext): Promise<object> {
+export async function getFleetOverview(ctx: ToolEnv): Promise<object> {
   const overview: Record<string, unknown> = {};
 
-  if (ctx.referenceStore) {
-    const refCounts = await ctx.referenceStore.counts();
+  if (ctx.deps.referenceStore) {
+    const refCounts = await ctx.deps.referenceStore.counts();
     overview.referenceCatalog = {
       officers: refCounts.officers,
       ships: refCounts.ships,
     };
   }
 
-  if (ctx.overlayStore) {
-    const overlayCounts = await ctx.overlayStore.counts();
+  if (ctx.deps.overlayStore) {
+    const overlayCounts = await ctx.deps.overlayStore.counts();
     overview.overlays = {
       officers: overlayCounts.officers,
       ships: overlayCounts.ships,
     };
   }
 
-  if (ctx.crewStore) {
+  if (ctx.deps.crewStore) {
     const [loadouts, docks, planItems, bridgeCores, presets, reservations] = await Promise.all([
-      ctx.crewStore.listLoadouts(),
-      ctx.crewStore.listDocks(),
-      ctx.crewStore.listPlanItems(),
-      ctx.crewStore.listBridgeCores(),
-      ctx.crewStore.listFleetPresets(),
-      ctx.crewStore.listReservations(),
+      ctx.deps.crewStore.listLoadouts(),
+      ctx.deps.crewStore.listDocks(),
+      ctx.deps.crewStore.listPlanItems(),
+      ctx.deps.crewStore.listBridgeCores(),
+      ctx.deps.crewStore.listFleetPresets(),
+      ctx.deps.crewStore.listReservations(),
     ]);
     const activePreset = presets.find((p) => p.isActive);
     overview.crew = {
@@ -96,17 +96,17 @@ export async function getFleetOverview(ctx: ToolContext): Promise<object> {
   return overview;
 }
 
-export async function searchOfficers(query: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.referenceStore) {
+export async function searchOfficers(query: string, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available. The Admiral may need to sync reference data first." };
   }
   if (!query.trim()) {
     return { error: "Search query is required." };
   }
 
-  const officers = await ctx.referenceStore.searchOfficers(query);
+  const officers = await ctx.deps.referenceStore.searchOfficers(query);
   // Fetch reservations if crew store is available
-  const reservations = ctx.crewStore ? await ctx.crewStore.listReservations() : [];
+  const reservations = ctx.deps.crewStore ? await ctx.deps.crewStore.listReservations() : [];
   const reservationMap = new Map(reservations.map((r) => [r.officerId, r]));
 
   const results = officers.slice(0, SEARCH_LIMIT).map((o) => {
@@ -131,15 +131,15 @@ export async function searchOfficers(query: string, ctx: ToolContext): Promise<o
   };
 }
 
-export async function searchShips(query: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.referenceStore) {
+export async function searchShips(query: string, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available. The Admiral may need to sync reference data first." };
   }
   if (!query.trim()) {
     return { error: "Search query is required." };
   }
 
-  const ships = await ctx.referenceStore.searchShips(query);
+  const ships = await ctx.deps.referenceStore.searchShips(query);
   const results = ships.slice(0, SEARCH_LIMIT).map((s) => ({
     id: s.id,
     name: s.name,
@@ -159,15 +159,15 @@ export async function searchShips(query: string, ctx: ToolContext): Promise<obje
   };
 }
 
-export async function getOfficerDetail(officerId: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.referenceStore) {
+export async function getOfficerDetail(officerId: string, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available." };
   }
   if (!officerId.trim()) {
     return { error: "Officer ID is required." };
   }
 
-  const officer = await ctx.referenceStore.getOfficer(officerId);
+  const officer = await ctx.deps.referenceStore.getOfficer(officerId);
   if (!officer) {
     return { error: `Officer not found: ${officerId}` };
   }
@@ -192,8 +192,8 @@ export async function getOfficerDetail(officerId: string, ctx: ToolContext): Pro
   };
 
   // Merge overlay if available
-  if (ctx.overlayStore) {
-    const overlay = await ctx.overlayStore.getOfficerOverlay(officerId);
+  if (ctx.deps.overlayStore) {
+    const overlay = await ctx.deps.overlayStore.getOfficerOverlay(officerId);
     if (overlay) {
       result.overlay = {
         ownershipState: overlay.ownershipState,
@@ -210,15 +210,15 @@ export async function getOfficerDetail(officerId: string, ctx: ToolContext): Pro
   return result;
 }
 
-export async function getShipDetail(shipId: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.referenceStore) {
+export async function getShipDetail(shipId: string, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available." };
   }
   if (!shipId.trim()) {
     return { error: "Ship ID is required." };
   }
 
-  const ship = await ctx.referenceStore.getShip(shipId);
+  const ship = await ctx.deps.referenceStore.getShip(shipId);
   if (!ship) {
     return { error: `Ship not found: ${shipId}` };
   }
@@ -247,8 +247,8 @@ export async function getShipDetail(shipId: string, ctx: ToolContext): Promise<o
   };
 
   // Merge overlay if available
-  if (ctx.overlayStore) {
-    const overlay = await ctx.overlayStore.getShipOverlay(shipId);
+  if (ctx.deps.overlayStore) {
+    const overlay = await ctx.deps.overlayStore.getShipOverlay(shipId);
     if (overlay) {
       result.overlay = {
         ownershipState: overlay.ownershipState,
@@ -265,12 +265,12 @@ export async function getShipDetail(shipId: string, ctx: ToolContext): Promise<o
   return result;
 }
 
-export async function listDocks(ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function listDocks(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
 
-  const state = await ctx.crewStore.getEffectiveDockState();
+  const state = await ctx.deps.crewStore.getEffectiveDockState();
   const shipNames = await buildShipNameMap(state.docks.map((dock) => dock.loadout?.shipId ?? ""), ctx);
   const officerNames = await buildOfficerNameMap(
     state.docks.flatMap((dock) => dock.loadout ? Object.values(dock.loadout.bridge).filter((value): value is string => Boolean(value)) : []),
@@ -303,12 +303,12 @@ export async function listDocks(ctx: ToolContext): Promise<object> {
   return { docks: results };
 }
 
-export async function getOfficerConflicts(ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function getOfficerConflicts(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
 
-  const state = await ctx.crewStore.getEffectiveDockState();
+  const state = await ctx.deps.crewStore.getEffectiveDockState();
   const officerNames = await buildOfficerNameMap(state.conflicts.map((conflict) => conflict.officerId), ctx);
   return {
     conflicts: state.conflicts.map((c) => ({
@@ -325,13 +325,13 @@ export async function getOfficerConflicts(ctx: ToolContext): Promise<object> {
   };
 }
 
-export async function validatePlan(ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function validatePlan(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
 
-  const state = await ctx.crewStore.getEffectiveDockState();
-  const planItems = await ctx.crewStore.listPlanItems({ active: true });
+  const state = await ctx.deps.crewStore.getEffectiveDockState();
+  const planItems = await ctx.deps.crewStore.listPlanItems({ active: true });
   const officerNames = await buildOfficerNameMap(state.conflicts.map((conflict) => conflict.officerId), ctx);
 
   const emptyDocks = state.docks.filter((d) => !d.loadout);
@@ -357,18 +357,18 @@ export async function validatePlan(ctx: ToolContext): Promise<object> {
 
 // ─── Phase 2: Crew Composition Implementations ──────────────
 
-export async function listOwnedOfficers(ctx: ToolContext): Promise<object> {
-  if (!ctx.overlayStore) {
+export async function listOwnedOfficers(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.overlayStore) {
     return { error: "Overlay system not available. The Admiral may need to set up ownership data first." };
   }
-  if (!ctx.referenceStore) {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available. The Admiral may need to sync reference data first." };
   }
 
-  const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+  const overlays = await ctx.deps.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
 
   // Batch-fetch all reference officers (avoids N+1 per overlay)
-  const allOfficers = await ctx.referenceStore.listOfficers();
+  const allOfficers = await ctx.deps.referenceStore.listOfficers();
   const refMap = new Map(allOfficers.map(o => [o.id, o]));
 
   const officers = overlays.map((overlay) => {
@@ -397,20 +397,20 @@ export async function listOwnedOfficers(ctx: ToolContext): Promise<object> {
   };
 }
 
-export async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function getLoadoutDetail(loadoutId: number, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
   if (!loadoutId || isNaN(loadoutId)) {
     return { error: "Valid loadout ID is required." };
   }
 
-  const loadout = await ctx.crewStore.getLoadout(loadoutId);
+  const loadout = await ctx.deps.crewStore.getLoadout(loadoutId);
   if (!loadout) {
     return { error: `Loadout not found: ${loadoutId}` };
   }
 
-  const variants = await ctx.crewStore.listVariants(loadoutId);
+  const variants = await ctx.deps.crewStore.listVariants(loadoutId);
   const officerNames = await buildOfficerNameMap(loadout.bridgeCore?.members.map((member) => member.officerId) ?? [], ctx);
   const shipNames = await buildShipNameMap(loadout.shipId ? [loadout.shipId] : [], ctx);
 
@@ -452,12 +452,12 @@ export async function getLoadoutDetail(loadoutId: number, ctx: ToolContext): Pro
   };
 }
 
-export async function listPlanItems(ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function listPlanItems(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
 
-  const items = await ctx.crewStore.listPlanItems();
+  const items = await ctx.deps.crewStore.listPlanItems();
   return {
     planItems: items.map((p) => ({
       id: p.id,
@@ -475,7 +475,7 @@ export async function listPlanItems(ctx: ToolContext): Promise<object> {
   };
 }
 
-export async function listIntents(category: string | undefined, _ctx: ToolContext): Promise<object> {
+export async function listIntents(category: string | undefined, _ctx: ToolEnv): Promise<object> {
   let intents = SEED_INTENTS;
   if (category) {
     intents = intents.filter((i: SeedIntent) => i.category === category);
@@ -495,17 +495,17 @@ export async function listIntents(category: string | undefined, _ctx: ToolContex
 export async function listResearch(
   tree: string | undefined,
   includeCompleted: boolean | undefined,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.researchStore) {
+  if (!ctx.deps.researchStore) {
     return { error: "Research store not available. Sync research data first." };
   }
 
-  const result = await ctx.researchStore.listByTree({
+  const result = await ctx.deps.researchStore.listByTree({
     tree: tree?.trim() || undefined,
     includeCompleted: includeCompleted ?? true,
   });
-  const counts = await ctx.researchStore.counts();
+  const counts = await ctx.deps.researchStore.counts();
 
   return {
     trees: result,
@@ -522,9 +522,9 @@ export async function listResearch(
 export async function listInventory(
   category: string | undefined,
   query: string | undefined,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.inventoryStore) {
+  if (!ctx.deps.inventoryStore) {
     return { error: "Inventory store not available." };
   }
 
@@ -534,11 +534,11 @@ export async function listInventory(
     return { error: `Invalid category '${category}'.` };
   }
 
-  const grouped = await ctx.inventoryStore.listByCategory({
+  const grouped = await ctx.deps.inventoryStore.listByCategory({
     category: normalizedCategory,
     q: query?.trim() || undefined,
   });
-  const counts = await ctx.inventoryStore.counts();
+  const counts = await ctx.deps.inventoryStore.counts();
 
   return {
     categories: grouped,
@@ -551,7 +551,7 @@ export async function listInventory(
   };
 }
 
-export async function listActiveEvents(ctx: ToolContext): Promise<object> {
+export async function listActiveEvents(ctx: ToolEnv): Promise<object> {
   const eventsData = await readUserJsonSetting<unknown[]>(ctx, "fleet.activeEvents", []);
   const events = eventsData.value
     .map((row) => normalizeActiveEvent(row))
@@ -573,7 +573,7 @@ export async function listActiveEvents(ctx: ToolContext): Promise<object> {
   };
 }
 
-export async function listAwayTeams(ctx: ToolContext): Promise<object> {
+export async function listAwayTeams(ctx: ToolEnv): Promise<object> {
   const locks = await getAwayTeamLocks(ctx);
 
   return {
@@ -590,7 +590,7 @@ export async function listAwayTeams(ctx: ToolContext): Promise<object> {
 
 export async function getFactionStanding(
   faction: string | undefined,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
   const standingsData = await readUserJsonSetting<unknown>(ctx, "fleet.factionStandings", {});
   let standings = normalizeFactionStanding(standingsData.value);
@@ -610,24 +610,24 @@ export async function getFactionStanding(
 export async function calculateUpgradePath(
   shipId: string,
   targetTier: number | undefined,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.referenceStore) {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available." };
   }
-  if (!ctx.inventoryStore) {
+  if (!ctx.deps.inventoryStore) {
     return { error: "Inventory store not available." };
   }
   if (!shipId.trim()) {
     return { error: "Ship ID is required." };
   }
 
-  const ship = await ctx.referenceStore.getShip(shipId);
+  const ship = await ctx.deps.referenceStore.getShip(shipId);
   if (!ship) {
     return { error: `Ship not found: ${shipId}` };
   }
 
-  const overlay = ctx.overlayStore ? await ctx.overlayStore.getShipOverlay(shipId) : null;
+  const overlay = ctx.deps.overlayStore ? await ctx.deps.overlayStore.getShipOverlay(shipId) : null;
   const currentTier = overlay?.tier ?? ship.tier ?? 0;
   const maxTier = ship.maxTier ?? 15;
   const resolvedTargetTier = targetTier == null ? currentTier + 1 : targetTier;
@@ -644,7 +644,7 @@ export async function calculateUpgradePath(
 
   const tierRequirements = extractTierRequirements(ship.tiers, currentTier, resolvedTargetTier);
 
-  const allInventoryItems = await ctx.inventoryStore.listItems();
+  const allInventoryItems = await ctx.deps.inventoryStore.listItems();
   const inventoryByKey = new Map<string, number>();
   for (const item of allInventoryItems) {
     const key = normalizeToken(item.name);
@@ -705,7 +705,7 @@ export async function estimateAcquisitionTime(
   shipId: string,
   targetTier: number | undefined,
   dailyIncome: Record<string, unknown> | undefined,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
   const upgradeResult = await calculateUpgradePath(shipId, targetTier, ctx) as Record<string, unknown>;
   if (upgradeResult.error) {
@@ -789,24 +789,24 @@ export async function estimateAcquisitionTime(
 export async function calculateTruePower(
   shipId: string,
   intentKey: string | undefined,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.referenceStore) {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available." };
   }
   if (!shipId.trim()) {
     return { error: "Ship ID is required." };
   }
 
-  const ship = await ctx.referenceStore.getShip(shipId);
+  const ship = await ctx.deps.referenceStore.getShip(shipId);
   if (!ship) {
     return { error: `Ship not found: ${shipId}` };
   }
 
-  const overlay = ctx.overlayStore ? await ctx.overlayStore.getShipOverlay(shipId) : null;
+  const overlay = ctx.deps.overlayStore ? await ctx.deps.overlayStore.getShipOverlay(shipId) : null;
   const basePower = overlay?.power ?? null;
 
-  const nodes = ctx.researchStore ? await ctx.researchStore.listNodes() : [];
+  const nodes = ctx.deps.researchStore ? await ctx.deps.researchStore.listNodes() : [];
   const researchAdvisory = calculateResearchAdvisory(nodes);
   const relevantBuffs = extractRelevantBuffs(nodes, intentKey);
 
@@ -836,7 +836,7 @@ export async function calculateTruePower(
   if (basePower === null) {
     assumptions.push("ship_overlay_power_missing");
   }
-  if (!ctx.researchStore) {
+  if (!ctx.deps.researchStore) {
     assumptions.push("research_store_unavailable");
   }
   if (researchAdvisory.priority === "low") {
@@ -873,18 +873,18 @@ export async function calculateTruePower(
   };
 }
 
-export async function findLoadoutsForIntent(intentKey: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function findLoadoutsForIntent(intentKey: string, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
   if (!intentKey.trim()) {
     return { error: "Intent key is required." };
   }
 
-  const loadouts = await ctx.crewStore.listLoadouts({ intentKey });
+  const loadouts = await ctx.deps.crewStore.listLoadouts({ intentKey });
   const detailed = await Promise.all(
     loadouts.map(async (l) => {
-      const full = await ctx.crewStore!.getLoadout(l.id);
+      const full = await ctx.deps.crewStore!.getLoadout(l.id);
       return {
         id: l.id,
         name: l.name,
@@ -913,16 +913,16 @@ export async function findLoadoutsForIntent(intentKey: string, ctx: ToolContext)
 export async function suggestCrew(
   shipId: string,
   intentKey: string | undefined,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.referenceStore) {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available." };
   }
   if (!shipId.trim()) {
     return { error: "Ship ID is required." };
   }
 
-  const ship = await ctx.referenceStore.getShip(shipId);
+  const ship = await ctx.deps.referenceStore.getShip(shipId);
   if (!ship) {
     return { error: `Ship not found: ${shipId}` };
   }
@@ -947,8 +947,8 @@ export async function suggestCrew(
     reasons.push("away_team");
     unavailableOfficerReasons.set(assignment.officerId, reasons);
   }
-  if (ctx.crewStore) {
-    const reservations = await ctx.crewStore.listReservations();
+  if (ctx.deps.crewStore) {
+    const reservations = await ctx.deps.crewStore.listReservations();
     for (const reservation of reservations) {
       if (!reservation.locked) continue;
       const reasons = unavailableOfficerReasons.get(reservation.officerId) ?? [];
@@ -959,9 +959,9 @@ export async function suggestCrew(
 
   const ownedOfficers: Array<Record<string, unknown>> = [];
   const excludedOfficers: Array<Record<string, unknown>> = [];
-  if (ctx.overlayStore) {
-    const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
-    const allOfficers = await ctx.referenceStore.listOfficers();
+  if (ctx.deps.overlayStore) {
+    const overlays = await ctx.deps.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+    const allOfficers = await ctx.deps.referenceStore.listOfficers();
     const refMap = new Map(allOfficers.map(o => [o.id, o]));
     for (const overlay of overlays) {
       const ref = refMap.get(overlay.refId);
@@ -992,10 +992,10 @@ export async function suggestCrew(
   }
 
   const existingLoadouts: Array<Record<string, unknown>> = [];
-  if (ctx.crewStore) {
-    const loadouts = await ctx.crewStore.listLoadouts({ shipId });
+  if (ctx.deps.crewStore) {
+    const loadouts = await ctx.deps.crewStore.listLoadouts({ shipId });
     const loadoutIds = loadouts.map(l => l.id);
-    const fullMap = await ctx.crewStore.getLoadoutsByIds(loadoutIds);
+    const fullMap = await ctx.deps.crewStore.getLoadoutsByIds(loadoutIds);
     for (const l of loadouts) {
       const full = fullMap.get(l.id);
       existingLoadouts.push({
@@ -1013,7 +1013,7 @@ export async function suggestCrew(
     }
   }
 
-  const researchNodes = ctx.researchStore ? await ctx.researchStore.listNodes() : [];
+  const researchNodes = ctx.deps.researchStore ? await ctx.deps.researchStore.listNodes() : [];
   const researchAdvisory = calculateResearchAdvisory(researchNodes);
   const relevantResearchBuffs = extractRelevantBuffs(researchNodes, intentKey);
   const researchCitations = buildResearchCitations(relevantResearchBuffs);
@@ -1058,17 +1058,17 @@ export async function suggestCrew(
   };
 }
 
-export async function analyzeFleet(ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function analyzeFleet(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
 
   const [effectiveState, planItems, loadouts, presets, reservations] = await Promise.all([
-    ctx.crewStore.getEffectiveDockState(),
-    ctx.crewStore.listPlanItems(),
-    ctx.crewStore.listLoadouts(),
-    ctx.crewStore.listFleetPresets(),
-    ctx.crewStore.listReservations(),
+    ctx.deps.crewStore.getEffectiveDockState(),
+    ctx.deps.crewStore.listPlanItems(),
+    ctx.deps.crewStore.listLoadouts(),
+    ctx.deps.crewStore.listFleetPresets(),
+    ctx.deps.crewStore.listReservations(),
   ]);
 
   const activePreset = presets.find((p) => p.isActive);
@@ -1131,34 +1131,34 @@ export async function analyzeFleet(ctx: ToolContext): Promise<object> {
   };
 }
 
-export async function resolveConflict(officerId: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.referenceStore) {
+export async function resolveConflict(officerId: string, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available." };
   }
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
   if (!officerId.trim()) {
     return { error: "Officer ID is required." };
   }
 
-  const officer = await ctx.referenceStore.getOfficer(officerId);
+  const officer = await ctx.deps.referenceStore.getOfficer(officerId);
   if (!officer) {
     return { error: `Officer not found: ${officerId}` };
   }
 
-  const reservation = await ctx.crewStore.getReservation(officerId);
+  const reservation = await ctx.deps.crewStore.getReservation(officerId);
 
-  const state = await ctx.crewStore.getEffectiveDockState();
+  const state = await ctx.deps.crewStore.getEffectiveDockState();
   const conflict = state.conflicts.find((c) => c.officerId === officerId) ?? null;
 
   const alternatives: Array<Record<string, unknown>> = [];
   if (officer.groupName) {
-    const groupOfficers = await ctx.referenceStore.listOfficers({ groupName: officer.groupName });
+    const groupOfficers = await ctx.deps.referenceStore.listOfficers({ groupName: officer.groupName });
     const altIds = groupOfficers.filter(a => a.id !== officerId).map(a => a.id);
     const overlayMap = new Map<string, boolean>();
-    if (ctx.overlayStore && altIds.length > 0) {
-      const ownedOverlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+    if (ctx.deps.overlayStore && altIds.length > 0) {
+      const ownedOverlays = await ctx.deps.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
       const ownedSet = new Set(ownedOverlays.map(o => o.refId));
       for (const id of altIds) overlayMap.set(id, ownedSet.has(id));
     }
@@ -1179,9 +1179,9 @@ export async function resolveConflict(officerId: string, ctx: ToolContext): Prom
     }
   }
 
-  const loadouts = await ctx.crewStore.listLoadouts();
+  const loadouts = await ctx.deps.crewStore.listLoadouts();
   const loadoutIds = loadouts.map(l => l.id);
-  const fullMap = await ctx.crewStore.getLoadoutsByIds(loadoutIds);
+  const fullMap = await ctx.deps.crewStore.getLoadoutsByIds(loadoutIds);
   const affectedLoadouts: Array<Record<string, unknown>> = [];
   for (const l of loadouts) {
     const full = fullMap.get(l.id);
@@ -1223,8 +1223,8 @@ export async function resolveConflict(officerId: string, ctx: ToolContext): Prom
   };
 }
 
-export async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function whatIfRemoveOfficer(officerId: string, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
   if (!officerId.trim()) {
@@ -1232,14 +1232,14 @@ export async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): 
   }
 
   let officerName: string | null = null;
-  if (ctx.referenceStore) {
-    const officer = await ctx.referenceStore.getOfficer(officerId);
+  if (ctx.deps.referenceStore) {
+    const officer = await ctx.deps.referenceStore.getOfficer(officerId);
     officerName = officer?.name ?? null;
   }
 
-  const loadouts = await ctx.crewStore.listLoadouts();
+  const loadouts = await ctx.deps.crewStore.listLoadouts();
   const loadoutIds = loadouts.map(l => l.id);
-  const fullMap = await ctx.crewStore.getLoadoutsByIds(loadoutIds);
+  const fullMap = await ctx.deps.crewStore.getLoadoutsByIds(loadoutIds);
   const affectedLoadouts: Array<Record<string, unknown>> = [];
   for (const l of loadouts) {
     const full = fullMap.get(l.id);
@@ -1252,7 +1252,7 @@ export async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): 
     }
   }
 
-  const planItems = await ctx.crewStore.listPlanItems();
+  const planItems = await ctx.deps.crewStore.listPlanItems();
   const affectedAwayTeams = planItems
     .filter((p) => p.awayOfficers?.includes(officerId))
     .map((p) => ({
@@ -1276,9 +1276,9 @@ export async function whatIfRemoveOfficer(officerId: string, ctx: ToolContext): 
 export async function listTargets(
   targetType: string | undefined,
   status: string | undefined,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.targetStore) {
+  if (!ctx.deps.targetStore) {
     return { error: "Target system not available." };
   }
 
@@ -1287,13 +1287,13 @@ export async function listTargets(
   if (status) filters.status = status;
   else filters.status = "active";
 
-  const targets = await ctx.targetStore.list(
+  const targets = await ctx.deps.targetStore.list(
     Object.keys(filters).length > 0 ? filters as never : undefined,
   );
 
   const deltasByTarget = new Map<number, Array<Record<string, unknown>>>();
   await Promise.all(targets.map(async (target) => {
-    const deltas = await ctx.targetStore!.listDeltas(target.id, 5);
+    const deltas = await ctx.deps.targetStore!.listDeltas(target.id, 5);
     deltasByTarget.set(target.id, deltas.map((d) => ({
       id: d.id,
       metric: d.metric,
@@ -1305,7 +1305,7 @@ export async function listTargets(
     })));
   }));
 
-  const reminderFeedback = await ctx.targetStore.listReminderFeedback(1000);
+  const reminderFeedback = await ctx.deps.targetStore.listReminderFeedback(1000);
   const reminderByTarget = new Map<number, Array<Record<string, unknown>>>();
   for (const entry of reminderFeedback) {
     if (entry.targetId == null) continue;
@@ -1358,15 +1358,15 @@ export async function listTargets(
   };
 }
 
-export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<object> {
-  if (!ctx.targetStore) {
+export async function getAgentExperienceMetrics(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.targetStore) {
     return { error: "Target system not available." };
   }
 
-  const activeTargets = await ctx.targetStore.list({ status: "active" } as never);
+  const activeTargets = await ctx.deps.targetStore.list({ status: "active" } as never);
   const deltaGroups = await Promise.all(activeTargets.map(async (target) => ({
     target,
-    deltas: await ctx.targetStore!.listDeltas(target.id, 200),
+    deltas: await ctx.deps.targetStore!.listDeltas(target.id, 200),
   })));
 
   const allDeltas = deltaGroups.flatMap((entry) =>
@@ -1399,7 +1399,7 @@ export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<objec
     ? null
     : Math.round((approvedSourceCount / allDeltas.length) * 1000) / 10;
 
-  const reminderFeedback = await ctx.targetStore.listReminderFeedback(1000);
+  const reminderFeedback = await ctx.deps.targetStore.listReminderFeedback(1000);
   const reminderUsefulCount = reminderFeedback.filter((entry) => entry.usefulness === "useful").length;
   const reminderNotUsefulCount = reminderFeedback.filter((entry) => entry.usefulness === "not_useful").length;
   const reminderUsefulnessPct = reminderFeedback.length === 0
@@ -1410,7 +1410,7 @@ export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<objec
     return Number.isFinite(ts) && now - ts <= last7dMs;
   }).length;
 
-  const goalRestatements = await ctx.targetStore.listGoalRestatements(1000);
+  const goalRestatements = await ctx.deps.targetStore.listGoalRestatements(1000);
   const goalRestatementsLast7d = goalRestatements.filter((entry) => {
     const ts = Date.parse(entry.createdAt);
     return Number.isFinite(ts) && now - ts <= last7dMs;
@@ -1480,15 +1480,15 @@ export async function getAgentExperienceMetrics(ctx: ToolContext): Promise<objec
   };
 }
 
-export async function detectConflicts(ctx: ToolContext): Promise<object> {
-  if (!ctx.targetStore) {
+export async function detectConflicts(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.targetStore) {
     return { error: "Target system not available." };
   }
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { error: "Crew system not available." };
   }
 
-  const conflicts = await detectTargetConflicts(ctx.targetStore, ctx.crewStore);
+  const conflicts = await detectTargetConflicts(ctx.deps.targetStore, ctx.deps.crewStore);
 
   const byType: Record<string, number> = {};
   const bySeverity: Record<string, number> = {};
@@ -1529,10 +1529,10 @@ type ReferenceCategory = "research" | "building" | "hostile" | "consumable" | "s
  */
 function resolveSystemMineResources(
   raw: Record<string, unknown>[] | null,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): ResolvedResource[] | null {
   if (!raw || raw.length === 0) return null;
-  const defs = ctx.resourceDefs;
+  const defs = ctx.deps.resourceDefs;
   if (!defs || defs.size === 0) {
     // Guardrail: resource map unavailable — return raw IDs with diagnostic
     return raw.map((r) => ({
@@ -1552,13 +1552,13 @@ function resolveSystemMineResources(
 
 async function buildOfficerNameMap(
   officerIds: Iterable<string>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<Map<string, string>> {
   const ids = Array.from(new Set(Array.from(officerIds).filter(Boolean)));
   const map = new Map<string, string>();
-  if (ids.length === 0 || !ctx.referenceStore) return map;
+  if (ids.length === 0 || !ctx.deps.referenceStore) return map;
 
-  const officers = await ctx.referenceStore.listOfficers();
+  const officers = await ctx.deps.referenceStore.listOfficers();
   const lookup = new Map(officers.map((officer) => [officer.id, officer.name]));
   for (const id of ids) {
     const name = lookup.get(id);
@@ -1569,13 +1569,13 @@ async function buildOfficerNameMap(
 
 async function buildShipNameMap(
   shipIds: Iterable<string>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<Map<string, string>> {
   const ids = Array.from(new Set(Array.from(shipIds).filter(Boolean)));
   const map = new Map<string, string>();
-  if (ids.length === 0 || !ctx.referenceStore) return map;
+  if (ids.length === 0 || !ctx.deps.referenceStore) return map;
 
-  const ships = await ctx.referenceStore.listShips();
+  const ships = await ctx.deps.referenceStore.listShips();
   const lookup = new Map(ships.map((ship) => [ship.id, ship.name]));
   for (const id of ids) {
     const name = lookup.get(id);
@@ -1588,7 +1588,7 @@ function isUnsafeObjectKey(key: string): boolean {
   return key === "__proto__" || key === "constructor" || key === "prototype";
 }
 
-function annotateBuildCostEntries(raw: unknown, ctx: ToolContext): unknown {
+function annotateBuildCostEntries(raw: unknown, ctx: ToolEnv): unknown {
   if (!Array.isArray(raw)) return raw;
 
   return raw.map((entry) => {
@@ -1601,8 +1601,8 @@ function annotateBuildCostEntries(raw: unknown, ctx: ToolContext): unknown {
 
     if (!Number.isFinite(numericId)) return entry;
 
-    const hasVerifiedResource = Boolean(ctx.resourceDefs?.has(numericId));
-    const resolved = ctx.resourceDefs ? resolveResourceId(numericId, ctx.resourceDefs) : null;
+    const hasVerifiedResource = Boolean(ctx.deps.resourceDefs?.has(numericId));
+    const resolved = ctx.deps.resourceDefs ? resolveResourceId(numericId, ctx.deps.resourceDefs) : null;
     const existingName = typeof item.name === "string" && item.name.trim() ? item.name.trim() : null;
     const resolvedName = resolved?.name ?? `Unknown resource (${numericId})`;
     const next = Object.create(null) as Record<string, unknown>;
@@ -1623,7 +1623,7 @@ function annotateBuildCostEntries(raw: unknown, ctx: ToolContext): unknown {
   });
 }
 
-function annotateBuildCostResources(raw: unknown, ctx: ToolContext): unknown {
+function annotateBuildCostResources(raw: unknown, ctx: ToolEnv): unknown {
   if (Array.isArray(raw)) {
     return raw.map((entry) => annotateBuildCostResources(entry, ctx));
   }
@@ -1648,14 +1648,14 @@ function annotateBuildCostResources(raw: unknown, ctx: ToolContext): unknown {
 
 async function resolveHostileSystems(
   rawSystemIds: string[] | null,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<{ names: string[] | null; refs: { id: string; name: string }[] | null }> {
-  if (!rawSystemIds || rawSystemIds.length === 0 || !ctx.referenceStore) {
+  if (!rawSystemIds || rawSystemIds.length === 0 || !ctx.deps.referenceStore) {
     return { names: null, refs: null };
   }
 
   const refs = await Promise.all(rawSystemIds.map(async (rawId) => {
-    const system = await ctx.referenceStore!.getSystem(`cdn:system:${rawId}`);
+    const system = await ctx.deps.referenceStore!.getSystem(`cdn:system:${rawId}`);
     return {
       id: rawId,
       name: system?.name ?? `System ${rawId}`,
@@ -1672,9 +1672,9 @@ export async function searchGameReference(
   category: ReferenceCategory,
   query: string,
   limit: number,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.referenceStore) {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available." };
   }
   if (!query.trim()) {
@@ -1685,7 +1685,7 @@ export async function searchGameReference(
 
   switch (category) {
     case "research": {
-      const rows = await ctx.referenceStore.searchResearch(query);
+      const rows = await ctx.deps.referenceStore.searchResearch(query);
       const results = rows.slice(0, cap).map((r) => ({
         id: r.id, name: r.name, researchTree: r.researchTree,
         unlockLevel: r.unlockLevel, maxLevel: r.maxLevel,
@@ -1693,7 +1693,7 @@ export async function searchGameReference(
       return { category, results, totalFound: rows.length, truncated: rows.length > cap };
     }
     case "building": {
-      const rows = await ctx.referenceStore.searchBuildings(query);
+      const rows = await ctx.deps.referenceStore.searchBuildings(query);
       const results = rows.slice(0, cap).map((b) => ({
         id: b.id, name: b.name,
         maxLevel: b.maxLevel, unlockLevel: b.unlockLevel,
@@ -1701,7 +1701,7 @@ export async function searchGameReference(
       return { category, results, totalFound: rows.length, truncated: rows.length > cap };
     }
     case "hostile": {
-      const rows = await ctx.referenceStore.searchHostiles(query);
+      const rows = await ctx.deps.referenceStore.searchHostiles(query);
       const results = rows.slice(0, cap).map((h) => ({
         id: h.id, name: h.name, faction: h.faction,
         level: h.level, shipType: h.shipType, hullType: h.hullType,
@@ -1710,7 +1710,7 @@ export async function searchGameReference(
       return { category, results, totalFound: rows.length, truncated: rows.length > cap };
     }
     case "consumable": {
-      const rows = await ctx.referenceStore.searchConsumables(query);
+      const rows = await ctx.deps.referenceStore.searchConsumables(query);
       const results = rows.slice(0, cap).map((c) => ({
         id: c.id, name: c.name, rarity: c.rarity, grade: c.grade,
         category: c.category, durationSeconds: c.durationSeconds,
@@ -1719,7 +1719,7 @@ export async function searchGameReference(
       return { category, results, totalFound: rows.length, truncated: rows.length > cap };
     }
     case "system": {
-      const rows = await ctx.referenceStore.searchSystems(query);
+      const rows = await ctx.deps.referenceStore.searchSystems(query);
       const results = rows.slice(0, cap).map((s) => ({
         id: s.id, name: s.name, level: s.level, estWarp: s.estWarp,
         isDeepSpace: s.isDeepSpace, factions: s.factions,
@@ -1736,9 +1736,9 @@ export async function searchGameReference(
 export async function getGameReference(
   category: ReferenceCategory,
   id: string,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.referenceStore) {
+  if (!ctx.deps.referenceStore) {
     return { error: "Reference catalog not available." };
   }
   if (!id.trim()) {
@@ -1747,17 +1747,17 @@ export async function getGameReference(
 
   switch (category) {
     case "research": {
-      const row = await ctx.referenceStore.getResearch(id);
+      const row = await ctx.deps.referenceStore.getResearch(id);
       if (!row) return { error: `Research not found: ${id}` };
       return { reference: row };
     }
     case "building": {
-      const row = await ctx.referenceStore.getBuilding(id);
+      const row = await ctx.deps.referenceStore.getBuilding(id);
       if (!row) return { error: `Building not found: ${id}` };
       return { reference: row };
     }
     case "hostile": {
-      const row = await ctx.referenceStore.getHostile(id);
+      const row = await ctx.deps.referenceStore.getHostile(id);
       if (!row) return { error: `Hostile not found: ${id}` };
       const resolvedSystems = await resolveHostileSystems(row.systems, ctx);
       return {
@@ -1769,12 +1769,12 @@ export async function getGameReference(
       };
     }
     case "consumable": {
-      const row = await ctx.referenceStore.getConsumable(id);
+      const row = await ctx.deps.referenceStore.getConsumable(id);
       if (!row) return { error: `Consumable not found: ${id}` };
       return { reference: row };
     }
     case "system": {
-      const row = await ctx.referenceStore.getSystem(id);
+      const row = await ctx.deps.referenceStore.getSystem(id);
       if (!row) return { error: `System not found: ${id}` };
       // Resolve mineResources IDs to human-readable names
       const resolved = {

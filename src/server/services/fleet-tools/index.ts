@@ -8,10 +8,10 @@
  */
 
 import { log } from "../../logger.js";
-import type { ToolContext } from "./declarations.js";
+import type { ToolEnv } from "./declarations.js";
 
 // Re-export public surface
-export { FLEET_TOOL_DECLARATIONS, type ToolContext, type ToolContextFactory } from "./declarations.js";
+export { FLEET_TOOL_DECLARATIONS, type ToolEnv, type ToolContext, type ResolvedStores, type ToolContextFactory } from "./declarations.js";
 
 // ─── Read tool implementations ──────────────────────────────
 import {
@@ -87,7 +87,7 @@ import {
 export async function executeFleetTool(
   name: string,
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
   const startTime = Date.now();
 
@@ -107,7 +107,7 @@ export async function executeFleetTool(
 async function dispatchTool(
   name: string,
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
   switch (name) {
     case "get_fleet_overview":

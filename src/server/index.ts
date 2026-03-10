@@ -602,20 +602,22 @@ async function boot(): Promise<void> {
     const runner = await buildMicroRunnerFromState(state);
     const modelName = DEFAULT_MODEL;
 
-    // Build a ToolContextFactory that creates user-scoped ToolContext per chat() call
+    // Build a ToolContextFactory that creates user-scoped ToolEnv per chat() call (ADR-039 D7)
     const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStoreFactory || state.targetStoreFactory || state.researchStoreFactory || state.inventoryStoreFactory || state.userSettingsStore) ? {
       forUser(userId: string) {
         return {
           userId,
-          referenceStore: state.referenceStore,
-          overlayStore: state.overlayStoreFactory?.forUser(userId) ?? null,
-          crewStore: state.crewStoreFactory?.forUser(userId) ?? null,
-          targetStore: state.targetStoreFactory?.forUser(userId) ?? null,
-          receiptStore: state.receiptStoreFactory?.forUser(userId) ?? null,
-          researchStore: state.researchStoreFactory?.forUser(userId) ?? null,
-          inventoryStore: state.inventoryStoreFactory?.forUser(userId) ?? null,
-          userSettingsStore: state.userSettingsStore,
-          resourceDefs: resourceDefs.size > 0 ? resourceDefs : null,
+          deps: {
+            referenceStore: state.referenceStore,
+            overlayStore: state.overlayStoreFactory?.forUser(userId) ?? null,
+            crewStore: state.crewStoreFactory?.forUser(userId) ?? null,
+            targetStore: state.targetStoreFactory?.forUser(userId) ?? null,
+            receiptStore: state.receiptStoreFactory?.forUser(userId) ?? null,
+            researchStore: state.researchStoreFactory?.forUser(userId) ?? null,
+            inventoryStore: state.inventoryStoreFactory?.forUser(userId) ?? null,
+            userSettingsStore: state.userSettingsStore,
+            resourceDefs: resourceDefs.size > 0 ? resourceDefs : null,
+          },
         };
       },
     } : null;

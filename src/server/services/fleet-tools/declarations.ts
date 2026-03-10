@@ -19,18 +19,14 @@ import type { InventoryStore } from "../../stores/inventory-store.js";
 import type { UserSettingsStore } from "../../stores/user-settings-store.js";
 import type { ResourceDef } from "../resource-defs.js";
 
-// ─── Tool Context ───────────────────────────────────────────
+// ─── Tool Environment (ADR-039 D7 Stage 1) ─────────────────
 
 /**
- * Stores required by fleet tools. Injected per-request via ToolContextFactory.
- * All store fields are optional — tools gracefully degrade when stores are unavailable.
- *
- * userId is required for user-scoped operations (#85).
+ * Resolved store dependencies available to fleet tools.
+ * All fields are optional — tools gracefully degrade when stores are unavailable.
  * Stores should already be scoped to the user when provided.
  */
-export interface ToolContext {
-  /** The authenticated user's ID. Required for user-scoped data access. */
-  userId: string;
+export interface ResolvedStores {
   referenceStore?: ReferenceStore | null;
   overlayStore?: OverlayStore | null;
   crewStore?: CrewStore | null;
@@ -44,11 +40,27 @@ export interface ToolContext {
 }
 
 /**
- * Factory that produces user-scoped ToolContext instances (#85).
- * The GeminiEngine holds this factory and creates a scoped context per chat() call.
+ * Tool execution environment — separates identity from store dependencies (ADR-039 D7).
+ *
+ * Stage 1: userId + deps bag. Stage 2 will add `ctx: RequestContext` and
+ * declaration-driven dependency resolution via defineTool().
+ */
+export interface ToolEnv {
+  /** The authenticated user's ID. Required for user-scoped data access. */
+  userId: string;
+  /** Resolved store dependencies. */
+  deps: ResolvedStores;
+}
+
+/** @deprecated Use ToolEnv — kept for migration compatibility only. */
+export type ToolContext = ToolEnv;
+
+/**
+ * Factory that produces user-scoped ToolEnv instances (#85, ADR-039 D7).
+ * The GeminiEngine holds this factory and creates a scoped env per chat() call.
  */
 export interface ToolContextFactory {
-  forUser(userId: string): ToolContext;
+  forUser(userId: string): ToolEnv;
 }
 
 // ─── Tool Declarations ──────────────────────────────────────

@@ -23,7 +23,7 @@ import {
 import { log } from "../../logger.js";
 import { type MicroRunner, VALIDATION_DISCLAIMER } from "../micro-runner.js";
 import {
-  type ToolContext,
+  type ToolEnv,
   type ToolContextFactory,
   FLEET_TOOL_DECLARATIONS,
   executeFleetTool,
@@ -382,7 +382,7 @@ export function createGeminiEngine(
     chat: Chat,
     initialFunctionCalls: FunctionCall[],
     sessionId: string,
-    scopedContext: ToolContext,
+    scopedContext: ToolEnv,
     userId: string,
     requestId?: string,
   ): Promise<ChatResult> {
@@ -412,7 +412,7 @@ export function createGeminiEngine(
             const trustLevel = await getTrustLevel(
               toolName,
               userId,
-              scopedContext.userSettingsStore,
+              scopedContext.deps.userSettingsStore,
             );
 
             if (trustLevel === "block") {

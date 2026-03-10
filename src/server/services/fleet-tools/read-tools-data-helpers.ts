@@ -1,4 +1,4 @@
-import type { ToolContext } from "./declarations.js";
+import type { ToolEnv } from "./declarations.js";
 import type { ResearchNodeRecord } from "../../stores/research-store.js";
 
 export interface BattleDamageEvent {
@@ -145,11 +145,11 @@ export function parseBattleLog(input: unknown): ParsedBattleLog | null {
   };
 }
 
-export async function mapOfficerIdsToAbilities(officerIds: string[], ctx: ToolContext): Promise<Array<Record<string, unknown>>> {
-  if (!ctx.referenceStore || officerIds.length === 0) return [];
+export async function mapOfficerIdsToAbilities(officerIds: string[], ctx: ToolEnv): Promise<Array<Record<string, unknown>>> {
+  if (!ctx.deps.referenceStore || officerIds.length === 0) return [];
   const results: Array<Record<string, unknown>> = [];
   for (const officerId of officerIds) {
-    const officer = await ctx.referenceStore.getOfficer(officerId);
+    const officer = await ctx.deps.referenceStore.getOfficer(officerId);
     if (!officer) continue;
     results.push({
       officerId,

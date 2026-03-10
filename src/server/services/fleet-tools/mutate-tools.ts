@@ -15,7 +15,7 @@
  */
 
 import type { BridgeSlot, VariantPatch } from "../../types/crew-types.js";
-import type { ToolContext } from "./declarations.js";
+import type { ToolEnv } from "./declarations.js";
 import type { TargetStatus, TargetType, UpdateTargetInput } from "../../stores/target-store.js";
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES } from "../../stores/target-store.js";
 import type { OwnershipState, SetShipOverlayInput, SetOfficerOverlayInput } from "../../stores/overlay-store.js";
@@ -71,7 +71,7 @@ function validNotes(args: Record<string, unknown>): string | undefined {
 
 async function parseManualOverlayUpdates(
   updates: string[],
-  ctx: ToolContext,
+  ctx: ToolEnv,
   warnings: string[],
 ): Promise<{ officers: SyncOverlayOfficerInput[]; ships: SyncOverlayShipInput[] }> {
   const officers: SyncOverlayOfficerInput[] = [];
@@ -80,7 +80,7 @@ async function parseManualOverlayUpdates(
   if (updates.length === 0) {
     return { officers, ships };
   }
-  if (!ctx.referenceStore) {
+  if (!ctx.deps.referenceStore) {
     warnings.push("manual_updates provided but reference store is unavailable; could not resolve entities.");
     return { officers, ships };
   }
@@ -91,7 +91,7 @@ async function parseManualOverlayUpdates(
     );
     if (shipBulkMatch) {
       const excludedNames = parseExceptionNames(shipBulkMatch[1]);
-      const allShips = await ctx.referenceStore.listShips();
+      const allShips = await ctx.deps.referenceStore.listShips();
       let includedCount = 0;
 
       for (const ship of allShips) {
@@ -118,7 +118,7 @@ async function parseManualOverlayUpdates(
     );
     if (officerBulkMatch) {
       const excludedNames = parseExceptionNames(officerBulkMatch[1]);
-      const allOfficers = await ctx.referenceStore.listOfficers();
+      const allOfficers = await ctx.deps.referenceStore.listOfficers();
       let includedCount = 0;
 
       for (const officer of allOfficers) {
@@ -156,8 +156,8 @@ async function parseManualOverlayUpdates(
     const value = Number(match[3]);
 
     const [officerMatches, shipMatches] = await Promise.all([
-      ctx.referenceStore.searchOfficers(name),
-      ctx.referenceStore.searchShips(name),
+      ctx.deps.referenceStore.searchOfficers(name),
+      ctx.deps.referenceStore.searchShips(name),
     ]);
 
     const officer = officerMatches[0] ?? null;
@@ -373,9 +373,9 @@ function parseResearchExport(args: Record<string, unknown>): { data?: ReplaceRes
 
 export async function createBridgeCoreTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { tool: "create_bridge_core", error: "Crew system not available." };
   }
 
@@ -402,7 +402,7 @@ export async function createBridgeCoreTool(
   ];
 
   // ─── Dupe detection (#81) ───────────────────────────────
-  const existingCores = await ctx.crewStore.listBridgeCores();
+  const existingCores = await ctx.deps.crewStore.listBridgeCores();
 
   // Check name match
   const nameMatch = existingCores.find(
@@ -447,7 +447,7 @@ export async function createBridgeCoreTool(
     };
   }
 
-  const core = await ctx.crewStore.createBridgeCore(name, members, notes);
+  const core = await ctx.deps.crewStore.createBridgeCore(name, members, notes);
   return {
     tool: "create_bridge_core",
     created: true,
@@ -465,9 +465,9 @@ export async function createBridgeCoreTool(
 
 export async function createLoadoutTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { tool: "create_loadout", error: "Crew system not available." };
   }
 
@@ -490,7 +490,7 @@ export async function createLoadoutTool(
   fields.notes = validNotes(args);
 
   // ─── Dupe detection (#81) ───────────────────────────────
-  const existingLoadouts = await ctx.crewStore.listLoadouts({ shipId });
+  const existingLoadouts = await ctx.deps.crewStore.listLoadouts({ shipId });
   const nameMatch = existingLoadouts.find(
     (l) => l.name.toLowerCase() === name.toLowerCase(),
   );
@@ -510,7 +510,7 @@ export async function createLoadoutTool(
     };
   }
 
-  const loadout = await ctx.crewStore.createLoadout(fields);
+  const loadout = await ctx.deps.crewStore.createLoadout(fields);
   return {
     tool: "create_loadout",
     created: true,
@@ -526,15 +526,15 @@ export async function createLoadoutTool(
   };
 }
 
-export async function activatePresetTool(presetId: number, ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function activatePresetTool(presetId: number, ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { tool: "activate_preset", error: "Crew system not available." };
   }
   if (!presetId || isNaN(presetId)) {
     return { tool: "activate_preset", error: "Valid preset ID is required.", input: { preset_id: presetId } };
   }
 
-  const preset = await ctx.crewStore.getFleetPreset(presetId);
+  const preset = await ctx.deps.crewStore.getFleetPreset(presetId);
   if (!preset) {
     return { tool: "activate_preset", error: `Fleet preset not found with ID ${presetId}.`, input: { preset_id: presetId } };
   }
@@ -558,9 +558,9 @@ export async function activatePresetTool(presetId: number, ctx: ToolContext): Pr
 
 export async function setReservationTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { tool: "set_reservation", error: "Crew system not available." };
   }
 
@@ -573,7 +573,7 @@ export async function setReservationTool(
 
   // Clear reservation if reservedFor is empty
   if (!reservedFor) {
-    const deleted = await ctx.crewStore.deleteReservation(officerId);
+    const deleted = await ctx.deps.crewStore.deleteReservation(officerId);
     return {
       tool: "set_reservation",
       action: "cleared",
@@ -588,7 +588,7 @@ export async function setReservationTool(
   const locked = args.locked === true;
   const notes = validNotes(args);
 
-  const reservation = await ctx.crewStore.setReservation(officerId, reservedFor, locked, notes);
+  const reservation = await ctx.deps.crewStore.setReservation(officerId, reservedFor, locked, notes);
   return {
     tool: "set_reservation",
     action: "set",
@@ -605,9 +605,9 @@ export async function setReservationTool(
 
 export async function createVariantTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { tool: "create_variant", error: "Crew system not available." };
   }
 
@@ -633,7 +633,7 @@ export async function createVariantTool(
   const notes = validNotes(args);
 
   // ─── Dupe detection (#81) ───────────────────────────────
-  const existingVariants = await ctx.crewStore.listVariants(loadoutId);
+  const existingVariants = await ctx.deps.crewStore.listVariants(loadoutId);
   const nameMatch = existingVariants.find(
     (v) => v.name.toLowerCase() === name.toLowerCase(),
   );
@@ -652,7 +652,7 @@ export async function createVariantTool(
     };
   }
 
-  const variant = await ctx.crewStore.createVariant(loadoutId, name, patch, notes);
+  const variant = await ctx.deps.crewStore.createVariant(loadoutId, name, patch, notes);
   return {
     tool: "create_variant",
     created: true,
@@ -669,14 +669,14 @@ export async function createVariantTool(
   };
 }
 
-export async function getEffectiveStateTool(ctx: ToolContext): Promise<object> {
-  if (!ctx.crewStore) {
+export async function getEffectiveStateTool(ctx: ToolEnv): Promise<object> {
+  if (!ctx.deps.crewStore) {
     return { tool: "get_effective_state", error: "Crew system not available." };
   }
 
   const [state, presets] = await Promise.all([
-    ctx.crewStore.getEffectiveDockState(),
-    ctx.crewStore.listFleetPresets(),
+    ctx.deps.crewStore.getEffectiveDockState(),
+    ctx.deps.crewStore.listFleetPresets(),
   ]);
 
   const activePreset = presets.find((p) => p.isActive);
@@ -727,9 +727,9 @@ export async function getEffectiveStateTool(ctx: ToolContext): Promise<object> {
 
 export async function syncOverlayTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.overlayStore) {
+  if (!ctx.deps.overlayStore) {
     return { tool: "sync_overlay", error: "Overlay store not available." };
   }
 
@@ -756,8 +756,8 @@ export async function syncOverlayTool(
   }
 
   const [officerOverlays, shipOverlays] = await Promise.all([
-    ctx.overlayStore.listOfficerOverlays(),
-    ctx.overlayStore.listShipOverlays(),
+    ctx.deps.overlayStore.listOfficerOverlays(),
+    ctx.deps.overlayStore.listShipOverlays(),
   ]);
   const officerMap = new Map(officerOverlays.map((row) => [row.refId, row]));
   const shipMap = new Map(shipOverlays.map((row) => [row.refId, row]));
@@ -810,8 +810,8 @@ export async function syncOverlayTool(
     }
     const refId = normalizeOfficerRefId(entry.refId);
 
-    if (ctx.referenceStore) {
-      const exists = await ctx.referenceStore.getOfficer(refId);
+    if (ctx.deps.referenceStore) {
+      const exists = await ctx.deps.referenceStore.getOfficer(refId);
       if (!exists) {
         skippedUnknownOfficerRefs++;
         continue;
@@ -835,7 +835,7 @@ export async function syncOverlayTool(
     officerReceiptChanges.push({ refId, changedFields, before: existing, after: patch });
 
     if (!dryRun) {
-      await ctx.overlayStore.setOfficerOverlay(patch);
+      await ctx.deps.overlayStore.setOfficerOverlay(patch);
     }
   }
 
@@ -846,8 +846,8 @@ export async function syncOverlayTool(
     }
     const refId = normalizeShipRefId(entry.refId);
 
-    if (ctx.referenceStore) {
-      const exists = await ctx.referenceStore.getShip(refId);
+    if (ctx.deps.referenceStore) {
+      const exists = await ctx.deps.referenceStore.getShip(refId);
       if (!exists) {
         skippedUnknownShipRefs++;
         continue;
@@ -868,19 +868,19 @@ export async function syncOverlayTool(
     shipReceiptChanges.push({ refId, changedFields, before: existing, after: patch });
 
     if (!dryRun) {
-      await ctx.overlayStore.setShipOverlay(patch);
+      await ctx.deps.overlayStore.setShipOverlay(patch);
     }
   }
 
   if (docks.length > 0) {
-    if (!ctx.crewStore) {
+    if (!ctx.deps.crewStore) {
       warnings.push("Dock entries provided but crew store is unavailable; dock sync skipped.");
       skippedDockEntries = docks.length;
     } else {
       const [activePlanItems, activeLoadouts, allLoadouts] = await Promise.all([
-        ctx.crewStore.listPlanItems({ active: true }),
-        ctx.crewStore.listLoadouts({ active: true }),
-        ctx.crewStore.listLoadouts(),
+        ctx.deps.crewStore.listPlanItems({ active: true }),
+        ctx.deps.crewStore.listLoadouts({ active: true }),
+        ctx.deps.crewStore.listLoadouts(),
       ]);
 
       const dockItemMap = new Map<number, { id: number; loadoutId: number | null }>();
@@ -947,13 +947,13 @@ export async function syncOverlayTool(
 
         if (!dryRun) {
           if (existing) {
-            await ctx.crewStore.updatePlanItem(existing.id, {
+            await ctx.deps.crewStore.updatePlanItem(existing.id, {
               dockNumber,
               loadoutId: desiredLoadoutId,
               source: "manual",
             });
           } else if (desiredLoadoutId != null) {
-            await ctx.crewStore.createPlanItem({
+            await ctx.deps.crewStore.createPlanItem({
               dockNumber,
               loadoutId: desiredLoadoutId,
               source: "manual",
@@ -966,8 +966,8 @@ export async function syncOverlayTool(
   }
 
   let receiptId: number | null = null;
-  if (!dryRun && ctx.receiptStore && (officerReceiptChanges.length > 0 || shipReceiptChanges.length > 0 || dockChanges.length > 0)) {
-    const receipt = await ctx.receiptStore.createReceipt({
+  if (!dryRun && ctx.deps.receiptStore && (officerReceiptChanges.length > 0 || shipReceiptChanges.length > 0 || dockChanges.length > 0)) {
+    const receipt = await ctx.deps.receiptStore.createReceipt({
       sourceType: syncOverlaySourceType(payload.source),
       layer: "ownership",
       sourceMeta: {
@@ -1100,9 +1100,9 @@ export async function syncOverlayTool(
 
 export async function syncResearchTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.researchStore) {
+  if (!ctx.deps.researchStore) {
     return { tool: "sync_research", error: "Research store not available." };
   }
 
@@ -1145,7 +1145,7 @@ export async function syncResearchTool(
     };
   }
 
-  const result = await ctx.researchStore.replaceSnapshot(payload);
+  const result = await ctx.deps.researchStore.replaceSnapshot(payload);
   return {
     tool: "sync_research",
     dryRun: false,
@@ -1166,9 +1166,9 @@ export async function syncResearchTool(
 
 export async function createTargetTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.targetStore) {
+  if (!ctx.deps.targetStore) {
     return { tool: "create_target", error: "Target system not available." };
   }
 
@@ -1202,7 +1202,7 @@ export async function createTargetTool(
 
   // Dupe detection — check for active targets with the same ref_id
   if (refId) {
-    const existing = await ctx.targetStore.listByRef(refId);
+    const existing = await ctx.deps.targetStore.listByRef(refId);
     const activeMatch = existing.find((t) => t.status === "active");
     if (activeMatch) {
       return {
@@ -1235,7 +1235,7 @@ export async function createTargetTool(
   const targetLevel = args.target_level != null ? Number(args.target_level) : null;
   const targetRank = str(args, "target_rank") || null;
 
-  const target = await ctx.targetStore.create({
+  const target = await ctx.deps.targetStore.create({
     targetType,
     refId,
     loadoutId,
@@ -1268,9 +1268,9 @@ export async function createTargetTool(
 
 export async function updateTargetTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.targetStore) {
+  if (!ctx.deps.targetStore) {
     return { tool: "update_target", error: "Target system not available." };
   }
 
@@ -1283,7 +1283,7 @@ export async function updateTargetTool(
     };
   }
 
-  const existing = await ctx.targetStore.get(targetId);
+  const existing = await ctx.deps.targetStore.get(targetId);
   if (!existing) {
     return {
       tool: "update_target",
@@ -1355,7 +1355,7 @@ export async function updateTargetTool(
     };
   }
 
-  const updated = await ctx.targetStore.update(targetId, fields);
+  const updated = await ctx.deps.targetStore.update(targetId, fields);
   if (!updated) {
     return { tool: "update_target", error: `Failed to update target ${targetId}.` };
   }
@@ -1382,9 +1382,9 @@ export async function updateTargetTool(
 
 export async function completeTargetTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.targetStore) {
+  if (!ctx.deps.targetStore) {
     return { tool: "complete_target", error: "Target system not available." };
   }
 
@@ -1397,7 +1397,7 @@ export async function completeTargetTool(
     };
   }
 
-  const existing = await ctx.targetStore.get(targetId);
+  const existing = await ctx.deps.targetStore.get(targetId);
   if (!existing) {
     return {
       tool: "complete_target",
@@ -1428,7 +1428,7 @@ export async function completeTargetTool(
     };
   }
 
-  const achieved = await ctx.targetStore.markAchieved(targetId);
+  const achieved = await ctx.deps.targetStore.markAchieved(targetId);
   if (!achieved) {
     return { tool: "complete_target", error: `Failed to mark target ${targetId} as achieved.` };
   }
@@ -1454,9 +1454,9 @@ export async function completeTargetTool(
 
 export async function recordTargetDeltaTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.targetStore) {
+  if (!ctx.deps.targetStore) {
     return { tool: "record_target_delta", error: "Target system not available." };
   }
 
@@ -1496,7 +1496,7 @@ export async function recordTargetDeltaTool(
     };
   }
 
-  const existing = await ctx.targetStore.get(targetId);
+  const existing = await ctx.deps.targetStore.get(targetId);
   if (!existing) {
     return {
       tool: "record_target_delta",
@@ -1508,7 +1508,7 @@ export async function recordTargetDeltaTool(
   const source = str(args, "source") || "manual";
   const note = str(args, "note") || null;
 
-  const deltaRecord = await ctx.targetStore.recordDelta({
+  const deltaRecord = await ctx.deps.targetStore.recordDelta({
     targetId,
     metric,
     delta,
@@ -1538,7 +1538,7 @@ export async function recordTargetDeltaTool(
     "silent correction delta persisted",
   );
 
-  const recent = await ctx.targetStore.listDeltas(targetId, 20);
+  const recent = await ctx.deps.targetStore.listDeltas(targetId, 20);
   const metricRecent = recent.filter((entry) => entry.metric === metric);
   const netDelta = Math.round(metricRecent.reduce((sum, entry) => sum + entry.delta, 0) * 1000) / 1000;
 
@@ -1579,9 +1579,9 @@ export async function recordTargetDeltaTool(
 
 export async function recordReminderFeedbackTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.targetStore) {
+  if (!ctx.deps.targetStore) {
     return { tool: "record_reminder_feedback", error: "Target system not available." };
   }
 
@@ -1613,7 +1613,7 @@ export async function recordReminderFeedbackTool(
   }
 
   if (targetId != null) {
-    const existing = await ctx.targetStore.get(targetId);
+    const existing = await ctx.deps.targetStore.get(targetId);
     if (!existing) {
       return {
         tool: "record_reminder_feedback",
@@ -1626,7 +1626,7 @@ export async function recordReminderFeedbackTool(
   const source = str(args, "source") || "manual";
   const note = str(args, "note") || null;
 
-  const feedback = await ctx.targetStore.recordReminderFeedback({
+  const feedback = await ctx.deps.targetStore.recordReminderFeedback({
     targetId,
     reminderKey,
     usefulness,
@@ -1682,9 +1682,9 @@ export async function recordReminderFeedbackTool(
 
 export async function recordGoalRestatementTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.targetStore) {
+  if (!ctx.deps.targetStore) {
     return { tool: "record_goal_restatement", error: "Target system not available." };
   }
 
@@ -1707,7 +1707,7 @@ export async function recordGoalRestatementTool(
   }
 
   if (targetId != null) {
-    const existing = await ctx.targetStore.get(targetId);
+    const existing = await ctx.deps.targetStore.get(targetId);
     if (!existing) {
       return {
         tool: "record_goal_restatement",
@@ -1720,7 +1720,7 @@ export async function recordGoalRestatementTool(
   const source = str(args, "source") || "manual";
   const note = str(args, "note") || null;
 
-  const restatement = await ctx.targetStore.recordGoalRestatement({
+  const restatement = await ctx.deps.targetStore.recordGoalRestatement({
     targetId,
     goalKey,
     source,
@@ -1778,9 +1778,9 @@ export async function recordGoalRestatementTool(
  */
 export async function setShipOverlayTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.overlayStore) {
+  if (!ctx.deps.overlayStore) {
     return { tool: "set_ship_overlay", error: "Overlay store not available." };
   }
 
@@ -1805,7 +1805,7 @@ export async function setShipOverlayTool(
   if (args.target != null) input.target = Boolean(args.target);
   if (args.target_note != null) input.targetNote = str(args, "target_note").slice(0, MAX_NOTES_LEN);
 
-  const overlay = await ctx.overlayStore.setShipOverlay(input);
+  const overlay = await ctx.deps.overlayStore.setShipOverlay(input);
 
   return {
     tool: "set_ship_overlay",
@@ -1829,9 +1829,9 @@ export async function setShipOverlayTool(
  */
 export async function updateInventoryTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.inventoryStore) {
+  if (!ctx.deps.inventoryStore) {
     return { tool: "update_inventory", error: "Inventory store not available." };
   }
 
@@ -1885,7 +1885,7 @@ export async function updateInventoryTool(
   }
 
   const source = str(args, "source") || "chat";
-  const result = await ctx.inventoryStore.upsertItems({
+  const result = await ctx.deps.inventoryStore.upsertItems({
     source,
     capturedAt: new Date().toISOString(),
     items: validatedItems.map(v => ({
@@ -1917,9 +1917,9 @@ export async function updateInventoryTool(
  */
 export async function setOfficerOverlayTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.overlayStore) {
+  if (!ctx.deps.overlayStore) {
     return { tool: "set_officer_overlay", error: "Overlay store not available." };
   }
 
@@ -1944,7 +1944,7 @@ export async function setOfficerOverlayTool(
   if (args.target != null) input.target = Boolean(args.target);
   if (args.target_note != null) input.targetNote = str(args, "target_note").slice(0, MAX_NOTES_LEN);
 
-  const overlay = await ctx.overlayStore.setOfficerOverlay(input);
+  const overlay = await ctx.deps.overlayStore.setOfficerOverlay(input);
 
   return {
     tool: "set_officer_overlay",
@@ -1966,9 +1966,9 @@ export async function setOfficerOverlayTool(
 
 export async function assignDockTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { tool: "assign_dock", error: "Crew system not available." };
   }
 
@@ -1996,19 +1996,19 @@ export async function assignDockTool(
   const notes = validNotes(args);
 
   // Ensure the dock slot exists
-  await ctx.crewStore.upsertDock(dockNumber, {
+  await ctx.deps.crewStore.upsertDock(dockNumber, {
     label: label ?? `Dock ${dockNumber}`,
     unlocked: true,
   });
 
   // Deactivate any existing plan items for this dock
-  const existingItems = await ctx.crewStore.listPlanItems({ dockNumber, active: true });
+  const existingItems = await ctx.deps.crewStore.listPlanItems({ dockNumber, active: true });
   for (const item of existingItems) {
-    await ctx.crewStore.updatePlanItem(item.id, { isActive: false });
+    await ctx.deps.crewStore.updatePlanItem(item.id, { isActive: false });
   }
 
   // Create the new plan item
-  const planItem = await ctx.crewStore.createPlanItem({
+  const planItem = await ctx.deps.crewStore.createPlanItem({
     dockNumber,
     loadoutId,
     variantId,
@@ -2037,9 +2037,9 @@ export async function assignDockTool(
 
 export async function updateDockTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { tool: "update_dock", error: "Crew system not available." };
   }
 
@@ -2052,7 +2052,7 @@ export async function updateDockTool(
     };
   }
 
-  const existing = await ctx.crewStore.getPlanItem(planItemId);
+  const existing = await ctx.deps.crewStore.getPlanItem(planItemId);
   if (!existing) {
     return {
       tool: "update_dock",
@@ -2069,7 +2069,7 @@ export async function updateDockTool(
   if (args.is_active != null) fields.isActive = Boolean(args.is_active);
   fields.notes = validNotes(args);
 
-  const updated = await ctx.crewStore.updatePlanItem(planItemId, fields);
+  const updated = await ctx.deps.crewStore.updatePlanItem(planItemId, fields);
   if (!updated) {
     return { tool: "update_dock", error: `Failed to update plan item ${planItemId}.` };
   }
@@ -2093,9 +2093,9 @@ export async function updateDockTool(
 
 export async function removeDockAssignmentTool(
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolEnv,
 ): Promise<object> {
-  if (!ctx.crewStore) {
+  if (!ctx.deps.crewStore) {
     return { tool: "remove_dock_assignment", error: "Crew system not available." };
   }
 
@@ -2109,7 +2109,7 @@ export async function removeDockAssignmentTool(
   }
 
   // Deactivate all active plan items for this dock
-  const items = await ctx.crewStore.listPlanItems({ dockNumber, active: true });
+  const items = await ctx.deps.crewStore.listPlanItems({ dockNumber, active: true });
   if (items.length === 0) {
     return {
       tool: "remove_dock_assignment",
@@ -2119,7 +2119,7 @@ export async function removeDockAssignmentTool(
   }
 
   for (const item of items) {
-    await ctx.crewStore.updatePlanItem(item.id, { isActive: false });
+    await ctx.deps.crewStore.updatePlanItem(item.id, { isActive: false });
   }
 
   return {

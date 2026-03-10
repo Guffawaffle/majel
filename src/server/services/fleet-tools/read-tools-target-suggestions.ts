@@ -1,20 +1,20 @@
-import type { ToolContext } from "./declarations.js";
+import type { ToolEnv } from "./declarations.js";
 import { officerClassLabel, hullTypeLabel } from "../game-enums.js";
 import { normalizeToken, extractTierRequirements } from "./read-tools-upgrade-helpers.js";
 import { normalizeFactionStanding, readUserJsonSetting } from "./read-tools-context-helpers.js";
 
-export async function suggestTargets(ctx: ToolContext): Promise<object> {
+export async function suggestTargets(ctx: ToolEnv): Promise<object> {
   const result: Record<string, unknown> = {};
   let ownedShipsForRecommendations: Array<{ id: string; name: string; faction: string | null }> = [];
 
-  if (ctx.referenceStore) {
-    const refCounts = await ctx.referenceStore.counts();
+  if (ctx.deps.referenceStore) {
+    const refCounts = await ctx.deps.referenceStore.counts();
     result.catalogSize = { officers: refCounts.officers, ships: refCounts.ships };
   }
 
-  if (ctx.overlayStore && ctx.referenceStore) {
-    const overlays = await ctx.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
-    const allOfficers = await ctx.referenceStore.listOfficers();
+  if (ctx.deps.overlayStore && ctx.deps.referenceStore) {
+    const overlays = await ctx.deps.overlayStore.listOfficerOverlays({ ownershipState: "owned" });
+    const allOfficers = await ctx.deps.referenceStore.listOfficers();
     const refMap = new Map(allOfficers.map(o => [o.id, o]));
     result.ownedOfficers = overlays
       .map((overlay) => {
@@ -37,9 +37,9 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
       .filter(Boolean);
   }
 
-  if (ctx.overlayStore && ctx.referenceStore) {
-    const overlays = await ctx.overlayStore.listShipOverlays({ ownershipState: "owned" });
-    const allShips = await ctx.referenceStore.listShips();
+  if (ctx.deps.overlayStore && ctx.deps.referenceStore) {
+    const overlays = await ctx.deps.overlayStore.listShipOverlays({ ownershipState: "owned" });
+    const allShips = await ctx.deps.referenceStore.listShips();
     const shipMap = new Map(allShips.map(s => [s.id, s]));
     const ownedShips = overlays
       .map((overlay) => {
@@ -69,8 +69,8 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
       }));
   }
 
-  if (ctx.crewStore) {
-    const loadouts = await ctx.crewStore.listLoadouts();
+  if (ctx.deps.crewStore) {
+    const loadouts = await ctx.deps.crewStore.listLoadouts();
     result.loadouts = loadouts.map((l) => ({
       id: l.id,
       name: l.name,
@@ -79,8 +79,8 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
     }));
   }
 
-  if (ctx.targetStore) {
-    const targets = await ctx.targetStore.list({ status: "active" } as never);
+  if (ctx.deps.targetStore) {
+    const targets = await ctx.deps.targetStore.list({ status: "active" } as never);
     result.existingTargets = targets.map((t) => ({
       id: t.id,
       targetType: t.targetType,
@@ -91,17 +91,17 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
     }));
   }
 
-  if (ctx.crewStore) {
-    const state = await ctx.crewStore.getEffectiveDockState();
+  if (ctx.deps.crewStore) {
+    const state = await ctx.deps.crewStore.getEffectiveDockState();
     result.officerConflicts = state.conflicts.map((c) => ({
       officerId: c.officerId,
       locationCount: c.locations.length,
     }));
   }
 
-  if (ctx.overlayStore) {
-    const targetedOfficers = await ctx.overlayStore.listOfficerOverlays({ target: true });
-    const targetedShips = await ctx.overlayStore.listShipOverlays({ target: true });
+  if (ctx.deps.overlayStore) {
+    const targetedOfficers = await ctx.deps.overlayStore.listOfficerOverlays({ target: true });
+    const targetedShips = await ctx.deps.overlayStore.listShipOverlays({ target: true });
     result.overlayTargets = {
       officers: targetedOfficers.length,
       ships: targetedShips.length,
@@ -156,12 +156,12 @@ export async function suggestTargets(ctx: ToolContext): Promise<object> {
     }
   }
 
-  if (ctx.inventoryStore && ctx.overlayStore && ctx.referenceStore) {
+  if (ctx.deps.inventoryStore && ctx.deps.overlayStore && ctx.deps.referenceStore) {
     try {
-      const ownedShipOverlays = await ctx.overlayStore.listShipOverlays({ ownershipState: "owned" });
-      const allShips = await ctx.referenceStore.listShips();
+      const ownedShipOverlays = await ctx.deps.overlayStore.listShipOverlays({ ownershipState: "owned" });
+      const allShips = await ctx.deps.referenceStore.listShips();
       const shipRefMap = new Map(allShips.map(s => [s.id, s]));
-      const inventory = await ctx.inventoryStore.listItems();
+      const inventory = await ctx.deps.inventoryStore.listItems();
       const inventoryMap = new Map<string, number>();
       for (const inv of inventory) {
         const key = normalizeToken(inv.name);

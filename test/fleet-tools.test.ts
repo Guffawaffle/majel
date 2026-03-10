@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   FLEET_TOOL_DECLARATIONS,
   executeFleetTool,
-  type ToolContext,
+  type ToolEnv,
 } from "../src/server/services/fleet-tools/index.js";
 import type { ReferenceStore, ReferenceOfficer, ReferenceShip, ReferenceHostile, ReferenceSystem } from "../src/server/stores/reference-store.js";
 import type { OverlayStore, OfficerOverlay, ShipOverlay } from "../src/server/stores/overlay-store.js";
@@ -24,6 +24,14 @@ import type { ResearchStore } from "../src/server/stores/research-store.js";
 import type { InventoryStore } from "../src/server/stores/inventory-store.js";
 import type { UserSettingsStore } from "../src/server/stores/user-settings-store.js";
 import { __resetWebLookupStateForTests } from "../src/server/services/fleet-tools/read-tools.js";
+
+// ─── ToolEnv Helper (ADR-039 D7) ────────────────────────────
+
+/** Wraps a flat store bag into ToolEnv shape for backward-compat test construction. */
+function toolEnv(flat: Record<string, unknown> = {}): ToolEnv {
+  const { userId, ...deps } = flat;
+  return { userId: (userId as string) ?? "local", deps: deps as ToolEnv["deps"] };
+}
 
 // ─── Test Fixtures ──────────────────────────────────────────
 
@@ -682,17 +690,17 @@ describe("FLEET_TOOL_DECLARATIONS", () => {
 
 describe("executeFleetTool", () => {
   it("returns error for unknown tool", async () => {
-    const result = await executeFleetTool("nonexistent_tool", {}, {});
+    const result = await executeFleetTool("nonexistent_tool", {}, toolEnv());
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Unknown tool");
   });
 
   it("catches exceptions and returns error object", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         counts: vi.fn().mockRejectedValue(new Error("DB connection lost")),
       }),
-    };
+    });
     const result = await executeFleetTool("get_fleet_overview", {}, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("DB connection lost");
@@ -967,11 +975,11 @@ describe("web_lookup", () => {
 
 describe("get_fleet_overview", () => {
   it("returns counts from all available stores", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore(),
       crewStore: createMockCrewStore(),
-    };
+    });
     const result = await executeFleetTool("get_fleet_overview", {}, ctx) as Record<string, unknown>;
     expect(result.referenceCatalog).toEqual({ officers: 42, ships: 18 });
     expect(result.overlays).toBeDefined();
@@ -979,7 +987,7 @@ describe("get_fleet_overview", () => {
   });
 
   it("omits sections for unavailable stores", async () => {
-    const ctx: ToolContext = { referenceStore: createMockReferenceStore() };
+    const ctx = toolEnv({ referenceStore: createMockReferenceStore() });
     const result = await executeFleetTool("get_fleet_overview", {}, ctx) as Record<string, unknown>;
     expect(result.referenceCatalog).toBeDefined();
     expect(result.overlays).toBeUndefined();
@@ -987,14 +995,14 @@ describe("get_fleet_overview", () => {
   });
 
   it("returns empty object when no stores available", async () => {
-    const result = await executeFleetTool("get_fleet_overview", {}, {});
+    const result = await executeFleetTool("get_fleet_overview", {}, toolEnv());
     expect(result).toEqual({});
   });
 });
 
 describe("search_officers", () => {
   it("returns matching officers", async () => {
-    const ctx: ToolContext = { referenceStore: createMockReferenceStore() };
+    const ctx = toolEnv({ referenceStore: createMockReferenceStore() });
     const result = await executeFleetTool("search_officers", { query: "Kirk" }, ctx) as Record<string, unknown>;
     expect(result.results).toHaveLength(1);
     expect(result.totalFound).toBe(1);
@@ -1007,7 +1015,7 @@ describe("search_officers", () => {
   });
 
   it("returns error for empty query", async () => {
-    const ctx: ToolContext = { referenceStore: createMockReferenceStore() };
+    const ctx = toolEnv({ referenceStore: createMockReferenceStore() });
     const result = await executeFleetTool("search_officers", { query: "" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("required");
@@ -1019,11 +1027,11 @@ describe("search_officers", () => {
       id: `officer-${i}`,
       name: `Officer ${i}`,
     }));
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         searchOfficers: vi.fn().mockResolvedValue(manyOfficers),
       }),
-    };
+    });
     const result = await executeFleetTool("search_officers", { query: "Officer" }, ctx) as Record<string, unknown>;
     expect((result.results as unknown[]).length).toBe(20);
     expect(result.totalFound).toBe(25);
@@ -1033,7 +1041,7 @@ describe("search_officers", () => {
 
 describe("search_ships", () => {
   it("returns matching ships", async () => {
-    const ctx: ToolContext = { referenceStore: createMockReferenceStore() };
+    const ctx = toolEnv({ referenceStore: createMockReferenceStore() });
     const result = await executeFleetTool("search_ships", { query: "Enterprise" }, ctx) as Record<string, unknown>;
     expect(result.results).toHaveLength(1);
     expect(result.totalFound).toBe(1);
@@ -1047,10 +1055,10 @@ describe("search_ships", () => {
 
 describe("get_officer_detail", () => {
   it("returns merged reference + overlay data", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore(),
-    };
+    });
     const result = await executeFleetTool(
       "get_officer_detail", { officer_id: "officer-kirk" }, ctx,
     ) as Record<string, unknown>;
@@ -1063,7 +1071,7 @@ describe("get_officer_detail", () => {
   });
 
   it("returns reference only when overlay store unavailable", async () => {
-    const ctx: ToolContext = { referenceStore: createMockReferenceStore() };
+    const ctx = toolEnv({ referenceStore: createMockReferenceStore() });
     const result = await executeFleetTool(
       "get_officer_detail", { officer_id: "officer-kirk" }, ctx,
     ) as Record<string, unknown>;
@@ -1072,12 +1080,12 @@ describe("get_officer_detail", () => {
   });
 
   it("returns reference only when no overlay exists", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore({
         getOfficerOverlay: vi.fn().mockResolvedValue(null),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "get_officer_detail", { officer_id: "officer-kirk" }, ctx,
     ) as Record<string, unknown>;
@@ -1086,11 +1094,11 @@ describe("get_officer_detail", () => {
   });
 
   it("returns error for unknown officer", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         getOfficer: vi.fn().mockResolvedValue(null),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "get_officer_detail", { officer_id: "nonexistent" }, ctx,
     );
@@ -1101,10 +1109,10 @@ describe("get_officer_detail", () => {
 
 describe("get_ship_detail", () => {
   it("returns merged reference + overlay data", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore(),
-    };
+    });
     const result = await executeFleetTool(
       "get_ship_detail", { ship_id: "ship-enterprise" }, ctx,
     ) as Record<string, unknown>;
@@ -1117,7 +1125,7 @@ describe("get_ship_detail", () => {
   });
 
   it("resolves nested build-cost resource names in ship detail", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         getShip: vi.fn().mockResolvedValue({
           ...FIXTURE_SHIP,
@@ -1138,7 +1146,7 @@ describe("get_ship_detail", () => {
         category: "ore",
         locaId: 1,
       }]]),
-    };
+    });
 
     const result = await executeFleetTool(
       "get_ship_detail", { ship_id: "ship-enterprise" }, ctx,
@@ -1156,7 +1164,7 @@ describe("get_ship_detail", () => {
   });
 
   it("does not trust unverified nested resource names when catalog resolution is missing", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         getShip: vi.fn().mockResolvedValue({
           ...FIXTURE_SHIP,
@@ -1166,7 +1174,7 @@ describe("get_ship_detail", () => {
         }),
       }),
       resourceDefs: new Map(),
-    };
+    });
 
     const result = await executeFleetTool(
       "get_ship_detail", { ship_id: "ship-enterprise" }, ctx,
@@ -1182,7 +1190,7 @@ describe("get_ship_detail", () => {
 
   it("skips special object keys while annotating nested build-cost resources", async () => {
     const maliciousRequirement = JSON.parse('{"__proto__":{"polluted":true},"build_cost":[{"resource_id":2964093937,"amount":1}]}') as Record<string, unknown>;
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         getShip: vi.fn().mockResolvedValue({
           ...FIXTURE_SHIP,
@@ -1198,7 +1206,7 @@ describe("get_ship_detail", () => {
         category: "ore",
         locaId: 1,
       }]]),
-    };
+    });
 
     const result = await executeFleetTool(
       "get_ship_detail", { ship_id: "ship-enterprise" }, ctx,
@@ -1210,11 +1218,11 @@ describe("get_ship_detail", () => {
   });
 
   it("returns error for unknown ship", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         getShip: vi.fn().mockResolvedValue(null),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "get_ship_detail", { ship_id: "nonexistent" }, ctx,
     );
@@ -1226,7 +1234,7 @@ describe("get_ship_detail", () => {
 describe("get_game_reference", () => {
   it("resolves hostile system names and preserves raw ids for tracing", async () => {
     const referenceStore = createMockReferenceStore();
-    const ctx: ToolContext = { userId: "local", referenceStore };
+    const ctx = toolEnv({ userId: "local", referenceStore });
 
     const result = await executeFleetTool(
       "get_game_reference",
@@ -1246,7 +1254,7 @@ describe("get_game_reference", () => {
 
 describe("list_docks", () => {
   it("returns dock assignments", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore(), referenceStore: createMockReferenceStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore(), referenceStore: createMockReferenceStore() });
     const result = await executeFleetTool("list_docks", {}, ctx) as Record<string, unknown>;
     const docks = result.docks as Array<Record<string, unknown>>;
     expect(docks).toHaveLength(2);
@@ -1260,14 +1268,14 @@ describe("list_docks", () => {
   });
 
   it("returns error when loadout store unavailable", async () => {
-    const result = await executeFleetTool("list_docks", {}, {});
+    const result = await executeFleetTool("list_docks", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
 
 describe("get_officer_conflicts", () => {
   it("returns conflict data", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore(), referenceStore: createMockReferenceStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore(), referenceStore: createMockReferenceStore() });
     const result = await executeFleetTool("get_officer_conflicts", {}, ctx) as Record<string, unknown>;
     expect(result.totalConflicts).toBe(1);
     const conflicts = result.conflicts as Array<Record<string, unknown>>;
@@ -1277,20 +1285,20 @@ describe("get_officer_conflicts", () => {
   });
 
   it("returns error when loadout store unavailable", async () => {
-    const result = await executeFleetTool("get_officer_conflicts", {}, {});
+    const result = await executeFleetTool("get_officer_conflicts", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
 
 describe("validate_plan", () => {
   it("returns structured validation report", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listPlanItems: vi.fn().mockResolvedValue([
           { id: 5, label: "Away Mission", loadoutId: null, variantId: null, dockNumber: null, awayOfficers: ["officer-uhura"], priority: 1, isActive: true, source: "manual", notes: null, createdAt: "2024-01-01", updatedAt: "2024-01-01" },
         ]),
       }),
-    };
+    });
     const result = await executeFleetTool("validate_plan", {}, ctx) as Record<string, unknown>;
     expect(result.valid).toBe(false);
     expect(result.totalConflicts).toBe(1);
@@ -1298,7 +1306,7 @@ describe("validate_plan", () => {
   });
 
   it("returns error when loadout store unavailable", async () => {
-    const result = await executeFleetTool("validate_plan", {}, {});
+    const result = await executeFleetTool("validate_plan", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
@@ -1372,12 +1380,12 @@ const FIXTURE_SPOCK_OFFICER: ReferenceOfficer = {
 
 describe("list_owned_officers", () => {
   it("returns merged reference + overlay data for owned officers", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([FIXTURE_OFFICER_OVERLAY]),
       }),
-    };
+    });
     const result = await executeFleetTool("list_owned_officers", {}, ctx) as Record<string, unknown>;
     expect(result.totalOwned).toBe(1);
     const officers = result.officers as Array<Record<string, unknown>>;
@@ -1387,26 +1395,26 @@ describe("list_owned_officers", () => {
   });
 
   it("filters out officers with missing reference data", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         listOfficers: vi.fn().mockResolvedValue([]),
       }),
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([FIXTURE_OFFICER_OVERLAY]),
       }),
-    };
+    });
     const result = await executeFleetTool("list_owned_officers", {}, ctx) as Record<string, unknown>;
     expect(result.totalOwned).toBe(0);
   });
 
   it("returns error when overlay store unavailable", async () => {
-    const ctx: ToolContext = { referenceStore: createMockReferenceStore() };
+    const ctx = toolEnv({ referenceStore: createMockReferenceStore() });
     const result = await executeFleetTool("list_owned_officers", {}, ctx);
     expect(result).toHaveProperty("error");
   });
 
   it("returns error when reference store unavailable", async () => {
-    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const ctx = toolEnv({ overlayStore: createMockOverlayStore() });
     const result = await executeFleetTool("list_owned_officers", {}, ctx);
     expect(result).toHaveProperty("error");
   });
@@ -1414,14 +1422,14 @@ describe("list_owned_officers", () => {
 
 describe("get_loadout_detail", () => {
   it("returns full loadout with crew members", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         listOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER, FIXTURE_SPOCK_OFFICER, { ...FIXTURE_OFFICER, id: "officer-bones", name: "Leonard McCoy" }]),
       }),
       crewStore: createMockCrewStore({
         getLoadout: vi.fn().mockResolvedValue(FIXTURE_LOADOUT_WITH_REFS),
       }),
-    };
+    });
     const result = await executeFleetTool("get_loadout_detail", { loadout_id: 10 }, ctx) as Record<string, unknown>;
     expect(result.name).toBe("Kirk Crew");
     expect(result.shipId).toBe("ship-enterprise");
@@ -1437,11 +1445,11 @@ describe("get_loadout_detail", () => {
   });
 
   it("returns error for nonexistent loadout", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         getLoadout: vi.fn().mockResolvedValue(null),
       }),
-    };
+    });
     const result = await executeFleetTool("get_loadout_detail", { loadout_id: 999 }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("not found");
@@ -1455,11 +1463,11 @@ describe("get_loadout_detail", () => {
 
 describe("list_plan_items", () => {
   it("returns plan items with context", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listPlanItems: vi.fn().mockResolvedValue([FIXTURE_PLAN_ITEM]),
       }),
-    };
+    });
     const result = await executeFleetTool("list_plan_items", {}, ctx) as Record<string, unknown>;
     expect(result.totalItems).toBe(1);
     const items = result.planItems as Array<Record<string, unknown>>;
@@ -1469,7 +1477,7 @@ describe("list_plan_items", () => {
   });
 
   it("returns error when loadout store unavailable", async () => {
-    const result = await executeFleetTool("list_plan_items", {}, {});
+    const result = await executeFleetTool("list_plan_items", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
@@ -1477,7 +1485,7 @@ describe("list_plan_items", () => {
 describe("list_intents", () => {
   it("returns intent catalog", async () => {
     // list_intents uses static SEED_INTENTS — no store needed
-    const result = await executeFleetTool("list_intents", {}, {}) as Record<string, unknown>;
+    const result = await executeFleetTool("list_intents", {}, toolEnv()) as Record<string, unknown>;
     expect(result.totalIntents).toBeGreaterThanOrEqual(22);
     const intents = result.intents as Array<Record<string, unknown>>;
     const pvp = intents.find((i) => i.key === "pvp");
@@ -1496,7 +1504,7 @@ describe("list_intents", () => {
   });
 
   it("returns all intents without store (static data)", async () => {
-    const result = await executeFleetTool("list_intents", {}, {}) as Record<string, unknown>;
+    const result = await executeFleetTool("list_intents", {}, toolEnv()) as Record<string, unknown>;
     expect(result).not.toHaveProperty("error");
     expect(result.totalIntents).toBeGreaterThanOrEqual(22);
   });
@@ -1504,9 +1512,9 @@ describe("list_intents", () => {
 
 describe("list_research", () => {
   it("returns grouped research state from store", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       researchStore: createMockResearchStore(),
-    };
+    });
     const result = await executeFleetTool("list_research", {}, ctx) as Record<string, unknown>;
 
     expect(result.summary).toBeDefined();
@@ -1519,9 +1527,9 @@ describe("list_research", () => {
 
   it("passes filters to store", async () => {
     const listByTree = vi.fn().mockResolvedValue([]);
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       researchStore: createMockResearchStore({ listByTree }),
-    };
+    });
     await executeFleetTool("list_research", { tree: "combat", include_completed: false }, ctx);
 
     expect(listByTree).toHaveBeenCalledWith({ tree: "combat", includeCompleted: false });
@@ -1529,9 +1537,9 @@ describe("list_research", () => {
 
   it("trims tree filter and defaults includeCompleted=true", async () => {
     const listByTree = vi.fn().mockResolvedValue([]);
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       researchStore: createMockResearchStore({ listByTree }),
-    };
+    });
 
     await executeFleetTool("list_research", { tree: "  combat  " }, ctx);
 
@@ -1539,16 +1547,16 @@ describe("list_research", () => {
   });
 
   it("returns error when research store unavailable", async () => {
-    const result = await executeFleetTool("list_research", {}, {});
+    const result = await executeFleetTool("list_research", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
 
 describe("list_inventory", () => {
   it("returns grouped inventory state from store", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore(),
-    };
+    });
     const result = await executeFleetTool("list_inventory", {}, ctx) as Record<string, unknown>;
 
     expect(result.summary).toBeDefined();
@@ -1561,9 +1569,9 @@ describe("list_inventory", () => {
 
   it("passes filters to store", async () => {
     const listByCategory = vi.fn().mockResolvedValue([]);
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore({ listByCategory }),
-    };
+    });
 
     await executeFleetTool("list_inventory", { category: "ore", query: "3★" }, ctx);
     expect(listByCategory).toHaveBeenCalledWith({ category: "ore", q: "3★" });
@@ -1571,9 +1579,9 @@ describe("list_inventory", () => {
 
   it("normalizes category casing and trims query", async () => {
     const listByCategory = vi.fn().mockResolvedValue([]);
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore({ listByCategory }),
-    };
+    });
 
     await executeFleetTool("list_inventory", { category: "  ORE  ", query: "  tritanium  " }, ctx);
 
@@ -1581,14 +1589,14 @@ describe("list_inventory", () => {
   });
 
   it("returns error when inventory store unavailable", async () => {
-    const result = await executeFleetTool("list_inventory", {}, {});
+    const result = await executeFleetTool("list_inventory", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 
   it("returns error for invalid category", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore(),
-    };
+    });
     const result = await executeFleetTool("list_inventory", { category: "invalid" }, ctx);
     expect(result).toHaveProperty("error");
   });
@@ -1596,10 +1604,10 @@ describe("list_inventory", () => {
 
 describe("list_active_events", () => {
   it("returns normalized active events from user settings", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "00000000-0000-0000-0000-000000000001",
       userSettingsStore: createMockUserSettingsStore(),
-    };
+    });
 
     const result = await executeFleetTool("list_active_events", {}, ctx) as Record<string, unknown>;
     expect(result.totalEvents).toBe(1);
@@ -1612,7 +1620,7 @@ describe("list_active_events", () => {
   });
 
   it("returns empty payload when user settings store is unavailable", async () => {
-    const result = await executeFleetTool("list_active_events", {}, { userId: "u-1" }) as Record<string, unknown>;
+    const result = await executeFleetTool("list_active_events", {}, toolEnv({ userId: "u-1" })) as Record<string, unknown>;
     expect(result.totalEvents).toBe(0);
     expect(result.source).toBe("unavailable");
   });
@@ -1620,7 +1628,7 @@ describe("list_active_events", () => {
 
 describe("list_away_teams", () => {
   it("returns locked officers from settings and plan items", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "00000000-0000-0000-0000-000000000001",
       userSettingsStore: createMockUserSettingsStore(),
       crewStore: createMockCrewStore({
@@ -1633,7 +1641,7 @@ describe("list_away_teams", () => {
           },
         ]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("list_away_teams", {}, ctx) as Record<string, unknown>;
     const lockedOfficerIds = result.lockedOfficerIds as string[];
@@ -1645,10 +1653,10 @@ describe("list_away_teams", () => {
 
 describe("get_faction_standing", () => {
   it("returns normalized faction standings with store access", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "00000000-0000-0000-0000-000000000001",
       userSettingsStore: createMockUserSettingsStore(),
-    };
+    });
 
     const result = await executeFleetTool("get_faction_standing", {}, ctx) as Record<string, unknown>;
     const standings = result.standings as Array<Record<string, unknown>>;
@@ -1658,10 +1666,10 @@ describe("get_faction_standing", () => {
   });
 
   it("filters by faction name", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "00000000-0000-0000-0000-000000000001",
       userSettingsStore: createMockUserSettingsStore(),
-    };
+    });
 
     const result = await executeFleetTool("get_faction_standing", { faction: "feder" }, ctx) as Record<string, unknown>;
     const standings = result.standings as Array<Record<string, unknown>>;
@@ -1686,7 +1694,7 @@ describe("calculate_upgrade_path", () => {
       ],
     } as ReferenceShip;
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(shipWithTiers) }),
       overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP_OVERLAY, tier: 5 }) }),
       inventoryStore: createMockInventoryStore({
@@ -1715,7 +1723,7 @@ describe("calculate_upgrade_path", () => {
           },
         ]),
       }),
-    };
+    });
 
     const result = await executeFleetTool(
       "calculate_upgrade_path",
@@ -1733,19 +1741,19 @@ describe("calculate_upgrade_path", () => {
   });
 
   it("returns error when inventory store unavailable", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
-    };
+    });
     const result = await executeFleetTool("calculate_upgrade_path", { ship_id: "ship-enterprise" }, ctx);
     expect(result).toHaveProperty("error");
   });
 
   it("returns error for invalid target tier", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP_OVERLAY, tier: 8 }) }),
       inventoryStore: createMockInventoryStore(),
-    };
+    });
     const result = await executeFleetTool("calculate_upgrade_path", { ship_id: "ship-enterprise", target_tier: 7 }, ctx);
     expect(result).toHaveProperty("error");
   });
@@ -1766,7 +1774,7 @@ describe("estimate_acquisition_time", () => {
       ],
     } as ReferenceShip;
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(shipWithTiers) }),
       overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP_OVERLAY, tier: 5 }) }),
       inventoryStore: createMockInventoryStore({
@@ -1784,7 +1792,7 @@ describe("estimate_acquisition_time", () => {
           },
         ]),
       }),
-    };
+    });
 
     const result = await executeFleetTool(
       "estimate_acquisition_time",
@@ -1817,13 +1825,13 @@ describe("estimate_acquisition_time", () => {
       ],
     } as ReferenceShip;
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(shipWithTiers) }),
       overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP_OVERLAY, tier: 5 }) }),
       inventoryStore: createMockInventoryStore({
         listItems: vi.fn().mockResolvedValue([{ id: 1, category: "ore", name: "3★ Ore", grade: null, quantity: 50, unit: null, source: "manual", capturedAt: "2026-02-18T00:00:00Z", updatedAt: "2026-02-18T00:00:00Z" }]),
       }),
-    };
+    });
 
     const result = await executeFleetTool(
       "estimate_acquisition_time",
@@ -1838,11 +1846,11 @@ describe("estimate_acquisition_time", () => {
   });
 
   it("returns ship-not-found error from upgrade path", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(null) }),
       overlayStore: createMockOverlayStore(),
       inventoryStore: createMockInventoryStore(),
-    };
+    });
 
     const result = await executeFleetTool("estimate_acquisition_time", { ship_id: "missing-ship" }, ctx);
     expect(result).toHaveProperty("error");
@@ -1852,12 +1860,12 @@ describe("estimate_acquisition_time", () => {
 
 describe("find_loadouts_for_intent", () => {
   it("returns loadouts matching an intent", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([{ id: 10, name: "Kirk Crew", shipId: "ship-enterprise", isActive: true, intentKeys: ["pvp"] }]),
         getLoadout: vi.fn().mockResolvedValue(FIXTURE_LOADOUT_WITH_REFS),
       }),
-    };
+    });
     const result = await executeFleetTool("find_loadouts_for_intent", { intent_key: "pvp" }, ctx) as Record<string, unknown>;
     expect(result.intentKey).toBe("pvp");
     expect(result.totalLoadouts).toBe(1);
@@ -1866,7 +1874,7 @@ describe("find_loadouts_for_intent", () => {
   });
 
   it("returns error for empty intent key", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("find_loadouts_for_intent", { intent_key: "" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("required");
@@ -1880,11 +1888,11 @@ describe("find_loadouts_for_intent", () => {
 
 describe("calculate_true_power", () => {
   it("calculates effective power using research multipliers", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore(),
       researchStore: createMockResearchStore(),
-    };
+    });
 
     const result = await executeFleetTool(
       "calculate_true_power",
@@ -1899,11 +1907,11 @@ describe("calculate_true_power", () => {
   });
 
   it("returns null calculated power when ship overlay power is unavailable", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore({ getShipOverlay: vi.fn().mockResolvedValue(null) }),
       researchStore: createMockResearchStore(),
-    };
+    });
 
     const result = await executeFleetTool("calculate_true_power", { ship_id: "ship-enterprise" }, ctx) as Record<string, unknown>;
     expect(result.basePower).toBeNull();
@@ -1912,10 +1920,10 @@ describe("calculate_true_power", () => {
   });
 
   it("returns error for unknown ship", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({ getShip: vi.fn().mockResolvedValue(null) }),
       overlayStore: createMockOverlayStore(),
-    };
+    });
 
     const result = await executeFleetTool("calculate_true_power", { ship_id: "unknown" }, ctx);
     expect(result).toHaveProperty("error");
@@ -1924,7 +1932,7 @@ describe("calculate_true_power", () => {
 
 describe("suggest_crew", () => {
   it("gathers ship, intent, owned officers, and existing loadouts", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([FIXTURE_OFFICER_OVERLAY]),
@@ -1933,7 +1941,7 @@ describe("suggest_crew", () => {
         listLoadouts: vi.fn().mockResolvedValue([FIXTURE_LOADOUT_WITH_REFS]),
       }),
       researchStore: createMockResearchStore(),
-    };
+    });
     const result = await executeFleetTool(
       "suggest_crew", { ship_id: "ship-enterprise", intent_key: "pvp" }, ctx,
     ) as Record<string, unknown>;
@@ -1968,7 +1976,7 @@ describe("suggest_crew", () => {
   });
 
   it("works without intent_key", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -1976,7 +1984,7 @@ describe("suggest_crew", () => {
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "suggest_crew", { ship_id: "ship-enterprise" }, ctx,
     ) as Record<string, unknown>;
@@ -1993,7 +2001,7 @@ describe("suggest_crew", () => {
   });
 
   it("excludes officers locked on away teams from suggestions", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "00000000-0000-0000-0000-000000000001",
       referenceStore: createMockReferenceStore(),
       userSettingsStore: createMockUserSettingsStore(),
@@ -2003,7 +2011,7 @@ describe("suggest_crew", () => {
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
 
     const result = await executeFleetTool(
       "suggest_crew", { ship_id: "ship-enterprise", intent_key: "pvp" }, ctx,
@@ -2017,11 +2025,11 @@ describe("suggest_crew", () => {
   });
 
   it("returns error for unknown ship", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         getShip: vi.fn().mockResolvedValue(null),
       }),
-    };
+    });
     const result = await executeFleetTool("suggest_crew", { ship_id: "nonexistent" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("not found");
@@ -2061,7 +2069,7 @@ describe("analyze_battle_log", () => {
   };
 
   it("parses rounds and identifies failure point", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         getOfficer: vi.fn().mockImplementation(async (id: string) => {
           if (id === "officer-kirk") return FIXTURE_OFFICER;
@@ -2070,7 +2078,7 @@ describe("analyze_battle_log", () => {
         }),
       }),
       researchStore: createMockResearchStore(),
-    };
+    });
 
     const result = await executeFleetTool("analyze_battle_log", { battle_log: SAMPLE_BATTLE_LOG }, ctx) as Record<string, unknown>;
     expect(result.error).toBeUndefined();
@@ -2121,7 +2129,7 @@ describe("suggest_counter", () => {
       name: "Defense Specialist",
       officerAbility: "Boosts hull mitigation against kinetic damage",
     };
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         listOfficers: vi.fn().mockResolvedValue([defensiveOfficer]),
       }),
@@ -2131,7 +2139,7 @@ describe("suggest_counter", () => {
         ]),
       }),
       researchStore: createMockResearchStore(),
-    };
+    });
 
     const result = await executeFleetTool("suggest_counter", { battle_log: SAMPLE_BATTLE_LOG }, ctx) as Record<string, unknown>;
     const changes = result.recommendedChanges as Array<Record<string, unknown>>;
@@ -2144,7 +2152,7 @@ describe("suggest_counter", () => {
   });
 
   it("gracefully degrades without research store", async () => {
-    const result = await executeFleetTool("suggest_counter", { battle_log: SAMPLE_BATTLE_LOG }, {}) as Record<string, unknown>;
+    const result = await executeFleetTool("suggest_counter", { battle_log: SAMPLE_BATTLE_LOG }, toolEnv()) as Record<string, unknown>;
     expect(result.error).toBeUndefined();
     const quality = result.dataQuality as Record<string, unknown>;
     expect(quality.hasResearchContext).toBe(false);
@@ -2153,7 +2161,7 @@ describe("suggest_counter", () => {
 
 describe("analyze_fleet", () => {
   it("gathers comprehensive fleet state", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listPlanItems: vi.fn().mockResolvedValue([FIXTURE_PLAN_ITEM]),
         listLoadouts: vi.fn().mockResolvedValue([{
@@ -2161,7 +2169,7 @@ describe("analyze_fleet", () => {
           isActive: true, intentKeys: ["pvp"],
         }]),
       }),
-    };
+    });
     const result = await executeFleetTool("analyze_fleet", {}, ctx) as Record<string, unknown>;
     expect(result.totalDocks).toBe(2);
     expect(result.totalLoadouts).toBe(1);
@@ -2174,14 +2182,14 @@ describe("analyze_fleet", () => {
   });
 
   it("returns error when loadout store unavailable", async () => {
-    const result = await executeFleetTool("analyze_fleet", {}, {});
+    const result = await executeFleetTool("analyze_fleet", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
 
 describe("resolve_conflict", () => {
   it("gathers officer details, conflicts, alternatives, and cascade preview", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         listOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER, FIXTURE_SPOCK_OFFICER]),
       }),
@@ -2197,7 +2205,7 @@ describe("resolve_conflict", () => {
         ]),
         getLoadout: vi.fn().mockResolvedValue(FIXTURE_LOADOUT_WITH_REFS),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "resolve_conflict", { officer_id: "officer-kirk" }, ctx,
     ) as Record<string, unknown>;
@@ -2223,7 +2231,7 @@ describe("resolve_conflict", () => {
   });
 
   it("returns null conflict when officer has no conflicts", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         listOfficers: vi.fn().mockResolvedValue([FIXTURE_OFFICER]),
       }),
@@ -2234,7 +2242,7 @@ describe("resolve_conflict", () => {
         }),
         listLoadouts: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "resolve_conflict", { officer_id: "officer-kirk" }, ctx,
     ) as Record<string, unknown>;
@@ -2242,19 +2250,19 @@ describe("resolve_conflict", () => {
   });
 
   it("returns error for unknown officer", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         getOfficer: vi.fn().mockResolvedValue(null),
       }),
       crewStore: createMockCrewStore(),
-    };
+    });
     const result = await executeFleetTool("resolve_conflict", { officer_id: "nonexistent" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("not found");
   });
 
   it("returns error when reference store unavailable", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("resolve_conflict", { officer_id: "officer-kirk" }, ctx);
     expect(result).toHaveProperty("error");
   });
@@ -2262,7 +2270,7 @@ describe("resolve_conflict", () => {
 
 describe("what_if_remove_officer", () => {
   it("returns cascade preview for officer removal", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([
@@ -2284,7 +2292,7 @@ describe("what_if_remove_officer", () => {
           { id: 5, label: "Away Mission Alpha", awayOfficers: ["officer-kirk"], loadoutId: null, variantId: null, dockNumber: null, priority: 1, isActive: true, source: "manual", notes: null, createdAt: "2024-01-01", updatedAt: "2024-01-01" },
         ]),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "what_if_remove_officer", { officer_id: "officer-kirk" }, ctx,
     ) as Record<string, unknown>;
@@ -2302,13 +2310,13 @@ describe("what_if_remove_officer", () => {
   });
 
   it("returns zero affected when officer has no assignments", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([]),
         listPlanItems: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "what_if_remove_officer", { officer_id: "officer-kirk" }, ctx,
     ) as Record<string, unknown>;
@@ -2316,12 +2324,12 @@ describe("what_if_remove_officer", () => {
   });
 
   it("works without reference store (no officer name)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([]),
         listPlanItems: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     const result = await executeFleetTool(
       "what_if_remove_officer", { officer_id: "officer-kirk" }, ctx,
     ) as Record<string, unknown>;
@@ -2335,7 +2343,7 @@ describe("what_if_remove_officer", () => {
   });
 
   it("returns error for empty officer ID", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("what_if_remove_officer", { officer_id: "" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("required");
@@ -2363,11 +2371,11 @@ describe("list_targets", () => {
   };
 
   it("returns active targets by default", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([FIXTURE_TARGET]),
       }),
-    };
+    });
     const result = await executeFleetTool("list_targets", {}, ctx) as Record<string, unknown>;
     expect(result.totalTargets).toBe(1);
     const targets = result.targets as Array<Record<string, unknown>>;
@@ -2375,52 +2383,52 @@ describe("list_targets", () => {
     expect(targets[0].priority).toBe(1);
     expect(targets[0].status).toBe("active");
     // Verify default status filter
-    expect(ctx.targetStore!.list).toHaveBeenCalledWith({ status: "active" });
+    expect(ctx.deps.targetStore!.list).toHaveBeenCalledWith({ status: "active" });
   });
 
   it("passes target_type filter", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     await executeFleetTool("list_targets", { target_type: "ship" }, ctx);
-    expect(ctx.targetStore!.list).toHaveBeenCalledWith({
+    expect(ctx.deps.targetStore!.list).toHaveBeenCalledWith({
       targetType: "ship",
       status: "active",
     });
   });
 
   it("passes explicit status filter", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     await executeFleetTool("list_targets", { status: "achieved" }, ctx);
-    expect(ctx.targetStore!.list).toHaveBeenCalledWith({ status: "achieved" });
+    expect(ctx.deps.targetStore!.list).toHaveBeenCalledWith({ status: "achieved" });
   });
 
   it("passes both filters together", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     await executeFleetTool("list_targets", { target_type: "crew", status: "abandoned" }, ctx);
-    expect(ctx.targetStore!.list).toHaveBeenCalledWith({
+    expect(ctx.deps.targetStore!.list).toHaveBeenCalledWith({
       targetType: "crew",
       status: "abandoned",
     });
   });
 
   it("maps all target fields to response", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([FIXTURE_TARGET]),
         listReminderFeedback: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     const result = await executeFleetTool("list_targets", {}, ctx) as Record<string, unknown>;
     const target = (result.targets as Array<Record<string, unknown>>)[0];
     expect(target).toEqual({
@@ -2447,7 +2455,7 @@ describe("list_targets", () => {
   });
 
   it("includes per-target reminder continuity context", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([FIXTURE_TARGET]),
         listDeltas: vi.fn().mockResolvedValue([
@@ -2474,7 +2482,7 @@ describe("list_targets", () => {
           },
         ]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("list_targets", {}, ctx) as Record<string, unknown>;
     const target = (result.targets as Array<Record<string, unknown>>)[0];
@@ -2486,14 +2494,14 @@ describe("list_targets", () => {
   });
 
   it("returns error when target store unavailable", async () => {
-    const result = await executeFleetTool("list_targets", {}, {});
+    const result = await executeFleetTool("list_targets", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
 
 describe("get_agent_experience_metrics", () => {
   it("returns policy and observed correction metrics", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([
           { id: 11, targetType: "ship", refId: "ship-voyager", status: "active" },
@@ -2549,7 +2557,7 @@ describe("get_agent_experience_metrics", () => {
           },
         ]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("get_agent_experience_metrics", {}, ctx) as Record<string, unknown>;
     const policy = result.policy as Record<string, unknown>;
@@ -2569,14 +2577,14 @@ describe("get_agent_experience_metrics", () => {
   });
 
   it("returns error when target store unavailable", async () => {
-    const result = await executeFleetTool("get_agent_experience_metrics", {}, {});
+    const result = await executeFleetTool("get_agent_experience_metrics", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
 
 describe("suggest_targets", () => {
   it("gathers comprehensive fleet state for suggestions", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn()
@@ -2602,7 +2610,7 @@ describe("suggest_targets", () => {
           priority: 2,
         }]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
 
@@ -2641,16 +2649,16 @@ describe("suggest_targets", () => {
   });
 
   it("works with minimal context (no stores)", async () => {
-    const result = await executeFleetTool("suggest_targets", {}, {}) as Record<string, unknown>;
+    const result = await executeFleetTool("suggest_targets", {}, toolEnv()) as Record<string, unknown>;
     // Should return empty object, no errors
     expect(result).toBeDefined();
     expect(result).not.toHaveProperty("error");
   });
 
   it("works with only reference store", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
-    };
+    });
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
     expect(result.catalogSize).toEqual({ officers: 42, ships: 18 });
     expect(result).not.toHaveProperty("ownedOfficers");
@@ -2658,18 +2666,18 @@ describe("suggest_targets", () => {
   });
 
   it("works with only target store", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
     expect(result.existingTargets).toEqual([]);
     expect(result).not.toHaveProperty("catalogSize");
   });
 
   it("adds faction-gated store recommendations from faction standings", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "00000000-0000-0000-0000-000000000001",
       userSettingsStore: createMockUserSettingsStore(),
       referenceStore: createMockReferenceStore(),
@@ -2679,7 +2687,7 @@ describe("suggest_targets", () => {
           .mockResolvedValueOnce([FIXTURE_SHIP_OVERLAY])
           .mockResolvedValueOnce([]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
     const recommendations = result.storeRecommendations as Record<string, unknown>;
@@ -2706,7 +2714,7 @@ describe("suggest_targets", () => {
       }),
     });
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "00000000-0000-0000-0000-000000000001",
       userSettingsStore,
       referenceStore: createMockReferenceStore(),
@@ -2716,7 +2724,7 @@ describe("suggest_targets", () => {
           .mockResolvedValueOnce([FIXTURE_SHIP_OVERLAY])
           .mockResolvedValueOnce([]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
     const recommendations = result.storeRecommendations as Record<string, unknown>;
@@ -2731,14 +2739,14 @@ describe("detect_target_conflicts", () => {
   it("returns conflicts with summary", async () => {
     // Mock the detection: we test the detection engine separately in target-conflicts.test.ts.
     // Here we verify that the tool wiring works and returns the expected shape.
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         list: vi.fn().mockResolvedValue([]),
       }),
       crewStore: createMockCrewStore({
         listPlanItems: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     const result = await executeFleetTool("detect_target_conflicts", {}, ctx) as Record<string, unknown>;
     expect(result).toHaveProperty("conflicts");
     expect(result).toHaveProperty("summary");
@@ -2747,15 +2755,15 @@ describe("detect_target_conflicts", () => {
   });
 
   it("returns error when target store unavailable", async () => {
-    const result = await executeFleetTool("detect_target_conflicts", {}, {});
+    const result = await executeFleetTool("detect_target_conflicts", {}, toolEnv());
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Target");
   });
 
   it("returns error when crew store unavailable", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore(),
-    };
+    });
     const result = await executeFleetTool("detect_target_conflicts", {}, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Crew");
@@ -2767,9 +2775,9 @@ describe("detect_target_conflicts", () => {
 describe("update_inventory", () => {
   it("records items via upsertItems and returns confirmation", async () => {
     const upsertItems = vi.fn().mockResolvedValue({ upserted: 2, categories: 2 });
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore({ upsertItems }),
-    };
+    });
     const result = await executeFleetTool("update_inventory", {
       items: [
         { category: "ore", name: "3★ Ore", grade: "3-star", quantity: 280 },
@@ -2796,9 +2804,9 @@ describe("update_inventory", () => {
 
   it("uses custom source when provided", async () => {
     const upsertItems = vi.fn().mockResolvedValue({ upserted: 1, categories: 1 });
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore({ upsertItems }),
-    };
+    });
     await executeFleetTool("update_inventory", {
       items: [{ category: "ore", name: "Tritanium", quantity: 100 }],
       source: "translator",
@@ -2810,9 +2818,9 @@ describe("update_inventory", () => {
 
   it("trims category/name/grade before persistence", async () => {
     const upsertItems = vi.fn().mockResolvedValue({ upserted: 1, categories: 1 });
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore({ upsertItems }),
-    };
+    });
 
     await executeFleetTool("update_inventory", {
       items: [{ category: "  ORE ", name: "  Tritanium  ", grade: "  G3  ", quantity: 50 }],
@@ -2826,9 +2834,9 @@ describe("update_inventory", () => {
 
   it("returns partial success with warnings for mixed valid/invalid items", async () => {
     const upsertItems = vi.fn().mockResolvedValue({ upserted: 1, categories: 1 });
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore({ upsertItems }),
-    };
+    });
     const result = await executeFleetTool("update_inventory", {
       items: [
         { category: "ore", name: "3★ Ore", quantity: 280 },
@@ -2849,9 +2857,9 @@ describe("update_inventory", () => {
   });
 
   it("returns error when all items are invalid", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore(),
-    };
+    });
     const result = await executeFleetTool("update_inventory", {
       items: [
         { category: "invalid", name: "Bad", quantity: 1 },
@@ -2864,9 +2872,9 @@ describe("update_inventory", () => {
   });
 
   it("returns error for empty items array", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore(),
-    };
+    });
     const result = await executeFleetTool("update_inventory", {
       items: [],
     }, ctx) as Record<string, unknown>;
@@ -2876,9 +2884,9 @@ describe("update_inventory", () => {
   });
 
   it("returns error when items is not an array", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore(),
-    };
+    });
     const result = await executeFleetTool("update_inventory", {
       items: "not-an-array",
     }, ctx) as Record<string, unknown>;
@@ -2890,16 +2898,16 @@ describe("update_inventory", () => {
   it("returns error when inventory store unavailable", async () => {
     const result = await executeFleetTool("update_inventory", {
       items: [{ category: "ore", name: "3★ Ore", quantity: 280 }],
-    }, {}) as Record<string, unknown>;
+    }, toolEnv()) as Record<string, unknown>;
 
     expect(result.tool).toBe("update_inventory");
     expect(result.error).toContain("Inventory store not available");
   });
 
   it("rejects negative quantity", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore(),
-    };
+    });
     const result = await executeFleetTool("update_inventory", {
       items: [{ category: "ore", name: "3★ Ore", quantity: -5 }],
     }, ctx) as Record<string, unknown>;
@@ -2911,9 +2919,9 @@ describe("update_inventory", () => {
 
   it("accepts zero quantity (clear inventory entry)", async () => {
     const upsertItems = vi.fn().mockResolvedValue({ upserted: 1, categories: 1 });
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       inventoryStore: createMockInventoryStore({ upsertItems }),
-    };
+    });
     const result = await executeFleetTool("update_inventory", {
       items: [{ category: "ore", name: "3★ Ore", quantity: 0 }],
     }, ctx) as Record<string, unknown>;
@@ -2944,7 +2952,7 @@ describe("suggest_targets — Ready to Upgrade", () => {
 
     const ownedOverlay = { refId: "cdn:ship:enterprise", ownershipState: "owned", tier: 5 };
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         listShips: vi.fn().mockResolvedValue([shipWithTiers]),
       }),
@@ -2961,7 +2969,7 @@ describe("suggest_targets — Ready to Upgrade", () => {
           { id: 2, category: "crystal", name: "3★ Crystal", grade: "3-star", quantity: 100, unit: null, source: "chat", capturedAt: "2026-01-01", updatedAt: "2026-01-01" },
         ]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
 
@@ -2991,7 +2999,7 @@ describe("suggest_targets — Ready to Upgrade", () => {
 
     const ownedOverlay = { refId: "cdn:ship:enterprise", ownershipState: "owned", tier: 5 };
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore({
         listShips: vi.fn().mockResolvedValue([shipWithTiers]),
       }),
@@ -3007,7 +3015,7 @@ describe("suggest_targets — Ready to Upgrade", () => {
           { id: 1, category: "ore", name: "3★ Ore", grade: "3-star", quantity: 100, unit: null, source: "chat", capturedAt: "2026-01-01", updatedAt: "2026-01-01" },
         ]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
 
@@ -3016,13 +3024,13 @@ describe("suggest_targets — Ready to Upgrade", () => {
   });
 
   it("degrades gracefully when inventory store unavailable", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       referenceStore: createMockReferenceStore(),
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
         listShipOverlays: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("suggest_targets", {}, ctx) as Record<string, unknown>;
 
@@ -3036,7 +3044,7 @@ describe("suggest_targets — Ready to Upgrade", () => {
 
 describe("create_target", () => {
   it("creates an officer target with ref_id", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         listByRef: vi.fn().mockResolvedValue([]),
         create: vi.fn().mockResolvedValue({
@@ -3053,7 +3061,7 @@ describe("create_target", () => {
           achievedAt: null,
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("create_target", {
       target_type: "officer",
       ref_id: "wiki:officer:james-t-kirk",
@@ -3071,7 +3079,7 @@ describe("create_target", () => {
   });
 
   it("creates a ship target with default priority", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         listByRef: vi.fn().mockResolvedValue([]),
         create: vi.fn().mockResolvedValue({
@@ -3088,7 +3096,7 @@ describe("create_target", () => {
           achievedAt: null,
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("create_target", {
       target_type: "ship",
       ref_id: "cdn:ship:1234",
@@ -3099,7 +3107,7 @@ describe("create_target", () => {
   });
 
   it("detects duplicate active targets", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         listByRef: vi.fn().mockResolvedValue([{
           id: 5,
@@ -3110,7 +3118,7 @@ describe("create_target", () => {
           reason: "Old reason",
         }]),
       }),
-    };
+    });
     const result = await executeFleetTool("create_target", {
       target_type: "officer",
       ref_id: "wiki:officer:spock",
@@ -3122,7 +3130,7 @@ describe("create_target", () => {
   });
 
   it("allows target if existing ref_id is not active", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         listByRef: vi.fn().mockResolvedValue([{
           id: 5,
@@ -3137,7 +3145,7 @@ describe("create_target", () => {
           autoSuggested: false, createdAt: "2026-02-17", updatedAt: "2026-02-17", achievedAt: null,
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("create_target", {
       target_type: "officer",
       ref_id: "wiki:officer:spock",
@@ -3146,7 +3154,7 @@ describe("create_target", () => {
   });
 
   it("returns error for invalid target_type", async () => {
-    const ctx: ToolContext = { targetStore: createMockTargetStore() };
+    const ctx = toolEnv({ targetStore: createMockTargetStore() });
     const result = await executeFleetTool("create_target", {
       target_type: "weapon",
     }, ctx) as Record<string, unknown>;
@@ -3155,7 +3163,7 @@ describe("create_target", () => {
   });
 
   it("returns error for officer target without ref_id", async () => {
-    const ctx: ToolContext = { targetStore: createMockTargetStore() };
+    const ctx = toolEnv({ targetStore: createMockTargetStore() });
     const result = await executeFleetTool("create_target", {
       target_type: "officer",
     }, ctx) as Record<string, unknown>;
@@ -3164,11 +3172,11 @@ describe("create_target", () => {
   });
 
   it("returns error for invalid priority", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         listByRef: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
     const result = await executeFleetTool("create_target", {
       target_type: "ship",
       ref_id: "cdn:ship:1",
@@ -3188,7 +3196,7 @@ describe("create_target", () => {
 
 describe("update_target", () => {
   it("updates target priority and reason", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({
           id: 1, targetType: "officer", refId: "kirk", priority: 2, status: "active", reason: null,
@@ -3197,7 +3205,7 @@ describe("update_target", () => {
           id: 1, targetType: "officer", refId: "kirk", priority: 1, status: "active", reason: "Top priority",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("update_target", {
       target_id: 1,
       priority: 1,
@@ -3211,7 +3219,7 @@ describe("update_target", () => {
   });
 
   it("abandons a target", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({
           id: 1, targetType: "ship", refId: "enterprise", priority: 2, status: "active",
@@ -3220,7 +3228,7 @@ describe("update_target", () => {
           id: 1, targetType: "ship", refId: "enterprise", priority: 2, status: "abandoned", reason: null,
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("update_target", {
       target_id: 1,
       status: "abandoned",
@@ -3231,13 +3239,13 @@ describe("update_target", () => {
   });
 
   it("redirects achieved status to complete_target", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({
           id: 1, targetType: "officer", refId: "kirk", priority: 2, status: "active",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("update_target", {
       target_id: 1,
       status: "achieved",
@@ -3248,11 +3256,11 @@ describe("update_target", () => {
   });
 
   it("returns error for target not found", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue(null),
       }),
-    };
+    });
     const result = await executeFleetTool("update_target", {
       target_id: 999,
     }, ctx) as Record<string, unknown>;
@@ -3261,13 +3269,13 @@ describe("update_target", () => {
   });
 
   it("returns error for no update fields", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({
           id: 1, targetType: "officer", refId: "kirk", priority: 2, status: "active",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("update_target", {
       target_id: 1,
     }, ctx) as Record<string, unknown>;
@@ -3276,13 +3284,13 @@ describe("update_target", () => {
   });
 
   it("returns error for invalid priority", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({
           id: 1, targetType: "officer", refId: "kirk", priority: 2, status: "active",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("update_target", {
       target_id: 1,
       priority: 0,
@@ -3297,7 +3305,7 @@ describe("update_target", () => {
   });
 
   it("returns error for missing target_id", async () => {
-    const ctx: ToolContext = { targetStore: createMockTargetStore() };
+    const ctx = toolEnv({ targetStore: createMockTargetStore() });
     const result = await executeFleetTool("update_target", {}, ctx) as Record<string, unknown>;
     expect(result).toHaveProperty("error");
     expect((result.error as string)).toContain("target_id");
@@ -3306,7 +3314,7 @@ describe("update_target", () => {
 
 describe("complete_target", () => {
   it("marks an active target as achieved", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({
           id: 1, targetType: "officer", refId: "wiki:officer:kirk",
@@ -3318,7 +3326,7 @@ describe("complete_target", () => {
           achievedAt: "2026-02-17T12:00:00Z",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("complete_target", {
       target_id: 1,
     }, ctx) as Record<string, unknown>;
@@ -3332,14 +3340,14 @@ describe("complete_target", () => {
   });
 
   it("returns already_achieved for completed targets", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({
           id: 1, targetType: "ship", refId: "enterprise",
           status: "achieved", achievedAt: "2026-02-17",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("complete_target", {
       target_id: 1,
     }, ctx) as Record<string, unknown>;
@@ -3349,13 +3357,13 @@ describe("complete_target", () => {
   });
 
   it("returns error for abandoned targets", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({
           id: 1, targetType: "officer", refId: "kirk", status: "abandoned",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("complete_target", {
       target_id: 1,
     }, ctx) as Record<string, unknown>;
@@ -3364,11 +3372,11 @@ describe("complete_target", () => {
   });
 
   it("returns error for target not found", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue(null),
       }),
-    };
+    });
     const result = await executeFleetTool("complete_target", {
       target_id: 999,
     }, ctx) as Record<string, unknown>;
@@ -3377,7 +3385,7 @@ describe("complete_target", () => {
   });
 
   it("returns error for missing target_id", async () => {
-    const ctx: ToolContext = { targetStore: createMockTargetStore() };
+    const ctx = toolEnv({ targetStore: createMockTargetStore() });
     const result = await executeFleetTool("complete_target", {}, ctx) as Record<string, unknown>;
     expect(result).toHaveProperty("error");
     expect((result.error as string)).toContain("target_id");
@@ -3391,7 +3399,7 @@ describe("complete_target", () => {
 
 describe("record_target_delta", () => {
   it("persists correction delta and returns recalibration summary", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         get: vi.fn().mockResolvedValue({ id: 11, targetType: "ship", refId: "ship-voyager", status: "active" }),
         recordDelta: vi.fn().mockResolvedValue({
@@ -3417,7 +3425,7 @@ describe("record_target_delta", () => {
           },
         ]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("record_target_delta", {
       target_id: 11,
@@ -3434,9 +3442,9 @@ describe("record_target_delta", () => {
   });
 
   it("returns error when target is missing", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({ get: vi.fn().mockResolvedValue(null) }),
-    };
+    });
     const result = await executeFleetTool("record_target_delta", {
       target_id: 404,
       metric: "voyager_blueprints",
@@ -3448,7 +3456,7 @@ describe("record_target_delta", () => {
 
 describe("record_reminder_feedback", () => {
   it("persists reminder usefulness feedback", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         recordReminderFeedback: vi.fn().mockResolvedValue({
           id: 71,
@@ -3461,7 +3469,7 @@ describe("record_reminder_feedback", () => {
         }),
         get: vi.fn().mockResolvedValue({ id: 11, targetType: "ship", refId: "ship-voyager", status: "active" }),
       }),
-    };
+    });
 
     const result = await executeFleetTool("record_reminder_feedback", {
       reminder_key: "voyager_daily_loop",
@@ -3475,9 +3483,9 @@ describe("record_reminder_feedback", () => {
   });
 
   it("returns validation error for invalid usefulness", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore(),
-    };
+    });
 
     const result = await executeFleetTool("record_reminder_feedback", {
       reminder_key: "voyager_daily_loop",
@@ -3490,7 +3498,7 @@ describe("record_reminder_feedback", () => {
 
 describe("record_goal_restatement", () => {
   it("persists goal restatement events", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore({
         recordGoalRestatement: vi.fn().mockResolvedValue({
           id: 81,
@@ -3502,7 +3510,7 @@ describe("record_goal_restatement", () => {
         }),
         get: vi.fn().mockResolvedValue({ id: 11, targetType: "ship", refId: "ship-voyager", status: "active" }),
       }),
-    };
+    });
 
     const result = await executeFleetTool("record_goal_restatement", {
       goal_key: "voyager_blueprints",
@@ -3515,9 +3523,9 @@ describe("record_goal_restatement", () => {
   });
 
   it("returns validation error for missing goal_key", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       targetStore: createMockTargetStore(),
-    };
+    });
 
     const result = await executeFleetTool("record_goal_restatement", {
       goal_key: "",
@@ -3531,7 +3539,7 @@ describe("record_goal_restatement", () => {
 
 describe("create_bridge_core", () => {
   it("creates a bridge core with three officers", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         createBridgeCore: vi.fn().mockResolvedValue({
           id: 1,
@@ -3543,7 +3551,7 @@ describe("create_bridge_core", () => {
           ],
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("create_bridge_core", {
       name: "Alpha Bridge",
       captain: "kirk",
@@ -3565,7 +3573,7 @@ describe("create_bridge_core", () => {
   });
 
   it("returns error for missing name", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("create_bridge_core", {
       captain: "a", bridge_1: "b", bridge_2: "c",
     }, ctx);
@@ -3574,7 +3582,7 @@ describe("create_bridge_core", () => {
   });
 
   it("returns error for missing bridge slots", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("create_bridge_core", {
       name: "X", captain: "a",
     }, ctx);
@@ -3583,7 +3591,7 @@ describe("create_bridge_core", () => {
   });
 
   it("detects duplicate by name (#81)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listBridgeCores: vi.fn().mockResolvedValue([{
           id: 7, name: "Kirk Trio",
@@ -3594,7 +3602,7 @@ describe("create_bridge_core", () => {
           ],
         }]),
       }),
-    };
+    });
     const result = await executeFleetTool("create_bridge_core", {
       name: "Kirk Trio", captain: "uhura", bridge_1: "scotty", bridge_2: "sulu",
     }, ctx) as Record<string, unknown>;
@@ -3606,7 +3614,7 @@ describe("create_bridge_core", () => {
   });
 
   it("detects duplicate by member set regardless of name (#81)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listBridgeCores: vi.fn().mockResolvedValue([{
           id: 7, name: "Original Trio",
@@ -3617,7 +3625,7 @@ describe("create_bridge_core", () => {
           ],
         }]),
       }),
-    };
+    });
     // Same officers, different name and different slots
     const result = await executeFleetTool("create_bridge_core", {
       name: "TOS Bridge", captain: "mccoy", bridge_1: "kirk", bridge_2: "spock",
@@ -3628,14 +3636,14 @@ describe("create_bridge_core", () => {
   });
 
   it("detects name duplicate case-insensitively (#81)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listBridgeCores: vi.fn().mockResolvedValue([{
           id: 3, name: "PvP Crew",
           members: [{ officerId: "a", slot: "captain" }, { officerId: "b", slot: "bridge_1" }, { officerId: "c", slot: "bridge_2" }],
         }]),
       }),
-    };
+    });
     const result = await executeFleetTool("create_bridge_core", {
       name: "pvp crew", captain: "x", bridge_1: "y", bridge_2: "z",
     }, ctx) as Record<string, unknown>;
@@ -3645,7 +3653,7 @@ describe("create_bridge_core", () => {
 
 describe("create_loadout", () => {
   it("creates a loadout with ship and name", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         createLoadout: vi.fn().mockResolvedValue({
           id: 10,
@@ -3653,7 +3661,7 @@ describe("create_loadout", () => {
           shipId: "ship-enterprise",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("create_loadout", {
       ship_id: "ship-enterprise",
       name: "Mining Alpha",
@@ -3675,27 +3683,27 @@ describe("create_loadout", () => {
   });
 
   it("returns error for missing ship_id", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("create_loadout", { name: "Y" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Ship ID");
   });
 
   it("returns error for missing name", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("create_loadout", { ship_id: "x" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Name");
   });
 
   it("detects duplicate loadout by name within ship (#81)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([{
           id: 10, name: "Mining Alpha", shipId: "ship-enterprise",
         }]),
       }),
-    };
+    });
     const result = await executeFleetTool("create_loadout", {
       ship_id: "ship-enterprise", name: "Mining Alpha",
     }, ctx) as Record<string, unknown>;
@@ -3707,13 +3715,13 @@ describe("create_loadout", () => {
   });
 
   it("detects loadout name dupe case-insensitively (#81)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([{
           id: 10, name: "Mining Alpha", shipId: "ship-enterprise",
         }]),
       }),
-    };
+    });
     const result = await executeFleetTool("create_loadout", {
       ship_id: "ship-enterprise", name: "mining alpha",
     }, ctx) as Record<string, unknown>;
@@ -3721,14 +3729,14 @@ describe("create_loadout", () => {
   });
 
   it("allows same loadout name on different ships (#81)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listLoadouts: vi.fn().mockResolvedValue([]),  // empty for different ship
         createLoadout: vi.fn().mockResolvedValue({
           id: 11, name: "Mining Alpha", shipId: "ship-saladin",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("create_loadout", {
       ship_id: "ship-saladin", name: "Mining Alpha",
     }, ctx) as Record<string, unknown>;
@@ -3738,13 +3746,13 @@ describe("create_loadout", () => {
 
 describe("activate_preset", () => {
   it("returns a guided action with preset details", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         getFleetPreset: vi.fn().mockResolvedValue({
           id: 5, name: "War Preset", isActive: false, slots: [{ dockNumber: 1, loadoutId: 10 }],
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("activate_preset", { preset_id: 5 }, ctx) as Record<string, unknown>;
     expect(result.tool).toBe("activate_preset");
     expect(result.guidedAction).toBe(true);
@@ -3757,11 +3765,11 @@ describe("activate_preset", () => {
   });
 
   it("returns error when preset not found", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         getFleetPreset: vi.fn().mockResolvedValue(null),
       }),
-    };
+    });
     const result = await executeFleetTool("activate_preset", { preset_id: 999 }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("not found");
@@ -3775,7 +3783,7 @@ describe("activate_preset", () => {
 
 describe("set_reservation", () => {
   it("sets a reservation for an officer", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         setReservation: vi.fn().mockResolvedValue({
           officerId: "kirk",
@@ -3783,7 +3791,7 @@ describe("set_reservation", () => {
           locked: true,
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("set_reservation", {
       officer_id: "kirk",
       reserved_for: "PvP Crew",
@@ -3798,11 +3806,11 @@ describe("set_reservation", () => {
   });
 
   it("clears a reservation when reserved_for is empty", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         deleteReservation: vi.fn().mockResolvedValue(true),
       }),
-    };
+    });
     const result = await executeFleetTool("set_reservation", {
       officer_id: "kirk",
       reserved_for: "",
@@ -3821,7 +3829,7 @@ describe("set_reservation", () => {
   });
 
   it("returns error for missing officer_id", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("set_reservation", {
       reserved_for: "PvP",
     }, ctx);
@@ -3832,7 +3840,7 @@ describe("set_reservation", () => {
 
 describe("create_variant", () => {
   it("creates a variant with bridge overrides", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         createVariant: vi.fn().mockResolvedValue({
           id: 3,
@@ -3843,7 +3851,7 @@ describe("create_variant", () => {
           createdAt: "2024-01-01",
         }),
       }),
-    };
+    });
     const result = await executeFleetTool("create_variant", {
       loadout_id: 10,
       name: "PvP Swap",
@@ -3866,27 +3874,27 @@ describe("create_variant", () => {
   });
 
   it("returns error for missing loadout_id", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("create_variant", { name: "X" }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("loadout ID");
   });
 
   it("returns error for missing name", async () => {
-    const ctx: ToolContext = { crewStore: createMockCrewStore() };
+    const ctx = toolEnv({ crewStore: createMockCrewStore() });
     const result = await executeFleetTool("create_variant", { loadout_id: 10 }, ctx);
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toContain("Name");
   });
 
   it("detects duplicate variant by name within loadout (#81)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listVariants: vi.fn().mockResolvedValue([{
           id: 3, name: "PvP Swap", baseLoadoutId: 10,
         }]),
       }),
-    };
+    });
     const result = await executeFleetTool("create_variant", {
       loadout_id: 10, name: "PvP Swap", captain: "uhura",
     }, ctx) as Record<string, unknown>;
@@ -3898,13 +3906,13 @@ describe("create_variant", () => {
   });
 
   it("detects variant name dupe case-insensitively (#81)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listVariants: vi.fn().mockResolvedValue([{
           id: 3, name: "PvP Swap", baseLoadoutId: 10,
         }]),
       }),
-    };
+    });
     const result = await executeFleetTool("create_variant", {
       loadout_id: 10, name: "pvp swap",
     }, ctx) as Record<string, unknown>;
@@ -3914,9 +3922,9 @@ describe("create_variant", () => {
 
 describe("get_effective_state", () => {
   it("returns effective dock state with conflicts", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore(),
-    };
+    });
     const result = await executeFleetTool("get_effective_state", {}, ctx) as Record<string, unknown>;
     expect(result.tool).toBe("get_effective_state");
     const summary = result.summary as Record<string, unknown>;
@@ -3930,13 +3938,13 @@ describe("get_effective_state", () => {
   });
 
   it("includes active preset when available", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       crewStore: createMockCrewStore({
         listFleetPresets: vi.fn().mockResolvedValue([
           { id: 1, name: "War Config", isActive: true },
         ]),
       }),
-    };
+    });
     const result = await executeFleetTool("get_effective_state", {}, ctx) as Record<string, unknown>;
     expect(result.tool).toBe("get_effective_state");
     const preset = result.activePreset as Record<string, unknown>;
@@ -3945,7 +3953,7 @@ describe("get_effective_state", () => {
   });
 
   it("returns error when crew store unavailable", async () => {
-    const result = await executeFleetTool("get_effective_state", {}, {});
+    const result = await executeFleetTool("get_effective_state", {}, toolEnv());
     expect(result).toHaveProperty("error");
   });
 });
@@ -3954,9 +3962,9 @@ describe("get_effective_state", () => {
 
 describe("sync_overlay", () => {
   it("returns error for unsupported export schema version", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       overlayStore: createMockOverlayStore(),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: {
@@ -3970,12 +3978,12 @@ describe("sync_overlay", () => {
 
   it("warns when export date is stale", async () => {
     const staleDate = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString();
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
         listShipOverlays: vi.fn().mockResolvedValue([]),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: {
@@ -3993,7 +4001,7 @@ describe("sync_overlay", () => {
   });
 
   it("returns dry-run diff summary without applying", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([
           {
@@ -4014,7 +4022,7 @@ describe("sync_overlay", () => {
         getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
         getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: {
@@ -4103,7 +4111,7 @@ describe("sync_overlay", () => {
       updatedAt: "2026-01-01T00:00:00Z",
     });
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4171,7 +4179,7 @@ describe("sync_overlay", () => {
         updatePlanItem,
       }),
       receiptStore: createMockReceiptStore({ createReceipt }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       payload_json: JSON.stringify({
@@ -4219,7 +4227,7 @@ describe("sync_overlay", () => {
       updatedAt: "2026-01-01T00:00:00Z",
     });
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
         listShipOverlays: vi.fn().mockResolvedValue([]),
@@ -4230,7 +4238,7 @@ describe("sync_overlay", () => {
         searchShips: vi.fn().mockResolvedValue([FIXTURE_SHIP]),
         getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: { version: "1.0" },
@@ -4266,7 +4274,7 @@ describe("sync_overlay", () => {
       { ...FIXTURE_SHIP, id: "cdn:ship:4", name: "Sarcophagus", maxTier: 12, maxLevel: 45 },
     ];
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4277,7 +4285,7 @@ describe("sync_overlay", () => {
         listShips: vi.fn().mockResolvedValue(ships),
         getShip: vi.fn().mockImplementation(async (id: string) => ships.find((ship) => ship.id === id) ?? null),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: { version: "1.0" },
@@ -4325,7 +4333,7 @@ describe("sync_overlay", () => {
       { ...FIXTURE_OFFICER, id: "cdn:officer:3", name: "Bones", maxRank: 4 },
     ];
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4336,7 +4344,7 @@ describe("sync_overlay", () => {
         listOfficers: vi.fn().mockResolvedValue(officers),
         getOfficer: vi.fn().mockImplementation(async (id: string) => officers.find((officer) => officer.id === id) ?? null),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: { version: "1.0" },
@@ -4382,7 +4390,7 @@ describe("sync_overlay", () => {
       { ...FIXTURE_SHIP, id: "cdn:ship:2", name: "D'Vor", maxTier: 9, maxLevel: 40 },
     ];
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4393,7 +4401,7 @@ describe("sync_overlay", () => {
         listShips: vi.fn().mockResolvedValue(ships),
         getShip: vi.fn().mockImplementation(async (id: string) => ships.find((s) => s.id === id) ?? null),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: { version: "1.0" },
@@ -4412,7 +4420,7 @@ describe("sync_overlay", () => {
       { ...FIXTURE_SHIP, id: "cdn:ship:1", name: "Enterprise", maxTier: 10, maxLevel: 45 },
     ];
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4423,7 +4431,7 @@ describe("sync_overlay", () => {
         listShips: vi.fn().mockResolvedValue(ships),
         getShip: vi.fn().mockImplementation(async (id: string) => ships.find((s) => s.id === id) ?? null),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: { version: "1.0" },
@@ -4456,7 +4464,7 @@ describe("sync_overlay", () => {
       { ...FIXTURE_OFFICER, id: "cdn:officer:2", name: "Unknown Cadet", maxRank: null },
     ];
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4467,7 +4475,7 @@ describe("sync_overlay", () => {
         listOfficers: vi.fn().mockResolvedValue(officers),
         getOfficer: vi.fn().mockImplementation(async (id: string) => officers.find((o) => o.id === id) ?? null),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: { version: "1.0" },
@@ -4496,7 +4504,7 @@ describe("sync_overlay", () => {
   });
 
   it("accepts export object shaped exactly as declared schema (Gemini path)", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4506,7 +4514,7 @@ describe("sync_overlay", () => {
         getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
         getShip: vi.fn().mockResolvedValue(FIXTURE_SHIP),
       }),
-    };
+    });
 
     // Shape matches exactly what Gemini would construct from the declared schema
     const result = await executeFleetTool("sync_overlay", {
@@ -4572,7 +4580,7 @@ describe("sync_overlay", () => {
       updatedAt: "2026-01-01T00:00:00Z",
     });
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4617,7 +4625,7 @@ describe("sync_overlay", () => {
           createdAt: "2026-01-01T00:00:00Z",
         }),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: {
@@ -4649,7 +4657,7 @@ describe("sync_overlay", () => {
       owned: true,
     }));
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: "test-user",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -4658,7 +4666,7 @@ describe("sync_overlay", () => {
       referenceStore: createMockReferenceStore({
         getOfficer: vi.fn().mockResolvedValue(FIXTURE_OFFICER),
       }),
-    };
+    });
 
     const result = await executeFleetTool("sync_overlay", {
       export: {
@@ -4706,9 +4714,9 @@ describe("sync_research", () => {
 
   it("returns preview in dry-run mode by default", async () => {
     const replaceSnapshot = vi.fn();
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       researchStore: createMockResearchStore({ replaceSnapshot }),
-    };
+    });
 
     const result = await executeFleetTool("sync_research", { export: RESEARCH_EXPORT }, ctx) as Record<string, unknown>;
     expect(result.tool).toBe("sync_research");
@@ -4721,9 +4729,9 @@ describe("sync_research", () => {
 
   it("applies snapshot when dry_run=false", async () => {
     const replaceSnapshot = vi.fn().mockResolvedValue({ nodes: 1, trees: 1 });
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       researchStore: createMockResearchStore({ replaceSnapshot }),
-    };
+    });
 
     const result = await executeFleetTool("sync_research", {
       payload_json: JSON.stringify(RESEARCH_EXPORT),
@@ -4736,9 +4744,9 @@ describe("sync_research", () => {
   });
 
   it("validates schema version", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       researchStore: createMockResearchStore(),
-    };
+    });
     const result = await executeFleetTool("sync_research", {
       export: { schema_version: "2.0", nodes: [], state: [] },
     }, ctx) as Record<string, unknown>;
@@ -4748,9 +4756,9 @@ describe("sync_research", () => {
   });
 
   it("returns parse error for invalid payload_json", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       researchStore: createMockResearchStore(),
-    };
+    });
     const result = await executeFleetTool("sync_research", {
       payload_json: "{ not-json",
     }, ctx) as Record<string, unknown>;
@@ -4760,9 +4768,9 @@ describe("sync_research", () => {
   });
 
   it("validates node buff fields", async () => {
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       researchStore: createMockResearchStore(),
-    };
+    });
     const invalidExport = {
       schema_version: "1.0",
       nodes: [
@@ -4803,11 +4811,11 @@ describe("set_ship_overlay", () => {
       target: true,
       targetNote: "Priority upgrade",
     };
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       overlayStore: createMockOverlayStore({
         setShipOverlay: vi.fn().mockResolvedValue(mockOverlay),
       }),
-    };
+    });
     const result = await executeFleetTool("set_ship_overlay", {
       ship_id: "cdn:ship:12345",
       ownership_state: "owned",
@@ -4839,11 +4847,11 @@ describe("set_ship_overlay", () => {
       target: null,
       targetNote: null,
     };
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       overlayStore: createMockOverlayStore({
         setShipOverlay: vi.fn().mockResolvedValue(mockOverlay),
       }),
-    };
+    });
     const result = await executeFleetTool("set_ship_overlay", {
       ship_id: "cdn:ship:999",
       tier: 5,
@@ -4858,7 +4866,7 @@ describe("set_ship_overlay", () => {
   });
 
   it("returns error for missing ship_id", async () => {
-    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const ctx = toolEnv({ overlayStore: createMockOverlayStore() });
     const result = await executeFleetTool("set_ship_overlay", {
       tier: 9,
     }, ctx) as Record<string, unknown>;
@@ -4867,7 +4875,7 @@ describe("set_ship_overlay", () => {
   });
 
   it("returns error for invalid ownership_state", async () => {
-    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const ctx = toolEnv({ overlayStore: createMockOverlayStore() });
     const result = await executeFleetTool("set_ship_overlay", {
       ship_id: "cdn:ship:123",
       ownership_state: "maybe",
@@ -4895,11 +4903,11 @@ describe("set_officer_overlay", () => {
       target: false,
       targetNote: null,
     };
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       overlayStore: createMockOverlayStore({
         setOfficerOverlay: vi.fn().mockResolvedValue(mockOverlay),
       }),
-    };
+    });
     const result = await executeFleetTool("set_officer_overlay", {
       officer_id: "cdn:officer:98765",
       ownership_state: "owned",
@@ -4930,11 +4938,11 @@ describe("set_officer_overlay", () => {
       target: null,
       targetNote: null,
     };
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       overlayStore: createMockOverlayStore({
         setOfficerOverlay: vi.fn().mockResolvedValue(mockOverlay),
       }),
-    };
+    });
     const result = await executeFleetTool("set_officer_overlay", {
       officer_id: "cdn:officer:111",
       level: 35,
@@ -4949,7 +4957,7 @@ describe("set_officer_overlay", () => {
   });
 
   it("returns error for missing officer_id", async () => {
-    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const ctx = toolEnv({ overlayStore: createMockOverlayStore() });
     const result = await executeFleetTool("set_officer_overlay", {
       level: 50,
     }, ctx) as Record<string, unknown>;
@@ -4958,7 +4966,7 @@ describe("set_officer_overlay", () => {
   });
 
   it("returns error for invalid ownership_state", async () => {
-    const ctx: ToolContext = { overlayStore: createMockOverlayStore() };
+    const ctx = toolEnv({ overlayStore: createMockOverlayStore() });
     const result = await executeFleetTool("set_officer_overlay", {
       officer_id: "cdn:officer:123",
       ownership_state: "perhaps",
@@ -5006,7 +5014,7 @@ describe("user isolation — scoped stores", () => {
       updatedAt: "2026-01-01T00:00:00Z",
     });
 
-    const ctx: ToolContext = {
+    const ctx = toolEnv({
       userId: USER_A,
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -5017,7 +5025,7 @@ describe("user isolation — scoped stores", () => {
         getShip: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP, id: "cdn:ship:1", name: "Enterprise" }),
       }),
       receiptStore: createMockReceiptStore({ createReceipt }),
-    };
+    });
 
     await executeFleetTool("sync_overlay", {
       export: { version: "1.0", ships: [{ refId: "cdn:ship:1", tier: 5, owned: true }] },
@@ -5045,7 +5053,7 @@ describe("user isolation — scoped stores", () => {
       }),
     });
 
-    const ctxA: ToolContext = {
+    const ctxA = toolEnv({
       userId: USER_A,
       overlayStore: overlayA,
       referenceStore: createMockReferenceStore(),
@@ -5054,9 +5062,9 @@ describe("user isolation — scoped stores", () => {
       receiptStore: createMockReceiptStore(),
       researchStore: createMockResearchStore(),
       inventoryStore: createMockInventoryStore(),
-    };
+    });
 
-    const ctxB: ToolContext = {
+    const ctxB = toolEnv({
       userId: USER_B,
       overlayStore: overlayB,
       referenceStore: createMockReferenceStore(),
@@ -5065,7 +5073,7 @@ describe("user isolation — scoped stores", () => {
       receiptStore: createMockReceiptStore(),
       researchStore: createMockResearchStore(),
       inventoryStore: createMockInventoryStore(),
-    };
+    });
 
     const resultA = await executeFleetTool("get_fleet_overview", {}, ctxA) as Record<string, unknown>;
     const resultB = await executeFleetTool("get_fleet_overview", {}, ctxB) as Record<string, unknown>;
@@ -5093,16 +5101,16 @@ describe("user isolation — scoped stores", () => {
       updatedAt: "2026-01-01",
     });
 
-    const ctxA: ToolContext = {
+    const ctxA = toolEnv({
       userId: USER_A,
       overlayStore: createMockOverlayStore({ setShipOverlay: setShipA }),
       referenceStore: createMockReferenceStore(),
-    };
-    const ctxB: ToolContext = {
+    });
+    const ctxB = toolEnv({
       userId: USER_B,
       overlayStore: createMockOverlayStore({ setShipOverlay: setShipB }),
       referenceStore: createMockReferenceStore(),
-    };
+    });
 
     await executeFleetTool("set_ship_overlay", {
       ship_id: "cdn:ship:1", tier: 5,
@@ -5132,22 +5140,22 @@ describe("user isolation — scoped stores", () => {
       createdAt: "2026-01-01", updatedAt: "2026-01-01",
     });
 
-    const ctxA: ToolContext = {
+    const ctxA = toolEnv({
       userId: USER_A,
       targetStore: createMockTargetStore({
         create: createA,
         listByRef: vi.fn().mockResolvedValue([]),
       }),
       referenceStore: createMockReferenceStore(),
-    };
-    const ctxB: ToolContext = {
+    });
+    const ctxB = toolEnv({
       userId: USER_B,
       targetStore: createMockTargetStore({
         create: createB,
         listByRef: vi.fn().mockResolvedValue([]),
       }),
       referenceStore: createMockReferenceStore(),
-    };
+    });
 
     await executeFleetTool("create_target", {
       ref_id: "officer-kirk", target_type: "officer",
@@ -5188,8 +5196,8 @@ describe("user isolation — scoped stores", () => {
       counts: vi.fn().mockResolvedValue({ nodes: 1, trees: 1, completed: 0 }),
     });
 
-    const ctxA: ToolContext = { userId: USER_A, researchStore: researchA };
-    const ctxB: ToolContext = { userId: USER_B, researchStore: researchB };
+    const ctxA = toolEnv({ userId: USER_A, researchStore: researchA });
+    const ctxB = toolEnv({ userId: USER_B, researchStore: researchB });
 
     const resultA = await executeFleetTool("list_research", {}, ctxA) as Record<string, unknown>;
     const resultB = await executeFleetTool("list_research", {}, ctxB) as Record<string, unknown>;
@@ -5223,8 +5231,8 @@ describe("user isolation — scoped stores", () => {
       counts: vi.fn().mockResolvedValue({ items: 1, categories: 1 }),
     });
 
-    const ctxA: ToolContext = { userId: USER_A, inventoryStore: inventoryA };
-    const ctxB: ToolContext = { userId: USER_B, inventoryStore: inventoryB };
+    const ctxA = toolEnv({ userId: USER_A, inventoryStore: inventoryA });
+    const ctxB = toolEnv({ userId: USER_B, inventoryStore: inventoryB });
 
     const resultA = await executeFleetTool("list_inventory", {}, ctxA) as Record<string, unknown>;
     const resultB = await executeFleetTool("list_inventory", {}, ctxB) as Record<string, unknown>;
@@ -5247,8 +5255,8 @@ describe("user isolation — crew store & receipt store (resolved: #94)", () => 
     const crewStoreA = createMockCrewStore();
     const crewStoreB = createMockCrewStore();
 
-    const ctxA: ToolContext = { userId: "user-alpha", crewStore: crewStoreA };
-    const ctxB: ToolContext = { userId: "user-bravo", crewStore: crewStoreB };
+    const ctxA = toolEnv({ userId: "user-alpha", crewStore: crewStoreA });
+    const ctxB = toolEnv({ userId: "user-bravo", crewStore: crewStoreB });
 
     await executeFleetTool("list_docks", {}, ctxA);
     await executeFleetTool("list_docks", {}, ctxB);
@@ -5268,7 +5276,7 @@ describe("user isolation — crew store & receipt store (resolved: #94)", () => 
       updatedAt: "2026-01-01",
     });
 
-    const ctxA: ToolContext = {
+    const ctxA = toolEnv({
       userId: "user-alpha",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -5279,8 +5287,8 @@ describe("user isolation — crew store & receipt store (resolved: #94)", () => 
         getShip: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP, id: "cdn:ship:1" }),
       }),
       receiptStore: receiptStoreA,
-    };
-    const ctxB: ToolContext = {
+    });
+    const ctxB = toolEnv({
       userId: "user-bravo",
       overlayStore: createMockOverlayStore({
         listOfficerOverlays: vi.fn().mockResolvedValue([]),
@@ -5295,7 +5303,7 @@ describe("user isolation — crew store & receipt store (resolved: #94)", () => 
         getShip: vi.fn().mockResolvedValue({ ...FIXTURE_SHIP, id: "cdn:ship:2" }),
       }),
       receiptStore: receiptStoreB,
-    };
+    });
 
     await executeFleetTool("sync_overlay", {
       export: { version: "1.0", ships: [{ refId: "cdn:ship:1", tier: 5, owned: true }] },

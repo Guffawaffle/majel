@@ -181,7 +181,7 @@ export function createProposalRoutes(appState: AppState): Router {
           const trustLevel = await getTrustLevel(
             item.tool,
             userId,
-            toolContext.userSettingsStore,
+            toolContext.deps.userSettingsStore,
           );
           if (trustLevel === "block") {
             return sendFail(
@@ -221,7 +221,7 @@ export function createProposalRoutes(appState: AppState): Router {
         const trustLevel = await getTrustLevel(
           proposal.tool,
           userId,
-          toolContext.userSettingsStore,
+          toolContext.deps.userSettingsStore,
         );
         if (trustLevel === "block") {
           return sendFail(

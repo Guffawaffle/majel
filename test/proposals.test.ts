@@ -86,13 +86,15 @@ function createMockToolContextFactory(): ToolContextFactory {
   return {
     forUser: vi.fn().mockReturnValue({
       userId: "local",
-      referenceStore: null,
-      overlayStore: null,
-      crewStore: null,
-      targetStore: null,
-      receiptStore: null,
-      researchStore: null,
-      inventoryStore: null,
+      deps: {
+        referenceStore: null,
+        overlayStore: null,
+        crewStore: null,
+        targetStore: null,
+        receiptStore: null,
+        researchStore: null,
+        inventoryStore: null,
+      },
     }),
   };
 }
