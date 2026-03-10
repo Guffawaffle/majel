@@ -15,6 +15,7 @@ import { toolRegistry } from "./tool-registry.js";
 export { FLEET_TOOL_DECLARATIONS, type ToolEnv, type ToolContext, type ResolvedStores, type ToolContextFactory } from "./declarations.js";
 export { toolRegistry } from "./tool-registry.js";
 export { type ToolDef, type DepKey } from "./define-tool.js";
+export { toClaudeTools, type ClaudeToolDef } from "./claude-tool-adapter.js";
 
 // ─── Dispatcher ─────────────────────────────────────────────
 
