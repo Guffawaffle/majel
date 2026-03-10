@@ -46,7 +46,7 @@ function makeMockMemory(frames: Frame[] = []): MemoryService {
 
 function makeMockEngine(response = "Aye, Admiral."): GeminiEngine {
   const sessions = new Map<string, Array<{ role: string; text: string }>>();
-  let currentModel = "gemini-3-flash-preview";
+  let currentModel = "gemini-3-pro-preview";
   const getSessionHistory = (sid: string) => {
     if (!sessions.has(sid)) sessions.set(sid, []);
     return sessions.get(sid)!;
@@ -916,7 +916,7 @@ describe("GET /api/diagnostic", () => {
     const app = createApp(makeState({ geminiEngine: engine }));
     const res = await testRequest(app).get("/api/diagnostic");
     expect(res.body.data.gemini.status).toBe("connected");
-    expect(res.body.data.gemini.model).toBe("gemini-3-flash-preview");
+    expect(res.body.data.gemini.model).toBe("gemini-3-pro-preview");
     expect(res.body.data.gemini.activeSessions).toBe(1);
   });
 

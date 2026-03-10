@@ -147,10 +147,8 @@
     textareaEl?.focus();
   }
 
-  // Tier → dollar signs
-  const tierLabel: Record<string, string> = {
-    budget: "$", balanced: "$$", thinking: "$$", premium: "$$$$", frontier: "$$$$$",
-  };
+  // Cost → star display (1★ cheapest, 5★ most expensive)
+  function costStars(cost: number): string { return "★".repeat(cost); }
 </script>
 
 <svelte:document onclick={handleDocClick} onkeydown={handleDocKeydown} />
@@ -240,7 +238,7 @@
               <div class="model-card-header">
                 <span class="model-card-name">{model.name}</span>
                 {#if model.thinking}<span class="model-thinking">🧠</span>{/if}
-                <span class="model-tier-badge tier-{model.tier}">{tierLabel[model.tier] ?? "$$"}</span>
+                <span class="model-tier-badge tier-{model.tier}">{costStars(model.costRelative)}</span>
               </div>
               <div class="model-card-desc">{model.description}</div>
               <div class="model-card-meta">

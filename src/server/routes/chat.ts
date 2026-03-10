@@ -760,30 +760,49 @@ export function createChatRoutes(appState: AppState): Router {
    * Returns the full registry + which model is currently active.
    */
   router.get("/api/models", requireAdmiral(appState), async (_req, res) => {
-    const current = LOCKED_MODEL_ID;
-    const lockedDef = getModelDef(LOCKED_MODEL_ID);
+    const engine = appState.geminiEngine;
+    const current = engine ? engine.getModel() : LOCKED_MODEL_ID;
+    const currentDef = getModelDef(current);
 
     sendOk(res, {
       current,
       defaultModel: LOCKED_MODEL_ID,
-      currentDef: lockedDef,
-      locked: true,
-      models: MODEL_REGISTRY
-        .filter((m) => m.id === LOCKED_MODEL_ID)
-        .map((m) => ({
-          ...m,
-          active: true,
-        })),
+      currentDef,
+      locked: false,
+      models: MODEL_REGISTRY.map((m) => ({
+        ...m,
+        active: m.id === current,
+      })),
     });
   });
 
   /**
-   * POST /api/models/select — disabled while model is pinned.
+   * POST /api/models/select — Admiral hot-swaps the active model.
+   * Clears all chat sessions (new model = fresh context).
    */
-  router.post("/api/models/select", requireAdmiral(appState), async (_req, res) => {
-    return sendFail(res, ErrorCode.INSUFFICIENT_RANK, `Model selection is disabled. Locked model: ${LOCKED_MODEL_ID}`, 403, {
-      detail: { requiredRole: "admiral", lockedModel: LOCKED_MODEL_ID },
-      hints: ["Model is pinned for reliability and consistency"],
+  router.post("/api/models/select", requireAdmiral(appState), async (req, res) => {
+    const { model: modelId } = req.body as { model?: string };
+    if (!modelId || typeof modelId !== "string") {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Missing 'model' in request body", 400);
+    }
+    const def = getModelDef(modelId);
+    if (!def) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown model: ${modelId}. Valid: ${MODEL_REGISTRY.map((m) => m.id).join(", ")}`, 400);
+    }
+    const engine = appState.geminiEngine;
+    if (!engine) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Gemini engine not initialized", 500);
+    }
+    const previousModel = engine.getModel();
+    const sessionsCleared = engine.getSessionCount();
+    engine.setModel(modelId);
+    log.gemini.info({ previousModel, newModel: modelId, sessionsCleared }, "admin:model:switch");
+    sendOk(res, {
+      previousModel,
+      currentModel: modelId,
+      modelDef: def,
+      sessionsCleared,
+      hints: [`Switched to ${def.name}. ${sessionsCleared} session(s) cleared.`],
     });
   });
 

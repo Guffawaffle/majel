@@ -96,4 +96,4 @@ export function resolveModelId(modelId: string | undefined | null): string {
   return DEFAULT_MODEL;
 }
 
-export const DEFAULT_MODEL = "gemini-3-flash-preview";
+export const DEFAULT_MODEL = "gemini-3-pro-preview";

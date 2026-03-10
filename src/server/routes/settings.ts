@@ -56,8 +56,8 @@ export function createSettingsRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Too many settings in one request (max 50)", 400);
     }
     if (keys.includes("model.name")) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Setting \"model.name\" is locked to gemini-3-flash-preview", 400, {
-        hints: ["Model selection is disabled for reliability and consistency"],
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Use the model selector (POST /api/models/select) to change models", 400, {
+        hints: ["Model switching is managed via the model selector, not settings"],
       });
     }
     for (const [key, value] of Object.entries(updates)) {
