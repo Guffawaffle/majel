@@ -13,6 +13,7 @@
 
 import { log } from "../logger.js";
 import type { BehaviorStore } from "../stores/behavior-store.js";
+import { sanitizeForModel } from "./gemini/sanitize.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -344,11 +345,9 @@ export function buildAugmentedMessage(
 ): string {
   if (!gatedContext.contextBlock) return userMessage;
 
-  // Strip context frame markers from user input to prevent delimiter injection.
-  // An attacker could inject fake [CONTEXT] blocks to manipulate the model.
-  const sanitized = userMessage
-    .replace(/\[CONTEXT FOR THIS QUERY[^\]]*\]/gi, "[user text redacted]")
-    .replace(/\[END CONTEXT\]/gi, "[user text redacted]");
+  // Strip prompt-injection markers from user input (ADR-040).
+  // An attacker could inject fake context/config blocks to manipulate the model.
+  const sanitized = sanitizeForModel(userMessage);
 
   return `${gatedContext.contextBlock}\n\n${sanitized}`;
 }

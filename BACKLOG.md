@@ -18,8 +18,8 @@
 
 ## Current PM Focus
 
-- **Top active program target:** #188 — Request Context & Scoped Database Execution (ADR-039). Foundation-level infrastructure investment.
-- **Recently completed:** #187 — `stfc.space` crawler hardening (polite crawl cadence, conditional requests, IPv4 enforcement).
+- **Top active program target:** #194 — Security Hardening Post-Audit (ADR-040). LLM prompt injection hardening, diagnostic endpoint audit logging, dev-mode auth safety.
+- **Recently completed:** #188 — Request Context & Scoped Database Execution (ADR-039). Phases 0–9 shipped; Phase 10 remaining.
 - **Top QA tranche:** #161, #165.
 - **Recently shipped:** diagnostics overlay scope clarity (#162), Admiral verification actions (#163), recommender exclusion mode (#167), captain/resource-specific mining fixes (#169), review-driven fleet-tool output hardening, WSL2 auto-start for postgres.
 - **Operational note:** deploys are live again; use normal `ax ci` + push gate, not the old guided-setup hold marker.
@@ -27,7 +27,34 @@
 
 ---
 
-## Active Program — Request Context & Scoped DB Execution (ADR-039, #188)
+## Active Program — Security Hardening Post-Audit (ADR-040, #194)
+
+**Program umbrella:** #194  
+**Linked ADR:** [docs/ADR-040-prompt-injection-hardening.md](docs/ADR-040-prompt-injection-hardening.md)  
+**Audit date:** 2026-03-10  
+**Audit scope:** SQL injection, prompt injection, auth/session, XSS, SSRF/access control
+
+### Audit Summary
+
+Strong foundations across traditional web security (parameterized SQL, CSP, RLS, Argon2id, timing-safe tokens). Primary gap is LLM-specific: prompt injection sanitization covers only a subset of system prompt delimiters.
+
+### Sequenced Implementation Plan
+
+| Priority | Issue | Title | Status |
+|---|---|---|---|
+| P0 | #195 | Prompt injection sanitization hardening — unified `sanitizeForModel()` | [ ] Not started |
+| P1 | #196 | Diagnostic query endpoint: audit logging and rate limiting | [ ] Not started |
+| P2 | #197 | Dev-mode auth bypass: explicit startup warning and safety guard | [ ] Not started |
+
+### Definition of Done
+
+- [ ] All P0/P1 issues resolved and merged
+- [ ] P2 addressed or explicitly deferred
+- [ ] `npm run ax -- ci` passes after all changes
+
+---
+
+## Completed Program — Request Context & Scoped DB Execution (ADR-039, #188)
 
 **Program umbrella:** #188  
 **Linked ADR:** [docs/ADR-039-request-context.md](docs/ADR-039-request-context.md)  

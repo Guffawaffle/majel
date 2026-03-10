@@ -10,6 +10,7 @@
  * Migrated to PostgreSQL in ADR-018 Phase 3.
  */
 
+import { createHash } from "node:crypto";
 import type { Router } from "express";
 import type { Pool } from "../db.js";
 import type { AppState } from "../app-context.js";
@@ -17,6 +18,7 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral } from "../services/auth.js";
 import { createContextMiddleware } from "../context-middleware.js";
+import { diagnosticRateLimiter } from "../rate-limit.js";
 import { log } from "../logger.js";
 
 type OwnershipBreakdownRow = { ownership_state: string; count: string | number };
@@ -77,6 +79,7 @@ function isSafeQuery(sql: string): { safe: boolean; reason?: string } {
 export function createDiagnosticQueryRoutes(appState: AppState): Router {
   const router = createSafeRouter();
   router.use("/api/diagnostic", requireAdmiral(appState));
+  router.use("/api/diagnostic/query", diagnosticRateLimiter);
   if (appState.pool) {
     router.use("/api/diagnostic", createContextMiddleware(appState.pool));
   }
@@ -227,6 +230,19 @@ export function createDiagnosticQueryRoutes(appState: AppState): Router {
       const columns = result.fields.map((f) => f.name);
 
       const durationMs = Math.round((performance.now() - start) * 100) / 100;
+
+      // Audit log: identity + execution metadata, hash instead of raw SQL (#196)
+      const userId = res.locals.ctx?.identity.userId ?? res.locals.userId ?? "unknown";
+      const sqlHash = createHash("sha256").update(sql).digest("hex").slice(0, 16);
+      log.http.info({
+        event: "diagnostic_query",
+        userId,
+        sqlHash,
+        queryLength: sql.length,
+        rowCount: rows.length,
+        truncated,
+        durationMs,
+      }, "diagnostic query executed");
 
       sendOk(res, {
         columns,

@@ -642,6 +642,13 @@ async function boot(): Promise<void> {
 
   state.startupComplete = true;
 
+  // Auth bypass banner (#197): make implicit dev-mode behavior visible
+  if (!state.config.authEnabled) {
+    log.boot.warn(
+      "⚠️  AUTH DISABLED — all requests run as admiral. Set MAJEL_ADMIN_TOKEN to enable authentication.",
+    );
+  }
+
   // Close admin pool — DDL/schema init is done, no more superuser access needed at runtime.
   // This prevents accidental RLS bypass via adminPool reference.
   if (state.adminPool) {

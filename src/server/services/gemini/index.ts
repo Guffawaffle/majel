@@ -34,6 +34,7 @@ import type { BatchItem } from "../../stores/proposal-store.js";
 import type { UserSettingsStore } from "../../stores/user-settings-store.js";
 import { MODEL_REGISTRY, MODEL_REGISTRY_MAP, resolveModelId } from "./model-registry.js";
 import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
+import { sanitizeForModel } from "./sanitize.js";
 import { canonicalStringify } from "../../util/canonical-json.js";
 
 // ─── Retry helper for transient Gemini API errors ─────────────
@@ -311,18 +312,15 @@ export function createGeminiEngine(
   /** Max rounds of function calling before forcing a text response */
   const MAX_TOOL_ROUNDS = 5;
 
-  /**
-   * Patterns that could be used for prompt injection via data-poisoned
-   * tool responses (e.g., a malicious officer name containing instructions).
-   * We sanitize these from all string values before feeding back to the model.
-   */
-  const INJECTION_PATTERNS = /\[(SYSTEM|CONTEXT|END CONTEXT|INSTRUCTION)[^\]]*\]|<\/?system>|<\/?instruction>/gi;
   const MAX_FIELD_LENGTH = 500;
 
-  /** Deep-sanitize tool response objects before feeding them to the model */
+  /**
+   * Deep-sanitize tool response objects before feeding them to the model.
+   * Uses sanitizeForModel() (ADR-040) to strip prompt-injection markers.
+   */
   function sanitizeToolResponse(obj: unknown): unknown {
     if (typeof obj === "string") {
-      let s = obj.replace(INJECTION_PATTERNS, "");
+      let s = sanitizeForModel(obj);
       if (s.length > MAX_FIELD_LENGTH) s = s.slice(0, MAX_FIELD_LENGTH) + "…";
       return s;
     }
@@ -352,23 +350,30 @@ export function createGeminiEngine(
 
   /** Generate a human-readable preview string for a mutation tool call. */
   function generatePreview(toolName: string, args: Record<string, unknown>): string {
+    /** Sanitize + truncate a single arg value for preview interpolation. */
+    const s = (v: unknown): string => {
+      const raw = String(v ?? "?");
+      const clean = sanitizeForModel(raw);
+      return clean.length > 100 ? clean.slice(0, 100) + "…" : clean;
+    };
+
     switch (toolName) {
       case "create_bridge_core":
-        return `Create bridge core "${args.name ?? "?"}" — Captain: ${args.captain ?? "?"}, Bridge: ${args.bridge_1 ?? "?"} + ${args.bridge_2 ?? "?"}`;
+        return `Create bridge core "${s(args.name)}" — Captain: ${s(args.captain)}, Bridge: ${s(args.bridge_1)} + ${s(args.bridge_2)}`;
       case "create_loadout":
-        return `Create loadout "${args.name ?? "?"}" for ship ${args.ship_id ?? "?"}`;
+        return `Create loadout "${s(args.name)}" for ship ${s(args.ship_id)}`;
       case "create_variant":
-        return `Create variant "${args.name ?? "?"}" on loadout ${args.loadout_id ?? "?"}`;
+        return `Create variant "${s(args.name)}" on loadout ${s(args.loadout_id)}`;
       case "assign_dock":
-        return `Assign dock ${args.dock_number ?? "?"} → loadout ${args.loadout_id ?? args.variant_id ?? "?"}`;
+        return `Assign dock ${s(args.dock_number)} → loadout ${s(args.loadout_id ?? args.variant_id)}`;
       case "update_dock":
-        return `Update dock plan item ${args.plan_item_id ?? "?"}`;
+        return `Update dock plan item ${s(args.plan_item_id)}`;
       case "remove_dock_assignment":
-        return `Clear dock ${args.dock_number ?? "?"} assignment`;
+        return `Clear dock ${s(args.dock_number)} assignment`;
       case "set_reservation":
         return args.reserved_for
-          ? `Reserve officer ${args.officer_id ?? "?"} for ${args.reserved_for}`
-          : `Clear reservation for officer ${args.officer_id ?? "?"}`;
+          ? `Reserve officer ${s(args.officer_id)} for ${s(args.reserved_for)}`
+          : `Clear reservation for officer ${s(args.officer_id)}`;
       case "sync_overlay":
         return "Sync overlay data from game export";
       case "sync_research":

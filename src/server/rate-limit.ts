@@ -148,3 +148,22 @@ export const emailRateLimiter = rateLimit({
   },
   skip: () => IS_TEST,
 });
+
+/**
+ * Rate limiter for diagnostic query endpoint (#196).
+ * 10 queries per minute per user — blocks automated data scraping.
+ */
+export const diagnosticRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req, res) => importLimiterKey(req, res.locals.userId),
+  handler: (req, res) => {
+    const limiterKey = importLimiterKey(req, res.locals.userId);
+    log.http.warn({ ip: req.ip, path: req.path, event: "rate_limit.hit", limiter: "diagnostic", limiterKey }, "diagnostic query rate limit exceeded");
+    sendFail(res, "RATE_LIMITED", "Diagnostic query rate limit reached. Please wait before running more queries.", 429);
+  },
+  skip: () => IS_TEST,
+});
