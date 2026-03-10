@@ -18,8 +18,8 @@
 
 ## Current PM Focus
 
-- **Top active program target:** #194 — Security Hardening Post-Audit (ADR-040). LLM prompt injection hardening, diagnostic endpoint audit logging, dev-mode auth safety.
-- **Recently completed:** #188 — Request Context & Scoped Database Execution (ADR-039). Phases 0–9 shipped; Phase 10 remaining.
+- **Top active program target:** Phase 10 of ADR-039 (defineTool Stage 2, #199).
+- **Recently completed:** #194 — Security Hardening Post-Audit (ADR-040). All P0–P2 issues resolved.
 - **Top QA tranche:** #161, #165.
 - **Recently shipped:** diagnostics overlay scope clarity (#162), Admiral verification actions (#163), recommender exclusion mode (#167), captain/resource-specific mining fixes (#169), review-driven fleet-tool output hardening, WSL2 auto-start for postgres.
 - **Operational note:** deploys are live again; use normal `ax ci` + push gate, not the old guided-setup hold marker.
@@ -27,7 +27,7 @@
 
 ---
 
-## Active Program — Security Hardening Post-Audit (ADR-040, #194)
+## Completed Program — Security Hardening Post-Audit (ADR-040, #194)
 
 **Program umbrella:** #194  
 **Linked ADR:** [docs/ADR-040-prompt-injection-hardening.md](docs/ADR-040-prompt-injection-hardening.md)  
@@ -42,15 +42,15 @@ Strong foundations across traditional web security (parameterized SQL, CSP, RLS,
 
 | Priority | Issue | Title | Status |
 |---|---|---|---|
-| P0 | #195 | Prompt injection sanitization hardening — unified `sanitizeForModel()` | [ ] Not started |
-| P1 | #196 | Diagnostic query endpoint: audit logging and rate limiting | [ ] Not started |
-| P2 | #197 | Dev-mode auth bypass: explicit startup warning and safety guard | [ ] Not started |
+| P0 | #195 | Prompt injection sanitization hardening — unified `sanitizeForModel()` | [x] Done |
+| P1 | #196 | Diagnostic query endpoint: audit logging and rate limiting | [x] Done |
+| P2 | #197 | Dev-mode auth bypass: explicit startup warning and safety guard | [x] Done |
 
 ### Definition of Done
 
-- [ ] All P0/P1 issues resolved and merged
-- [ ] P2 addressed or explicitly deferred
-- [ ] `npm run ax -- ci` passes after all changes
+- [x] All P0/P1 issues resolved and merged
+- [x] P2 addressed or explicitly deferred
+- [x] `npm run ax -- ci` passes after all changes
 
 ---
 
