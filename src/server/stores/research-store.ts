@@ -9,7 +9,7 @@
 
 import { initSchema, withUserRead, withUserScope, type Pool } from "../db.js";
 import { log } from "../logger.js";
-import type { QueryExecutor, RequestContext, ScopeProvider } from "../request-context.js";
+import type { RequestContext, ScopeProvider } from "../request-context.js";
 import { scopeFromContext } from "../request-context.js";
 
 export interface ResearchBuff {

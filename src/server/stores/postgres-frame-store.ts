@@ -18,7 +18,6 @@ import {
   withUserScope,
   withUserRead,
   type Pool,
-  type PoolClient,
 } from "../db.js";
 import { log } from "../logger.js";
 import type { QueryExecutor, RequestContext, ScopeProvider } from "../request-context.js";
