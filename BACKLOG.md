@@ -65,37 +65,27 @@ from route → service → store → tool gains requestId + userId correlation.
 | 3 | #192 | ALS convenience layer for scoped logging correlation | [x] Done (shipped with #189) |
 | 4 | #193 | End-to-end proof: `user-settings` route migrated to `RequestContext` | [x] Done |
 | 5 | #194 | `TestContextBuilder` + test fixture infrastructure | [x] Done (shipped with #189) |
-| 6 | #195 | `ToolContext` → `ToolEnv { ctx, deps }` (Stage 1 transition) | [ ] Not started |
+| 6 | #195 | `ToolContext` → `ToolEnv { ctx, deps }` (Stage 1 transition) | [x] Done (`97a60c3`) |
 | 7 | #196 | Tenant-scoped store factories accept `RequestContext` | [ ] Not started |
-| 8 | #197 | Remaining route migration (route-by-route, no flag day) | [~] In progress — 11/13 routes migrated; auth.ts + chat.ts deferred (see below) |
+| 8 | #197 | Remaining route migration (route-by-route, no flag day) | [x] Done — 13/13 routes migrated |
 | 9 | #198 | Legacy removal: deprecate `withUserScope` / `withUserRead` | [ ] Not started |
 | 10 | #199 | ToolEnv Stage 2: `defineTool()` with declaration-driven dependency resolution | [ ] Not started |
 
-#### Phase 8 Deferred Routes: auth.ts + chat.ts
+#### Phase 8 Deferred Routes: auth.ts + chat.ts — COMPLETED
 
-These two routes cannot use the per-group `router.use()` wiring pattern because they mix
-public (unauthenticated) and authenticated handlers with **per-handler** middleware chains.
+auth.ts and chat.ts migrated using per-handler `createContextMiddleware` insertion
+(committed alongside Phase 6 ToolEnv work). Pattern: spread `...(ctxMw ? [ctxMw] : [])`
+into each handler's middleware array after the auth middleware.
 
-**auth.ts** (785 lines, 15 `res.locals.userId` sites):
-- 8 public handlers (signup, signin, logout, forgot-password, etc.) — no userId available
-- 3 authenticated handlers behind `requireRole(appState, "ensign")` — per-handler
-- 6 admiral handlers behind shared bootstrap-or-admiral middleware — per-handler
-- All userId reads are in audit logging (`actorId: res.locals.userId ?? null`)
-- **Migration plan:** Insert `createContextMiddleware` into each per-handler chain AFTER
-  `requireRole`/`requireAdmiral`, then replace reads with `ctx?.identity.userId`.
-  Public handlers keep fallback `res.locals.userId ?? null` for audit.
+**auth.ts:** `ctxMw` inserted after `requireRole`/`requireAdmiral` in authenticated
+handlers; admiral routes wired via `router.use("/api/auth/admiral", ctxMw)`. All
+`res.locals.userId` reads replaced with `ctx?.identity.userId`. Public handlers
+(signup, signin, etc.) unchanged — no userId available.
 
-**chat.ts** (782 lines, 5 `res.locals.userId` sites):
-- Per-handler middleware chains: `chatBodyParser → requireVisitor → chatRateLimiter → attachScopedMemory → createTimeoutMiddleware`
-- Uses `attachScopedMemory(appState)` which also reads `res.locals.userId`
-- POST `/api/chat` handler builds `ToolContext` with userId — couples to Phase 6 (ToolEnv)
-- **Migration plan:** Address alongside Phase 6 (`ToolContext → ToolEnv`), since the
-  chat handler is the primary consumer of `ToolContext`. Insert ctx middleware after
-  `requireVisitor` in each handler chain. Update `attachScopedMemory` to read from ctx.
-
-**Why not now:** Per-handler insertion requires touching per-route middleware arrays
-(not a simple `router.use()`) and for chat.ts the ToolContext coupling means the
-migration is better done atomically with Phase 6.
+**chat.ts:** `ctxMw` inserted after `requireVisitor` in each per-handler chain.
+All `res.locals.userId` reads replaced with `ctx?.identity.userId`. The
+`attachScopedMemory` middleware continues to use `res.locals.userId` (set by auth)
+— it will switch to ctx in Phase 9 (legacy removal).
 
 ### Definition of Done
 

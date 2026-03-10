@@ -31,6 +31,7 @@ import { timingSafeCompare } from "../services/password.js";
 import { authRateLimiter, emailRateLimiter } from "../rate-limit.js";
 import { sendVerificationEmail, sendPasswordResetEmail, getDevToken } from "../services/email.js";
 import { createSafeRouter } from "../safe-router.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import type { AuditLogInput } from "../stores/audit-store.js";
 import { randomBytes } from "node:crypto";
 
@@ -88,6 +89,9 @@ async function hasOtherAdmiral(
 
 export function createAuthRoutes(appState: AppState): Router {
   const router = createSafeRouter();
+
+  // ADR-039: per-handler RequestContext (auth.ts mixes public/authenticated handlers)
+  const ctxMw = appState.pool ? createContextMiddleware(appState.pool) : undefined;
 
   // Apply rate limiting to all auth endpoints
   router.use("/api/auth", authRateLimiter);
@@ -298,10 +302,11 @@ export function createAuthRoutes(appState: AppState): Router {
   });
 
   // ── GET /api/auth/me ──────────────────────────────────────
-  router.get("/api/auth/me", requireRole(appState, "ensign"), async (_req, res) => {
+  router.get("/api/auth/me", requireRole(appState, "ensign"), ...(ctxMw ? [ctxMw] : []), async (_req, res) => {
+    const ctx = res.locals.ctx;
     sendOk(res, {
       user: {
-        id: res.locals.userId,
+        id: ctx?.identity.userId ?? res.locals.userId,
         email: res.locals.userEmail,
         displayName: res.locals.userDisplayName,
         role: res.locals.userRole,
@@ -310,7 +315,7 @@ export function createAuthRoutes(appState: AppState): Router {
   });
 
   // ── POST /api/auth/logout ─────────────────────────────────
-  router.post("/api/auth/logout", async (req, res) => {
+  router.post("/api/auth/logout", ...(ctxMw ? [ctxMw] : []), async (req, res) => {
     // Destroy user session if present
     const sessionToken = req.cookies?.[SESSION_COOKIE];
     if (sessionToken && appState.userStore) {
@@ -322,23 +327,26 @@ export function createAuthRoutes(appState: AppState): Router {
     res.clearCookie(SESSION_COOKIE, clearOpts);
     res.clearCookie(TENANT_COOKIE, clearOpts);
 
+    const ctx = res.locals.ctx;
     appState.auditStore?.logEvent({
-      event: "auth.logout", actorId: res.locals.userId ?? null, ...auditMeta(req),
+      event: "auth.logout", actorId: ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null, ...auditMeta(req),
     });
 
     sendOk(res, { message: "Signed out." });
   });
 
   // ── POST /api/auth/logout-all ─────────────────────────────
-  router.post("/api/auth/logout-all", requireRole(appState, "ensign"), async (_req, res) => {
+  router.post("/api/auth/logout-all", requireRole(appState, "ensign"), ...(ctxMw ? [ctxMw] : []), async (_req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
 
-    await appState.userStore.destroyAllSessions(res.locals.userId!);
+    const ctx = res.locals.ctx;
+    const userId = ctx?.identity.userId ?? (res.locals.userId as string);
+    await appState.userStore.destroyAllSessions(userId);
 
     appState.auditStore?.logEvent({
-      event: "auth.logout_all", actorId: res.locals.userId!, ...auditMeta(_req),
+      event: "auth.logout_all", actorId: userId, ...auditMeta(_req),
     });
 
     const clearOpts = { httpOnly: true, sameSite: "strict" as const, secure: appState.config.nodeEnv === "production", path: "/" };
@@ -349,7 +357,7 @@ export function createAuthRoutes(appState: AppState): Router {
   });
 
   // ── POST /api/auth/change-password ────────────────────────
-  router.post("/api/auth/change-password", requireRole(appState, "ensign"), async (req, res) => {
+  router.post("/api/auth/change-password", requireRole(appState, "ensign"), ...(ctxMw ? [ctxMw] : []), async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -371,15 +379,18 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "New password must be 200 characters or fewer", 400);
     }
 
+    const ctx = res.locals.ctx;
+    const userId = ctx?.identity.userId ?? (res.locals.userId as string);
+
     try {
       // Keep the current session alive, kill all others
       const sessionToken = req.cookies?.[SESSION_COOKIE] || "";
       await appState.userStore.changePassword(
-        res.locals.userId!, currentPassword, newPassword, sessionToken,
+        userId, currentPassword, newPassword, sessionToken,
       );
 
       appState.auditStore?.logEvent({
-        event: "auth.password.change", actorId: res.locals.userId!, ...auditMeta(req),
+        event: "auth.password.change", actorId: userId, ...auditMeta(req),
       });
 
       sendOk(res, { message: "Password changed. All other sessions have been signed out." });
@@ -388,7 +399,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
       appState.auditStore?.logEvent({
         event: "auth.password.change",
-        actorId: res.locals.userId ?? null,
+        actorId: userId,
         detail: { success: false, reason: message },
         ...auditMeta(req),
       });
@@ -511,6 +522,8 @@ export function createAuthRoutes(appState: AppState): Router {
     // Fall back to session-based admiral check
     return requireAdmiral(appState)(req, res, next);
   });
+  // ADR-039: RequestContext for all admiral routes (after auth)
+  if (ctxMw) router.use("/api/auth/admiral", ctxMw);
 
   // ── POST /api/auth/admiral/set-role ─────────────────────
   // Admin-only: set a user's role (the only way to create the first Admiral)
@@ -558,7 +571,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
     appState.auditStore?.logEvent({
       event: "admin.role_change",
-      actorId: res.locals.userId ?? null,
+      actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
       detail: { email, oldRole: user.role, newRole: role },
       ...auditMeta(req),
@@ -576,7 +589,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
     appState.auditStore?.logEvent({
       event: "admin.list_users",
-      actorId: res.locals.userId ?? null,
+      actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       detail: { count: users.length },
       ...auditMeta(req),
     });
@@ -620,7 +633,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
     appState.auditStore?.logEvent({
       event: locked ? "admin.lock_user" : "admin.unlock_user",
-      actorId: res.locals.userId ?? null,
+      actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
       detail: { email, reason: reason || null },
       ...auditMeta(req),
@@ -665,7 +678,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
     appState.auditStore?.logEvent({
       event: "admin.delete_user",
-      actorId: res.locals.userId ?? null,
+      actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
       detail: { email },
       ...auditMeta(req),
@@ -702,7 +715,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
     appState.auditStore?.logEvent({
       event: "admin.resend_verification",
-      actorId: res.locals.userId ?? null,
+      actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
       detail: { email },
       ...auditMeta(req),
@@ -741,7 +754,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
     appState.auditStore?.logEvent({
       event: "admin.verify_user",
-      actorId: res.locals.userId ?? null,
+      actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
       detail: { email },
       ...auditMeta(req),

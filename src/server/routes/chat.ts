@@ -15,6 +15,7 @@ import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { requireAdmiral, requireVisitor } from "../services/auth.js";
+import { createContextMiddleware } from "../context-middleware.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
 import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL } from "../services/gemini/index.js";
@@ -370,12 +371,15 @@ export function createChatRoutes(appState: AppState): Router {
   }, RUN_CLAIM_POLL_MS);
   claimTimer.unref?.();
 
+  // ADR-039: per-handler RequestContext (chat.ts uses per-handler middleware chains)
+  const ctxMw = appState.pool ? createContextMiddleware(appState.pool) : undefined;
+
   // ─── Chat ───────────────────────────────────────────────────
 
   // Route-specific body limit: 10MB to accommodate base64 image payloads (ADR-008)
   const chatBodyParser = express.json({ limit: '10mb' });
 
-  router.post("/api/chat", chatBodyParser, requireVisitor(appState), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(60_000), async (req, res) => {
+  router.post("/api/chat", chatBodyParser, requireVisitor(appState), ...(ctxMw ? [ctxMw] : []), chatRateLimiter, attachScopedMemory(appState), createTimeoutMiddleware(60_000), async (req, res) => {
     const { message, image: rawImage, tabId: rawTabId } = req.body;
     const asyncRequested = req.body?.async === true;
     const sessionId = (req.headers["x-session-id"] as string) || "default";
@@ -426,8 +430,9 @@ export function createChatRoutes(appState: AppState): Router {
       });
     }
 
-    const userId = res.locals.userId as string | undefined;
-    const requestId = res.locals._requestId as string | undefined;
+    const ctx = res.locals.ctx;
+    const userId = ctx?.identity.userId ?? (res.locals.userId as string | undefined);
+    const requestId = ctx?.identity.requestId ?? (res.locals._requestId as string | undefined);
     const isAdmiral = !!res.locals.isAdmiral;
 
     try {
@@ -512,13 +517,13 @@ export function createChatRoutes(appState: AppState): Router {
       log.gemini.error({ err: errMessage }, "chat request failed");
       if (res.headersSent) return;
       sendFail(res, ErrorCode.GEMINI_ERROR, "AI request failed", 500, {
-        ...(res.locals.isAdmiral
+        ...(isAdmiral
           ? {
               trace: {
                 timestamp: new Date().toISOString(),
-                requestId: (res.locals._requestId as string | undefined) ?? null,
+                requestId: requestId ?? null,
                 sessionId,
-                userId: (res.locals.userId as string | undefined) ?? null,
+                userId: userId ?? null,
                 hasImage: !!rawImage,
                 error: errMessage,
               },
@@ -529,7 +534,7 @@ export function createChatRoutes(appState: AppState): Router {
     }
   });
 
-  router.get("/api/chat/runs/:runId", requireVisitor(appState), async (req, res) => {
+  router.get("/api/chat/runs/:runId", requireVisitor(appState), ...(ctxMw ? [ctxMw] : []), async (req, res) => {
     const runId = String(req.params.runId ?? "").trim();
     if (!RUN_ID_RE.test(runId)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid runId", 400);
@@ -540,7 +545,8 @@ export function createChatRoutes(appState: AppState): Router {
       });
     }
 
-    const userId = res.locals.userId as string | undefined;
+    const ctx = res.locals.ctx;
+    const userId = ctx?.identity.userId ?? (res.locals.userId as string | undefined);
     if (!userId) {
       return sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401);
     }
@@ -588,7 +594,7 @@ export function createChatRoutes(appState: AppState): Router {
     });
   });
 
-  router.post("/api/chat/runs/:runId/cancel", requireVisitor(appState), async (req, res) => {
+  router.post("/api/chat/runs/:runId/cancel", requireVisitor(appState), ...(ctxMw ? [ctxMw] : []), async (req, res) => {
     const runId = String(req.params.runId ?? "").trim();
     if (!RUN_ID_RE.test(runId)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid runId", 400);
@@ -599,7 +605,8 @@ export function createChatRoutes(appState: AppState): Router {
       });
     }
 
-    const userId = res.locals.userId as string | undefined;
+    const ctx = res.locals.ctx;
+    const userId = ctx?.identity.userId ?? (res.locals.userId as string | undefined);
     if (!userId) {
       return sendFail(res, ErrorCode.UNAUTHORIZED, "Authentication required", 401);
     }
@@ -661,7 +668,7 @@ export function createChatRoutes(appState: AppState): Router {
 
   // ─── History ────────────────────────────────────────────────
 
-  router.get("/api/history", requireVisitor(appState), attachScopedMemory(appState), async (req, res) => {
+  router.get("/api/history", requireVisitor(appState), ...(ctxMw ? [ctxMw] : []), attachScopedMemory(appState), async (req, res) => {
     const source = (req.query.source as string) || "both";
     // I4: Clamp limit to 1-100 to prevent excessive memory queries
     const limit = Math.min(Math.max(parseInt((req.query.limit as string) || "20", 10) || 20, 1), 100);
@@ -677,7 +684,8 @@ export function createChatRoutes(appState: AppState): Router {
         return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid session ID", 400);
       }
       // #85 H2: Namespace session key by userId (engine stores under userId:sessionId)
-      const userId = res.locals.userId as string | undefined;
+      const ctx = res.locals.ctx;
+      const userId = ctx?.identity.userId ?? (res.locals.userId as string | undefined);
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       result.session = appState.geminiEngine?.getHistory(sessionKey) || [];
     }
@@ -705,7 +713,7 @@ export function createChatRoutes(appState: AppState): Router {
 
   // ─── Recall ─────────────────────────────────────────────────
 
-  router.get("/api/recall", requireVisitor(appState), attachScopedMemory(appState), async (req, res) => {
+  router.get("/api/recall", requireVisitor(appState), ...(ctxMw ? [ctxMw] : []), attachScopedMemory(appState), async (req, res) => {
     const query = req.query.q as string;
 
     if (!query) {
