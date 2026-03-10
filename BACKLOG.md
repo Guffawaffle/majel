@@ -18,7 +18,7 @@
 
 ## Current PM Focus
 
-- **Top active program target:** Phase 10 of ADR-039 (defineTool Stage 2, #199).
+- **All ADR-039 phases complete.** Phase 10 (defineTool Stage 2, #198) shipped.
 - **Recently completed:** #194 — Security Hardening Post-Audit (ADR-040). All P0–P2 issues resolved.
 - **Top QA tranche:** #161, #165.
 - **Recently shipped:** diagnostics overlay scope clarity (#162), Admiral verification actions (#163), recommender exclusion mode (#167), captain/resource-specific mining fixes (#169), review-driven fleet-tool output hardening, WSL2 auto-start for postgres.
@@ -96,7 +96,7 @@ from route → service → store → tool gains requestId + userId correlation.
 | 7 | #196 | Tenant-scoped store factories accept `RequestContext` | [x] Done |
 | 8 | #197 | Remaining route migration (route-by-route, no flag day) | [x] Done — 13/13 routes migrated |
 | 9 | #198 | Legacy removal: deprecate `withUserScope` / `withUserRead` | [x] Done |
-| 10 | #199 | ToolEnv Stage 2: `defineTool()` with declaration-driven dependency resolution | [ ] Not started |
+| 10 | #198 | ToolEnv Stage 2: `defineTool()` with declaration-driven dependency resolution | [x] Done |
 
 #### Phase 8 Deferred Routes: auth.ts + chat.ts — COMPLETED
 

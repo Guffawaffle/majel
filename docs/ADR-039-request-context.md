@@ -291,6 +291,8 @@ The migration is additive and incremental. No big-bang rewrite.
 | 8 | Legacy `withUserScope` / `withUserRead` removed | Breaking — all stores must be migrated |
 | 9 | ToolEnv Stage 2: declaration-driven deps | Tool declaration format evolves |
 
+**All 10 migration phases (0–9) are complete.** Phase 9 shipped as #198 with `defineTool()` registry, explicit deps, and switch-to-map dispatch refactor.
+
 ### Phase 7 Deferred Routes
 
 Two route files require per-handler middleware insertion rather than per-group wiring:
