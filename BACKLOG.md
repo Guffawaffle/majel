@@ -18,7 +18,7 @@
 
 ## Current PM Focus
 
-- **Active program:** #209 — Chat Run Control & Live Status UX (ADR-043). Stop button, progress display, retry. 2 phases. Starting Phase 1.
+- **Active program:** #209 — Chat Run Control & Live Status UX (ADR-043). Phase 1 shipped (`37b7f29`). Phase 2 (retry + elapsed time) next.
 - **Recently completed:** #205 — Model Availability Policy (ADR-042). All 3 phases shipped (`7612404`, `c0a4b45`, `4f6355c`). Umbrella closed.
 - **Previously completed:** #199 — Multi-Provider LLM Engine (ADR-041). All 5 phases shipped. Claude via Vertex AI, admiral-only. Umbrella closed.
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
@@ -86,7 +86,7 @@ Explicitly defers token-by-token streaming to a future ADR.
 
 | Phase | Issue | Title | Status |
 |---|---|---|---|
-| 1 | #210 | Stop button + run state tracking | [ ] Not started |
+| 1 | #210 | Stop button + run state tracking | [x] Done (`37b7f29`) |
 | 2 | #211 | Retry / regenerate + elapsed time display | [ ] Not started |
 
 ### Key Design Decisions (from Lex review)
@@ -99,8 +99,8 @@ Explicitly defers token-by-token streaming to a future ADR.
 
 ### Definition of Done
 
-- [ ] Stop button cancels active generation
-- [ ] Live status shows run state + elapsed time
+- [x] Stop button cancels active generation
+- [x] Live status shows run state + elapsed time
 - [ ] Retry/regenerate available on completed and failed messages
 - [ ] Elapsed time displayed on completed messages
 - [ ] `npm run ax -- ci` passes at every phase boundary
