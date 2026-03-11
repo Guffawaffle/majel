@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-03-07 | Branch: `main`
+> Updated: 2026-03-10 | Branch: `main`
 
 ---
 
@@ -18,21 +18,99 @@
 
 ## Current PM Focus
 
-- **Next program:** #199 — Multi-Provider LLM Engine (ADR-041). Claude via Vertex AI, admiral-only. 5 phases.
-- **Model selector unlocked** — default upgraded to `gemini-3-pro-preview`, admin can switch models. (uncommitted, pre-deploy)
-- **All ADR-039 phases complete.** Phase 10 (defineTool Stage 2, #198) shipped.
-- **Recently completed:** #194 — Security Hardening Post-Audit (ADR-040). All P0–P2 issues resolved.
+- **Next program:** #205 — Model Availability Policy (ADR-042). Centralized resolver, admin overrides, defaultEnabled. 3 phases.
+- **Next program:** #209 — Chat Run Control & Live Status UX (ADR-043). Stop button, progress display, retry. 2 phases.
+- **Recently completed:** #199 — Multi-Provider LLM Engine (ADR-041). All 5 phases shipped. Claude via Vertex AI, admiral-only.
+- **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
+- **Cloud deploy:** In progress. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Top QA tranche:** #161, #165.
 - **Operational note:** deploys are live again; use normal `ax ci` + push gate, not the old guided-setup hold marker.
 
 
 ---
 
-## Planned Program — Multi-Provider LLM Engine (ADR-041, #199)
+## Planned Program — Model Availability Policy (ADR-042, #205)
+
+**Program umbrella:** #205  
+**Linked ADR:** [docs/ADR-042-model-availability-policy.md](docs/ADR-042-model-availability-policy.md)  
+**Design date:** 2026-03-10  
+**Reviewed by:** Lex (Architecture Review)
+
+### Program Objective
+
+Centralize model availability into a single resolver function. Registry gains `defaultEnabled` (preview/new-provider models default off). Admin can enable/disable models at runtime via settings store. All enforcement paths use one function instead of scattered inline checks.
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| 1 | #206 | Registry defaults + centralized availability resolver | [ ] Not started |
+| 2 | #207 | Admin model management endpoints + UI | [ ] Not started |
+| 3 | #208 | Frontend model picker polish (unavailable models) | [ ] Not started |
+
+### Key Design Decisions (from Lex review)
+
+1. New models default to **off** unless `defaultEnabled: true` — no accidental exposure
+2. DB stores only **admin overrides** (`system.modelOverrides` in SettingsStore) — effective state computed
+3. Single `resolveModelAvailability()` pure function — all entry points use it
+4. Four composable signals: registry default, provider capability, role gate, admin override
+5. Rich API response: `registryEnabled`, `providerCapable`, `adminEnabled`, `effectiveAvailable`
+6. No dedicated table — JSON blob in existing settings store
+
+### Definition of Done
+
+- [ ] Single resolver function replaces all scattered model checks
+- [ ] Preview models default to disabled
+- [ ] Admin can enable/disable models at runtime without redeploy
+- [ ] Model picker shows unavailable models greyed out with reason
+- [ ] `npm run ax -- ci` passes at every phase boundary
+
+---
+
+## Planned Program — Chat Run Control & Live Status UX (ADR-043, #209)
+
+**Program umbrella:** #209  
+**Linked ADR:** [docs/ADR-043-chat-run-control-live-status.md](docs/ADR-043-chat-run-control-live-status.md)  
+**Design date:** 2026-03-10  
+**Reviewed by:** Lex (Architecture Review)
+
+### Program Objective
+
+Make the existing async run lifecycle visible and controllable in the chat UI. Stop button, live progress display, elapsed time, retry/regenerate. No new backend endpoints — all features operate on existing ADR-036/037 infrastructure.
+
+Explicitly defers token-by-token streaming to a future ADR.
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| 1 | #210 | Stop button + run state tracking | [ ] Not started |
+| 2 | #211 | Retry / regenerate + elapsed time display | [ ] Not started |
+
+### Key Design Decisions (from Lex review)
+
+1. **Separate from streaming** — run control ships first, streaming gets its own ADR
+2. Stop button reflects **server truth** (queued/running/cancelling/cancelled), not just optimistic local state
+3. Progress display uses existing `run.progress` events — elapsed time, not fake progress bars
+4. Retry creates a **new run**, does not mutate old one — old response stays visible
+5. No message editing, no branching, no "1 of N" selectors (deferred to streaming era)
+
+### Definition of Done
+
+- [ ] Stop button cancels active generation
+- [ ] Live status shows run state + elapsed time
+- [ ] Retry/regenerate available on completed and failed messages
+- [ ] Elapsed time displayed on completed messages
+- [ ] `npm run ax -- ci` passes at every phase boundary
+
+---
+
+## Completed Program — Multi-Provider LLM Engine (ADR-041, #199)
 
 **Program umbrella:** #199  
 **Linked ADR:** [docs/ADR-041-multi-provider-llm.md](docs/ADR-041-multi-provider-llm.md)  
-**Design date:** 2026-03-10
+**Design date:** 2026-03-10  
+**Completion date:** 2026-03-10
 
 ### Program Objective
 
@@ -42,11 +120,11 @@ Introduce Claude (Anthropic) as an alternative LLM engine alongside Gemini, acce
 
 | Phase | Issue | Title | Status |
 |---|---|---|---|
-| 1 | #200 | ChatEngine interface extraction + provider field in ModelDef | [ ] Not started |
-| 2 | #201 | Tool declaration abstraction — toClaudeTools() | [ ] Not started |
-| 3 | #202 | Claude provider implementation (Vertex AI SDK) | [ ] Not started |
-| 4 | #203 | Engine manager + model registry integration + frontend picker | [ ] Not started |
-| 5 | #204 | GCP Vertex AI setup + E2E validation | [ ] Not started |
+| 1 | #200 | ChatEngine interface extraction + provider field in ModelDef | [x] Done |
+| 2 | #201 | Tool declaration abstraction — toClaudeTools() | [x] Done |
+| 3 | #202 | Claude provider implementation (Vertex AI SDK) | [x] Done |
+| 4 | #203 | Engine manager + model registry integration + frontend picker | [x] Done |
+| 5 | #204 | GCP Vertex AI setup + E2E validation | [x] Done |
 
 ### Key Design Decisions
 
@@ -58,14 +136,22 @@ Introduce Claude (Anthropic) as an alternative LLM engine alongside Gemini, acce
 6. Vertex AI auth via GCP Application Default Credentials (same billing)
 7. Graceful fallback: if Claude credentials missing, Gemini-only mode
 
+### Operational Notes
+
+- GCP project `smartergpt-majel` — Vertex AI API enabled, now under `joeguff-org` (718138918036)
+- Purchased Claude Sonnet 4.6 + Claude Haiku 4.5 in Model Garden (global region)
+- Model IDs: `claude-sonnet-4-6`, `claude-haiku-4-5` (unversioned)
+- **Quota denied** — $300 credit account has no billing history. Will re-request after billing established.
+- Deploy without `VERTEX_PROJECT_ID` for Gemini-only; add env var when quota approved.
+
 ### Definition of Done
 
-- [ ] Admiral can select Claude models alongside Gemini in the model picker
-- [ ] Claude tool calling works for all existing fleet tools
-- [ ] Provider switching clears sessions cleanly
-- [ ] Non-admiral users see only Gemini models
-- [ ] Graceful fallback if Claude credentials are missing
-- [ ] `npm run ax -- ci` passes at every phase boundary
+- [x] Admiral can select Claude models alongside Gemini in the model picker
+- [x] Claude tool calling works for all existing fleet tools
+- [x] Provider switching clears sessions cleanly
+- [x] Non-admiral users see only Gemini models
+- [x] Graceful fallback if Claude credentials are missing
+- [x] `npm run ax -- ci` passes at every phase boundary
 
 ---
 
