@@ -15,7 +15,7 @@ import type {
   VariantPatch,
   BridgeCoreWithMembers,
 } from "../types/crew-types.js";
-import { BC_COLS, BCM_COLS, BDP_COLS, LOADOUT_COLS, VARIANT_COLS } from "./crew-store-schema.js";
+import { BC_COLS, BDP_COLS, LOADOUT_COLS, VARIANT_COLS } from "./crew-store-schema.js";
 import { attachMembers, validatePatch } from "./crew-store-helpers.js";
 
 export function createLoadoutMixin(scope: ScopeProvider, userId: string) {
