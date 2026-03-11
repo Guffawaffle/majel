@@ -315,7 +315,8 @@ describe("config isolation", () => {
     try {
       // Search for process.env in src/ excluding allowed files
       // Allowed: config.ts, logger.ts (bootstrap), gemini/ (test detection), 
-      //          settings.ts (internal resolution), memory.ts (Lex API contract),
+      //          claude/ (test detection), settings.ts (internal resolution),
+      //          memory.ts (Lex API contract),
       //          db.ts (DATABASE_URL fallback), rate-limit.ts (test skip),
       //          email.ts (production detection + BASE_URL),
       //          routes/auth.ts (dev-verify guard)
@@ -324,6 +325,7 @@ describe("config isolation", () => {
         'grep -v "src/server/config.ts" | ' +
         'grep -v "src/server/logger.ts" | ' +
         'grep -v "src/server/services/gemini/" | ' +
+        'grep -v "src/server/services/claude/" | ' +
         'grep -v "src/server/stores/settings.ts" | ' +
         'grep -v "src/server/services/memory.ts" | ' +
         'grep -v "src/server/db.ts" | ' +

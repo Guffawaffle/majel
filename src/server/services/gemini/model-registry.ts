@@ -89,6 +89,31 @@ export const MODEL_REGISTRY: ModelDef[] = [
     costRelative: 5,
     speed: "slow",
   },
+  // ── Claude models (Vertex AI) — admiral-only ──────────────
+  {
+    id: "claude-sonnet-4-5",
+    name: "Claude Sonnet 4.5",
+    provider: "claude",
+    tier: "premium",
+    description: "Anthropic's balanced model. Strong reasoning, fast responses. Admiral only.",
+    thinking: true,
+    contextWindow: 200_000,
+    costRelative: 3,
+    speed: "fast",
+    roleGate: "admiral",
+  },
+  {
+    id: "claude-opus-4",
+    name: "Claude Opus 4",
+    provider: "claude",
+    tier: "frontier",
+    description: "Anthropic's most capable model. Deep analysis & complex reasoning. Admiral only.",
+    thinking: true,
+    contextWindow: 200_000,
+    costRelative: 5,
+    speed: "slow",
+    roleGate: "admiral",
+  },
 ];
 
 export const MODEL_REGISTRY_MAP = new Map(MODEL_REGISTRY.map((m) => [m.id, m]));

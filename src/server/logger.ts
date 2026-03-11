@@ -140,6 +140,8 @@ export const log = {
   boot: rootLogger.child({ subsystem: "boot" }),
   /** Gemini API interactions */
   gemini: rootLogger.child({ subsystem: "gemini" }),
+  /** Claude (Anthropic) API interactions */
+  claude: rootLogger.child({ subsystem: "claude" }),
   /** Lex memory operations */
   lex: rootLogger.child({ subsystem: "lex" }),
   /** Google Sheets API */
