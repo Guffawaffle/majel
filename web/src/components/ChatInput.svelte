@@ -237,6 +237,7 @@
             >
               <div class="model-card-header">
                 <span class="model-card-name">{model.name}</span>
+                <span class="provider-badge provider-{model.provider}">{model.provider === 'gemini' ? 'Gemini' : 'Claude'}</span>
                 {#if model.thinking}<span class="model-thinking">🧠</span>{/if}
                 <span class="model-tier-badge tier-{model.tier}">{costStars(model.costRelative)}</span>
               </div>
@@ -400,6 +401,12 @@
   .model-card-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
   .model-card-name { font-size: 0.88rem; font-weight: 600; }
   .model-thinking { font-size: 0.75rem; }
+  .provider-badge {
+    font-size: 0.6rem; font-weight: 600; padding: 1px 5px;
+    border-radius: 3px; text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  :global(.provider-gemini) { background: rgba(66, 133, 244, 0.15); color: #6ea8fe; }
+  :global(.provider-claude) { background: rgba(204, 120, 50, 0.15); color: #e0964a; }
   .model-tier-badge {
     font-size: 0.65rem; font-weight: 700; padding: 1px 6px;
     border-radius: 3px; margin-left: auto; letter-spacing: 0.02em;

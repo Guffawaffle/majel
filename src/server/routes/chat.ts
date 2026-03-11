@@ -763,13 +763,19 @@ export function createChatRoutes(appState: AppState): Router {
     const engine = appState.geminiEngine;
     const current = engine ? engine.getModel() : LOCKED_MODEL_ID;
     const currentDef = getModelDef(current);
+    const claudeAvailable = !!appState.config.vertexProjectId;
+
+    // Filter out Claude models if Vertex AI is not configured
+    const availableModels = MODEL_REGISTRY.filter(
+      (m) => m.provider !== "claude" || claudeAvailable,
+    );
 
     sendOk(res, {
       current,
       defaultModel: LOCKED_MODEL_ID,
       currentDef,
       locked: false,
-      models: MODEL_REGISTRY.map((m) => ({
+      models: availableModels.map((m) => ({
         ...m,
         active: m.id === current,
       })),
@@ -789,9 +795,13 @@ export function createChatRoutes(appState: AppState): Router {
     if (!def) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown model: ${modelId}. Valid: ${MODEL_REGISTRY.map((m) => m.id).join(", ")}`, 400);
     }
+    // Reject Claude models if Vertex AI is not configured
+    if (def.provider === "claude" && !appState.config.vertexProjectId) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, `Claude models require Vertex AI configuration (VERTEX_PROJECT_ID)`, 400);
+    }
     const engine = appState.geminiEngine;
     if (!engine) {
-      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Gemini engine not initialized", 500);
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Chat engine not initialized", 500);
     }
     const previousModel = engine.getModel();
     const sessionsCleared = engine.getSessionCount();

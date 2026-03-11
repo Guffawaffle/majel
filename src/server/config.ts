@@ -38,6 +38,12 @@ export interface AppConfig {
   /** Gemini API key for LLM access */
   geminiApiKey: string;
 
+  // ── Vertex AI (Claude) ──────────────────────────────────────
+  /** GCP project ID for Vertex AI (Claude). Empty = Claude disabled. */
+  vertexProjectId: string;
+  /** GCP region for Vertex AI (Claude). */
+  vertexRegion: string;
+
   // ── Lex Memory ──────────────────────────────────────────────
   /** Lex workspace root directory */
   lexWorkspaceRoot: string;
@@ -129,6 +135,10 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
     ? await settingsStore.get("model.apiKey")
     : process.env.GEMINI_API_KEY || "";
 
+  // Vertex AI config (env-only — GCP service account auth)
+  const vertexProjectId = process.env.VERTEX_PROJECT_ID || "";
+  const vertexRegion = process.env.VERTEX_REGION || "us-central1";
+
   // Lex workspace (special: used by Lex library, needs env var fallback)
   const lexWorkspaceRoot = process.env.LEX_WORKSPACE_ROOT || process.cwd();
 
@@ -159,6 +169,8 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
     isTest,
     isDev,
     geminiApiKey,
+    vertexProjectId,
+    vertexRegion,
     lexWorkspaceRoot,
     databaseUrl,
     databaseAdminUrl,
@@ -198,6 +210,8 @@ export function bootstrapConfigSync(): AppConfig {
     isTest,
     isDev,
     geminiApiKey: process.env.GEMINI_API_KEY || "",
+    vertexProjectId: process.env.VERTEX_PROJECT_ID || "",
+    vertexRegion: process.env.VERTEX_REGION || "us-central1",
     lexWorkspaceRoot: process.env.LEX_WORKSPACE_ROOT || process.cwd(),
     databaseUrl: process.env.DATABASE_URL || "postgres://majel_app:majel_app@localhost:5432/majel",
     databaseAdminUrl: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel",

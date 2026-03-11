@@ -30,6 +30,8 @@ import { fileURLToPath } from "node:url";
 import { pinoHttp } from "pino-http";
 import { log, rootLogger } from "./logger.js";
 import { createGeminiEngine, DEFAULT_MODEL } from "./services/gemini/index.js";
+import { createClaudeEngine } from "./services/claude/index.js";
+import { createEngineManager } from "./services/engine-manager.js";
 import { createMemoryService } from "./services/memory.js";
 import { createFrameStoreFactory } from "./stores/postgres-frame-store.js";
 import { createSettingsStore } from "./stores/settings.js";
@@ -595,9 +597,9 @@ async function boot(): Promise<void> {
   }
 
   // Resolve config from settings store
-  const { geminiApiKey } = state.config;
+  const { geminiApiKey, vertexProjectId, vertexRegion } = state.config;
 
-  // 3. Initialize Gemini engine (#85: ToolContextFactory for per-user scoping)
+  // 3. Initialize chat engines (#85: ToolContextFactory for per-user scoping)
   if (geminiApiKey) {
     const runner = await buildMicroRunnerFromState(state);
     const modelName = DEFAULT_MODEL;
@@ -625,7 +627,7 @@ async function boot(): Promise<void> {
     // Expose toolContextFactory on state for proposal routes (#93)
     state.toolContextFactory = toolContextFactory;
 
-    state.geminiEngine = createGeminiEngine(
+    const geminiEngine = createGeminiEngine(
       geminiApiKey,
       null, // #85 H3: fleet config now injected per-message via chat route (user-scoped)
       null, // dock briefing removed (ADR-025)
@@ -635,7 +637,32 @@ async function boot(): Promise<void> {
       state.proposalStoreFactory,  // #93: proposal store for approve-tier mutations
       state.userSettingsStore,      // #93: trust level overrides
     );
-    log.boot.info({ model: state.geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
+    log.boot.info({ model: geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
+
+    // ADR-041 Phase 4: Optionally initialize Claude engine via Vertex AI
+    let claudeEngine = null;
+    if (vertexProjectId) {
+      try {
+        claudeEngine = createClaudeEngine(
+          vertexProjectId,
+          vertexRegion,
+          null, // fleet config injected per-message
+          null, // dock briefing removed
+          runner,
+          null, // initial model — use Claude default
+          toolContextFactory,
+          state.proposalStoreFactory,
+          state.userSettingsStore,
+        );
+        log.boot.info({ projectId: vertexProjectId, region: vertexRegion }, "claude engine online");
+      } catch (err) {
+        log.boot.warn({ err: (err as Error).message }, "claude engine failed to initialize — Claude models unavailable");
+      }
+    }
+
+    // Wrap in EngineManager for seamless cross-provider model switching
+    state.geminiEngine = createEngineManager({ geminiEngine, claudeEngine });
+    log.boot.info({ model: state.geminiEngine.getModel(), claudeAvailable: !!claudeEngine }, "engine manager online");
   } else {
     log.boot.warn("GEMINI_API_KEY not set — chat disabled");
   }
