@@ -18,9 +18,9 @@
 
 ## Current PM Focus
 
-- **Active program:** #209 — Chat Run Control & Live Status UX (ADR-043). Phase 1 shipped (`37b7f29`). Phase 2 (retry + elapsed time) next.
-- **Recently completed:** #205 — Model Availability Policy (ADR-042). All 3 phases shipped (`7612404`, `c0a4b45`, `4f6355c`). Umbrella closed.
-- **Previously completed:** #199 — Multi-Provider LLM Engine (ADR-041). All 5 phases shipped. Claude via Vertex AI, admiral-only. Umbrella closed.
+- **Recently completed:** #209 — Chat Run Control & Live Status UX (ADR-043). Both phases shipped (`37b7f29`, `0288b50`). Umbrella closed.
+- **Previously completed:** #205 — Model Availability Policy (ADR-042). All 3 phases shipped (`7612404`, `c0a4b45`, `4f6355c`). Umbrella closed.
+- **Earlier:** #199 — Multi-Provider LLM Engine (ADR-041). All 5 phases shipped. Claude via Vertex AI, admiral-only. Umbrella closed.
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Top QA tranche:** #161, #165.
@@ -69,11 +69,12 @@ Centralize model availability into a single resolver function. Registry gains `d
 
 ---
 
-## Planned Program — Chat Run Control & Live Status UX (ADR-043, #209)
+## Completed Program — Chat Run Control & Live Status UX (ADR-043, #209)
 
 **Program umbrella:** #209  
 **Linked ADR:** [docs/ADR-043-chat-run-control-live-status.md](docs/ADR-043-chat-run-control-live-status.md)  
 **Design date:** 2026-03-10  
+**Completion date:** 2026-03-11  
 **Reviewed by:** Lex (Architecture Review)
 
 ### Program Objective
@@ -87,7 +88,7 @@ Explicitly defers token-by-token streaming to a future ADR.
 | Phase | Issue | Title | Status |
 |---|---|---|---|
 | 1 | #210 | Stop button + run state tracking | [x] Done (`37b7f29`) |
-| 2 | #211 | Retry / regenerate + elapsed time display | [ ] Not started |
+| 2 | #211 | Retry / regenerate + elapsed time display | [x] Done (`0288b50`) |
 
 ### Key Design Decisions (from Lex review)
 
@@ -101,9 +102,9 @@ Explicitly defers token-by-token streaming to a future ADR.
 
 - [x] Stop button cancels active generation
 - [x] Live status shows run state + elapsed time
-- [ ] Retry/regenerate available on completed and failed messages
-- [ ] Elapsed time displayed on completed messages
-- [ ] `npm run ax -- ci` passes at every phase boundary
+- [x] Retry/regenerate available on completed and failed messages
+- [x] Elapsed time displayed on completed messages
+- [x] `npm run ax -- ci` passes at every phase boundary
 
 ---
 
