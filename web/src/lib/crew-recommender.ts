@@ -1,19 +1,41 @@
+/**
+ * crew-recommender.ts — Bridge Crew Recommender (barrel) (#192)
+ *
+ * Decomposed into pipeline modules:
+ *   crew-recommender-scoring.ts    — Scoring math + effect breakdown
+ *   crew-recommender-viability.ts  — Captain viability gating
+ *   crew-recommender-rationale.ts  — Explainability / rationale formatting
+ *   crew-recommender-confidence.ts — Confidence + synergy
+ */
+
 import type { BridgeSlot, CatalogOfficer, OfficerReservation } from "./types.js";
 import type { EffectBundleData } from "./effect-bundle-adapter.js";
-import type {
-  OfficerAbility,
-  OfficerEvaluation,
-  TargetContext,
-  EffectScoreEntry,
-} from "./types/effect-types.js";
-import { evaluateEffect, evaluateOfficer } from "./effect-evaluator.js";
+import type { TargetContextOverrides } from "./effect-context.js";
+import { evaluateOfficer } from "./effect-evaluator.js";
+import { buildTargetContext, bridgeSlotToSlotContext } from "./effect-context.js";
+
 import {
-  buildTargetContext,
-  bridgeSlotToSlotContext,
-  type TargetContextOverrides,
-} from "./effect-context.js";
-import captainViabilityKeysV0 from "./data/captain-viability-keys.v0.json";
-import scoringContractV0 from "./data/scoring-contract.v0.json";
+  normalizeLevel,
+  normalizePower,
+  buildEffectBreakdown,
+  scoreFromBreakdown,
+  READINESS_LEVEL_WEIGHT,
+  READINESS_POWER_WEIGHT,
+} from "./crew-recommender-scoring.js";
+import {
+  deriveIntentGroup,
+  resolveIntentOrThrow,
+  getCaptainViability,
+} from "./crew-recommender-viability.js";
+import {
+  reservationExclusionSummary,
+  buildEffectReasons,
+} from "./crew-recommender-rationale.js";
+import {
+  effectConfidenceFromBreakdowns,
+  countSynergyPairs,
+  SYNERGY_PAIR_BONUS,
+} from "./crew-recommender-confidence.js";
 
 export type ReservationExclusionMode = "allow" | "exclude_locked" | "exclude_all_reserved";
 
@@ -59,38 +81,7 @@ export interface OfficerScoreBreakdown {
   captainReason: string | null;
 }
 
-type IntentGroup = "combat" | "economy";
-
-interface CaptainViabilityKeyConfig {
-  version: string;
-  combatRelevantKeys: string[];
-  economyRelevantKeys: string[];
-  metaAmplifierKeys: string[];
-}
-
-const captainViabilityConfig = captainViabilityKeysV0 as CaptainViabilityKeyConfig;
-const CAPTAIN_COMBAT_RELEVANT_KEYS = new Set<string>(captainViabilityConfig.combatRelevantKeys);
-const CAPTAIN_ECONOMY_RELEVANT_KEYS = new Set<string>(captainViabilityConfig.economyRelevantKeys);
-const CAPTAIN_META_AMPLIFIER_KEYS = new Set<string>(captainViabilityConfig.metaAmplifierKeys);
-
-function deriveIntentGroup(intentKey: string, ctx: TargetContext): IntentGroup {
-  const lowerKey = intentKey.toLowerCase();
-  if (/mining|cargo|survey|warp|loot|economy/.test(lowerKey)) {
-    return "economy";
-  }
-
-  if (
-    ctx.targetKind === "hostile"
-    || ctx.targetKind === "player_ship"
-    || ctx.targetKind === "station"
-    || ctx.targetKind === "armada_target"
-    || ctx.targetKind === "mission_npc"
-  ) {
-    return "combat";
-  }
-
-  return "combat";
-}
+// ─── Reservation Helpers ────────────────────────────────────
 
 function getReservationPenalty(officerId: string, reservations: OfficerReservation[]): number {
   const reservation = reservations.find((r) => r.officerId === officerId);
@@ -114,205 +105,7 @@ function isExcludedByReservationMode(
   return reservation.locked;
 }
 
-function reservationExclusionSummary(
-  reservations: OfficerReservation[],
-  mode: ReservationExclusionMode,
-): string | null {
-  if (mode === "allow") return null;
-  const excluded = reservations.filter((reservation) => {
-    if (mode === "exclude_all_reserved") return true;
-    return reservation.locked;
-  });
-  if (excluded.length === 0) return null;
-  return mode === "exclude_locked"
-    ? `Excluded ${excluded.length} locked reserved officer${excluded.length === 1 ? "" : "s"} from suggestions.`
-    : `Excluded ${excluded.length} reserved officer${excluded.length === 1 ? "" : "s"} from suggestions.`;
-}
-
-function normalizeLevel(value: number | null): number {
-  if (!value || value <= 0) return 0;
-  return Math.min(1, value / 60);
-}
-
-function normalizePower(value: number | null, maxPower: number): number {
-  if (!value || value <= 0 || maxPower <= 0) return 0;
-  return Math.min(1, value / maxPower);
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Effect-Based Scoring (ADR-034)
-// ═══════════════════════════════════════════════════════════════
-
-/** Effect evaluator scores are small decimals (0–2). Scale to match keyword score range. */
-const EFFECT_SCALE = scoringContractV0.effectScale;
-const UNKNOWN_EFFECT_PENALTY = scoringContractV0.uncertainty.unknownEffectPenalty;
-const UNKNOWN_MAGNITUDE_PENALTY = scoringContractV0.uncertainty.unknownMagnitudePenalty;
-const UNKNOWN_MAGNITUDE_CONTRIBUTION_FACTOR = scoringContractV0.uncertainty.unknownMagnitudeContributionFactor;
-const CONFIDENCE_TOP_EFFECTS_WINDOW = scoringContractV0.confidence.topEffectsWindow;
-const SYNERGY_PAIR_BONUS = scoringContractV0.synergyPairBonus;
-const READINESS_LEVEL_WEIGHT = scoringContractV0.readiness.levelWeight;
-const READINESS_POWER_WEIGHT = scoringContractV0.readiness.powerWeight;
-
-function resolveIntentOrThrow(
-  effectBundle: EffectBundleData,
-  intentKey: string,
-) {
-  const intent = effectBundle.intents.get(intentKey);
-  const weights = effectBundle.intentWeights.get(intentKey);
-  if (!intent || !weights) {
-    throw new Error(`Unknown intent key: ${intentKey}`);
-  }
-  return { intent, weights };
-}
-
-/**
- * Check whether an officer has a useful Captain Maneuver for the given context.
- * Returns true if at least one CM effect has a positive intent weight and isn't blocked.
- */
-function isCaptainViable(
-  abilities: OfficerAbility[],
-  ctx: TargetContext,
-  intentWeights: Record<string, number>,
-  intentGroup: IntentGroup,
-): boolean {
-  const cmAbilities = abilities.filter((a) => a.slot === "cm" && !a.isInert);
-  if (cmAbilities.length === 0) return false;
-
-  const allowlist = intentGroup === "combat"
-    ? CAPTAIN_COMBAT_RELEVANT_KEYS
-    : CAPTAIN_ECONOMY_RELEVANT_KEYS;
-
-  for (const ability of cmAbilities) {
-    for (const effect of ability.effects) {
-      const evalResult = evaluateEffect(effect, { ...ctx, slotContext: "captain" });
-      if (evalResult.status === "blocked") continue;
-
-      const weight = intentWeights[effect.effectKey] ?? 0;
-      const hasNonZeroWeight = Math.abs(weight) > 0;
-      const isAllowlisted = allowlist.has(effect.effectKey);
-      const isMetaAmplifier = CAPTAIN_META_AMPLIFIER_KEYS.has(effect.effectKey);
-
-      if (isAllowlisted || hasNonZeroWeight || isMetaAmplifier) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function hasNoBenefitCaptainText(rawText: string | null): boolean {
-  const normalized = rawText?.toLowerCase() ?? "";
-  return normalized.includes("provides no benefit")
-    || normalized.includes("does not have a captain")
-    || normalized.includes("does not have a captain maneuver")
-    || normalized.includes("does not have a captain's maneuver");
-}
-
-function getCaptainViability(
-  abilities: OfficerAbility[],
-  ctx: TargetContext,
-  intentWeights: Record<string, number>,
-  intentGroup: IntentGroup,
-): { viable: boolean; reason: string | null } {
-  const cmAbilities = abilities.filter((a) => a.slot === "cm");
-  const activeCmAbilities = cmAbilities.filter((a) => !a.isInert);
-  if (activeCmAbilities.length === 0) {
-    if (cmAbilities.some((ability) => ability.isInert && hasNoBenefitCaptainText(ability.rawText))) {
-      return { viable: false, reason: "Captain Maneuver provides no benefit for this objective." };
-    }
-    return { viable: false, reason: "No usable Captain Maneuver for this objective." };
-  }
-
-  if (isCaptainViable(abilities, ctx, intentWeights, intentGroup)) {
-    return { viable: true, reason: null };
-  }
-
-  return { viable: false, reason: "Captain Maneuver has no useful effect for this objective." };
-}
-
-/**
- * Build a per-effect score breakdown from evaluation results.
- */
-function buildEffectBreakdown(
-  abilities: OfficerAbility[],
-  evaluation: OfficerEvaluation,
-  intentWeights: Record<string, number>,
-): EffectScoreEntry[] {
-  const entries: EffectScoreEntry[] = [];
-  for (const abilEval of evaluation.abilities) {
-    const ability = abilities.find((a) => a.id === abilEval.abilityId);
-    for (const effectEval of abilEval.effects) {
-      const hasKnownWeight = Object.hasOwn(intentWeights, effectEval.effectKey);
-      const weight = hasKnownWeight ? intentWeights[effectEval.effectKey] ?? 0 : 0;
-      const effect = ability?.effects.find((entry) => entry.id === effectEval.effectId);
-      const hasUnknownMagnitude = effect?.magnitude == null;
-      const magnitude = effect?.magnitude ?? 1;
-      const baseContribution = magnitude * weight * effectEval.applicabilityMultiplier;
-      const contribution = hasUnknownMagnitude
-        ? baseContribution * UNKNOWN_MAGNITUDE_CONTRIBUTION_FACTOR
-        : baseContribution;
-      entries.push({
-        effectKey: effectEval.effectKey,
-        status: effectEval.status,
-        intentWeight: weight,
-        magnitude: effect?.magnitude ?? null,
-        applicabilityMultiplier: effectEval.applicabilityMultiplier,
-        contribution,
-        isUnknownEffectKey: !hasKnownWeight,
-        hasUnknownMagnitude,
-      });
-    }
-  }
-  return entries.sort((a, b) => b.contribution - a.contribution);
-}
-
-function summarizeUncertainty(entries: EffectScoreEntry[]): {
-  unknownEffectCount: number;
-  unknownMagnitudeCount: number;
-  conditionalTopCount: number;
-} {
-  const unknownEffectCount = entries.filter((entry) => entry.isUnknownEffectKey).length;
-  const unknownMagnitudeCount = entries.filter((entry) => entry.hasUnknownMagnitude).length;
-
-  const topContributing = [...entries]
-    .filter((entry) => entry.contribution > 0)
-    .sort((a, b) => b.contribution - a.contribution)
-    .slice(0, CONFIDENCE_TOP_EFFECTS_WINDOW);
-
-  const conditionalTopCount = topContributing
-    .filter((entry) => entry.status === "conditional")
-    .length;
-
-  return { unknownEffectCount, unknownMagnitudeCount, conditionalTopCount };
-}
-
-function scoreFromBreakdown(entries: EffectScoreEntry[]): number {
-  const rawScore = entries.reduce((sum, entry) => sum + entry.contribution, 0);
-  const uncertainty = summarizeUncertainty(entries);
-  const penalty =
-    uncertainty.unknownEffectCount * UNKNOWN_EFFECT_PENALTY
-    + uncertainty.unknownMagnitudeCount * UNKNOWN_MAGNITUDE_PENALTY;
-  return Math.round((rawScore - penalty) * EFFECT_SCALE * 10) / 10;
-}
-
-function humanizeEffectKey(effectKey: string): string {
-  return effectKey.replace(/_/g, " ");
-}
-
-function summarizeStatusEvidence(entries: EffectScoreEntry[], status: "works" | "conditional" | "blocked"): string | null {
-  const match = entries
-    .filter((entry) => entry.status === status)
-    .sort((a, b) => b.contribution - a.contribution)
-    .slice(0, status === "works" ? 2 : 1);
-
-  if (match.length === 0) return null;
-
-  const summary = match
-    .map((entry) => `${humanizeEffectKey(entry.effectKey)} (${entry.status})`)
-    .join(", ");
-
-  return summary;
-}
+// ─── Single-Officer Scoring ─────────────────────────────────
 
 function scoreOfficerForSlotEffect(
   officer: CatalogOfficer,
@@ -370,106 +163,7 @@ function scoreOfficerForSlotEffect(
   };
 }
 
-// ─── Effect-Based Recommender ───────────────────────────────
-
-/**
- * Confidence buckets penalize uncertainty and conditional concentration.
- */
-function effectConfidenceFromBreakdowns(entries: EffectScoreEntry[]): "high" | "medium" | "low" {
-  const uncertainty = summarizeUncertainty(entries);
-  const confidenceValue =
-    scoringContractV0.confidence.base
-    - uncertainty.unknownEffectCount * scoringContractV0.confidence.unknownEffectPenalty
-    - uncertainty.unknownMagnitudeCount * scoringContractV0.confidence.unknownMagnitudePenalty
-    - uncertainty.conditionalTopCount * scoringContractV0.confidence.conditionalTopPenalty;
-
-  if (confidenceValue >= scoringContractV0.confidence.highMin) return "high";
-  if (confidenceValue >= scoringContractV0.confidence.mediumMin) return "medium";
-  return "low";
-}
-
-function buildEffectReasons(
-  captainName: string,
-  captainBreakdown: EffectScoreEntry[],
-  bridge1Name: string,
-  bridge1Breakdown: EffectScoreEntry[],
-  bridge2Name: string,
-  bridge2Breakdown: EffectScoreEntry[],
-  captainViable: boolean,
-  captainReason: string | null,
-  captainFallbackInRun: boolean,
-  includeFallbackWarning: boolean,
-  reservationModeReason: string | null,
-  preferredCaptainOverrideReason: string | null,
-  synergyPairs: number,
-  reservationTotal: number,
-): string[] {
-  const reasons: string[] = [];
-
-  const worksEvidence = summarizeStatusEvidence(captainBreakdown, "works");
-  if (worksEvidence) {
-    reasons.push(`${captainName} (Captain): ${worksEvidence}.`);
-  }
-
-  const conditionalEvidence = summarizeStatusEvidence(captainBreakdown, "conditional");
-  if (conditionalEvidence) {
-    reasons.push(`${captainName} situational effects: ${conditionalEvidence}.`);
-  }
-
-  const blockedEvidence = summarizeStatusEvidence(captainBreakdown, "blocked");
-  if (blockedEvidence) {
-    reasons.push(`${captainName} blocked for current target: ${blockedEvidence}.`);
-  }
-
-  const bridge1Works = summarizeStatusEvidence(bridge1Breakdown, "works");
-  if (bridge1Works) {
-    reasons.push(`${bridge1Name} (Bridge): ${bridge1Works}.`);
-  }
-
-  const bridge2Works = summarizeStatusEvidence(bridge2Breakdown, "works");
-  if (bridge2Works) {
-    reasons.push(`${bridge2Name} (Bridge): ${bridge2Works}.`);
-  }
-
-  if (!captainViable && captainReason) {
-    reasons.push(`⚠ ${captainName}: ${captainReason}`);
-  }
-  if (includeFallbackWarning) {
-    reasons.push("No viable captains found; using best available fallback.");
-  }
-
-  if (reservationModeReason) {
-    reasons.push(reservationModeReason);
-  }
-
-  if (preferredCaptainOverrideReason) {
-    reasons.push(preferredCaptainOverrideReason);
-  }
-
-  if (synergyPairs > 0) {
-    reasons.push(
-      `Synergy group overlap (${synergyPairs} pair${synergyPairs > 1 ? "s" : ""}, +${Math.round(synergyPairs * SYNERGY_PAIR_BONUS * 100)}% bonus).`,
-    );
-  }
-
-  if (reservationTotal < 0) {
-    reasons.push("Includes reserved officer(s); review before saving.");
-  }
-
-  return reasons;
-}
-
-function countSynergyPairs(
-  captain: CatalogOfficer,
-  bridge1: CatalogOfficer,
-  bridge2: CatalogOfficer,
-): number {
-  let pairs = 0;
-  if (captain.synergyId && bridge1.synergyId && captain.synergyId === bridge1.synergyId) pairs++;
-  if (captain.synergyId && bridge2.synergyId && captain.synergyId === bridge2.synergyId) pairs++;
-  if (bridge1.synergyId && bridge2.synergyId && bridge1.synergyId === bridge2.synergyId) pairs++;
-  return pairs;
-}
+// ─── Pipeline Orchestration ─────────────────────────────────
 
 function recommendBridgeTriosEffect(input: CrewRecommendInput): CrewRecommendation[] {
   const bundle = input.effectBundle;
