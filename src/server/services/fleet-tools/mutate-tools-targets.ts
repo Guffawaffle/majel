@@ -11,7 +11,7 @@ import type { ToolEnv } from "./declarations.js";
 import type { TargetStatus, TargetType, UpdateTargetInput } from "../../stores/target-store.js";
 import { VALID_TARGET_TYPES, VALID_TARGET_STATUSES } from "../../stores/target-store.js";
 import { log } from "../../logger.js";
-import { str, validNotes, MAX_NOTES_LEN } from "./mutate-tools-helpers.js";
+import { str, MAX_NOTES_LEN } from "./mutate-tools-helpers.js";
 
 // ─── Create Target ──────────────────────────────────────────
 

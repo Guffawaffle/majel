@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+#### Fleet mutate-tools domain decomposition (#193)
+- Split monolithic `mutate-tools.ts` (2,135 lines, 20 handlers) into 5 focused domain modules with a shared helpers module and barrel re-export. (`src/server/services/fleet-tools/mutate-tools-helpers.ts`, `mutate-tools-crew.ts`, `mutate-tools-targets.ts`, `mutate-tools-sync.ts`, `mutate-tools-overlay.ts`, `mutate-tools-dock.ts`, `mutate-tools.ts`)
+- Split mutation test blocks from `fleet-tools.test.ts` (5,327 → 3,224 lines) into 4 targeted test files with shared mock infrastructure. (`test/fleet-tools/helpers.ts`, `test/fleet-tools/crew.test.ts`, `test/fleet-tools/targets.test.ts`, `test/fleet-tools/sync.test.ts`, `test/fleet-tools/overlay.test.ts`)
+
 ### Added
 
 #### Fleet-tool output clarity + hardening

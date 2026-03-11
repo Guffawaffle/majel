@@ -24,8 +24,8 @@
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Top QA tranche:** #161, #165.
-- **Tech debt batch:** #189–#193 (5 refactor issues filed 2026-03-08). Not blocking features.
-- **Test count:** 2120 tests across 78 files (as of `c0a4b45`).
+- **Tech debt batch:** #189–#193 (5 refactor issues filed 2026-03-08). #193 shipped (`56a435b`). Next: #191.
+- **Test count:** 2120 tests across 82 files (as of `56a435b`).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 

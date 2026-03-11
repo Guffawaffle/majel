@@ -31,7 +31,6 @@ import {
   type SyncOverlayOfficerInput,
   type SyncOverlayShipInput,
 } from "./mutate-tools-import-helpers.js";
-import { log } from "../../logger.js";
 
 // ─── Internal helpers (sync-domain only) ────────────────────
 
