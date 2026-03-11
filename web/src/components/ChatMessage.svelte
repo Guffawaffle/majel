@@ -4,16 +4,19 @@
 -->
 <script lang="ts">
   import type { LocalMessage } from "../lib/chat.svelte.js";
+  import { isSending, retry } from "../lib/chat.svelte.js";
   import { renderMarkdown, escapeHtml } from "../lib/markdown.js";
   import { openLightbox } from "./ImageLightbox.svelte";
   import ChatProposalCard from "./ChatProposalCard.svelte";
+  import { refreshSessions } from "../lib/sessions.svelte.js";
   import { onDestroy } from "svelte";
 
   interface Props {
     message: LocalMessage;
+    index?: number;
   }
 
-  let { message }: Props = $props();
+  let { message, index = -1 }: Props = $props();
 
   // Copy‐to‐clipboard
   let copied = $state(false);
@@ -59,6 +62,19 @@
     message.role === "system" ? "System" : "Aria"
   );
   const showCopy = $derived(message.role === "user" || message.role === "model");
+
+  const elapsedLabel = $derived(
+    message.role === "model" && message.elapsedMs && message.elapsedMs >= 1000
+      ? `${(message.elapsedMs / 1000).toFixed(1)}s`
+      : null,
+  );
+  const showRetry = $derived(message.role === "error" && index >= 0);
+  const showRegenerate = $derived(message.role === "model" && index >= 0);
+
+  function handleRetry() {
+    if (isSending() || index < 0) return;
+    retry(index, () => refreshSessions());
+  }
 </script>
 
 <div
@@ -103,15 +119,30 @@
           {/each}
         </div>
       {/if}
-      {#if showCopy}
-        <div class="message-actions">
-          <button class="action-btn copy-btn" class:copied onclick={handleCopy}>
-            {#if copied}
-              ✓ Copied
-            {:else}
-              📋 Copy
-            {/if}
-          </button>
+      {#if showCopy || showRetry || showRegenerate || elapsedLabel}
+        <div class="message-actions" class:message-actions-visible={showRetry}>
+          {#if elapsedLabel}
+            <span class="elapsed-label">{elapsedLabel}</span>
+          {/if}
+          {#if showCopy}
+            <button class="action-btn copy-btn" class:copied onclick={handleCopy}>
+              {#if copied}
+                ✓ Copied
+              {:else}
+                📋 Copy
+              {/if}
+            </button>
+          {/if}
+          {#if showRetry}
+            <button class="action-btn retry-btn" disabled={isSending()} onclick={handleRetry}>
+              ↻ Retry
+            </button>
+          {/if}
+          {#if showRegenerate}
+            <button class="action-btn regen-btn" disabled={isSending()} onclick={handleRetry}>
+              ↻ Regenerate
+            </button>
+          {/if}
         </div>
       {/if}
     </div>
@@ -197,7 +228,20 @@
     display: flex; align-items: center; gap: 4px; transition: color var(--transition), border-color var(--transition);
   }
   .action-btn:hover { color: var(--text-primary); border-color: var(--border); }
+  .action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .action-btn.copied { color: var(--accent-green); }
+
+  .elapsed-label {
+    font-size: 0.68rem; color: var(--text-muted); font-variant-numeric: tabular-nums;
+    margin-right: auto;
+  }
+
+  .retry-btn { color: var(--accent-red); }
+  .retry-btn:hover:not(:disabled) { color: var(--accent-red); border-color: var(--accent-red); }
+  .regen-btn { color: var(--text-muted); }
+  .regen-btn:hover:not(:disabled) { color: var(--text-primary); }
+
+  .message-actions-visible { opacity: 1; }
 
   .trace-box {
     margin-top: 10px;

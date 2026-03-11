@@ -95,8 +95,8 @@
     {:else}
       <!-- Messages -->
       <div class="messages" aria-live="polite" aria-relevant="additions">
-        {#each getMessages() as msg (msg.id)}
-          <ChatMessageComponent message={msg} />
+        {#each getMessages() as msg, i (msg.id)}
+          <ChatMessageComponent message={msg} index={i} />
         {/each}
         {#if isSending()}
           <TypingIndicator phase={getRunPhase()} elapsedMs={getRunElapsedMs()} model={getRunModel()} />

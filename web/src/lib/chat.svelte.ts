@@ -30,6 +30,8 @@ export interface LocalMessage {
   proposals?: ChatProposal[];
   /** Admiral-only diagnostic trace for this response. */
   trace?: ChatTrace;
+  /** Generation duration in milliseconds (model messages only). */
+  elapsedMs?: number;
 }
 
 let currentSessionId = $state<string>(crypto.randomUUID());
@@ -276,6 +278,7 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
       progressCallbacks,
     );
     runPhase = "completed";
+    const finalElapsed = runElapsedMs || undefined;
     messages.push({
       id: nextLocalId(),
       role: "model",
@@ -283,6 +286,7 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
       createdAt: new Date().toISOString(),
       proposals: result.proposals?.length ? result.proposals : undefined,
       trace: result.trace,
+      elapsedMs: finalElapsed,
     });
     onSent?.();
   } catch (e) {
@@ -308,4 +312,22 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
     sending = false;
     resetRunState();
   }
+}
+
+/**
+ * Retry / regenerate: re-send the user message that preceded the given
+ * model or error message. Creates a new run — the old response stays visible.
+ */
+export async function retry(messageIndex: number, onSent?: () => void): Promise<void> {
+  if (sending) return;
+  // Walk backwards from messageIndex to find the preceding user message
+  let userText = "";
+  for (let i = messageIndex - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      userText = messages[i].text;
+      break;
+    }
+  }
+  if (!userText) return;
+  await send(userText, onSent);
 }
