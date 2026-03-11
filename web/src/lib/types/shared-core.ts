@@ -107,6 +107,7 @@ export interface ModelDef {
   contextWindow: number;
   costRelative: number;
   speed: ModelSpeed;
+  defaultEnabled: boolean;
   roleGate?: "admiral";
 }
 
@@ -114,7 +115,7 @@ export interface ModelsResponse {
   current: string;
   defaultModel: string;
   currentDef: ModelDef | null;
-  models: (ModelDef & { active: boolean })[];
+  models: (ModelDef & { active: boolean; available: boolean; unavailableReason: string | null })[];
 }
 
 export interface ModelSelectResponse {
@@ -123,6 +124,32 @@ export interface ModelSelectResponse {
   modelDef: ModelDef;
   sessionsCleared: number;
   hints: string[];
+}
+
+export interface AdminModelEntry {
+  id: string;
+  name: string;
+  provider: string;
+  tier: string;
+  description: string;
+  defaultEnabled: boolean;
+  providerCapable: boolean;
+  adminEnabled: boolean | null;
+  effectiveAvailable: boolean;
+  unavailableReason: string | null;
+  adminReason: string | null;
+}
+
+export interface AdminModelsResponse {
+  models: AdminModelEntry[];
+  count: number;
+}
+
+export interface AdminModelToggleResponse {
+  modelId: string;
+  adminEnabled: boolean;
+  effectiveAvailable: boolean;
+  unavailableReason: string | null;
 }
 
 export interface SettingEntry {

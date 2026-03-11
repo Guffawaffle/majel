@@ -17,6 +17,7 @@ import type { AppState } from "../src/server/app-context.js";
 import { createInviteStore, type InviteStore } from "../src/server/stores/invite-store.js";
 import { createAuditStore, type AuditStore } from "../src/server/stores/audit-store.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
+import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
 
 let pool: Pool;
 beforeAll(() => { pool = createTestPool(); });
@@ -256,5 +257,149 @@ describe("Admiral routes — audit log query", () => {
       .query({ from: "2026-02-21T00:00:00Z", to: "2026-02-20T00:00:00Z" })
       .set("Authorization", bearer);
     expect(res.status).toBe(400);
+  });
+});
+
+// ─── Model Management ─────────────────────────────────────────
+
+describe("Admiral routes — model management", () => {
+  let app: Express;
+  let settingsStore: SettingsStore;
+
+  beforeEach(async () => {
+    await cleanDatabase(pool);
+    settingsStore = await createSettingsStore(pool);
+    app = createApp(makeState({ settingsStore }));
+  });
+
+  // ── GET /api/admiral/models ──
+
+  it("GET /models returns model list", async () => {
+    const res = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data.models)).toBe(true);
+    expect(res.body.data.count).toBeGreaterThan(0);
+
+    const model = res.body.data.models[0];
+    expect(model).toHaveProperty("id");
+    expect(model).toHaveProperty("name");
+    expect(model).toHaveProperty("provider");
+    expect(model).toHaveProperty("defaultEnabled");
+    expect(model).toHaveProperty("providerCapable");
+    expect(model).toHaveProperty("adminEnabled");
+    expect(model).toHaveProperty("effectiveAvailable");
+  });
+
+  it("GET /models works without settingsStore (overrides default to empty)", async () => {
+    app = createApp(makeState());
+    const res = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    expect(res.status).toBe(200);
+    expect(res.body.data.models.length).toBeGreaterThan(0);
+  });
+
+  // ── PATCH /api/admiral/models/:id/availability ──
+
+  it("PATCH /models/:id/availability — disable a model", async () => {
+    const listRes = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    const enabledModel = listRes.body.data.models.find((m: { defaultEnabled: boolean }) => m.defaultEnabled);
+    expect(enabledModel).toBeTruthy();
+
+    const res = await testRequest(app)
+      .patch(`/api/admiral/models/${enabledModel.id}/availability`)
+      .set("Authorization", bearer)
+      .send({ adminEnabled: false, reason: "Testing disable" });
+    expect(res.status).toBe(200);
+    expect(res.body.data.adminEnabled).toBe(false);
+    expect(res.body.data.modelId).toBe(enabledModel.id);
+  });
+
+  it("PATCH /models/:id/availability — enable a model", async () => {
+    const listRes = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    const disabledModel = listRes.body.data.models.find((m: { defaultEnabled: boolean }) => !m.defaultEnabled);
+    if (!disabledModel) return; // All models enabled by default — skip
+
+    const res = await testRequest(app)
+      .patch(`/api/admiral/models/${disabledModel.id}/availability`)
+      .set("Authorization", bearer)
+      .send({ adminEnabled: true });
+    expect(res.status).toBe(200);
+    expect(res.body.data.adminEnabled).toBe(true);
+    expect(res.body.data.modelId).toBe(disabledModel.id);
+  });
+
+  it("PATCH persists override — visible in subsequent GET", async () => {
+    const listRes = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    const model = listRes.body.data.models[0];
+
+    await testRequest(app)
+      .patch(`/api/admiral/models/${model.id}/availability`)
+      .set("Authorization", bearer)
+      .send({ adminEnabled: false, reason: "Disabled for test" });
+
+    const listRes2 = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    const updated = listRes2.body.data.models.find((m: { id: string }) => m.id === model.id);
+    expect(updated.adminEnabled).toBe(false);
+    expect(updated.adminReason).toBe("Disabled for test");
+  });
+
+  it("PATCH rejects unknown model ID", async () => {
+    const res = await testRequest(app)
+      .patch("/api/admiral/models/not-a-real-model/availability")
+      .set("Authorization", bearer)
+      .send({ adminEnabled: true });
+    expect(res.status).toBe(404);
+  });
+
+  it("PATCH rejects missing adminEnabled", async () => {
+    const listRes = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    const model = listRes.body.data.models[0];
+
+    const res = await testRequest(app)
+      .patch(`/api/admiral/models/${model.id}/availability`)
+      .set("Authorization", bearer)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("PATCH rejects non-boolean adminEnabled", async () => {
+    const listRes = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    const model = listRes.body.data.models[0];
+
+    const res = await testRequest(app)
+      .patch(`/api/admiral/models/${model.id}/availability`)
+      .set("Authorization", bearer)
+      .send({ adminEnabled: "yes" });
+    expect(res.status).toBe(400);
+  });
+
+  it("PATCH rejects reason > 200 chars", async () => {
+    const listRes = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    const model = listRes.body.data.models[0];
+
+    const res = await testRequest(app)
+      .patch(`/api/admiral/models/${model.id}/availability`)
+      .set("Authorization", bearer)
+      .send({ adminEnabled: true, reason: "x".repeat(201) });
+    expect(res.status).toBe(400);
+  });
+
+  it("PATCH rejects non-string reason", async () => {
+    const listRes = await testRequest(app).get("/api/admiral/models").set("Authorization", bearer);
+    const model = listRes.body.data.models[0];
+
+    const res = await testRequest(app)
+      .patch(`/api/admiral/models/${model.id}/availability`)
+      .set("Authorization", bearer)
+      .send({ adminEnabled: true, reason: 42 });
+    expect(res.status).toBe(400);
+  });
+
+  it("PATCH → 503 when settingsStore is null", async () => {
+    app = createApp(makeState());
+    const res = await testRequest(app)
+      .patch("/api/admiral/models/gemini-2.5-flash/availability")
+      .set("Authorization", bearer)
+      .send({ adminEnabled: true });
+    expect(res.status).toBe(503);
   });
 });

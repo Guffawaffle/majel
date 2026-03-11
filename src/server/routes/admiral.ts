@@ -19,6 +19,9 @@ import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { requireAdmiral } from "../services/auth.js";
 import { createSafeRouter } from "../safe-router.js";
 import { AUDIT_EVENTS, type AuditEntry, type AuditEvent } from "../stores/audit-store.js";
+import { MODEL_REGISTRY_MAP } from "../services/gemini/model-registry.js";
+import { resolveModelAvailability, parseModelOverrides } from "../services/model-availability.js";
+import type { ProviderCapabilities } from "../services/model-availability.js";
 import type { Router } from "express";
 
 export function createAdmiralRoutes(appState: AppState): Router {
@@ -211,6 +214,96 @@ export function createAdmiralRoutes(appState: AppState): Router {
         ...(to ? { to } : {}),
         limit: parsedLimit,
       },
+    });
+  });
+
+  // ── GET /api/admiral/models ───────────────────────────────
+  // Returns all models with full availability breakdown for admin management.
+  router.get("/api/admiral/models", async (_req, res) => {
+    const overridesRaw = appState.settingsStore
+      ? await appState.settingsStore.get("system.modelOverrides")
+      : "{}";
+    const overrides = parseModelOverrides(overridesRaw);
+    const providerCapabilities: ProviderCapabilities = {
+      gemini: true,
+      claude: !!appState.config.vertexProjectId,
+    };
+
+    const results: Array<{
+      id: string;
+      name: string;
+      provider: string;
+      tier: string;
+      description: string;
+      defaultEnabled: boolean;
+      providerCapable: boolean;
+      adminEnabled: boolean | null;
+      effectiveAvailable: boolean;
+      unavailableReason: string | null;
+      adminReason: string | null;
+    }> = [];
+
+    for (const model of MODEL_REGISTRY_MAP.values()) {
+      const avail = resolveModelAvailability(model.id, { isAdmiral: true }, overrides, providerCapabilities);
+      results.push({
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+        tier: model.tier,
+        description: model.description,
+        defaultEnabled: model.defaultEnabled,
+        providerCapable: avail.providerCapable,
+        adminEnabled: avail.adminEnabled,
+        effectiveAvailable: avail.available,
+        unavailableReason: avail.effectiveReason ?? null,
+        adminReason: overrides[model.id]?.reason ?? null,
+      });
+    }
+
+    sendOk(res, { models: results, count: results.length });
+  });
+
+  // ── PATCH /api/admiral/models/:id/availability ────────────
+  // Toggle admin override for a specific model.
+  router.patch("/api/admiral/models/:id/availability", async (req, res) => {
+    if (!appState.settingsStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Settings store not available", 503);
+    }
+
+    const modelId = req.params.id as string;
+    if (!MODEL_REGISTRY_MAP.has(modelId)) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "Unknown model ID", 404);
+    }
+
+    const { adminEnabled, reason } = req.body ?? {};
+    if (typeof adminEnabled !== "boolean") {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "adminEnabled must be a boolean", 400);
+    }
+    if (reason !== undefined && (typeof reason !== "string" || reason.length > 200)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "reason must be a string of 200 characters or fewer", 400);
+    }
+
+    const overridesRaw = await appState.settingsStore.get("system.modelOverrides");
+    const overrides = parseModelOverrides(overridesRaw);
+
+    overrides[modelId] = {
+      adminEnabled,
+      ...(typeof reason === "string" ? { reason } : {}),
+    };
+
+    await appState.settingsStore.set("system.modelOverrides", JSON.stringify(overrides));
+
+    const providerCapabilities: ProviderCapabilities = {
+      gemini: true,
+      claude: !!appState.config.vertexProjectId,
+    };
+    const avail = resolveModelAvailability(modelId, { isAdmiral: true }, overrides, providerCapabilities);
+
+    sendOk(res, {
+      modelId,
+      adminEnabled,
+      effectiveAvailable: avail.available,
+      unavailableReason: avail.effectiveReason ?? null,
     });
   });
 

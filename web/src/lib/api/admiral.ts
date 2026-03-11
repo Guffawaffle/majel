@@ -5,7 +5,7 @@
  */
 
 import { apiFetch, apiDelete, apiPatch, apiPost, pathEncode } from "./fetch.js";
-import type { AdminInvite, AdminSession, AdminUser, Role } from "../types.js";
+import type { AdminInvite, AdminSession, AdminUser, Role, AdminModelEntry, AdminModelToggleResponse } from "../types.js";
 import { runLockedMutation } from "./mutation.js";
 
 // ─── User Management ────────────────────────────────────────
@@ -124,5 +124,28 @@ export async function adminDeleteAllSessions(): Promise<void> {
     mutate: async () => {
       await apiDelete("/api/admiral/sessions");
     },
+  });
+}
+
+// ─── Model Management ───────────────────────────────────────
+
+export async function adminListModels(): Promise<AdminModelEntry[]> {
+  const data = await apiFetch<{ models: AdminModelEntry[] }>("/api/admiral/models");
+  return data.models;
+}
+
+export async function adminSetModelAvailability(
+  modelId: string,
+  adminEnabled: boolean,
+  reason?: string,
+): Promise<AdminModelToggleResponse> {
+  return runLockedMutation({
+    label: `Toggle model ${modelId}`,
+    lockKey: `admiral:model:${modelId}`,
+    mutate: () =>
+      apiPatch<AdminModelToggleResponse>(
+        `/api/admiral/models/${pathEncode(modelId)}/availability`,
+        { adminEnabled, ...(reason !== undefined ? { reason } : {}) },
+      ),
   });
 }

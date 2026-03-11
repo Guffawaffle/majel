@@ -16,21 +16,25 @@
     adminListSessions,
     adminDeleteSession,
     adminDeleteAllSessions,
+    adminListModels,
+    adminSetModelAvailability,
   } from "../lib/api/admiral.js";
   import type { InviteOpts } from "../lib/api/admiral.js";
-  import type { AdminUser, AdminInvite, AdminSession, Role } from "../lib/types.js";
+  import type { AdminUser, AdminInvite, AdminSession, AdminModelEntry, Role } from "../lib/types.js";
   import { confirm } from "../components/ConfirmDialog.svelte";
   import { getUser } from "../lib/auth.svelte.js";
 
   // ── State ──
 
-  let activeTab = $state<"users" | "invites" | "sessions">("users");
+  let activeTab = $state<"users" | "invites" | "sessions" | "models">("users");
   let loading = $state(true);
   let error = $state("");
 
   let users = $state<AdminUser[]>([]);
   let invites = $state<AdminInvite[]>([]);
   let sessions = $state<AdminSession[]>([]);
+  let models = $state<AdminModelEntry[]>([]);
+  let togglingModel = $state<string | null>(null);
 
   // Invite form
   let invLabel = $state("");
@@ -64,6 +68,8 @@
         invites = await adminListInvites();
       } else if (target === "sessions") {
         sessions = await adminListSessions();
+      } else if (target === "models") {
+        models = await adminListModels();
       }
       loaded.add(target);
     } catch (err: unknown) {
@@ -203,6 +209,29 @@
       await refreshSessions();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Kill all failed."; }
   }
+
+  // ── Actions: Models ──
+
+  async function handleToggleModel(model: AdminModelEntry) {
+    const newEnabled = model.adminEnabled === null ? !model.defaultEnabled : !model.adminEnabled;
+    togglingModel = model.id;
+    try {
+      await adminSetModelAvailability(model.id, newEnabled);
+      models = await adminListModels();
+    } catch (err: unknown) { error = err instanceof Error ? err.message : "Model toggle failed."; }
+    finally { togglingModel = null; }
+  }
+
+  async function handleResetModelOverride(model: AdminModelEntry) {
+    // Reset to registry default by setting adminEnabled to match defaultEnabled (effectively clearing the override spirit)
+    // Actually we need to remove the override entirely — set adminEnabled back to default
+    togglingModel = model.id;
+    try {
+      await adminSetModelAvailability(model.id, model.defaultEnabled, "Reset to default");
+      models = await adminListModels();
+    } catch (err: unknown) { error = err instanceof Error ? err.message : "Reset failed."; }
+    finally { togglingModel = null; }
+  }
 </script>
 
 <section class="admiral">
@@ -211,6 +240,7 @@
     <button class="adm-tab" class:active={activeTab === "users"} onclick={() => (activeTab = "users")} role="tab" aria-selected={activeTab === "users"}>👥 Users</button>
     <button class="adm-tab" class:active={activeTab === "invites"} onclick={() => (activeTab = "invites")} role="tab" aria-selected={activeTab === "invites"}>🎫 Invites</button>
     <button class="adm-tab" class:active={activeTab === "sessions"} onclick={() => (activeTab = "sessions")} role="tab" aria-selected={activeTab === "sessions"}>🔑 Sessions</button>
+    <button class="adm-tab" class:active={activeTab === "models"} onclick={() => (activeTab = "models")} role="tab" aria-selected={activeTab === "models"}>🤖 Models</button>
   </nav>
 
   {#if error}
@@ -352,6 +382,64 @@
       </table>
     </div>
     <div class="adm-count">{sessions.length} session(s)</div>
+
+  {:else if activeTab === "models"}
+    <div class="adm-table-wrap">
+      <table class="adm-table" aria-label="Model availability">
+        <thead>
+          <tr><th>Model</th><th>Provider</th><th>Tier</th><th>Default</th><th>Provider Ready</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {#each models as m (m.id)}
+            {@const isOverridden = m.adminEnabled !== null}
+            {@const effectiveEnabled = m.adminEnabled ?? m.defaultEnabled}
+            <tr class:adm-row-muted={!m.effectiveAvailable}>
+              <td>
+                <div class="adm-model-name">{m.name}</div>
+                <div class="adm-model-desc">{m.description}</div>
+              </td>
+              <td><span class="adm-badge adm-badge-{m.provider}">{m.provider}</span></td>
+              <td>{m.tier}</td>
+              <td>{m.defaultEnabled ? "✅" : "❌"}</td>
+              <td>{m.providerCapable ? "✅" : "❌"}</td>
+              <td>
+                {#if m.effectiveAvailable}
+                  <span class="adm-status-available">Available</span>
+                {:else}
+                  <span class="adm-status-unavailable" title={m.unavailableReason ?? ""}>{m.unavailableReason ?? "Unavailable"}</span>
+                {/if}
+                {#if isOverridden}
+                  <span class="adm-override-badge" title={m.adminReason ?? "Admin override"}>overridden</span>
+                {/if}
+              </td>
+              <td class="adm-cell-actions">
+                <button
+                  class="adm-btn"
+                  class:adm-btn-primary={!effectiveEnabled}
+                  class:adm-btn-danger={effectiveEnabled}
+                  disabled={togglingModel === m.id}
+                  onclick={() => handleToggleModel(m)}
+                >
+                  {togglingModel === m.id ? "…" : effectiveEnabled ? "Disable" : "Enable"}
+                </button>
+                {#if isOverridden}
+                  <button
+                    class="adm-btn"
+                    disabled={togglingModel === m.id}
+                    onclick={() => handleResetModelOverride(m)}
+                    title="Reset to registry default"
+                  >↩ Reset</button>
+                {/if}
+              </td>
+            </tr>
+          {/each}
+          {#if models.length === 0}
+            <tr><td colspan="7" class="adm-empty">No models found.</td></tr>
+          {/if}
+        </tbody>
+      </table>
+    </div>
+    <div class="adm-count">{models.length} model(s)</div>
   {/if}
 </section>
 
@@ -523,6 +611,32 @@
     color: var(--text-muted);
     font-size: 0.78rem;
     padding: 4px 0;
+  }
+
+  /* ── Models ── */
+  .adm-model-name { font-weight: 600; font-size: 0.85rem; }
+  .adm-model-desc { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  .adm-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .adm-badge-gemini { background: rgba(66, 133, 244, 0.15); color: #4285f4; }
+  .adm-badge-claude { background: rgba(204, 120, 50, 0.15); color: #cc7832; }
+  .adm-status-available { color: var(--accent-green, #4c4); font-size: 0.82rem; }
+  .adm-status-unavailable { color: var(--text-muted); font-size: 0.82rem; }
+  .adm-override-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    background: rgba(255, 200, 50, 0.12);
+    color: var(--accent-gold);
+    text-transform: uppercase;
   }
 
   @media (max-width: 768px) {
