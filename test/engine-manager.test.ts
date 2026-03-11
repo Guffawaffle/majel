@@ -32,7 +32,7 @@ describe("EngineManager", () => {
 
   beforeEach(() => {
     gemini = createMockEngine("gemini-3-pro-preview");
-    claude = createMockEngine("claude-sonnet-4-5");
+    claude = createMockEngine("claude-sonnet-4-6");
   });
 
   // ── Construction ──────────────────────────────────────────
@@ -61,14 +61,14 @@ describe("EngineManager", () => {
 
   it("switches to a Claude model and delegates to Claude engine", () => {
     const manager = createEngineManager({ geminiEngine: gemini, claudeEngine: claude });
-    manager.setModel("claude-sonnet-4-5");
-    expect(claude.setModel).toHaveBeenCalledWith("claude-sonnet-4-5");
+    manager.setModel("claude-sonnet-4-6");
+    expect(claude.setModel).toHaveBeenCalledWith("claude-sonnet-4-6");
     manager.close();
   });
 
   it("stays on current model when switching to Claude without Claude engine", () => {
     const manager = createEngineManager({ geminiEngine: gemini });
-    manager.setModel("claude-sonnet-4-5");
+    manager.setModel("claude-sonnet-4-6");
     // Should NOT have called setModel on Gemini (model didn't change)
     expect(gemini.setModel).not.toHaveBeenCalled();
     expect(manager.getModel()).toBe("gemini-3-pro-preview");
@@ -87,7 +87,7 @@ describe("EngineManager", () => {
 
   it("routes chat to Claude when a Claude model is active", async () => {
     const manager = createEngineManager({ geminiEngine: gemini, claudeEngine: claude });
-    manager.setModel("claude-opus-4");
+    manager.setModel("claude-haiku-4-5");
     await manager.chat("hello", "s1");
     expect(claude.chat).toHaveBeenCalled();
     expect(gemini.chat).not.toHaveBeenCalled();

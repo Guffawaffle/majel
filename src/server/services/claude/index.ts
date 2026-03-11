@@ -122,7 +122,7 @@ export function createClaudeEngine(
 
   let currentModelId = initialModelId && MODEL_REGISTRY_MAP.has(initialModelId)
     ? initialModelId
-    : "claude-sonnet-4-5";
+    : "claude-haiku-4-5";
 
   const sessions = new Map<string, SessionState>();
 

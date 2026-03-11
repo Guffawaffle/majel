@@ -61,7 +61,7 @@ function textResponse(text: string) {
     id: "msg_test",
     type: "message",
     role: "assistant",
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     content: [{ type: "text", text }],
     stop_reason: "end_turn",
     stop_sequence: null,
@@ -76,7 +76,7 @@ function toolUseResponse(toolId: string, toolName: string, input: Record<string,
     id: "msg_test",
     type: "message",
     role: "assistant",
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     content: [
       { type: "tool_use", id: toolId, name: toolName, input, caller: { type: "direct" } },
     ],
@@ -110,7 +110,7 @@ describe("ClaudeChatEngine (ADR-041 Phase 3)", () => {
       null, // fleetConfig
       null, // dockBriefing
       null, // microRunner
-      "claude-sonnet-4-5",
+      "claude-sonnet-4-6",
       mockToolContextFactory as any,
       null, // proposalStoreFactory
       null, // userSettingsStore
@@ -141,7 +141,7 @@ describe("ClaudeChatEngine (ADR-041 Phase 3)", () => {
 
     // Verify the SDK call shape
     const call = mockCreate.mock.calls[0][0];
-    expect(call.model).toBe("claude-sonnet-4-5");
+    expect(call.model).toBe("claude-sonnet-4-6");
     expect(call.max_tokens).toBe(4096);
     expect(typeof call.system).toBe("string");
     expect(call.messages).toHaveLength(1);
@@ -198,15 +198,15 @@ describe("ClaudeChatEngine (ADR-041 Phase 3)", () => {
   // ── Model management ───────────────────────────────────────
 
   it("returns the current model", () => {
-    expect(engine.getModel()).toBe("claude-sonnet-4-5");
+    expect(engine.getModel()).toBe("claude-sonnet-4-6");
   });
 
   it("switches model and clears sessions", async () => {
     await engine.chat("Hello", "s1", undefined, "user1");
     expect(engine.getSessionCount()).toBe(1);
 
-    engine.setModel("claude-opus-4");
-    expect(engine.getModel()).toBe("claude-opus-4");
+    engine.setModel("claude-haiku-4-5");
+    expect(engine.getModel()).toBe("claude-haiku-4-5");
     expect(engine.getSessionCount()).toBe(0);
   });
 
@@ -216,7 +216,7 @@ describe("ClaudeChatEngine (ADR-041 Phase 3)", () => {
 
   it("no-ops when setting the same model", async () => {
     await engine.chat("Hello", "s1", undefined, "user1");
-    engine.setModel("claude-sonnet-4-5");
+    engine.setModel("claude-sonnet-4-6");
     // Sessions should NOT be cleared
     expect(engine.getSessionCount()).toBe(1);
   });
