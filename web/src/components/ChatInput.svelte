@@ -117,6 +117,11 @@
       closePicker();
       return;
     }
+    const entry = modelsData.models.find((m) => m.id === modelId);
+    if (entry && !entry.available) {
+      addSystemMessage(`${entry.name} is unavailable: ${entry.unavailableReason ?? "unknown reason"}.`);
+      return;
+    }
     if (!(await confirm({ title: "Switching models will clear existing sessions. Continue?", severity: "warning" }))) return;
     try {
       const result = await selectModel(modelId);
@@ -233,6 +238,9 @@
               type="button"
               class="model-card"
               class:model-card-active={model.id === modelsData?.current}
+              class:model-card-unavailable={!model.available}
+              aria-disabled={!model.available}
+              title={model.available ? undefined : (model.unavailableReason ?? 'Unavailable')}
               onclick={() => handleModelSelect(model.id)}
             >
               <div class="model-card-header">
@@ -246,6 +254,9 @@
                 <span class="model-speed">{model.speed}</span>
                 {#if model.id === modelsData?.current}
                   <span class="model-active-badge">Active</span>
+                {/if}
+                {#if !model.available}
+                  <span class="model-unavailable-reason">{model.unavailableReason ?? 'Unavailable'}</span>
                 {/if}
               </div>
             </button>
@@ -421,6 +432,10 @@
   .model-card-meta { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; color: var(--text-muted); }
   .model-speed { text-transform: capitalize; }
   .model-active-badge { color: var(--accent-green); font-weight: 600; }
+
+  .model-card-unavailable { opacity: 0.4; cursor: not-allowed; }
+  .model-card-unavailable:hover { background: transparent; border-color: transparent; }
+  .model-unavailable-reason { color: var(--accent-red, #e06050); font-style: italic; margin-left: auto; }
 
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 </style>
