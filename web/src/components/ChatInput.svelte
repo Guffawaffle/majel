@@ -9,6 +9,8 @@
     attachImage,
     clearPendingImage,
     send,
+    cancelCurrentRun,
+    getRunPhase,
   } from "../lib/chat.svelte.js";
   import { openLightbox } from "./ImageLightbox.svelte";
   import { confirm } from "./ConfirmDialog.svelte";
@@ -38,6 +40,8 @@
 
   // ── Send ──
   const canSend = $derived(!isSending() && (inputText.trim().length > 0 || getPendingImage() != null));
+  const showStop = $derived(isSending() && getRunPhase() !== "cancelling");
+  const isCancelling = $derived(getRunPhase() === "cancelling");
   let sessionRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   function scheduleSessionsRefresh() {
@@ -206,9 +210,20 @@
         onkeydown={handleKeydown}
         onpaste={handlePaste}
       ></textarea>
-      <button type="submit" class="send-btn" disabled={!canSend}>
-        ➤
-      </button>
+      {#if showStop || isCancelling}
+        <button
+          type="button"
+          class="stop-btn"
+          disabled={isCancelling}
+          onclick={() => cancelCurrentRun()}
+          title={isCancelling ? "Stopping..." : "Stop generation"}
+          aria-label={isCancelling ? "Stopping" : "Stop generation"}
+        >■</button>
+      {:else}
+        <button type="submit" class="send-btn" disabled={!canSend}>
+          ➤
+        </button>
+      {/if}
     </div>
 
     <!-- Hint line + model selector -->
@@ -298,6 +313,16 @@
   }
   .send-btn:hover:not(:disabled) { opacity: 0.9; transform: scale(1.05); }
   .send-btn:disabled { opacity: 0.3; cursor: not-allowed; background: var(--border); }
+
+  .stop-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--accent-red, #e06050); border: none; color: #fff;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: opacity var(--transition), transform var(--transition);
+    font-size: 0.85rem;
+  }
+  .stop-btn:hover:not(:disabled) { opacity: 0.9; transform: scale(1.05); }
+  .stop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .input-hint {
     text-align: center; font-size: 0.7rem; color: var(--text-muted);

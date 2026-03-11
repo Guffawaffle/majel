@@ -7,7 +7,13 @@
  */
 
 import type { ChatImage, ChatMessage, ChatProposal, ChatResponse, ChatTrace } from "./types.js";
-import { sendChat as apiSendChat } from "./api/chat.js";
+import { sendChat as apiSendChat, cancelRun as apiCancelRun } from "./api/chat.js";
+import type { RunProgressCallbacks } from "./api/chat.js";
+
+// ─── Run phase type (ADR-043) ───────────────────────────────
+
+export type RunPhase = "idle" | "queued" | "running" | "cancelling"
+  | "completed" | "failed" | "cancelled" | "timed_out";
 
 // ─── State ──────────────────────────────────────────────────
 
@@ -31,6 +37,14 @@ const clientTabId = crypto.randomUUID();
 let messages = $state<LocalMessage[]>([]);
 let sending = $state(false);
 let pendingImage = $state<(ChatImage & { name: string; dataUrl: string; fileSize: number }) | null>(null);
+
+// ── Run lifecycle state (ADR-043) ──
+let currentRunId = $state<string | null>(null);
+let runPhase = $state<RunPhase>("idle");
+let runElapsedMs = $state(0);
+let runModel = $state<string | null>(null);
+let elapsedTimerId: ReturnType<typeof setInterval> | undefined;
+let elapsedOrigin = 0;
 
 let localIdSeq = -1;
 function nextLocalId(): number {
@@ -59,6 +73,22 @@ export function hasMessages(): boolean {
   return messages.length > 0;
 }
 
+export function getCurrentRunId(): string | null {
+  return currentRunId;
+}
+
+export function getRunPhase(): RunPhase {
+  return runPhase;
+}
+
+export function getRunElapsedMs(): number {
+  return runElapsedMs;
+}
+
+export function getRunModel(): string | null {
+  return runModel;
+}
+
 // ─── Mutations ──────────────────────────────────────────────
 
 /** Start a brand-new chat session. */
@@ -67,6 +97,7 @@ export function startNewSession(): void {
   messages = [];
   pendingImage = null;
   sending = false;
+  resetRunState();
   localIdSeq = -1;
 }
 
@@ -109,6 +140,7 @@ export function restoreMessages(
   });
   pendingImage = null;
   sending = false;
+  resetRunState();
 }
 
 /** Add a System or info message locally. */
@@ -156,6 +188,40 @@ export function clearPendingImage(): void {
   pendingImage = null;
 }
 
+// ─── Run lifecycle helpers (ADR-043) ────────────────────────
+
+function resetRunState(): void {
+  currentRunId = null;
+  runPhase = "idle";
+  runElapsedMs = 0;
+  runModel = null;
+  if (elapsedTimerId !== undefined) {
+    clearInterval(elapsedTimerId);
+    elapsedTimerId = undefined;
+  }
+}
+
+function startElapsedTimer(): void {
+  if (elapsedTimerId !== undefined) clearInterval(elapsedTimerId);
+  elapsedOrigin = Date.now();
+  runElapsedMs = 0;
+  elapsedTimerId = setInterval(() => {
+    runElapsedMs = Date.now() - elapsedOrigin;
+  }, 250);
+}
+
+/** Cancel the currently active run (if any). */
+export async function cancelCurrentRun(): Promise<void> {
+  const id = currentRunId;
+  if (!id || runPhase === "cancelling" || runPhase === "idle") return;
+  runPhase = "cancelling";
+  try {
+    await apiCancelRun(id);
+  } catch {
+    // Server may already have finished — SSE terminal event will resolve
+  }
+}
+
 /**
  * Send a chat message. Adds user + model/error messages to the list.
  * Returns void — components observe reactive state.
@@ -184,9 +250,32 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
 
   pendingImage = null;
   sending = true;
+  runPhase = "queued";
+
+  const progressCallbacks: RunProgressCallbacks = {
+    onQueued: () => { runPhase = "queued"; },
+    onStarted: (model) => {
+      runPhase = "running";
+      if (model) runModel = model;
+      startElapsedTimer();
+    },
+    onProgress: (elapsed) => {
+      runElapsedMs = elapsed;
+      // Re-anchor the local timer to match server elapsed
+      elapsedOrigin = Date.now() - elapsed;
+    },
+  };
 
   try {
-    const result: ChatResponse = await apiSendChat(currentSessionId, msgText, image, clientTabId);
+    const result: ChatResponse = await apiSendChat(
+      currentSessionId,
+      msgText,
+      image,
+      clientTabId,
+      (id) => { currentRunId = id; },
+      progressCallbacks,
+    );
+    runPhase = "completed";
     messages.push({
       id: nextLocalId(),
       role: "model",
@@ -198,13 +287,25 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
     onSent?.();
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : "Something went wrong.";
-    messages.push({
-      id: nextLocalId(),
-      role: "error",
-      text: errMsg,
-      createdAt: new Date().toISOString(),
-    });
+    if (errMsg === "Chat run was cancelled") {
+      runPhase = "cancelled";
+      messages.push({
+        id: nextLocalId(),
+        role: "system",
+        text: "Generation stopped.",
+        createdAt: new Date().toISOString(),
+      });
+    } else {
+      runPhase = errMsg.includes("timed out") ? "timed_out" : "failed";
+      messages.push({
+        id: nextLocalId(),
+        role: "error",
+        text: errMsg,
+        createdAt: new Date().toISOString(),
+      });
+    }
   } finally {
     sending = false;
+    resetRunState();
   }
 }

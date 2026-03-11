@@ -3,8 +3,15 @@
  */
 
 import type { ChatImage, ChatResponse, HistoryResponse, RecallResponse } from "../types.js";
-import { apiFetch, qs } from "./fetch.js";
+import { apiFetch, apiPost, qs } from "./fetch.js";
 import { runLockedMutation } from "./mutation.js";
+
+/** Callback interface for run lifecycle events. */
+export interface RunProgressCallbacks {
+  onQueued?: () => void;
+  onStarted?: (model?: string) => void;
+  onProgress?: (elapsedMs: number) => void;
+}
 
 interface ChatSubmitResponse {
   runId: string;
@@ -67,7 +74,12 @@ async function readRunSnapshot(runId: string): Promise<ChatResponse> {
   };
 }
 
-function waitForRunCompletion(runId: string, sessionId?: string, tabId?: string): Promise<ChatResponse> {
+function waitForRunCompletion(
+  runId: string,
+  sessionId?: string,
+  tabId?: string,
+  callbacks?: RunProgressCallbacks,
+): Promise<ChatResponse> {
   if (typeof EventSource === "undefined") {
     return readRunSnapshot(runId);
   }
@@ -117,6 +129,32 @@ function waitForRunCompletion(runId: string, sessionId?: string, tabId?: string)
         .catch((err) => finish(() => reject(err instanceof Error ? err : new Error("AI request failed"))));
     };
 
+    // ── Progress events (ADR-043) ──
+
+    source.addEventListener("run.queued", () => {
+      if (!settled) callbacks?.onQueued?.();
+    });
+
+    source.addEventListener("run.started", (event) => {
+      if (settled) return;
+      const parsed = parseStreamData((event as MessageEvent).data);
+      const model = parsed?.payload && typeof parsed.payload.model === "string"
+        ? parsed.payload.model
+        : undefined;
+      callbacks?.onStarted?.(model);
+    });
+
+    source.addEventListener("run.progress", (event) => {
+      if (settled) return;
+      const parsed = parseStreamData((event as MessageEvent).data);
+      const elapsedMs = parsed?.payload && typeof parsed.payload.elapsedMs === "number"
+        ? parsed.payload.elapsedMs
+        : undefined;
+      if (elapsedMs !== undefined) callbacks?.onProgress?.(elapsedMs);
+    });
+
+    // ── Terminal events ──
+
     source.addEventListener("run.completed", (event) => {
       const parsed = parseStreamData((event as MessageEvent).data);
       const payload = parsed?.payload;
@@ -148,14 +186,26 @@ function waitForRunCompletion(runId: string, sessionId?: string, tabId?: string)
 }
 
 /**
+ * Cancel an active chat run.
+ */
+export async function cancelRun(runId: string): Promise<void> {
+  await apiPost(`/api/chat/runs/${encodeURIComponent(runId)}/cancel`, {});
+}
+
+/**
  * Send a chat message (optionally with an image attachment).
  * Throws ApiError on failure — callers display the error.
+ *
+ * @param onRunId  — Called with the runId once the run is submitted (before completion)
+ * @param progress — Callbacks for run lifecycle events (queued/started/progress)
  */
 export async function sendChat(
   sessionId: string,
   message: string,
   image?: ChatImage,
   tabId?: string,
+  onRunId?: (runId: string) => void,
+  progress?: RunProgressCallbacks,
 ): Promise<ChatResponse> {
   return runLockedMutation({
     label: "Send chat message",
@@ -171,6 +221,8 @@ export async function sendChat(
         return submit as unknown as ChatResponse;
       }
 
+      onRunId?.(submit.runId);
+
       if (typeof submit.answer === "string") {
         return {
           runId: submit.runId,
@@ -182,7 +234,7 @@ export async function sendChat(
         } satisfies ChatResponse;
       }
 
-      return waitForRunCompletion(submit.runId, submit.sessionId, submit.tabId);
+      return waitForRunCompletion(submit.runId, submit.sessionId, submit.tabId, progress);
     },
   });
 }

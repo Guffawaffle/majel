@@ -12,6 +12,9 @@
     isSending,
     send,
     attachImage,
+    getRunPhase,
+    getRunElapsedMs,
+    getRunModel,
   } from "../lib/chat.svelte.js";
   import { refreshSessions } from "../lib/sessions.svelte.js";
   import { tick } from "svelte";
@@ -96,7 +99,7 @@
           <ChatMessageComponent message={msg} />
         {/each}
         {#if isSending()}
-          <TypingIndicator />
+          <TypingIndicator phase={getRunPhase()} elapsedMs={getRunElapsedMs()} model={getRunModel()} />
         {/if}
       </div>
     {/if}

@@ -1,8 +1,27 @@
 <!--
-  TypingIndicator — bouncing dots shown while Aria is "thinking".
+  TypingIndicator — live run status shown while Aria is "thinking".
+  ADR-043: shows phase label, elapsed time, model name.
 -->
 <script lang="ts">
-  // Component with no props — script needed for type declaration.
+  import type { RunPhase } from "../lib/chat.svelte.js";
+
+  interface Props {
+    phase?: RunPhase;
+    elapsedMs?: number;
+    model?: string | null;
+  }
+
+  const { phase = "running", elapsedMs = 0, model = null }: Props = $props();
+
+  const phaseLabel = $derived(
+    phase === "queued" ? "Queued"
+    : phase === "cancelling" ? "Stopping..."
+    : "Generating...",
+  );
+
+  const elapsedLabel = $derived(
+    elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : "",
+  );
 </script>
 
 <div class="message-row model-row typing-row">
@@ -10,7 +29,16 @@
     <div class="message-avatar">A</div>
     <div class="message-body">
       <div class="message-sender">Aria</div>
-      <div class="typing-dots"><span></span><span></span><span></span></div>
+      <div class="typing-status">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+        <span class="typing-phase">{phaseLabel}</span>
+        {#if elapsedLabel}
+          <span class="typing-elapsed">{elapsedLabel}</span>
+        {/if}
+        {#if model}
+          <span class="typing-model">{model}</span>
+        {/if}
+      </div>
     </div>
   </div>
 </div>
@@ -30,13 +58,19 @@
   }
   .message-body { flex: 1; min-width: 0; }
   .message-sender { font-size: 0.8rem; font-weight: 600; color: var(--accent-gold); margin-bottom: 4px; }
-  .typing-dots { display: flex; gap: 5px; padding: 8px 0; }
+
+  .typing-status { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+  .typing-dots { display: flex; gap: 5px; }
   .typing-dots span {
     width: 7px; height: 7px; background: var(--accent-gold);
     border-radius: 50%; animation: typing-bounce 1.4s infinite;
   }
   .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
   .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  .typing-phase { font-size: 0.78rem; color: var(--text-secondary); }
+  .typing-elapsed { font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .typing-model { font-size: 0.68rem; color: var(--text-muted); opacity: 0.7; }
+
   @keyframes typing-bounce {
     0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
     30% { opacity: 1; transform: translateY(-5px); }
