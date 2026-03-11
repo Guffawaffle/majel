@@ -18,13 +18,15 @@
 
 ## Current PM Focus
 
-- **Next program:** #205 — Model Availability Policy (ADR-042). Centralized resolver, admin overrides, defaultEnabled. 3 phases.
+- **Active program:** #205 — Model Availability Policy (ADR-042). Phase 1+2 shipped (`7612404`, `c0a4b45`). Phase 3 (frontend picker polish) next.
 - **Next program:** #209 — Chat Run Control & Live Status UX (ADR-043). Stop button, progress display, retry. 2 phases.
-- **Recently completed:** #199 — Multi-Provider LLM Engine (ADR-041). All 5 phases shipped. Claude via Vertex AI, admiral-only.
+- **Recently completed:** #199 — Multi-Provider LLM Engine (ADR-041). All 5 phases shipped. Claude via Vertex AI, admiral-only. Umbrella closed.
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
-- **Cloud deploy:** In progress. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
+- **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Top QA tranche:** #161, #165.
-- **Operational note:** deploys are live again; use normal `ax ci` + push gate, not the old guided-setup hold marker.
+- **Tech debt batch:** #189–#193 (5 refactor issues filed 2026-03-08). Not blocking features.
+- **Test count:** 2120 tests across 78 files (as of `c0a4b45`).
+- **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
 ---
@@ -44,8 +46,8 @@ Centralize model availability into a single resolver function. Registry gains `d
 
 | Phase | Issue | Title | Status |
 |---|---|---|---|
-| 1 | #206 | Registry defaults + centralized availability resolver | [ ] Not started |
-| 2 | #207 | Admin model management endpoints + UI | [ ] Not started |
+| 1 | #206 | Registry defaults + centralized availability resolver | [x] Done (`7612404`) |
+| 2 | #207 | Admin model management endpoints + UI | [x] Done (`c0a4b45`) |
 | 3 | #208 | Frontend model picker polish (unavailable models) | [ ] Not started |
 
 ### Key Design Decisions (from Lex review)
@@ -59,11 +61,11 @@ Centralize model availability into a single resolver function. Registry gains `d
 
 ### Definition of Done
 
-- [ ] Single resolver function replaces all scattered model checks
-- [ ] Preview models default to disabled
-- [ ] Admin can enable/disable models at runtime without redeploy
+- [x] Single resolver function replaces all scattered model checks
+- [x] Preview models default to disabled
+- [x] Admin can enable/disable models at runtime without redeploy
 - [ ] Model picker shows unavailable models greyed out with reason
-- [ ] `npm run ax -- ci` passes at every phase boundary
+- [x] `npm run ax -- ci` passes at every phase boundary
 
 ---
 
