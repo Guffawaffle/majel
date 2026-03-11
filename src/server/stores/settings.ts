@@ -178,6 +178,14 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     envVar: "MAJEL_PORT",
   },
   {
+    key: "system.modelOverrides",
+    category: "system",
+    label: "Model Overrides",
+    description: "ADR-042: JSON object of admin model enable/disable overrides. Keys are model IDs, values are { adminEnabled: boolean, reason?: string }.",
+    type: "json",
+    default: "{}",
+  },
+  {
     key: "system.uiMode",
     category: "system",
     label: "UI Mode",

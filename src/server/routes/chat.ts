@@ -19,6 +19,8 @@ import { createContextMiddleware } from "../context-middleware.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
 import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL } from "../services/gemini/index.js";
+import { resolveAllModelAvailability, resolveModelAvailability, parseModelOverrides } from "../services/model-availability.js";
+import type { ProviderCapabilities } from "../services/model-availability.js";
 import type { ImagePart } from "../services/gemini/index.js";
 
 /** Allowed image MIME types for multimodal chat (ADR-008) */
@@ -758,16 +760,26 @@ export function createChatRoutes(appState: AppState): Router {
   /**
    * GET /api/models — List available models with metadata.
    * Returns the full registry + which model is currently active.
+   * ADR-042: Uses centralized resolver instead of inline provider checks.
    */
   router.get("/api/models", requireAdmiral(appState), async (_req, res) => {
     const engine = appState.geminiEngine;
     const current = engine ? engine.getModel() : LOCKED_MODEL_ID;
     const currentDef = getModelDef(current);
-    const claudeAvailable = !!appState.config.vertexProjectId;
 
-    // Filter out Claude models if Vertex AI is not configured
-    const availableModels = MODEL_REGISTRY.filter(
-      (m) => m.provider !== "claude" || claudeAvailable,
+    const overridesRaw = appState.settingsStore
+      ? await appState.settingsStore.get("system.modelOverrides")
+      : "{}";
+    const overrides = parseModelOverrides(overridesRaw);
+    const providerCapabilities: ProviderCapabilities = {
+      gemini: true,
+      claude: !!appState.config.vertexProjectId,
+    };
+
+    const resolved = resolveAllModelAvailability(
+      { isAdmiral: true },
+      overrides,
+      providerCapabilities,
     );
 
     sendOk(res, {
@@ -775,16 +787,18 @@ export function createChatRoutes(appState: AppState): Router {
       defaultModel: LOCKED_MODEL_ID,
       currentDef,
       locked: false,
-      models: availableModels.map((m) => ({
-        ...m,
-        active: m.id === current,
+      models: resolved.map(({ model, availability }) => ({
+        ...model,
+        active: model.id === current,
+        available: availability.available,
+        unavailableReason: availability.effectiveReason ?? null,
       })),
     });
   });
 
   /**
    * POST /api/models/select — Admiral hot-swaps the active model.
-   * Clears all chat sessions (new model = fresh context).
+   * ADR-042: Uses centralized resolver instead of inline provider checks.
    */
   router.post("/api/models/select", requireAdmiral(appState), async (req, res) => {
     const { model: modelId } = req.body as { model?: string };
@@ -795,10 +809,20 @@ export function createChatRoutes(appState: AppState): Router {
     if (!def) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Unknown model: ${modelId}. Valid: ${MODEL_REGISTRY.map((m) => m.id).join(", ")}`, 400);
     }
-    // Reject Claude models if Vertex AI is not configured
-    if (def.provider === "claude" && !appState.config.vertexProjectId) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, `Claude models require Vertex AI configuration (VERTEX_PROJECT_ID)`, 400);
+
+    const overridesRaw = appState.settingsStore
+      ? await appState.settingsStore.get("system.modelOverrides")
+      : "{}";
+    const overrides = parseModelOverrides(overridesRaw);
+    const providerCapabilities: ProviderCapabilities = {
+      gemini: true,
+      claude: !!appState.config.vertexProjectId,
+    };
+    const availability = resolveModelAvailability(modelId, { isAdmiral: true }, overrides, providerCapabilities);
+    if (!availability.available) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, `Model ${modelId} is not available: ${availability.effectiveReason}`, 400);
     }
+
     const engine = appState.geminiEngine;
     if (!engine) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Chat engine not initialized", 500);

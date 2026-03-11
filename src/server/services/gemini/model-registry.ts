@@ -29,6 +29,8 @@ export interface ModelDef {
   speed: "fastest" | "fast" | "moderate" | "slow";
   /** If set, only users with this role can see/select the model. */
   roleGate?: "admiral";
+  /** ADR-042: Whether the model is enabled by default. Preview/new-provider models default off. */
+  defaultEnabled: boolean;
 }
 
 // ─── Registry ─────────────────────────────────────────────────
@@ -44,6 +46,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
     contextWindow: 1_048_576,
     costRelative: 1,
     speed: "fastest",
+    defaultEnabled: true,
   },
   {
     id: "gemini-2.5-flash",
@@ -55,6 +58,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
     contextWindow: 1_048_576,
     costRelative: 2,
     speed: "fast",
+    defaultEnabled: true,
   },
   {
     id: "gemini-3-flash-preview",
@@ -66,6 +70,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
     contextWindow: 1_048_576,
     costRelative: 2,
     speed: "fast",
+    defaultEnabled: false,
   },
   {
     id: "gemini-2.5-pro",
@@ -77,6 +82,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
     contextWindow: 1_048_576,
     costRelative: 4,
     speed: "moderate",
+    defaultEnabled: true,
   },
   {
     id: "gemini-3-pro-preview",
@@ -88,6 +94,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
     contextWindow: 1_048_576,
     costRelative: 5,
     speed: "slow",
+    defaultEnabled: false,
   },
   // ── Claude models (Vertex AI) — admiral-only ──────────────
   {
@@ -101,6 +108,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
     costRelative: 1,
     speed: "fastest",
     roleGate: "admiral",
+    defaultEnabled: false,
   },
   {
     id: "claude-sonnet-4-6",
@@ -113,6 +121,7 @@ export const MODEL_REGISTRY: ModelDef[] = [
     costRelative: 4,
     speed: "moderate",
     roleGate: "admiral",
+    defaultEnabled: false,
   },
 ];
 
