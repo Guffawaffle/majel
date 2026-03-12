@@ -100,8 +100,13 @@ export async function cmdLoad(args: string[]): Promise<void> {
   const pool = new pg.Pool({ connectionString: dbUrl });
   let runId: number | null = null;
 
+  console.log(`[load] feed=${validated.manifest.feedId} run=${validated.manifest.runId}`);
+  console.log(`[load] contentHash=${validated.manifest.contentHash}`);
+  console.log(`[load] connecting to database...`);
+
   try {
     await ensureIngestionSchema(pool);
+    console.log(`[load] schema verified`);
 
     const existingSuccessful = await pool.query<{
       id: number;
@@ -168,6 +173,7 @@ export async function cmdLoad(args: string[]): Promise<void> {
     try {
       await client.query("BEGIN");
 
+      console.log(`[load] acquiring advisory lock...`);
       const lockResult = await client.query<{ acquired: boolean }>(
         `SELECT pg_try_advisory_xact_lock(hashtext($1)) AS acquired`,
         [`canonical-ingestion:${validated.manifest.feedId}:${validated.manifest.runId}`]
@@ -175,6 +181,7 @@ export async function cmdLoad(args: string[]): Promise<void> {
       if (!lockResult.rows[0]?.acquired) {
         throw new Error("concurrent canonical load already in progress for this feed/run");
       }
+      console.log(`[load] lock acquired, inserting run record...`);
 
       const runInsert = await client.query<{ id: number }>(
         `INSERT INTO canonical_ingestion_runs (
@@ -239,7 +246,10 @@ export async function cmdLoad(args: string[]): Promise<void> {
         ]
       );
 
+      console.log(`[load] runtime dataset record created`);
+
       if (activateRuntimeDataset) {
+        console.log(`[load] activating runtime dataset...`);
         await client.query(
           `UPDATE effect_dataset_run
            SET status = 'retired'
@@ -294,6 +304,7 @@ export async function cmdLoad(args: string[]): Promise<void> {
 
       for (const entity of recordsByEntity) {
         const seen = new Set<string>();
+        const deduped: Array<{ naturalKey: string; payload: JsonValue }> = [];
         for (const record of entity.records) {
           if (seen.has(record.naturalKey)) {
             duplicateNaturalKeys += 1;
@@ -303,11 +314,37 @@ export async function cmdLoad(args: string[]): Promise<void> {
             continue;
           }
           seen.add(record.naturalKey);
+          deduped.push(record);
+        }
+
+        console.log(`[load] ${entity.entityType}: ${deduped.length} records`);
+        if (deduped.length === 0) continue;
+
+        // Batch upsert via UNNEST — one round trip per entity type
+        const BATCH_SIZE = 2000;
+        for (let offset = 0; offset < deduped.length; offset += BATCH_SIZE) {
+          const batch = deduped.slice(offset, offset + BATCH_SIZE);
+          const entityTypes: string[] = [];
+          const naturalKeys: string[] = [];
+          const payloads: string[] = [];
+
+          for (const record of batch) {
+            entityTypes.push(entity.entityType);
+            naturalKeys.push(record.naturalKey);
+            payloads.push(JSON.stringify(record.payload));
+          }
 
           const upsertResult = await client.query<{ inserted: boolean }>(
             `INSERT INTO canonical_ingestion_records (
               entity_type, natural_key, payload, source_label, feed_id, run_id, content_hash
-            ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7)
+            )
+            SELECT * FROM unnest(
+              $1::text[], $2::text[], $3::jsonb[],
+              array_fill($4::text, ARRAY[$8::int]),
+              array_fill($5::text, ARRAY[$8::int]),
+              array_fill($6::text, ARRAY[$8::int]),
+              array_fill($7::text, ARRAY[$8::int])
+            )
             ON CONFLICT (entity_type, natural_key) DO UPDATE SET
               payload = EXCLUDED.payload,
               source_label = EXCLUDED.source_label,
@@ -317,18 +354,25 @@ export async function cmdLoad(args: string[]): Promise<void> {
               last_seen_at = NOW()
             RETURNING (xmax = 0) AS inserted`,
             [
-              entity.entityType,
-              record.naturalKey,
-              JSON.stringify(record.payload),
+              entityTypes,
+              naturalKeys,
+              payloads,
               validated.manifest.sourceLabel,
               validated.manifest.feedId,
               validated.manifest.runId,
               validated.manifest.contentHash,
+              batch.length,
             ]
           );
 
-          if (upsertResult.rows[0]?.inserted) inserted += 1;
-          else updated += 1;
+          const batchInserted = upsertResult.rows.filter((r) => r.inserted).length;
+          const batchUpdated = upsertResult.rows.length - batchInserted;
+          inserted += batchInserted;
+          updated += batchUpdated;
+
+          const progress = Math.min(offset + BATCH_SIZE, deduped.length);
+          const pct = ((progress / deduped.length) * 100).toFixed(1);
+          console.log(`[load]   ${entity.entityType}: ${progress}/${deduped.length} (${pct}%) — ${inserted} ins, ${updated} upd`);
         }
       }
 
