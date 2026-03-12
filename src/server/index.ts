@@ -719,11 +719,18 @@ async function boot(): Promise<void> {
       if (state.userStore) {
         const purged = await state.userStore.cleanupUnverifiedUsers("7 days");
         if (purged.length > 0) {
-          log.boot.info({ count: purged.length, emails: purged }, "unverified:gc");
+          log.boot.info({ count: purged.length }, "unverified:gc");
           state.auditStore?.logEvent({
             event: "auth.unverified_cleanup",
-            detail: { count: purged.length, emails: purged },
+            detail: { count: purged.length },
           });
+        }
+      }
+      // Purge audit log entries older than 90 days (GDPR retention limit)
+      if (state.auditStore) {
+        const purged = await state.auditStore.purgeOlderThan("90 days");
+        if (purged > 0) {
+          log.boot.info({ purged }, "audit:gc");
         }
       }
     } catch (err) {

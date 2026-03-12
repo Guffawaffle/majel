@@ -41,7 +41,7 @@
   let invMaxUses = $state(10);
   let invExpiry = $state("7d");
 
-  const currentEmail = $derived(getUser()?.email ?? "");
+  const currentUserId = $derived(getUser()?.id ?? "");
 
   const ROLES: Role[] = ["ensign", "lieutenant", "captain", "admiral"];
 
@@ -126,43 +126,43 @@
 
   // ── Actions: Users ──
 
-  async function handleRoleChange(email: string, newRole: Role) {
-    if (!(await confirm({ title: `Change ${email} to ${newRole}?` }))) return;
+  async function handleRoleChange(userId: string, displayName: string, newRole: Role) {
+    if (!(await confirm({ title: `Change ${displayName} to ${newRole}?` }))) return;
     try {
-      await adminSetRole(email, newRole);
+      await adminSetRole(userId, newRole);
       await refreshUsers();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Role change failed."; }
   }
 
-  async function handleLock(email: string, isLocked: boolean) {
+  async function handleLock(userId: string, displayName: string, isLocked: boolean) {
     const action = isLocked ? "unlock" : "lock";
-    if (!(await confirm({ title: `${action.charAt(0).toUpperCase() + action.slice(1)} ${email}?` }))) return;
+    if (!(await confirm({ title: `${action.charAt(0).toUpperCase() + action.slice(1)} ${displayName}?` }))) return;
     try {
-      await adminSetLock(email, !isLocked);
+      await adminSetLock(userId, !isLocked);
       await refreshUsers();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Lock toggle failed."; }
   }
 
-  async function handleDeleteUser(email: string) {
-    if (!(await confirm({ title: `Permanently delete user ${email}?`, subtitle: "This cannot be undone.", severity: "danger", approveLabel: "Delete" }))) return;
+  async function handleDeleteUser(userId: string, displayName: string) {
+    if (!(await confirm({ title: `Permanently delete user ${displayName}?`, subtitle: "This cannot be undone.", severity: "danger", approveLabel: "Delete" }))) return;
     try {
-      await adminDeleteUser(email);
+      await adminDeleteUser(userId);
       await refreshUsers();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Delete failed."; }
   }
 
-  async function handleApprove(email: string) {
-    if (!(await confirm({ title: `Approve ${email}?`, subtitle: "This will mark the account as verified.", approveLabel: "Approve" }))) return;
+  async function handleApprove(userId: string, displayName: string) {
+    if (!(await confirm({ title: `Approve ${displayName}?`, subtitle: "This will mark the account as verified.", approveLabel: "Approve" }))) return;
     try {
-      await adminVerifyUser(email);
+      await adminVerifyUser(userId);
       await refreshUsers();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Approve failed."; }
   }
 
-  async function handleResendVerification(email: string) {
-    if (!(await confirm({ title: `Resend verification to ${email}?`, approveLabel: "Resend" }))) return;
+  async function handleResendVerification(userId: string, displayName: string) {
+    if (!(await confirm({ title: `Resend verification for ${displayName}?`, approveLabel: "Resend" }))) return;
     try {
-      await adminResendVerification(email);
+      await adminResendVerification(userId);
       await refreshUsers();
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Resend verification failed."; }
   }
@@ -256,20 +256,19 @@
     <div class="adm-table-wrap">
       <table class="adm-table" aria-label="Registered users">
         <thead>
-          <tr><th>Email</th><th>Name</th><th>Role</th><th>Verified</th><th>Locked</th><th>Joined</th><th>Actions</th></tr>
+          <tr><th>Name</th><th>Role</th><th>Verified</th><th>Locked</th><th>Joined</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {#each users as u (u.id)}
-            {@const isSelf = u.email === currentEmail}
+            {@const isSelf = u.id === currentUserId}
             <tr class:adm-row-locked={!!u.lockedAt}>
-              <td class="adm-cell-email" title={u.email}>{u.email}</td>
               <td>{u.displayName}</td>
               <td>
                 <select
                   class="adm-role-select"
                   value={u.role}
                   disabled={isSelf}
-                  onchange={(e) => handleRoleChange(u.email, (e.currentTarget as HTMLSelectElement).value as Role)}
+                  onchange={(e) => handleRoleChange(u.id, u.displayName, (e.currentTarget as HTMLSelectElement).value as Role)}
                 >
                   {#each ROLES as r}
                     <option value={r}>{r}</option>
@@ -282,23 +281,23 @@
               <td class="adm-cell-actions">
                 {#if !isSelf}
                   {#if !u.emailVerified}
-                    <button class="adm-btn adm-btn-primary" onclick={() => handleApprove(u.email)}>
+                    <button class="adm-btn adm-btn-primary" onclick={() => handleApprove(u.id, u.displayName)}>
                       Approve
                     </button>
-                    <button class="adm-btn" onclick={() => handleResendVerification(u.email)}>
+                    <button class="adm-btn" onclick={() => handleResendVerification(u.id, u.displayName)}>
                       Resend Verification
                     </button>
                   {/if}
-                  <button class="adm-btn" onclick={() => handleLock(u.email, !!u.lockedAt)}>
+                  <button class="adm-btn" onclick={() => handleLock(u.id, u.displayName, !!u.lockedAt)}>
                     {u.lockedAt ? "🔓 Unlock" : "🔒 Lock"}
                   </button>
-                  <button class="adm-btn adm-btn-danger" onclick={() => handleDeleteUser(u.email)}>🗑️</button>
+                  <button class="adm-btn adm-btn-danger" onclick={() => handleDeleteUser(u.id, u.displayName)}>🗑️</button>
                 {/if}
               </td>
             </tr>
           {/each}
           {#if users.length === 0}
-            <tr><td colspan="7" class="adm-empty">No users registered yet.</td></tr>
+            <tr><td colspan="6" class="adm-empty">No users registered yet.</td></tr>
           {/if}
         </tbody>
       </table>
@@ -528,12 +527,6 @@
   }
   .adm-row-locked { opacity: 0.55; }
   .adm-row-muted { opacity: 0.45; }
-  .adm-cell-email {
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .adm-cell-date { white-space: nowrap; color: var(--text-muted); font-size: 0.8rem; }
   .adm-cell-actions { white-space: nowrap; }
 

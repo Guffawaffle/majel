@@ -90,21 +90,27 @@ const SCHEMA_STATEMENTS = [
     END IF;
   END $$`,
 
+  // Append-only enforcement: UPDATE always blocked, DELETE only allowed for
+  // retention purges (session var 'audit.retention_purge' = 'true').
   `CREATE OR REPLACE FUNCTION prevent_audit_mutation() RETURNS TRIGGER AS $$
   BEGIN
-    RAISE EXCEPTION 'auth_audit_log is append-only — UPDATE/DELETE not permitted';
+    IF TG_OP = 'UPDATE' THEN
+      RAISE EXCEPTION 'auth_audit_log is append-only — UPDATE not permitted';
+    END IF;
+    -- DELETE allowed only during retention purge
+    IF TG_OP = 'DELETE' AND current_setting('audit.retention_purge', true) IS DISTINCT FROM 'true' THEN
+      RAISE EXCEPTION 'auth_audit_log DELETE requires retention purge context';
+    END IF;
+    RETURN OLD;
   END;
   $$ LANGUAGE plpgsql`,
 
-  `DO $$ BEGIN
-    IF NOT EXISTS (
-      SELECT 1 FROM pg_trigger WHERE tgname = 'trg_audit_append_only'
-    ) THEN
-      CREATE TRIGGER trg_audit_append_only
-        BEFORE UPDATE OR DELETE ON auth_audit_log
-        FOR EACH ROW EXECUTE FUNCTION prevent_audit_mutation();
-    END IF;
-  END $$`,
+  // Drop old trigger (which blocks all mutations) and recreate
+  `DROP TRIGGER IF EXISTS trg_audit_append_only ON auth_audit_log`,
+
+  `CREATE TRIGGER trg_audit_append_only
+    BEFORE UPDATE OR DELETE ON auth_audit_log
+    FOR EACH ROW EXECUTE FUNCTION prevent_audit_mutation()`,
 ];
 
 // ─── SQL ────────────────────────────────────────────────────────
@@ -125,6 +131,8 @@ const SQL = {
   queryRecent: `SELECT ${COLUMNS} FROM auth_audit_log ORDER BY created_at DESC LIMIT $1`,
 
   countByEvent: `SELECT event_type, COUNT(*) as count FROM auth_audit_log GROUP BY event_type ORDER BY count DESC`,
+
+  purgeOlderThan: `DELETE FROM auth_audit_log WHERE created_at < NOW() - $1::INTERVAL`,
 };
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -173,6 +181,9 @@ export interface AuditStore {
 
   /** Get event counts grouped by event type. */
   eventCounts(): Promise<Array<{ eventType: string; count: number }>>;
+
+  /** Purge audit entries older than the given interval (e.g. '90 days'). Returns rows deleted. */
+  purgeOlderThan(interval: string): Promise<number>;
 }
 
 // ─── Row Mapping ────────────────────────────────────────────────
@@ -259,6 +270,23 @@ export async function createAuditStore(adminPool: Pool, runtimePool?: Pool): Pro
         eventType: String(r.event_type),
         count: Number(r.count),
       }));
+    },
+
+    async purgeOlderThan(interval: string): Promise<number> {
+      // Set session variable to allow DELETE through the retention trigger guard
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL audit.retention_purge = 'true'");
+        const result = await client.query(SQL.purgeOlderThan, [interval]);
+        await client.query("COMMIT");
+        return result.rowCount ?? 0;
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
     },
   };
 

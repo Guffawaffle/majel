@@ -342,46 +342,46 @@ describe("Auth routes — admiral management", () => {
 
   // ── set-role ──
   describe("POST /api/auth/admiral/set-role", () => {
-    it("rejects missing email", async () => {
+    it("rejects missing userId", async () => {
       const res = await testRequest(app).post("/api/auth/admiral/set-role")
         .set("Authorization", bearer).send({ role: "captain" });
       expect(res.status).toBe(400);
     });
 
-    it("rejects non-string email", async () => {
+    it("rejects non-string userId", async () => {
       const res = await testRequest(app).post("/api/auth/admiral/set-role")
-        .set("Authorization", bearer).send({ email: 42, role: "captain" });
+        .set("Authorization", bearer).send({ userId: 42, role: "captain" });
       expect(res.status).toBe(400);
     });
 
-    it("rejects email > 254 chars", async () => {
+    it("rejects userId > 128 chars", async () => {
       const res = await testRequest(app).post("/api/auth/admiral/set-role")
-        .set("Authorization", bearer).send({ email: "a".repeat(255), role: "captain" });
+        .set("Authorization", bearer).send({ userId: "a".repeat(129), role: "captain" });
       expect(res.status).toBe(400);
     });
 
     it("rejects invalid role", async () => {
       const res = await testRequest(app).post("/api/auth/admiral/set-role")
-        .set("Authorization", bearer).send({ email: "a@b.com", role: "invalid" });
+        .set("Authorization", bearer).send({ userId: "00000000-0000-4000-8000-000000000000", role: "invalid" });
       expect(res.status).toBe(400);
     });
 
     it("rejects missing role", async () => {
       const res = await testRequest(app).post("/api/auth/admiral/set-role")
-        .set("Authorization", bearer).send({ email: "a@b.com" });
+        .set("Authorization", bearer).send({ userId: "00000000-0000-4000-8000-000000000000" });
       expect(res.status).toBe(400);
     });
 
     it("returns 404 for unknown user", async () => {
       const res = await testRequest(app).post("/api/auth/admiral/set-role")
-        .set("Authorization", bearer).send({ email: "nobody@x.com", role: "captain" });
+        .set("Authorization", bearer).send({ userId: "00000000-0000-4000-8000-000000000000", role: "captain" });
       expect(res.status).toBe(404);
     });
 
     it("promotes a user", async () => {
-      await userStore.signUp({ email: "promo@test.com", password: "securePassword12345!", displayName: "P" });
+      const signup = await userStore.signUp({ email: "promo@test.com", password: "securePassword12345!", displayName: "P" });
       const res = await testRequest(app).post("/api/auth/admiral/set-role")
-        .set("Authorization", bearer).send({ email: "promo@test.com", role: "captain" });
+        .set("Authorization", bearer).send({ userId: signup.user.id, role: "captain" });
       expect(res.status).toBe(200);
       expect(res.body.data.user.role).toBe("captain");
     });
@@ -389,62 +389,62 @@ describe("Auth routes — admiral management", () => {
 
   // ── lock / unlock ──
   describe("PATCH /api/auth/admiral/lock", () => {
-    it("rejects missing email", async () => {
+    it("rejects missing userId", async () => {
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
         .set("Authorization", bearer).send({ locked: true });
       expect(res.status).toBe(400);
     });
 
-    it("rejects non-string email", async () => {
+    it("rejects non-string userId", async () => {
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: 42, locked: true });
+        .set("Authorization", bearer).send({ userId: 42, locked: true });
       expect(res.status).toBe(400);
     });
 
-    it("rejects email > 254", async () => {
+    it("rejects userId > 128", async () => {
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: "a".repeat(255), locked: true });
+        .set("Authorization", bearer).send({ userId: "a".repeat(129), locked: true });
       expect(res.status).toBe(400);
     });
 
     it("rejects missing locked boolean", async () => {
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: "a@b.com" });
+        .set("Authorization", bearer).send({ userId: "00000000-0000-4000-8000-000000000000" });
       expect(res.status).toBe(400);
     });
 
     it("rejects non-boolean locked", async () => {
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: "a@b.com", locked: "yes" });
+        .set("Authorization", bearer).send({ userId: "00000000-0000-4000-8000-000000000000", locked: "yes" });
       expect(res.status).toBe(400);
     });
 
     it("rejects reason > 500 chars", async () => {
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: "a@b.com", locked: true, reason: "x".repeat(501) });
+        .set("Authorization", bearer).send({ userId: "00000000-0000-4000-8000-000000000000", locked: true, reason: "x".repeat(501) });
       expect(res.status).toBe(400);
     });
 
     it("returns 404 for unknown user", async () => {
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: "nobody@x.com", locked: true });
+        .set("Authorization", bearer).send({ userId: "00000000-0000-4000-8000-000000000000", locked: true });
       expect(res.status).toBe(404);
     });
 
     it("locks a user", async () => {
-      await userStore.signUp({ email: "lock@test.com", password: "securePassword12345!", displayName: "L" });
+      const signup = await userStore.signUp({ email: "lock@test.com", password: "securePassword12345!", displayName: "L" });
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: "lock@test.com", locked: true, reason: "test" });
+        .set("Authorization", bearer).send({ userId: signup.user.id, locked: true, reason: "test" });
       expect(res.status).toBe(200);
       expect(res.body.data.message).toContain("locked");
     });
 
     it("unlocks a user", async () => {
-      await userStore.signUp({ email: "unlock@test.com", password: "securePassword12345!", displayName: "U" });
+      const signup = await userStore.signUp({ email: "unlock@test.com", password: "securePassword12345!", displayName: "U" });
       await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: "unlock@test.com", locked: true });
+        .set("Authorization", bearer).send({ userId: signup.user.id, locked: true });
       const res = await testRequest(app).patch("/api/auth/admiral/lock")
-        .set("Authorization", bearer).send({ email: "unlock@test.com", locked: false });
+        .set("Authorization", bearer).send({ userId: signup.user.id, locked: false });
       expect(res.status).toBe(200);
       expect(res.body.data.message).toContain("unlocked");
     });
@@ -452,46 +452,50 @@ describe("Auth routes — admiral management", () => {
 
   // ── delete user ──
   describe("DELETE /api/auth/admiral/user", () => {
-    it("rejects missing email", async () => {
+    it("rejects missing userId", async () => {
       const res = await testRequest(app).delete("/api/auth/admiral/user")
         .set("Authorization", bearer).send({});
       expect(res.status).toBe(400);
     });
 
-    it("rejects non-string email", async () => {
+    it("rejects non-string userId", async () => {
       const res = await testRequest(app).delete("/api/auth/admiral/user")
-        .set("Authorization", bearer).send({ email: 42 });
+        .set("Authorization", bearer).send({ userId: 42 });
       expect(res.status).toBe(400);
     });
 
-    it("rejects email > 254", async () => {
+    it("rejects userId > 128", async () => {
       const res = await testRequest(app).delete("/api/auth/admiral/user")
-        .set("Authorization", bearer).send({ email: "a".repeat(255) });
+        .set("Authorization", bearer).send({ userId: "a".repeat(129) });
       expect(res.status).toBe(400);
     });
 
     it("returns 404 for unknown user", async () => {
       const res = await testRequest(app).delete("/api/auth/admiral/user")
-        .set("Authorization", bearer).send({ email: "nobody@x.com" });
+        .set("Authorization", bearer).send({ userId: "00000000-0000-4000-8000-000000000000" });
       expect(res.status).toBe(404);
     });
 
     it("deletes a user", async () => {
-      await userStore.signUp({ email: "del@test.com", password: "securePassword12345!", displayName: "D" });
+      const signup = await userStore.signUp({ email: "del@test.com", password: "securePassword12345!", displayName: "D" });
       const res = await testRequest(app).delete("/api/auth/admiral/user")
-        .set("Authorization", bearer).send({ email: "del@test.com" });
+        .set("Authorization", bearer).send({ userId: signup.user.id });
       expect(res.status).toBe(200);
     });
   });
 
   // ── list users ──
   describe("GET /api/auth/admiral/users", () => {
-    it("lists all users", async () => {
+    it("lists all users without email (data minimization)", async () => {
       await userStore.signUp({ email: "u1@test.com", password: "securePassword12345!", displayName: "U1" });
       const res = await testRequest(app).get("/api/auth/admiral/users")
         .set("Authorization", bearer);
       expect(res.status).toBe(200);
       expect(res.body.data.users.length).toBeGreaterThanOrEqual(1);
+      // Privacy: email must NOT be present in admin user list
+      for (const u of res.body.data.users) {
+        expect(u).not.toHaveProperty("email");
+      }
     });
 
     it("returns 503 when userStore is null", async () => {

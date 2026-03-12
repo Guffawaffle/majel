@@ -15,56 +15,56 @@ export async function adminListUsers(): Promise<AdminUser[]> {
   return data.users;
 }
 
-export async function adminSetRole(email: string, role: Role): Promise<void> {
+export async function adminSetRole(userId: string, role: Role): Promise<void> {
   await runLockedMutation({
-    label: `Set role ${email}`,
-    lockKey: `admiral:user:${email}`,
+    label: `Set role ${userId}`,
+    lockKey: `admiral:user:${userId}`,
     mutate: async () => {
-      await apiPost("/api/auth/admiral/set-role", { email, role });
+      await apiPost("/api/auth/admiral/set-role", { userId, role });
     },
   });
 }
 
 export async function adminSetLock(
-  email: string,
+  userId: string,
   locked: boolean,
   reason?: string,
 ): Promise<void> {
   await runLockedMutation({
-    label: `Set lock ${email}`,
-    lockKey: `admiral:user:${email}`,
+    label: `Set lock ${userId}`,
+    lockKey: `admiral:user:${userId}`,
     mutate: async () => {
-      await apiPatch("/api/auth/admiral/lock", { email, locked, reason });
+      await apiPatch("/api/auth/admiral/lock", { userId, locked, reason });
     },
   });
 }
 
-export async function adminDeleteUser(email: string): Promise<void> {
+export async function adminDeleteUser(userId: string): Promise<void> {
   await runLockedMutation({
-    label: `Delete user ${email}`,
-    lockKey: `admiral:user:${email}`,
+    label: `Delete user ${userId}`,
+    lockKey: `admiral:user:${userId}`,
     mutate: async () => {
-      await apiDelete("/api/auth/admiral/user", { email });
+      await apiDelete("/api/auth/admiral/user", { userId });
     },
   });
 }
 
-export async function adminResendVerification(email: string): Promise<void> {
+export async function adminResendVerification(userId: string): Promise<void> {
   await runLockedMutation({
-    label: `Resend verification ${email}`,
-    lockKey: `admiral:user:${email}`,
+    label: `Resend verification ${userId}`,
+    lockKey: `admiral:user:${userId}`,
     mutate: async () => {
-      await apiPost("/api/auth/admiral/resend-verification", { email });
+      await apiPost("/api/auth/admiral/resend-verification", { userId });
     },
   });
 }
 
-export async function adminVerifyUser(email: string): Promise<void> {
+export async function adminVerifyUser(userId: string): Promise<void> {
   await runLockedMutation({
-    label: `Verify user ${email}`,
-    lockKey: `admiral:user:${email}`,
+    label: `Verify user ${userId}`,
+    lockKey: `admiral:user:${userId}`,
     mutate: async () => {
-      await apiPost("/api/auth/admiral/verify-user", { email });
+      await apiPost("/api/auth/admiral/verify-user", { userId });
     },
   });
 }

@@ -154,7 +154,7 @@ const SQL = {
   deleteUserSessions: `DELETE FROM user_sessions WHERE user_id = $1`,
   deleteOtherSessions: `DELETE FROM user_sessions WHERE user_id = $1 AND id != $2`,
   deleteExpiredSessions: `DELETE FROM user_sessions WHERE expires_at < NOW()`,
-  deleteStaleUnverifiedUsers: `DELETE FROM users WHERE email_verified = false AND created_at < NOW() - $1::INTERVAL RETURNING id, email`,
+  deleteStaleUnverifiedUsers: `DELETE FROM users WHERE email_verified = false AND created_at < NOW() - $1::INTERVAL RETURNING id`,
   listUserSessions: `SELECT * FROM user_sessions WHERE user_id = $1 ORDER BY last_seen_at DESC`,
 
   // Email tokens
@@ -676,9 +676,48 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
     },
 
     async deleteUser(userId: string): Promise<boolean> {
-      // Cascade deletes: sessions, email_tokens, and (Phase 2) all user data
-      const res = await pool.query(SQL.deleteUser, [userId]);
-      return (res.rowCount ?? 0) > 0;
+      // GDPR right-to-erasure: delete all user-owned data in a transaction.
+      // FK-cascaded: user_sessions, email_tokens (via users.id ON DELETE CASCADE).
+      // Explicitly cleaned: chat_runs, operation_events, operation_streams,
+      //   user_settings, and all crew-store tables (soft user_id, no FK).
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const uid = userId;
+        // Best-effort cleanup of user-owned data across all stores.
+        // Tables may not exist if their schemas haven't been initialized,
+        // so each delete uses a savepoint to tolerate missing relations
+        // without aborting the transaction.
+        let spIdx = 0;
+        const tryDelete = async (sql: string) => {
+          const sp = `sp_del_${spIdx++}`;
+          await client.query(`SAVEPOINT ${sp}`);
+          try { await client.query(sql, [uid]); } catch { await client.query(`ROLLBACK TO ${sp}`); }
+        };
+        // Crew tables (parents cascade to children)
+        await tryDelete("DELETE FROM officer_reservations WHERE user_id = $1");
+        await tryDelete("DELETE FROM plan_items WHERE user_id = $1");
+        await tryDelete("DELETE FROM fleet_presets WHERE user_id = $1");
+        await tryDelete("DELETE FROM docks WHERE user_id = $1");
+        await tryDelete("DELETE FROM loadouts WHERE user_id = $1");
+        await tryDelete("DELETE FROM below_deck_policies WHERE user_id = $1");
+        await tryDelete("DELETE FROM bridge_cores WHERE user_id = $1");
+        // Chat & operations
+        await tryDelete("DELETE FROM chat_runs WHERE user_id = $1");
+        await tryDelete("DELETE FROM operation_events WHERE user_id = $1");
+        await tryDelete("DELETE FROM operation_streams WHERE user_id = $1::TEXT");
+        // User settings
+        await tryDelete("DELETE FROM user_settings WHERE user_id = $1");
+        // User record (cascades sessions + email_tokens via FK)
+        const res = await client.query(SQL.deleteUser, [uid]);
+        await client.query("COMMIT");
+        return (res.rowCount ?? 0) > 0;
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
     },
 
     async countUsers(): Promise<number> {
@@ -704,7 +743,7 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
 
     async cleanupUnverifiedUsers(maxAge: string): Promise<string[]> {
       const res = await pool.query(SQL.deleteStaleUnverifiedUsers, [maxAge]);
-      return (res.rows as Array<{ email: string }>).map((r) => r.email);
+      return (res.rows as Array<{ id: string }>).map((r) => r.id);
     },
 
     // ── Lifecycle ──────────────────────────────────────────

@@ -179,6 +179,7 @@ describe("resolveConfig: environment detection", () => {
 
   it("detects production environment", async () => {
     process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgres://x:x@localhost/x";
     delete process.env.VITEST;
     const config = await resolveConfig(store);
     expect(config.nodeEnv).toBe("production");
@@ -216,6 +217,7 @@ describe("resolveConfig: logging", () => {
 
   it("uses info log level in production", async () => {
     process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgres://x:x@localhost/x";
     delete process.env.MAJEL_LOG_LEVEL;
     delete process.env.VITEST;
     const config = await resolveConfig(store);
@@ -245,6 +247,7 @@ describe("resolveConfig: logging", () => {
 
   it("respects explicit MAJEL_LOG_PRETTY=true in non-test env", async () => {
     process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgres://x:x@localhost/x";
     delete process.env.VITEST;
     process.env.MAJEL_LOG_PRETTY = "true";
     const config = await resolveConfig(store);

@@ -278,7 +278,7 @@ describe("Admin Routes", () => {
       const res = await testRequest(app)
         .post("/api/auth/admiral/verify-user")
         .set("Cookie", `${SESSION_COOKIE}=${adminSessionToken}`)
-        .send({ email: "pending@example.com" });
+        .send({ userId: targetUserId });
 
       expect(res.status).toBe(200);
       const target = await userStore.getUserByEmail("pending@example.com");
@@ -301,7 +301,7 @@ describe("Admin Routes", () => {
       const res = await testRequest(app)
         .post("/api/auth/admiral/resend-verification")
         .set("Cookie", `${SESSION_COOKIE}=${adminSessionToken}`)
-        .send({ email: "pending@example.com" });
+        .send({ userId: targetUserId });
 
       expect(res.status).toBe(200);
 

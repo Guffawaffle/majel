@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+#### GDPR privacy hardening — data minimization & right-to-erasure
+- Removed email from admin panel: 6 admiral endpoints switched from `email` to `userId`, `AdminUser` type drops `email` field, `AdmiralView` table column removed. (`src/server/routes/auth.ts`, `web/src/lib/types/misc-domain.ts`, `web/src/lib/api/admiral.ts`, `web/src/views/AdmiralView.svelte`)
+- Stripped email from all audit log `detail` JSONB fields: `auth.signup`, `auth.signin.success`, `auth.signin.failure`, `auth.resend_verification`, `auth.password.reset_request`, `auth.unverified_cleanup` no longer record PII. User identity captured via `actorId` UUID. (`src/server/routes/auth.ts`, `src/server/index.ts`)
+- Right-to-erasure: `deleteUser()` now runs transactional cleanup across 14 tables — crew data, chat runs, operation events/streams, user settings — using savepoints for schema tolerance. (`src/server/stores/user-store.ts`)
+- Audit log 90-day retention: trigger updated to allow time-based purge via session variable guard; `purgeOlderThan()` method added; wired into hourly GC cycle. (`src/server/stores/audit-store.ts`, `src/server/index.ts`)
+- Audit log API sanitization: `GET /api/admiral/audit-log` strips `ipAddress`, `userAgent`, and legacy `email` from responses. (`src/server/routes/admiral.ts`)
+- Production startup guard: `resolveConfig()` throws if `DATABASE_URL` unset in production — prevents fallback to hardcoded dev credentials. (`src/server/config.ts`)
+- Unverified user cleanup returns IDs instead of emails; SQL `RETURNING` clause updated. (`src/server/stores/user-store.ts`)
+
 ### Changed
 
 #### Fleet mutate-tools domain decomposition (#193)

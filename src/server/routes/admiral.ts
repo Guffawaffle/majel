@@ -203,9 +203,16 @@ export function createAdmiralRoutes(appState: AppState): Router {
       .filter((entry) => (!to || Date.parse(entry.createdAt) <= toTs))
       .slice(0, parsedLimit);
 
+    // Privacy: redact PII from audit log responses
+    const sanitized = filtered.map(({ ipAddress: _ip, userAgent: _ua, detail, ...rest }) => {
+      // Strip email from legacy detail payloads that may still contain it
+      const safeDetail = detail ? (({ email: _e, ...d }) => d)(detail as Record<string, unknown> & { email?: unknown }) : detail;
+      return { ...rest, detail: safeDetail };
+    });
+
     sendOk(res, {
-      entries: filtered,
-      count: filtered.length,
+      entries: sanitized,
+      count: sanitized.length,
       filters: {
         ...(event ? { event } : {}),
         ...(actorId ? { actorId } : {}),

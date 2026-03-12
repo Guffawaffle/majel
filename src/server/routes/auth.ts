@@ -143,7 +143,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
       appState.auditStore?.logEvent({
         event: "auth.signup", actorId: result.user.id,
-        detail: { email: result.user.email }, ...auditMeta(req),
+        detail: {}, ...auditMeta(req),
       });
     } catch (err) {
       const raw = err instanceof Error ? err.message : "Sign-up failed";
@@ -154,7 +154,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
       appState.auditStore?.logEvent({
         event: "auth.signup",
-        detail: { email, success: false, reason: message },
+        detail: { success: false, reason: message },
         ...auditMeta(req),
       });
 
@@ -223,7 +223,7 @@ export function createAuthRoutes(appState: AppState): Router {
         appState.auditStore?.logEvent({
           event: "auth.resend_verification",
           actorId: user.id,
-          detail: { email: user.email },
+          detail: {},
           ...auditMeta(req),
         });
       }
@@ -286,7 +286,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
       appState.auditStore?.logEvent({
         event: "auth.signin.success", actorId: result.user.id,
-        detail: { email: result.user.email }, ...auditMeta(req),
+        detail: {}, ...auditMeta(req),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign-in failed";
@@ -295,7 +295,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
       appState.auditStore?.logEvent({
         event: "auth.signin.failure",
-        detail: { email: typeof email === "string" ? email : null, reason: message },
+        detail: { reason: message },
         ...auditMeta(req),
       });
     }
@@ -431,7 +431,7 @@ export function createAuthRoutes(appState: AppState): Router {
 
     appState.auditStore?.logEvent({
       event: "auth.password.reset_request",
-      detail: { email: typeof email === "string" ? email : null },
+      detail: {},
       ...auditMeta(req),
     });
 
@@ -525,6 +525,8 @@ export function createAuthRoutes(appState: AppState): Router {
   // ADR-039: RequestContext for all admiral routes (after auth)
   if (ctxMw) router.use("/api/auth/admiral", ctxMw);
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   // ── POST /api/auth/admiral/set-role ─────────────────────
   // Admin-only: set a user's role (the only way to create the first Admiral)
   router.post("/api/auth/admiral/set-role", async (req, res) => {
@@ -533,19 +535,21 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
 
-    const { email, role } = req.body ?? {};
-    if (!email || typeof email !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    const { userId, role } = req.body ?? {};
+    if (!userId || typeof userId !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "userId required", 400);
     }
-    if (email.length > 254) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    if (userId.length > 128) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "userId must be 128 characters or fewer", 400);
+    }
+    if (!UUID_RE.test(userId)) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
     if (!role || !["ensign", "lieutenant", "captain", "admiral"].includes(role)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Role must be ensign, lieutenant, captain, or admiral", 400);
     }
 
-    // Look up user by email to get their ID
-    const user = await appState.userStore.getUserByEmail(email);
+    const user = await appState.userStore.getUser(userId);
     if (!user) {
       return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
@@ -564,28 +568,31 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "Failed to update role", 500);
     }
 
+    // Privacy: strip email from response
+    const { email: _e, ...safeUser } = updated;
     sendOk(res, {
       message: `${updated.displayName} promoted to ${role}.`,
-      user: updated,
+      user: safeUser,
     });
 
     appState.auditStore?.logEvent({
       event: "admin.role_change",
       actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
-      detail: { email, oldRole: user.role, newRole: role },
+      detail: { oldRole: user.role, newRole: role },
       ...auditMeta(req),
     });
   });
 
   // ── GET /api/auth/admiral/users ─────────────────────
-  // Admin-only: list all users
-  // W10 fix: audit admin list-users access
+  // Admin-only: list all users (email stripped — data minimization)
   router.get("/api/auth/admiral/users", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
     const users = await appState.userStore.listUsers();
+    // Privacy: strip email from admin response — admins operate by userId
+    const sanitized = users.map(({ email: _email, ...rest }) => rest);
 
     appState.auditStore?.logEvent({
       event: "admin.list_users",
@@ -594,7 +601,7 @@ export function createAuthRoutes(appState: AppState): Router {
       ...auditMeta(req),
     });
 
-    sendOk(res, { users, count: users.length });
+    sendOk(res, { users: sanitized, count: sanitized.length });
   });
 
   // ── PATCH /api/auth/admiral/lock ────────────────────
@@ -604,12 +611,15 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
 
-    const { email, locked, reason } = req.body ?? {};
-    if (!email || typeof email !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    const { userId, locked, reason } = req.body ?? {};
+    if (!userId || typeof userId !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "userId required", 400);
     }
-    if (email.length > 254) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    if (userId.length > 128) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "userId must be 128 characters or fewer", 400);
+    }
+    if (!UUID_RE.test(userId)) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
     if (typeof locked !== "boolean") {
       return sendFail(res, ErrorCode.MISSING_PARAM, "locked (boolean) required", 400);
@@ -618,7 +628,7 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INVALID_PARAM, "Reason must be 500 characters or fewer", 400);
     }
 
-    const user = await appState.userStore.getUserByEmail(email);
+    const user = await appState.userStore.getUser(userId);
     if (!user) {
       return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
@@ -635,7 +645,7 @@ export function createAuthRoutes(appState: AppState): Router {
       event: locked ? "admin.lock_user" : "admin.unlock_user",
       actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
-      detail: { email, reason: reason || null },
+      detail: { reason: reason || null },
       ...auditMeta(req),
     });
 
@@ -643,21 +653,24 @@ export function createAuthRoutes(appState: AppState): Router {
   });
 
   // ── DELETE /api/auth/admiral/user ───────────────────
-  // Admin-only: delete a user by email
+  // Admin-only: delete a user by userId
   router.delete("/api/auth/admiral/user", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
 
-    const { email } = req.body ?? {};
-    if (!email || typeof email !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    const { userId } = req.body ?? {};
+    if (!userId || typeof userId !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "userId required", 400);
     }
-    if (email.length > 254) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    if (userId.length > 128) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "userId must be 128 characters or fewer", 400);
+    }
+    if (!UUID_RE.test(userId)) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
 
-    const user = await appState.userStore.getUserByEmail(email);
+    const user = await appState.userStore.getUser(userId);
     if (!user) {
       return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
@@ -680,11 +693,11 @@ export function createAuthRoutes(appState: AppState): Router {
       event: "admin.delete_user",
       actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
-      detail: { email },
+      detail: {},
       ...auditMeta(req),
     });
 
-    sendOk(res, { message: `User ${email} deleted.` });
+    sendOk(res, { message: `User ${user.displayName} deleted.` });
   });
 
   // ── POST /api/auth/admiral/resend-verification ──────────────
@@ -694,15 +707,18 @@ export function createAuthRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
 
-    const { email } = req.body ?? {};
-    if (!email || typeof email !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    const { userId } = req.body ?? {};
+    if (!userId || typeof userId !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "userId required", 400);
     }
-    if (email.length > 254) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    if (userId.length > 128) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "userId must be 128 characters or fewer", 400);
+    }
+    if (!UUID_RE.test(userId)) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
 
-    const user = await appState.userStore.getUserByEmail(email);
+    const user = await appState.userStore.getUser(userId);
     if (!user) {
       return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
@@ -711,35 +727,39 @@ export function createAuthRoutes(appState: AppState): Router {
     }
 
     const token = await appState.userStore.createVerifyToken(user.id);
+    // Email is looked up server-side only — never exposed to admin UI
     sendVerificationEmail(user.email, token).catch(() => {});
 
     appState.auditStore?.logEvent({
       event: "admin.resend_verification",
       actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
-      detail: { email },
+      detail: {},
       ...auditMeta(req),
     });
 
-    sendOk(res, { message: `Verification email resent to ${email}.` });
+    sendOk(res, { message: `Verification email resent for ${user.displayName}.` });
   });
 
   // ── POST /api/auth/admiral/verify-user ──────────────────────
-  // Admin-only: directly approve a user's email (skip verification)
+  // Admin-only: directly approve a user (skip email verification)
   router.post("/api/auth/admiral/verify-user", async (req, res) => {
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
 
-    const { email } = req.body ?? {};
-    if (!email || typeof email !== "string") {
-      return sendFail(res, ErrorCode.MISSING_PARAM, "Email required", 400);
+    const { userId } = req.body ?? {};
+    if (!userId || typeof userId !== "string") {
+      return sendFail(res, ErrorCode.MISSING_PARAM, "userId required", 400);
     }
-    if (email.length > 254) {
-      return sendFail(res, ErrorCode.INVALID_PARAM, "Email must be 254 characters or fewer", 400);
+    if (userId.length > 128) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "userId must be 128 characters or fewer", 400);
+    }
+    if (!UUID_RE.test(userId)) {
+      return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
 
-    const user = await appState.userStore.getUserByEmail(email);
+    const user = await appState.userStore.getUser(userId);
     if (!user) {
       return sendFail(res, ErrorCode.NOT_FOUND, "User not found", 404);
     }
@@ -756,7 +776,7 @@ export function createAuthRoutes(appState: AppState): Router {
       event: "admin.verify_user",
       actorId: res.locals.ctx?.identity.userId ?? (res.locals.userId as string | undefined) ?? null,
       targetId: user.id,
-      detail: { email },
+      detail: {},
       ...auditMeta(req),
     });
 

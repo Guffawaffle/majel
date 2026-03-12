@@ -163,6 +163,11 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
   const databaseAdminUrl = process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel";
   const databaseUrl = process.env.DATABASE_URL || "postgres://majel_app:majel_app@localhost:5432/majel";
 
+  // Production guard: DATABASE_URL must be explicit (never fall back to hardcoded defaults)
+  if (nodeEnv === "production" && !process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL must be set in production");
+  }
+
   return {
     port,
     nodeEnv,
