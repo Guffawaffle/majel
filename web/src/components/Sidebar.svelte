@@ -4,11 +4,10 @@
 -->
 <script lang="ts">
   import { views, getCurrentView, navigate } from "../lib/router.svelte.js";
-  import { getUser, hasRole, logout } from "../lib/auth.svelte.js";
-  import { getTheme, toggleTheme } from "../lib/theme.svelte.js";
+  import { getUser, hasRole } from "../lib/auth.svelte.js";
+  import UserMenu from "./UserMenu.svelte";
   import { checkHealth as apiCheckHealth } from "../lib/api/health.js";
   import { getSessionId } from "../lib/chat.svelte.js";
-  import { getCacheReady, getCacheError } from "../lib/cache/index.js";
   import {
     getSessions,
     refreshSessions,
@@ -19,10 +18,21 @@
 
   interface Props {
     open?: boolean;
+    collapsed?: boolean;
     onclose?: () => void;
+    oncollapse?: () => void;
   }
 
-  let { open = false, onclose }: Props = $props();
+  let { open = false, collapsed = false, onclose, oncollapse }: Props = $props();
+
+  function handleLogoClick() {
+    // Mobile: close overlay sidebar. Desktop: toggle collapsed.
+    if (window.innerWidth <= 768) {
+      onclose?.();
+    } else {
+      oncollapse?.();
+    }
+  }
 
   let healthStatus = $state<"loading" | "online" | "offline">("loading");
   let healthText = $state("Connecting…");
@@ -67,16 +77,20 @@
     await removeSession(id);
   }
 
-  async function handleLogout() {
-    await logout();
-  }
 </script>
 
-<nav class="sidebar" class:open aria-label="Main navigation">
-  <!-- Logo -->
-  <div class="sidebar-logo">⟐ ARIADNE</div>
+<nav class="sidebar" class:open class:collapsed aria-label="Main navigation">
+  <!-- Logo / sidebar toggle -->
+  <button class="sidebar-logo" onclick={handleLogoClick} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label="Toggle sidebar">
+    <span class="logo-diamond">⟐</span>
+    <span class="logo-text">ARIADNE</span>
+  </button>
 
-  <!-- Main nav -->
+  <!-- User menu -->
+  <UserMenu />
+
+  <!-- Navigation -->
+  <div class="sidebar-section-label">Navigation</div>
   <div class="sidebar-section">
     {#each views as view}
       {#if !view.gate || hasRole(view.gate)}
@@ -134,33 +148,12 @@
   <!-- Spacer -->
   <div class="sidebar-spacer"></div>
 
-  <!-- Theme toggle -->
-  <button class="sidebar-nav-btn theme-btn" onclick={toggleTheme} title="Switch theme">
-    <span class="icon">{getTheme() === 'lcars' ? '🖖' : '🌑'}</span>
-    {getTheme() === 'lcars' ? 'LCARS' : 'Dark'}
-  </button>
-
-  <!-- Logout -->
-  <button class="sidebar-nav-btn logout-btn" onclick={handleLogout}>
-    <span class="icon">🚪</span>
-    Log Out
-  </button>
-
   <!-- Footer -->
   <div class="sidebar-footer">
     <div class="sidebar-status">
       <span class="status-dot {healthStatus}"></span>
       <span class="status-text">{healthText}</span>
     </div>
-    <div class="sidebar-status">
-      <span class="status-dot {getCacheReady() ? 'online' : getCacheError() ? 'offline' : 'loading'}"></span>
-      <span class="status-text">{getCacheReady() ? 'Cache' : getCacheError() ?? 'Cache…'}</span>
-    </div>
-    {#if getUser()}
-      <div class="sidebar-meta">
-        <span class="sidebar-user">{getUser()?.displayName}</span>
-      </div>
-    {/if}
   </div>
 </nav>
 
@@ -177,6 +170,9 @@
   }
 
   .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: 20px;
     font-weight: 700;
     color: var(--accent-gold);
@@ -184,6 +180,53 @@
     padding: 8px 8px 16px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 8px;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    transition: color var(--transition);
+  }
+  .sidebar-logo:hover {
+    color: var(--text-primary);
+  }
+  .logo-diamond {
+    flex-shrink: 0;
+  }
+  .logo-text {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* Collapsed state (desktop only) */
+  .sidebar.collapsed {
+    width: auto;
+    padding: 16px 8px;
+  }
+  .sidebar.collapsed .logo-text,
+  .sidebar.collapsed .sidebar-section-label,
+  .sidebar.collapsed .session-section,
+  .sidebar.collapsed .sidebar-footer,
+  .sidebar.collapsed :global(.user-menu) {
+    display: none;
+  }
+  .sidebar.collapsed .sidebar-nav-btn {
+    justify-content: center;
+    padding: 10px 8px;
+  }
+  .sidebar.collapsed .sidebar-nav-btn .icon {
+    margin: 0;
+  }
+  /* Hide button text labels when collapsed — keep only the icon spans */
+  .sidebar.collapsed .sidebar-nav-btn {
+    font-size: 0;
+    gap: 0;
+  }
+  .sidebar.collapsed .sidebar-nav-btn .icon {
+    font-size: 18px;
   }
 
   .sidebar-section {
@@ -319,16 +362,6 @@
 
   .sidebar-spacer { flex: 0; }
 
-  .logout-btn { color: var(--text-muted); }
-
-  .theme-btn {
-    color: var(--accent-purple);
-    font-size: 12px;
-  }
-  .theme-btn:hover {
-    color: var(--accent-gold);
-  }
-
   .sidebar-footer {
     padding-top: 12px;
     border-top: 1px solid var(--border);
@@ -362,13 +395,6 @@
     50% { opacity: 0.3; }
   }
 
-  .sidebar-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 8px;
-  }
-
   /* ── Mobile responsive ── */
 
   @media (max-width: 768px) {
@@ -386,8 +412,4 @@
     }
   }
 
-  .sidebar-user {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
 </style>

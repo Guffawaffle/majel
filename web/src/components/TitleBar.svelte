@@ -1,15 +1,16 @@
 <!--
-  TitleBar — Displays the current view's icon, title, subtitle, and help button.
+  TitleBar — Displays the current view's icon, title, subtitle, and action buttons.
+  Action buttons are passed via the `actions` snippet for per-view extensibility.
 -->
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { getCurrentViewDef } from "../lib/router.svelte.js";
 
   interface Props {
-    helpOpen?: boolean;
-    ontogglehelp?: () => void;
+    actions?: Snippet;
   }
 
-  const { helpOpen = false, ontogglehelp }: Props = $props();
+  const { actions }: Props = $props();
 
   let view = $derived(getCurrentViewDef());
 </script>
@@ -20,7 +21,11 @@
     {view.title}
   </h1>
   <span class="subtitle">{view.subtitle}</span>
-  <button class="help-btn" class:active={helpOpen} title="Help (?)" aria-label="Toggle help panel" onclick={ontogglehelp}>?</button>
+  <div class="title-bar-actions">
+    {#if actions}
+      {@render actions()}
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -50,7 +55,15 @@
     flex-shrink: 0;
   }
 
-  .title-bar .help-btn {
+  .title-bar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  /* Shared style for action buttons passed via snippet */
+  .title-bar-actions :global(button) {
     background: none;
     border: 1px solid var(--border);
     color: var(--text-muted);
@@ -61,8 +74,8 @@
     transition: all var(--transition);
     font-family: inherit;
   }
-  .title-bar .help-btn:hover,
-  .title-bar .help-btn.active {
+  .title-bar-actions :global(button:hover),
+  .title-bar-actions :global(button.active) {
     color: var(--accent-blue);
     border-color: var(--accent-blue-dim);
   }

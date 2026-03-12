@@ -58,6 +58,7 @@
   };
 
   let sidebarOpen = $state(false);
+  let sidebarCollapsed = $state(false);
   let helpOpen = $state(false);
   let helpPinned = $state(false);
 
@@ -134,7 +135,7 @@
 {:else}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="app-shell" onkeydown={handleGlobalKeydown}>
-    <Sidebar open={sidebarOpen} onclose={() => (sidebarOpen = false)} />
+    <Sidebar open={sidebarOpen} collapsed={sidebarCollapsed} onclose={() => (sidebarOpen = false)} oncollapse={() => (sidebarCollapsed = !sidebarCollapsed)} />
 
     <div class="app-main">
       <!-- Mobile header (hidden on desktop) -->
@@ -143,7 +144,14 @@
         <span class="title">ARIADNE</span>
       </div>
 
-      <TitleBar helpOpen={helpOpen} ontogglehelp={toggleHelp} />
+      <TitleBar>
+        {#snippet actions()}
+          {#if sidebarCollapsed}
+            <button title="Expand sidebar" aria-label="Expand sidebar" onclick={() => (sidebarCollapsed = false)}>⟐</button>
+          {/if}
+          <button class:active={helpOpen} title="Help (?)" aria-label="Toggle help panel" onclick={toggleHelp}>?</button>
+        {/snippet}
+      </TitleBar>
       <TimerBar />
       <OfflineBanner />
 
