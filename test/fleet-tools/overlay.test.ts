@@ -266,6 +266,28 @@ describe("set_ship_overlay", () => {
     }, {});
     expect(result).toHaveProperty("error");
   });
+
+  it("clamps power to minimum 1", async () => {
+    const setShipOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:ship:123",
+      ownershipState: "owned",
+      tier: null,
+      level: null,
+      power: 1,
+      target: false,
+      targetNote: null,
+    });
+    const ctx = toolEnv({
+      overlayStore: createMockOverlayStore({ setShipOverlay }),
+    });
+    await executeFleetTool("set_ship_overlay", {
+      ship_id: "cdn:ship:123",
+      power: 0,
+    }, ctx);
+
+    const call = setShipOverlay.mock.calls[0][0];
+    expect(call.power).toBe(1);
+  });
 });
 
 // ─── set_officer_overlay ────────────────────────────────────
@@ -358,5 +380,27 @@ describe("set_officer_overlay", () => {
       officer_id: "cdn:officer:123",
     }, {});
     expect(result).toHaveProperty("error");
+  });
+
+  it("clamps power to minimum 1", async () => {
+    const setOfficerOverlay = vi.fn().mockResolvedValue({
+      refId: "cdn:officer:123",
+      ownershipState: "owned",
+      level: null,
+      rank: null,
+      power: 1,
+      target: false,
+      targetNote: null,
+    });
+    const ctx = toolEnv({
+      overlayStore: createMockOverlayStore({ setOfficerOverlay }),
+    });
+    await executeFleetTool("set_officer_overlay", {
+      officer_id: "cdn:officer:123",
+      power: 0,
+    }, ctx);
+
+    const call = setOfficerOverlay.mock.calls[0][0];
+    expect(call.power).toBe(1);
   });
 });

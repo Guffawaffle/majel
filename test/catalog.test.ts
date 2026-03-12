@@ -434,6 +434,37 @@ describe("PATCH /api/catalog/officers/:id/overlay", () => {
       .send({ ownershipState: "owned" });
     expect(res.status).toBe(503);
   });
+
+  it("rejects power below floor (1)", async () => {
+    await seedOfficers(refStore);
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const res = await testRequest(app)
+      .patch("/api/catalog/officers/cdn:officer:100/overlay")
+      .send({ power: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("power");
+  });
+
+  it("rejects level below floor (1)", async () => {
+    await seedOfficers(refStore);
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const res = await testRequest(app)
+      .patch("/api/catalog/officers/cdn:officer:100/overlay")
+      .send({ level: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("level");
+  });
+
+  it("accepts valid progression values", async () => {
+    await seedOfficers(refStore);
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const res = await testRequest(app)
+      .patch("/api/catalog/officers/cdn:officer:100/overlay")
+      .send({ level: 45, power: 9500, targetPriority: 2 });
+    expect(res.status).toBe(200);
+    expect(res.body.data.level).toBe(45);
+    expect(res.body.data.power).toBe(9500);
+  });
 });
 
 describe("DELETE /api/catalog/officers/:id/overlay", () => {
@@ -473,6 +504,38 @@ describe("PATCH /api/catalog/ships/:id/overlay", () => {
       .patch("/api/catalog/ships/cdn:ship:999/overlay")
       .send({ ownershipState: "owned" });
     expect(res.status).toBe(404);
+  });
+
+  it("rejects power below floor (1)", async () => {
+    await seedShips(refStore);
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const res = await testRequest(app)
+      .patch("/api/catalog/ships/cdn:ship:200/overlay")
+      .send({ power: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("power");
+  });
+
+  it("rejects tier below floor (1)", async () => {
+    await seedShips(refStore);
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const res = await testRequest(app)
+      .patch("/api/catalog/ships/cdn:ship:200/overlay")
+      .send({ tier: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("tier");
+  });
+
+  it("accepts valid ship progression values", async () => {
+    await seedShips(refStore);
+    const app = createApp(makeState({ referenceStore: refStore, overlayStore }));
+    const res = await testRequest(app)
+      .patch("/api/catalog/ships/cdn:ship:200/overlay")
+      .send({ tier: 8, level: 40, power: 950000 });
+    expect(res.status).toBe(200);
+    expect(res.body.data.tier).toBe(8);
+    expect(res.body.data.level).toBe(40);
+    expect(res.body.data.power).toBe(950000);
   });
 });
 

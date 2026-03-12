@@ -349,8 +349,8 @@ export function createCatalogRoutes(appState: AppState): Router {
       if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "rank must be a string (max 50 chars)", 400);
     }
     if (power !== undefined) {
-      const v = validateInt(power, 0, 999_999_999);
-      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "power must be an integer 0–999999999", 400);
+      const v = validateInt(power, 1, 999_999_999);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "power must be an integer 1–999999999", 400);
     }
     if (targetNote !== undefined) {
       const v = validateString(targetNote, 500);
@@ -409,8 +409,8 @@ export function createCatalogRoutes(appState: AppState): Router {
       if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "level must be an integer 1–200", 400);
     }
     if (power !== undefined) {
-      const v = validateInt(power, 0, 999_999_999);
-      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "power must be an integer 0–999999999", 400);
+      const v = validateInt(power, 1, 999_999_999);
+      if (v === false) return sendFail(res, ErrorCode.INVALID_PARAM, "power must be an integer 1–999999999", 400);
     }
     if (targetNote !== undefined) {
       const v = validateString(targetNote, 500);

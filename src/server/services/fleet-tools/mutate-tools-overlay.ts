@@ -40,7 +40,7 @@ export async function setShipOverlayTool(
   if (args.ownership_state != null) input.ownershipState = args.ownership_state as OwnershipState;
   if (args.tier != null) input.tier = Number(args.tier);
   if (args.level != null) input.level = Number(args.level);
-  if (args.power != null) input.power = Number(args.power);
+  if (args.power != null) input.power = Math.max(1, Number(args.power));
   if (args.target != null) input.target = Boolean(args.target);
   if (args.target_note != null) input.targetNote = str(args, "target_note").slice(0, MAX_NOTES_LEN);
 
@@ -89,7 +89,7 @@ export async function setOfficerOverlayTool(
   if (args.ownership_state != null) input.ownershipState = args.ownership_state as OwnershipState;
   if (args.level != null) input.level = Number(args.level);
   if (args.rank != null) input.rank = str(args, "rank");
-  if (args.power != null) input.power = Number(args.power);
+  if (args.power != null) input.power = Math.max(1, Number(args.power));
   if (args.target != null) input.target = Boolean(args.target);
   if (args.target_note != null) input.targetNote = str(args, "target_note").slice(0, MAX_NOTES_LEN);
 

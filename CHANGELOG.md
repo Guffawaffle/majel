@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 29 new tests covering route validation, JSON parsing, confidence clamping, cross-reference matching, and change detection. (`test/scan.test.ts`)
 - ADR-008 updated: Phase B marked as implemented.
 
+### Fixed
+
+#### QA: Overlay progression floors and constraints (#161)
+- DB CHECK constraints added: officer level 1–200, power ≥ 1, targetPriority 1–3; ship tier 1–10, level 1–200, power ≥ 1, targetPriority 1–3. Existing zero values backfilled to 1. (`src/server/stores/overlay-store.ts`)
+- API power floor raised from 0 to 1 in both officer and ship overlay PATCH endpoints. (`src/server/routes/catalog.ts`)
+- Mutate tools clamp power to minimum 1. (`src/server/services/fleet-tools/mutate-tools-overlay.ts`)
+- 8 new tests: power/level/tier floor rejection, valid progression acceptance, power clamping in mutate tools. (`test/catalog.test.ts`, `test/fleet-tools/overlay.test.ts`)
+
+#### QA: Role-gated UI audit (#165)
+- Trace details box in ChatMessage now requires admiral role (defense-in-depth — backend already gates trace data). (`web/src/components/ChatMessage.svelte`)
+- Audit confirmed: all other role-gated entry points (Diagnostics, Admiral Console, Model Selector, Developer/Sandbox) consistently hidden for non-admirals.
+
 ### Security
 
 #### GDPR privacy hardening — data minimization & right-to-erasure

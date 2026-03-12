@@ -117,11 +117,11 @@ const SCHEMA_STATEMENTS = [
     ownership_state TEXT NOT NULL DEFAULT 'unknown'
       CHECK (ownership_state IN ('unknown', 'owned', 'unowned')),
     target BOOLEAN NOT NULL DEFAULT FALSE,
-    level INTEGER,
+    level INTEGER CHECK (level >= 1 AND level <= 200),
     rank TEXT,
-    power INTEGER,
+    power INTEGER CHECK (power >= 1),
     target_note TEXT,
-    target_priority INTEGER,
+    target_priority INTEGER CHECK (target_priority >= 1 AND target_priority <= 3),
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, ref_id)
   )`,
@@ -134,11 +134,11 @@ const SCHEMA_STATEMENTS = [
     ownership_state TEXT NOT NULL DEFAULT 'unknown'
       CHECK (ownership_state IN ('unknown', 'owned', 'unowned')),
     target BOOLEAN NOT NULL DEFAULT FALSE,
-    tier INTEGER,
-    level INTEGER,
-    power INTEGER,
+    tier INTEGER CHECK (tier >= 1 AND tier <= 10),
+    level INTEGER CHECK (level >= 1 AND level <= 200),
+    power INTEGER CHECK (power >= 1),
     target_note TEXT,
-    target_priority INTEGER,
+    target_priority INTEGER CHECK (target_priority >= 1 AND target_priority <= 3),
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, ref_id)
   )`,
@@ -200,6 +200,56 @@ const SCHEMA_STATEMENTS = [
       CREATE POLICY ship_overlay_user_isolation ON ship_overlay
         USING (user_id = current_setting('app.current_user_id', true))
         WITH CHECK (user_id = current_setting('app.current_user_id', true));
+    END IF;
+  END $$`,
+
+  // ─── Migration #161: Progression floors + CHECK constraints ───
+  // Backfill zero values to minimum (1) before adding constraints
+  `UPDATE officer_overlay SET level = 1 WHERE level IS NOT NULL AND level < 1`,
+  `UPDATE officer_overlay SET power = 1 WHERE power IS NOT NULL AND power < 1`,
+  `UPDATE ship_overlay SET tier = 1 WHERE tier IS NOT NULL AND tier < 1`,
+  `UPDATE ship_overlay SET level = 1 WHERE level IS NOT NULL AND level < 1`,
+  `UPDATE ship_overlay SET power = 1 WHERE power IS NOT NULL AND power < 1`,
+
+  // Add CHECK constraints (idempotent — skips if constraint already exists)
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'officer_overlay_level_range'
+    ) THEN
+      ALTER TABLE officer_overlay ADD CONSTRAINT officer_overlay_level_range CHECK (level >= 1 AND level <= 200);
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'officer_overlay_power_floor'
+    ) THEN
+      ALTER TABLE officer_overlay ADD CONSTRAINT officer_overlay_power_floor CHECK (power >= 1);
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'officer_overlay_priority_range'
+    ) THEN
+      ALTER TABLE officer_overlay ADD CONSTRAINT officer_overlay_priority_range CHECK (target_priority >= 1 AND target_priority <= 3);
+    END IF;
+  END $$`,
+
+  `DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'ship_overlay_tier_range'
+    ) THEN
+      ALTER TABLE ship_overlay ADD CONSTRAINT ship_overlay_tier_range CHECK (tier >= 1 AND tier <= 10);
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'ship_overlay_level_range'
+    ) THEN
+      ALTER TABLE ship_overlay ADD CONSTRAINT ship_overlay_level_range CHECK (level >= 1 AND level <= 200);
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'ship_overlay_power_floor'
+    ) THEN
+      ALTER TABLE ship_overlay ADD CONSTRAINT ship_overlay_power_floor CHECK (power >= 1);
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'ship_overlay_priority_range'
+    ) THEN
+      ALTER TABLE ship_overlay ADD CONSTRAINT ship_overlay_priority_range CHECK (target_priority >= 1 AND target_priority <= 3);
     END IF;
   END $$`,
 ];

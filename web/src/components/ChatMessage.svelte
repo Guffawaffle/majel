@@ -9,6 +9,7 @@
   import { openLightbox } from "./ImageLightbox.svelte";
   import ChatProposalCard from "./ChatProposalCard.svelte";
   import { refreshSessions } from "../lib/sessions.svelte.js";
+  import { hasRole } from "../lib/auth.svelte.js";
   import { onDestroy } from "svelte";
 
   interface Props {
@@ -97,7 +98,7 @@
         </button>
       {/if}
       <div class="message-text">{@html bodyHtml}</div>
-      {#if message.trace}
+      {#if message.trace && hasRole("admiral")}
         <details class="trace-box">
           <summary class="trace-summary">Trace (Admiral)</summary>
           <div class="trace-actions">
