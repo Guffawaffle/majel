@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-03-10 | Branch: `main`
+> Updated: 2026-03-12 | Branch: `main`
 
 ---
 
@@ -18,15 +18,15 @@
 
 ## Current PM Focus
 
-- **Recently completed:** GDPR privacy hardening — admin email removal, audit log PII scrub, right-to-erasure delete cascade, 90-day audit retention, production startup guard.
+- **Recently completed:** ADR-008 Phase B — structured image extraction (`POST /api/fleet/scan`). Scan service, route, 29 tests. GDPR privacy hardening prior.
 - **Previously completed:** #209 — Chat Run Control & Live Status UX (ADR-043). Both phases shipped (`37b7f29`, `0288b50`). Umbrella closed.
 - **Earlier:** #205 — Model Availability Policy (ADR-042). All 3 phases shipped. #199 — Multi-Provider LLM Engine (ADR-041). All 5 phases shipped.
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Top QA tranche:** #161, #165.
 - **Tech debt batch:** #189–#193 — all 5 closed.
-- **Test count:** 2120 tests across 96 files.
-- **Open issues:** 6 (#10, #65, #72, #131, #161, #165).
+- **Test count:** 2149 tests across 97 files.
+- **Open issues:** 3 (#10, #161, #165). Stale epics #65, #72, #131 closed (all sub-issues complete).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 

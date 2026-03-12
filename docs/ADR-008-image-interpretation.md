@@ -1,6 +1,6 @@
 # ADR-008: Image Interpretation — Screenshot-to-Data Pipeline
 
-**Status:** Phase A Implemented  
+**Status:** Phase B Implemented  
 **Date:** 2026-02-08  
 **Authors:** Guff, Majel (Gemini advisor), Opie (Claude)
 
@@ -212,7 +212,7 @@ Per ADR-001, privacy is a core principle. Image data handling:
 
 ## Phasing
 
-### Phase A — Multimodal Chat (v0.5)
+### Phase A — Multimodal Chat (v0.5) ✅
 - Extend `GeminiEngine.chat()` to accept `Part[]`
 - Extend `POST /api/chat` to accept optional `image` field
 - UI: paste-from-clipboard support (highest value, lowest effort)
@@ -220,7 +220,7 @@ Per ADR-001, privacy is a core principle. Image data handling:
 - Image preview in chat before sending
 - Tests for multimodal message handling
 
-### Phase B — Structured Extraction (v0.6)
+### Phase B — Structured Extraction (v0.6) ✅
 - `POST /api/fleet/scan` endpoint
 - Scan type prompts for officers, ships, events
 - JSON response parsing with confidence scores

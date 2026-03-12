@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### ADR-008 Phase B — Structured image extraction (`POST /api/fleet/scan`)
+- New scan service: stateless Gemini calls extract structured JSON from STFC screenshots (officers, ships, events, auto-detect). Type-specific prompts with confidence scoring and markdown fence stripping. (`src/server/services/scan.ts`)
+- New scan route: `POST /api/fleet/scan` with full validation (scanType, image data/mimeType, 10MB limit), prerequisite checks (Gemini API key, reference store), and cross-referencing against reference catalog + user overlay data for change detection. (`src/server/routes/scan.ts`)
+- 29 new tests covering route validation, JSON parsing, confidence clamping, cross-reference matching, and change detection. (`test/scan.test.ts`)
+- ADR-008 updated: Phase B marked as implemented.
+
 ### Security
 
 #### GDPR privacy hardening — data minimization & right-to-erasure

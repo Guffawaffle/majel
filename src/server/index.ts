@@ -102,6 +102,7 @@ import { createProposalRoutes } from "./routes/proposals.js";
 import { createEventRoutes } from "./routes/events.js";
 import { createTranslatorRoutes } from "./routes/translator.js";
 import { createEffectsRoutes } from "./routes/effects.js";
+import { createScanRoutes } from "./routes/scan.js";
 
 // Re-export for test compatibility
 export type { AppState };
@@ -307,6 +308,7 @@ export function createApp(appState: AppState): express.Express {
   app.use(createProposalRoutes(appState));
   app.use(createEventRoutes(appState));
   app.use(createTranslatorRoutes(appState));
+  app.use(createScanRoutes(appState));
 
   // ─── SPA Fallback (authenticated app) ─────────────────────
   app.get("/app/{*splat}", (_req, res) => {
