@@ -144,6 +144,32 @@ export const FIXTURE_SHIP_OVERLAY: ShipOverlay = {
   updatedAt: "2024-06-01T00:00:00Z",
 };
 
+export const FIXTURE_PLAN_ITEM = {
+  id: 1,
+  intentKey: "pvp",
+  label: "Arena PvP",
+  loadoutId: 10,
+  variantId: null,
+  dockNumber: 1,
+  awayOfficers: null,
+  priority: 1,
+  isActive: true,
+  source: "manual" as const,
+  notes: null,
+  createdAt: "2024-01-01T00:00:00Z",
+  updatedAt: "2024-06-01T00:00:00Z",
+};
+
+export const FIXTURE_SPOCK_OFFICER: ReferenceOfficer = {
+  ...FIXTURE_OFFICER,
+  id: "officer-spock",
+  name: "Spock",
+  groupName: "TOS Bridge",
+  captainManeuver: "Logical",
+  officerAbility: "Science Officer",
+  belowDeckAbility: "Vulcan Mind",
+};
+
 // ─── Mock Store Factories ───────────────────────────────────
 
 export function createMockReferenceStore(overrides: Partial<ReferenceStore> = {}): ReferenceStore {
