@@ -28,7 +28,8 @@ export type ReceiptSourceType =
   | "file_import"
   | "community_export"
   | "sandbox"
-  | "auto_seed";
+  | "auto_seed"
+  | "image_scan";
 
 export type ReceiptLayer = "reference" | "ownership" | "composition";
 
@@ -77,7 +78,7 @@ const SCHEMA_STATEMENTS = [
     id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL DEFAULT 'local',
     source_type TEXT NOT NULL
-      CHECK (source_type IN ('catalog_clicks', 'guided_setup', 'file_import', 'community_export', 'sandbox', 'auto_seed')),
+      CHECK (source_type IN ('catalog_clicks', 'guided_setup', 'file_import', 'community_export', 'sandbox', 'auto_seed', 'image_scan')),
     source_meta JSONB NOT NULL DEFAULT '{}',
     mapping JSONB,
     layer TEXT NOT NULL
@@ -103,6 +104,13 @@ const SCHEMA_STATEMENTS = [
         USING (user_id = current_setting('app.current_user_id', true))
         WITH CHECK (user_id = current_setting('app.current_user_id', true));
     END IF;
+  END $$`,
+
+  // ── Migration: add 'image_scan' to source_type CHECK (ADR-008 Phase C) ──
+  `DO $$ BEGIN
+    ALTER TABLE import_receipts DROP CONSTRAINT IF EXISTS import_receipts_source_type_check;
+    ALTER TABLE import_receipts ADD CONSTRAINT import_receipts_source_type_check
+      CHECK (source_type IN ('catalog_clicks', 'guided_setup', 'file_import', 'community_export', 'sandbox', 'auto_seed', 'image_scan'));
   END $$`,
 ];
 

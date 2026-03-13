@@ -1,6 +1,6 @@
 # ADR-008: Image Interpretation — Screenshot-to-Data Pipeline
 
-**Status:** Phase B Implemented  
+**Status:** Phase C Implemented  
 **Date:** 2026-02-08  
 **Authors:** Guff, Majel (Gemini advisor), Opie (Claude)
 
@@ -228,11 +228,15 @@ Per ADR-001, privacy is a core principle. Image data handling:
 - Extraction result confirmation UI
 - Tests for structured extraction accuracy
 
-### Phase C — Smart Import Pipeline (v0.6)
-- Batch scanning: multiple screenshots → bulk import
-- Diff detection: "you already have this officer at level 30, screenshot shows level 35 — update?"
-- Event extraction: read event notifications → create calendar/reminder entries
+### Phase C — Smart Import Pipeline (v0.6) ✅ IMPLEMENTED
+
+> **Implemented 2026-03-13.** 21 new tests, all passing.
+
+- Batch scanning: `POST /api/fleet/scan/batch` — up to 10 screenshots per request, sequential Gemini calls, per-image error reporting
+- Scan commit: `POST /api/fleet/scan/commit` — applies reviewed scan results to overlay tables, sets ownership to "owned", preserves existing target/notes, creates receipt with `image_scan` source type and full undo inverse
+- `image_scan` added to `ReceiptSourceType` with idempotent DB CHECK constraint migration
 - Integration with fleet management CRUD (ADR-007)
+- Diff detection via Phase B cross-reference (level/tier/rank changes detected before commit)
 
 ## Consequences
 

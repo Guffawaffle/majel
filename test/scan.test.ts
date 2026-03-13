@@ -1,21 +1,26 @@
 /**
- * scan.test.ts — ADR-008 Phase B: Structured Image Extraction Tests
+ * scan.test.ts — ADR-008 Phase B+C: Structured Image Extraction + Smart Import Tests
  *
- * Tests for POST /api/fleet/scan route validation and the scan service
- * (extraction prompt parsing, cross-reference matching).
+ * Tests for POST /api/fleet/scan route validation, the scan service
+ * (extraction prompt parsing, cross-reference matching), and Phase C
+ * batch + commit endpoints.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 import { testRequest } from "./helpers/test-request.js";
 import type { Express } from "express";
 import { createApp } from "../src/server/index.js";
 import type { AppState } from "../src/server/app-context.js";
-import { makeReadyState, makeConfig } from "./helpers/make-state.js";
+import { makeReadyState, makeConfig, makeState } from "./helpers/make-state.js";
 import {
   parseExtractionResponse,
   crossReference,
   type ScanExtraction,
 } from "../src/server/services/scan.js";
+import { createTestPool, truncatePublicTables, type Pool } from "./helpers/pg-test.js";
+import { createOverlayStore, type OverlayStore } from "../src/server/stores/overlay-store.js";
+import { createReceiptStore, type ReceiptStore } from "../src/server/stores/receipt-store.js";
+import { createReferenceStore, type ReferenceStore } from "../src/server/stores/reference-store.js";
 
 // ─── Helpers ──────────────────────────────────────────────────
 
@@ -26,7 +31,7 @@ const bearer = `Bearer ${ADMIN_TOKEN}`;
 const TINY_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAAlwSFlzAAAWJQAAFiUBSVIk8AAAAA0lEQVQI12P4z8BQDwAEgAF/pooBPQAAAABJRU5ErkJggg==";
 
-function makeState(overrides: Partial<AppState> = {}): AppState {
+function makeScanState(overrides: Partial<AppState> = {}): AppState {
   return makeReadyState({
     config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true, geminiApiKey: "test-key" }),
     referenceStore: makeMockReferenceStore(),
@@ -59,13 +64,22 @@ function makeMockReferenceStore() {
   } as any;
 }
 
+/** State for batch/commit validation tests (no real DB needed). */
+function makeBatchState(overrides: Partial<AppState> = {}): AppState {
+  return makeReadyState({
+    config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true, geminiApiKey: "test-key" }),
+    referenceStore: makeMockReferenceStore(),
+    ...overrides,
+  });
+}
+
 // ─── Route Validation Tests ───────────────────────────────────
 
 describe("POST /api/fleet/scan — validation (ADR-008 Phase B)", () => {
   let app: Express;
 
   beforeEach(() => {
-    app = createApp(makeState());
+    app = createApp(makeScanState());
   });
 
   it("rejects missing scanType", async () => {
@@ -164,7 +178,7 @@ describe("POST /api/fleet/scan — validation (ADR-008 Phase B)", () => {
   });
 
   it("returns 503 when Gemini API key is not configured", async () => {
-    app = createApp(makeState({
+    app = createApp(makeScanState({
       config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true, geminiApiKey: "" }),
     }));
 
@@ -181,7 +195,7 @@ describe("POST /api/fleet/scan — validation (ADR-008 Phase B)", () => {
   });
 
   it("returns 503 when reference store is not available", async () => {
-    app = createApp(makeState({ referenceStore: null }));
+    app = createApp(makeScanState({ referenceStore: null }));
 
     const res = await testRequest(app)
       .post("/api/fleet/scan")
@@ -456,5 +470,408 @@ describe("crossReference", () => {
     const matched = await crossReference(extraction, refStore);
     expect(matched).toHaveLength(2);
     expect(matched.map((m) => m.name)).toEqual(["Kirk", "Spock"]);
+  });
+});
+
+// ─── Batch Scan Validation Tests (Phase C) ────────────────────
+
+describe("POST /api/fleet/scan/batch — validation (ADR-008 Phase C)", () => {
+  let app: Express;
+
+  beforeEach(() => {
+    app = createApp(makeBatchState());
+  });
+
+  it("rejects missing images array", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/batch")
+      .set("Authorization", bearer)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("images");
+  });
+
+  it("rejects empty images array", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/batch")
+      .set("Authorization", bearer)
+      .send({ images: [] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("images");
+  });
+
+  it("rejects batch exceeding 10 images", async () => {
+    const images = Array.from({ length: 11 }, () => ({
+      image: { data: TINY_PNG, mimeType: "image/png" },
+      scanType: "auto",
+    }));
+
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/batch")
+      .set("Authorization", bearer)
+      .send({ images });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("10");
+  });
+
+  it("rejects invalid scanType in batch entry", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/batch")
+      .set("Authorization", bearer)
+      .send({
+        images: [
+          { image: { data: TINY_PNG, mimeType: "image/png" }, scanType: "weapons" },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("images[0].scanType");
+  });
+
+  it("rejects missing image data in batch entry", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/batch")
+      .set("Authorization", bearer)
+      .send({
+        images: [
+          { image: { mimeType: "image/png" }, scanType: "officer" },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("images[0]");
+  });
+
+  it("rejects unsupported image type in batch entry", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/batch")
+      .set("Authorization", bearer)
+      .send({
+        images: [
+          { image: { data: TINY_PNG, mimeType: "image/gif" }, scanType: "officer" },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("images[0]");
+  });
+
+  it("returns 503 when Gemini API key is not configured", async () => {
+    app = createApp(makeState({
+      config: makeConfig({ adminToken: ADMIN_TOKEN, authEnabled: true, geminiApiKey: "" }),
+      referenceStore: makeMockReferenceStore(),
+      startupComplete: true,
+    }));
+
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/batch")
+      .set("Authorization", bearer)
+      .send({
+        images: [
+          { image: { data: TINY_PNG, mimeType: "image/png" }, scanType: "officer" },
+        ],
+      });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("GEMINI_NOT_READY");
+  });
+
+  it("requires authentication", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/batch")
+      .send({ images: [{ image: { data: TINY_PNG, mimeType: "image/png" }, scanType: "officer" }] });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+// ─── Scan Commit Validation Tests (Phase C) ───────────────────
+
+describe("POST /api/fleet/scan/commit — validation (ADR-008 Phase C)", () => {
+  let app: Express;
+
+  beforeEach(() => {
+    app = createApp(makeBatchState());
+  });
+
+  it("rejects missing entities array", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .set("Authorization", bearer)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("entities");
+  });
+
+  it("rejects empty entities array", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .set("Authorization", bearer)
+      .send({ entities: [] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("entities");
+  });
+
+  it("rejects invalid entityType", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .set("Authorization", bearer)
+      .send({ entities: [{ entityType: "event", refId: "foo" }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("entityType");
+  });
+
+  it("rejects missing refId", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .set("Authorization", bearer)
+      .send({ entities: [{ entityType: "officer", refId: "" }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("refId");
+  });
+
+  it("requires authentication", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({ entities: [{ entityType: "officer", refId: "test" }] });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+// ─── Scan Commit Integration Tests (Phase C) ─────────────────
+
+describe("POST /api/fleet/scan/commit — integration (ADR-008 Phase C)", () => {
+  let pool: Pool;
+  let app: Express;
+  let overlayStore: OverlayStore;
+  let receiptStore: ReceiptStore;
+  let referenceStore: ReferenceStore;
+
+  const REF_DEFAULTS = {
+    source: "test",
+    sourceUrl: null,
+    sourcePageId: null,
+    sourceRevisionId: null,
+    sourceRevisionTimestamp: null,
+  };
+
+  beforeAll(async () => {
+    pool = createTestPool();
+    referenceStore = await createReferenceStore(pool);
+    overlayStore = await createOverlayStore(pool);
+    receiptStore = await createReceiptStore(pool);
+  });
+
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  beforeEach(async () => {
+    await truncatePublicTables(pool);
+    app = createApp(
+      makeState({
+        pool,
+        referenceStore,
+        overlayStore,
+        receiptStore,
+        startupComplete: true,
+      }),
+    );
+
+    await referenceStore.upsertOfficer({
+      id: "kirk",
+      name: "Kirk",
+      rarity: "Epic",
+      groupName: "Command",
+      captainManeuver: null,
+      officerAbility: null,
+      belowDeckAbility: null,
+      ...REF_DEFAULTS,
+    });
+
+    await referenceStore.upsertShip({
+      id: "enterprise",
+      name: "Enterprise",
+      shipClass: "Explorer",
+      tier: 3,
+      grade: null,
+      rarity: null,
+      faction: null,
+      ...REF_DEFAULTS,
+    });
+  });
+
+  it("commits officer scan results and creates receipt", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({
+        entities: [
+          { entityType: "officer", refId: "kirk", level: 45, rank: 4, power: 9500 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.receipt.id).toBeGreaterThan(0);
+    expect(res.body.data.summary.added).toBe(1);
+    expect(res.body.data.summary.updated).toBe(0);
+
+    // Verify overlay was created
+    const overlay = await overlayStore.getOfficerOverlay("kirk");
+    expect(overlay).not.toBeNull();
+    expect(overlay!.level).toBe(45);
+    expect(overlay!.rank).toBe("4");
+    expect(overlay!.power).toBe(9500);
+    expect(overlay!.ownershipState).toBe("owned");
+  });
+
+  it("commits ship scan results and creates receipt", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({
+        entities: [
+          { entityType: "ship", refId: "enterprise", tier: 8, level: 40, power: 250000 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.summary.added).toBe(1);
+
+    const overlay = await overlayStore.getShipOverlay("enterprise");
+    expect(overlay).not.toBeNull();
+    expect(overlay!.tier).toBe(8);
+    expect(overlay!.level).toBe(40);
+    expect(overlay!.power).toBe(250000);
+    expect(overlay!.ownershipState).toBe("owned");
+  });
+
+  it("updates existing overlay when committing scan results", async () => {
+    // Seed existing overlay
+    await overlayStore.setOfficerOverlay({
+      refId: "kirk",
+      ownershipState: "owned",
+      level: 30,
+      rank: "3",
+      power: 5000,
+    });
+
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({
+        entities: [
+          { entityType: "officer", refId: "kirk", level: 45, rank: 4 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.summary.updated).toBe(1);
+    expect(res.body.data.summary.added).toBe(0);
+
+    const overlay = await overlayStore.getOfficerOverlay("kirk");
+    expect(overlay!.level).toBe(45);
+    expect(overlay!.rank).toBe("4");
+    // Power preserved from before (COALESCE)
+    expect(overlay!.power).toBe(5000);
+  });
+
+  it("commits mixed officer and ship entities in one request", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({
+        entities: [
+          { entityType: "officer", refId: "kirk", level: 45 },
+          { entityType: "ship", refId: "enterprise", tier: 8 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.summary.total).toBe(2);
+    expect(res.body.data.summary.added).toBe(2);
+  });
+
+  it("creates receipt with source_type image_scan", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({
+        entities: [
+          { entityType: "officer", refId: "kirk", level: 45 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    const receiptId = res.body.data.receipt.id;
+
+    const receipt = await receiptStore.getReceipt(receiptId);
+    expect(receipt).not.toBeNull();
+    expect(receipt!.sourceType).toBe("image_scan");
+    expect(receipt!.layer).toBe("ownership");
+    expect(receipt!.changeset.added).toHaveLength(1);
+  });
+
+  it("stores inverse data for undo support", async () => {
+    await overlayStore.setOfficerOverlay({
+      refId: "kirk",
+      ownershipState: "owned",
+      level: 30,
+    });
+
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({
+        entities: [
+          { entityType: "officer", refId: "kirk", level: 45 },
+        ],
+      });
+
+    const receipt = await receiptStore.getReceipt(res.body.data.receipt.id);
+    expect(receipt!.inverse.updated).toHaveLength(1);
+    const inverse = receipt!.inverse.updated![0] as Record<string, unknown>;
+    expect(inverse.entityType).toBe("officer");
+    expect(inverse.refId).toBe("kirk");
+    expect((inverse.before as Record<string, unknown>)?.level).toBe(30);
+  });
+
+  it("rejects unknown reference IDs", async () => {
+    const res = await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({
+        entities: [
+          { entityType: "officer", refId: "nonexistent-officer", level: 10 },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("nonexistent-officer");
+  });
+
+  it("preserves existing target and notes on overlay during scan commit", async () => {
+    await overlayStore.setOfficerOverlay({
+      refId: "kirk",
+      ownershipState: "owned",
+      target: true,
+      targetNote: "Priority crew member",
+      targetPriority: 1,
+      level: 30,
+    });
+
+    await testRequest(app)
+      .post("/api/fleet/scan/commit")
+      .send({
+        entities: [
+          { entityType: "officer", refId: "kirk", level: 45 },
+        ],
+      });
+
+    const overlay = await overlayStore.getOfficerOverlay("kirk");
+    expect(overlay!.target).toBe(true);
+    expect(overlay!.targetNote).toBe("Priority crew member");
+    expect(overlay!.targetPriority).toBe(1);
   });
 });

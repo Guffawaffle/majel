@@ -18,14 +18,14 @@
 
 ## Current PM Focus
 
-- **Recently completed:** ADR-008 Phase B — structured image extraction (`POST /api/fleet/scan`). QA batch: #161 overlay floors, #165 role-gated UI audit.
-- **Previously completed:** GDPR privacy hardening. #209 — Chat Run Control & Live Status UX (ADR-043). Both phases shipped.
-- **Earlier:** #205 — Model Availability Policy (ADR-042). All 3 phases shipped. #199 — Multi-Provider LLM Engine (ADR-041). All 5 phases shipped.
+- **Recently completed:** ADR-008 Phase C — smart import pipeline (batch scan + commit endpoints). Closes #10.
+- **Previously completed:** ADR-008 Phase B — structured image extraction. QA batch: #161 overlay floors, #165 role-gated UI audit.
+- **Earlier:** GDPR privacy hardening. ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Tech debt batch:** #189–#193 — all 5 closed.
-- **Test count:** 2157 tests across 97 files.
-- **Open issues:** 1 (#10 — Phase C remaining).
+- **Test count:** 2178 tests across 97 files.
+- **Open issues:** 0 — all open issues resolved.
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 

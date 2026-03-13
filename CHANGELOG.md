@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### ADR-008 Phase C — Smart import pipeline (`POST /api/fleet/scan/batch`, `POST /api/fleet/scan/commit`)
+- Batch scan endpoint: `POST /api/fleet/scan/batch` accepts up to 10 images in a single request, returns array of scan results with per-image error reporting. Sequential Gemini calls to avoid rate limits. (`src/server/routes/scan.ts`)
+- Scan commit endpoint: `POST /api/fleet/scan/commit` applies reviewed scan results to overlay tables. Entities matched by refId get UPSERT'd as "owned" with scanned level/rank/tier/power. Preserves existing target/notes. Creates receipt with source_type `image_scan` and full undo inverse. (`src/server/routes/scan.ts`)
+- `image_scan` added to `ReceiptSourceType` union and DB CHECK constraint (idempotent migration). (`src/server/stores/receipt-store.ts`)
+- 21 new tests: batch validation (8), commit validation (5), commit integration with real DB (8) covering officer/ship creation, updates, mixed batches, receipt creation, inverse data, unknown refId rejection, target/note preservation. (`test/scan.test.ts`)
+
 #### ADR-008 Phase B — Structured image extraction (`POST /api/fleet/scan`)
 - New scan service: stateless Gemini calls extract structured JSON from STFC screenshots (officers, ships, events, auto-detect). Type-specific prompts with confidence scoring and markdown fence stripping. (`src/server/services/scan.ts`)
 - New scan route: `POST /api/fleet/scan` with full validation (scanType, image data/mimeType, 10MB limit), prerequisite checks (Gemini API key, reference store), and cross-referencing against reference catalog + user overlay data for change detection. (`src/server/routes/scan.ts`)
