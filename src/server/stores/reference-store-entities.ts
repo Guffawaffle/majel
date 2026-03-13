@@ -34,6 +34,19 @@ export function createEntitiesMixin(pool: Pool) {
       return result.rows as ReferenceBuilding[];
     },
 
+    async listBuildingsAtOps(opts: { exactLevel?: number; aboveLevel?: number; limit?: number }): Promise<ReferenceBuilding[]> {
+      const cap = Math.min(Math.max(1, opts.limit ?? 50), 200);
+      if (opts.exactLevel != null) {
+        const result = await pool.query(SQL.listBuildingsAtExactLevel, [opts.exactLevel, cap]);
+        return result.rows as ReferenceBuilding[];
+      }
+      if (opts.aboveLevel != null) {
+        const result = await pool.query(SQL.listBuildingsAboveLevel, [opts.aboveLevel, cap]);
+        return result.rows as ReferenceBuilding[];
+      }
+      return [];
+    },
+
     async getHostile(id: string): Promise<ReferenceHostile | null> {
       const result = await pool.query(SQL.getHostile, [id]);
       return (result.rows[0] as ReferenceHostile) ?? null;

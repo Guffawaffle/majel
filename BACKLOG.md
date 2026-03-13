@@ -18,6 +18,7 @@
 
 ## Current PM Focus
 
+- **Current program:** ADR-044 — Progression-Aware Context (#212, #213, #214). Make Aria stop being progression-blind.
 - **Recently completed:** ADR-008 Phase C — smart import pipeline (batch scan + commit endpoints). Closes #10.
 - **Previously completed:** ADR-008 Phase B — structured image extraction. QA batch: #161 overlay floors, #165 role-gated UI audit.
 - **Earlier:** GDPR privacy hardening. ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
@@ -25,9 +26,46 @@
 - **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2178 tests across 97 files.
-- **Open issues:** 0 — all open issues resolved.
+- **Open issues:** 3 — #212, #213, #214 (ADR-044 program).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
+
+---
+
+## Active Program — Progression-Aware Context (ADR-044, #212)
+
+**Program umbrella:** #212  
+**Linked ADR:** [docs/ADR-044-progression-aware-context.md](docs/ADR-044-progression-aware-context.md)  
+**Design date:** 2026-03-12  
+**Reviewed by:** Lex (Architecture Review)
+
+### Program Objective
+
+Make Aria progression-aware. Assemble a cross-store snapshot of fleet maturity (officer/ship/loadout counts, research %, faction standings, next ops unlock, data quality flags) and inject a ~40-60 token brief into every chat message. Add a `check_ops_unlocks` tool for on-demand building unlock queries. All surfaces are read-only — deterministic facts, no heuristics.
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| 1 | #212 | ProgressionContext + store plumbing | [ ] Not started |
+| 2 | #213 | Prompt enrichment — progression brief | [ ] Not started |
+| 3 | #214 | `check_ops_unlocks` fleet tool | [ ] Not started |
+
+### Key Design Decisions
+
+1. **`opsLevelIsDefault`** derives from `UserSettingEntry.source !== "user"` — true provenance, not value-based
+2. **Prompt enrichment fires every message** — model always has fleet maturity without deciding to call a tool
+3. **`nextOpsBoundary`** = lowest `unlock_level` above current, all buildings at that level
+4. **Gaps line** only rendered when data is actually missing — no noise when account is well-configured
+5. **`check_intent_coverage`** deferred to v1.1 — v1 reports coverage counts only in the brief
+6. **No strategy/meta/tier-list scope** — this adds the Admiral's own state, not opinionated recommendations
+
+### Definition of Done
+
+- [ ] `[PROGRESSION BRIEF]` block in every authenticated chat message
+- [ ] `check_ops_unlocks` tool returns deterministic building data
+- [ ] Graceful degradation with empty/null stores
+- [ ] `npm run ax -- ci` passes at every phase boundary
 
 ---
 

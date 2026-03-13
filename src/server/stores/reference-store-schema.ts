@@ -181,6 +181,7 @@ export const SCHEMA_STATEMENTS = [
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ref_buildings_name ON reference_buildings(name)`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_buildings_unlock_level ON reference_buildings(unlock_level)`,
   // ── Hostiles ─────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS reference_hostiles (
     id TEXT PRIMARY KEY,
@@ -356,6 +357,8 @@ export const SQL = {
   buildingExists: `SELECT 1 FROM reference_buildings WHERE id = $1`,
   getBuilding: `SELECT ${BUILDING_COLS} FROM reference_buildings WHERE id = $1`,
   searchBuildings: `SELECT ${BUILDING_COLS} FROM reference_buildings WHERE name ILIKE $1 ORDER BY name`,
+  listBuildingsAtExactLevel: `SELECT ${BUILDING_COLS} FROM reference_buildings WHERE unlock_level = $1 ORDER BY name LIMIT $2`,
+  listBuildingsAboveLevel: `SELECT ${BUILDING_COLS} FROM reference_buildings WHERE unlock_level > $1 ORDER BY unlock_level ASC, name ASC LIMIT $2`,
   countBuildings: `SELECT COUNT(*) AS count FROM reference_buildings`,
 
   // Hostiles

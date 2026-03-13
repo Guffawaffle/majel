@@ -292,6 +292,8 @@ export interface ReferenceStore {
     minLevel?: number;
     maxLevel?: number;
   }): Promise<ReferenceSystem[]>;
+  /** List buildings at a specific ops unlock level, or above a given level (ADR-044). */
+  listBuildingsAtOps(opts: { exactLevel?: number; aboveLevel?: number; limit?: number }): Promise<ReferenceBuilding[]>;
 
   counts(): Promise<ReferenceCounts>;
   close(): void;

@@ -194,6 +194,7 @@ export function createMockReferenceStore(overrides: Partial<ReferenceStore> = {}
       return null;
     }),
     searchSystems: vi.fn().mockResolvedValue([FIXTURE_SYSTEM]),
+    listBuildingsAtOps: vi.fn().mockResolvedValue([]),
     upsertShip: vi.fn(),
     deleteShip: vi.fn(),
     bulkUpsertOfficers: vi.fn(),
@@ -503,6 +504,15 @@ export function createMockUserSettingsStore(overrides: Partial<UserSettingsStore
           }),
           source: "user" as const,
         };
+      }
+      if (key === "fleet.opsLevel") {
+        return { key, value: "30", source: "user" as const };
+      }
+      if (key === "fleet.drydockCount") {
+        return { key, value: "4", source: "user" as const };
+      }
+      if (key === "fleet.shipHangarSlots") {
+        return { key, value: "35", source: "user" as const };
       }
       return { key, value: "[]", source: "default" as const };
     }),
