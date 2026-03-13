@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { getProgressionContext, type ProgressionContextV1 } from "../../src/server/services/progression-context.js";
+import { getProgressionContext } from "../../src/server/services/progression-context.js";
 import type { ResolvedStores } from "../../src/server/services/fleet-tools/declarations.js";
 import type { ReferenceBuilding } from "../../src/server/stores/reference-store.js";
 import {

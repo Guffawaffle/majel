@@ -50,7 +50,7 @@ export async function getProgressionContext(
   const [
     opsEntry,
     dockEntry,
-    hangarEntry,
+    _hangarEntry,
     overlayCounts,
     loadouts,
     targetCounts,
