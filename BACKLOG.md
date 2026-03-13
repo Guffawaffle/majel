@@ -18,21 +18,20 @@
 
 ## Current PM Focus
 
-- **Current program:** ADR-044 — Progression-Aware Context (#212, #213, #214). Make Aria stop being progression-blind.
-- **Recently completed:** ADR-008 Phase C — smart import pipeline (batch scan + commit endpoints). Closes #10.
-- **Previously completed:** ADR-008 Phase B — structured image extraction. QA batch: #161 overlay floors, #165 role-gated UI audit.
-- **Earlier:** GDPR privacy hardening. ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
+- **Current program:** None active. ADR-044 complete.
+- **Recently completed:** ADR-044 — Progression-Aware Context (#212, #213, #214). Make Aria progression-blind → progression-aware.
+- **Previously completed:** ADR-008 Phase C — smart import pipeline. ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Tech debt batch:** #189–#193 — all 5 closed.
-- **Test count:** 2178 tests across 97 files.
-- **Open issues:** 3 — #212, #213, #214 (ADR-044 program).
+- **Test count:** 2204 tests across 99 files.
+- **Open issues:** 0 program issues. Backlog-only items remain.
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
 ---
 
-## Active Program — Progression-Aware Context (ADR-044, #212)
+## Completed Program — Progression-Aware Context (ADR-044, #212)
 
 **Program umbrella:** #212  
 **Linked ADR:** [docs/ADR-044-progression-aware-context.md](docs/ADR-044-progression-aware-context.md)  
@@ -47,9 +46,9 @@ Make Aria progression-aware. Assemble a cross-store snapshot of fleet maturity (
 
 | Phase | Issue | Title | Status |
 |---|---|---|---|
-| 1 | #212 | ProgressionContext + store plumbing | [ ] Not started |
-| 2 | #213 | Prompt enrichment — progression brief | [ ] Not started |
-| 3 | #214 | `check_ops_unlocks` fleet tool | [ ] Not started |
+| 1 | #212 | ProgressionContext + store plumbing | [x] Done `71f6ae1` |
+| 2 | #213 | Prompt enrichment — progression brief | [x] Done `a177728` |
+| 3 | #214 | `check_ops_unlocks` fleet tool | [x] Done `95142f2` |
 
 ### Key Design Decisions
 
@@ -62,10 +61,10 @@ Make Aria progression-aware. Assemble a cross-store snapshot of fleet maturity (
 
 ### Definition of Done
 
-- [ ] `[PROGRESSION BRIEF]` block in every authenticated chat message
-- [ ] `check_ops_unlocks` tool returns deterministic building data
-- [ ] Graceful degradation with empty/null stores
-- [ ] `npm run ax -- ci` passes at every phase boundary
+- [x] `[PROGRESSION BRIEF]` block in every authenticated chat message
+- [x] `check_ops_unlocks` tool returns deterministic building data
+- [x] Graceful degradation with empty/null stores
+- [x] `npm run ax -- ci` passes at every phase boundary
 
 ---
 
