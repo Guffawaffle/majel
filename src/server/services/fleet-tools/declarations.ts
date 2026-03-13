@@ -1371,4 +1371,19 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["category", "id"],
     },
   },
+  {
+    name: "check_ops_unlocks",
+    description:
+      "List buildings that unlock at a specific Operations level, or find the next unlock boundary above current level. " +
+      "Call this when the Admiral asks what buildings unlock at their ops level or what comes next.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ops_level: {
+          type: Type.INTEGER,
+          description: "Specific ops level to query. Omit to find next boundary above current level.",
+        },
+      },
+    },
+  },
 ];

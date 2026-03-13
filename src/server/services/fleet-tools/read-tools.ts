@@ -43,3 +43,6 @@ export { listTargets, getAgentExperienceMetrics, detectConflicts } from "./read-
 
 // ── Game Reference ──────────────────────────────────────────
 export { searchGameReference, getGameReference } from "./read-tools-game-reference.js";
+
+// ADR-044 Phase 3: Ops unlock tool (#214)
+export { checkOpsUnlocks } from "./read-tools-ops-unlocks.js";

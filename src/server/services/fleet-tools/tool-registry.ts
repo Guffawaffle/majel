@@ -48,6 +48,7 @@ import {
   detectConflicts,
   searchGameReference,
   getGameReference,
+  checkOpsUnlocks,
 } from "./read-tools.js";
 
 // ─── Mutation tool implementations ──────────────────────────
@@ -320,6 +321,17 @@ toolRegistry.register(defineTool({
   run: (args, env) => getGameReference(
     String(args.category ?? "") as "research" | "building" | "hostile" | "consumable" | "system",
     String(args.id ?? ""),
+    env,
+  ),
+}));
+
+// ── Read tools: ops unlocks (ADR-044 #214) ──────────────────
+
+toolRegistry.register(defineTool({
+  name: "check_ops_unlocks",
+  deps: ["referenceStore", "userSettingsStore"],
+  run: (args, env) => checkOpsUnlocks(
+    args.ops_level == null ? undefined : Number(args.ops_level),
     env,
   ),
 }));
