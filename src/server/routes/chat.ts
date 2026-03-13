@@ -10,7 +10,10 @@ import {
   formatFleetConfigBlock,
   readIntentConfigForUser,
   formatIntentConfigBlock,
+  formatProgressionBriefBlock,
 } from "../app-context.js";
+import { getProgressionContext } from "../services/progression-context.js";
+import type { ResolvedStores } from "../services/fleet-tools/declarations.js";
 import { log } from "../logger.js";
 import { sendOk, sendFail, ErrorCode, createTimeoutMiddleware } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
@@ -77,14 +80,26 @@ async function buildChatMessage(appState: AppState, userId: string | undefined, 
   if (!userId || !appState.userSettingsStore) return chatMessage;
 
   try {
-    const [fleetConfig, intentConfig] = await Promise.all([
+    const deps: ResolvedStores = {
+      referenceStore: appState.referenceStore,
+      overlayStore: appState.overlayStoreFactory?.forUser(userId) ?? null,
+      crewStore: appState.crewStoreFactory?.forUser(userId) ?? null,
+      targetStore: appState.targetStoreFactory?.forUser(userId) ?? null,
+      receiptStore: appState.receiptStoreFactory?.forUser(userId) ?? null,
+      researchStore: appState.researchStoreFactory?.forUser(userId) ?? null,
+      inventoryStore: appState.inventoryStoreFactory?.forUser(userId) ?? null,
+    };
+
+    const [fleetConfig, intentConfig, progressionCtx] = await Promise.all([
       readFleetConfigForUser(appState.userSettingsStore, userId),
       readIntentConfigForUser(appState.userSettingsStore, userId),
+      getProgressionContext(userId, deps, appState.userSettingsStore),
     ]);
 
     const contextBlocks: string[] = [];
     if (intentConfig) contextBlocks.push(formatIntentConfigBlock(intentConfig));
     if (fleetConfig) contextBlocks.push(formatFleetConfigBlock(fleetConfig));
+    contextBlocks.push(formatProgressionBriefBlock(progressionCtx));
     if (contextBlocks.length > 0) {
       chatMessage = `${contextBlocks.join("\n\n")}\n\n${message}`;
     }

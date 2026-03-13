@@ -218,6 +218,12 @@ If no [FLEET CONFIG] block has been provided yet, ask the Admiral about their op
 `;
   }
 
+  // ── Layer 2b+: Progression Brief guidance (ADR-044) ────────────
+  prompt += `PROGRESSION BRIEF:
+When a [PROGRESSION BRIEF] is present in the user's message, use it to scale your advice to the Admiral's fleet maturity. Do not repeat the brief back to the user.
+
+`;
+
   // ── Layer 2c: Drydock Loadout Briefing (ADR-010 Phase 2) ───────
   if (dockBriefing) {
     prompt += `DRYDOCK LOADOUT INTELLIGENCE (computed from Admiral's dock configuration):

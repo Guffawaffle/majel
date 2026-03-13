@@ -7,6 +7,7 @@
 
 import type { ChatEngine } from "./services/engine.js";
 import type { FleetConfig, IntentConfig, IntentMode } from "./services/gemini/index.js";
+import type { ProgressionContextV1 } from "./services/progression-context.js";
 import type { MemoryService } from "./services/memory.js";
 import type { FrameStoreFactory } from "./stores/postgres-frame-store.js";
 import type { SettingsStore } from "./stores/settings.js";
@@ -144,6 +145,36 @@ Operations Level: ${config.opsLevel}
 Active Drydocks: ${config.drydockCount}
 Ship Hangar Slots: ${config.shipHangarSlots}
 [END FLEET CONFIG]`;
+}
+
+/** Format a compact progression brief for per-message injection (ADR-044, #213). */
+export function formatProgressionBriefBlock(ctx: ProgressionContextV1): string {
+  const lines: string[] = [];
+  lines.push(`Fleet: ${ctx.ownedOfficerCount} officers, ${ctx.ownedShipCount} ships, ${ctx.loadoutCount} loadouts, ${ctx.activeTargetCount} active targets`);
+
+  if (ctx.researchSummary) {
+    lines.push(`Research: ${ctx.researchSummary.pct}% (${ctx.researchSummary.completedNodes}/${ctx.researchSummary.totalNodes} nodes)`);
+  }
+
+  const coveredList = ctx.intentCoverage.covered.length > 0 ? ctx.intentCoverage.covered.join(", ") : "none";
+  lines.push(`Intent coverage: ${coveredList}`);
+
+  if (ctx.nextOpsBoundary) {
+    lines.push(`Next unlock: Ops ${ctx.nextOpsBoundary.level} \u2014 ${ctx.nextOpsBoundary.buildingCount} buildings`);
+  }
+
+  // Gaps line — only rendered when at least one data quality flag indicates missing data
+  const gaps: string[] = [];
+  if (ctx.dataQuality.opsLevelIsDefault) gaps.push("ops level is default");
+  if (!ctx.dataQuality.hasBuildingData) gaps.push("no building data");
+  if (!ctx.dataQuality.hasResearchData) gaps.push("no research synced");
+  if (!ctx.dataQuality.hasInventoryData) gaps.push("no inventory synced");
+  if (!ctx.dataQuality.hasFactionData) gaps.push("no faction data");
+  if (gaps.length > 0) {
+    lines.push(`Gaps: ${gaps.join(", ")}`);
+  }
+
+  return `[PROGRESSION BRIEF]\n${lines.join("\n")}\n[END PROGRESSION BRIEF]`;
 }
 
 /** Read per-user intent configuration for chat-time modulation (#90). */
