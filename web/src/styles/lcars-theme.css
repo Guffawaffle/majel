@@ -5,9 +5,22 @@
 
 /* ── Variable overrides ──────────────────────────────────── */
 
+/*
+   LCARS token contract (ADR-046 D3):
+     --font-lcars       Geometric sans-serif (Century Gothic family)
+     --lcars-warm       Warm salmon accent for LCARS-only surfaces
+     --lcars-warm-soft  Low-opacity warm wash (overlays, glows)
+   Standard tokens (--accent-*, --bg-*, --radius-*) are overridden
+   below to shift the base palette toward LCARS visual language.
+*/
+
 [data-theme="lcars"] {
   /* Typography: geometric sans-serif for the LCARS aesthetic */
   --font-lcars: "Century Gothic", "URW Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+
+  /* LCARS-only accent tokens */
+  --lcars-warm:      #e7b093;
+  --lcars-warm-soft: rgba(231, 176, 147, 0.12);
 
   /* Structure: rounder, bolder shapes */
   --radius:     16px;
