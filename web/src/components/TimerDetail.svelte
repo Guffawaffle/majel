@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import type { Timer } from "../lib/types.js";
-  import { pauseTimer, resumeTimer, stopTimer, restartTimer, setRepeating } from "../lib/timer.svelte.js";
+  import { pauseTimer, resumeTimer, stopTimer, restartTimer, setRepeating, extendTimer } from "../lib/timer.svelte.js";
   import { SOUND_NAMES, playSound } from "../lib/timer-audio.js";
 
   interface Props {
@@ -39,6 +39,8 @@
   function handleResume() { resumeTimer(timer.id); }
   function handleStop() { stopTimer(timer.id); onclose(); }
   function handleRestart() { restartTimer(timer.id); }
+  function handleExtend30s() { extendTimer(timer.id, 30_000); }
+  function handleExtend1m() { extendTimer(timer.id, 60_000); }
   function handleRepeatingToggle() { setRepeating(timer.id, !timer.repeating); }
   function handlePreviewSound() { playSound(timer.soundId); }
 
@@ -85,6 +87,8 @@
     {:else if timer.state === "completed"}
       <button class="btn btn-primary" onclick={handleRestart}>↺ Restart</button>
     {/if}
+    <button class="btn btn-extend" onclick={handleExtend30s} title="Add 30 seconds">+30s</button>
+    <button class="btn btn-extend" onclick={handleExtend1m} title="Add 1 minute">+1m</button>
     <button class="btn btn-danger" onclick={handleStop}>✕ Stop</button>
 
     <label class="repeat-toggle">
@@ -208,6 +212,16 @@
     border-color: var(--accent-red);
   }
   .btn-danger:hover { background: var(--accent-red); color: var(--bg-primary); }
+
+  .btn-extend {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+  }
+  .btn-extend:hover {
+    background: var(--bg-hover);
+    color: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
 
   .btn-icon {
     background: none;

@@ -115,6 +115,17 @@ export interface Timer {
   soundId: number;
   createdAt: number;
   completedCount: number;
+  presetId?: string;
+  launchSource?: "preset" | "custom" | "manual";
+}
+
+export interface QuickPreset {
+  id: string;
+  kind: "default" | "user";
+  label: string;
+  durationMs: number;
+  visible: boolean;
+  sortOrder: number;
 }
 
 export interface ViewDef {

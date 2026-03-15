@@ -1,11 +1,13 @@
 <!--
   TimerBar.svelte — Persistent top bar showing all active timers.
-  Renders only when at least one timer exists.
+  Two-row layout: preset chips (launcher) + active timer pills.
+  Always visible — presets are always accessible.
   Positioned between TitleBar and app-content in App.svelte.
 -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getTimers, loadFromStorage, canAddTimer } from "../lib/timer.svelte.js";
+  import { getTimers, loadFromStorage, canAddTimer, getSortedVisibleTimers, startTimerFromPreset } from "../lib/timer.svelte.js";
+  import { getVisiblePresets } from "../lib/timer-presets.js";
   import TimerPill from "./TimerPill.svelte";
   import TimerDetail from "./TimerDetail.svelte";
   import TimerCreate from "./TimerCreate.svelte";
@@ -17,12 +19,18 @@
   let overlayLeft = $state(12);
 
   const timers = $derived(getTimers());
-  const visibleTimers = $derived(timers.filter((t) => t.state !== "stopped"));
+  const visibleTimers = $derived(getSortedVisibleTimers());
+  const presets = $derived(getVisiblePresets());
   const selectedTimer = $derived(timers.find((t) => t.id === selectedId) ?? null);
 
   onMount(() => {
     loadFromStorage();
   });
+
+  function handlePresetClick(presetId: string) {
+    if (!canAddTimer()) return;
+    startTimerFromPreset(presetId);
+  }
 
   function selectTimer(id: string) {
     if (selectedId === id) {
@@ -74,7 +82,7 @@
 
   /** Global keyboard shortcuts */
   function handleKeydown(e: KeyboardEvent) {
-    // T — open new timer (when not typing in an input)
+    // T — open custom timer (when not typing in an input)
     if (
       e.key === "t" &&
       !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement)
@@ -92,9 +100,29 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if visibleTimers.length > 0 || showCreate}
-  <div class="timer-bar" role="toolbar" aria-label="Active timers" bind:this={barEl}>
-    <div class="timer-bar-inner">
+<div class="timer-bar" role="toolbar" aria-label="Timers" bind:this={barEl}>
+  <!-- Row 1: Preset launcher chips -->
+  <div class="timer-bar-presets">
+    {#each presets as preset (preset.id)}
+      <button
+        class="preset-chip"
+        onclick={() => handlePresetClick(preset.id)}
+        disabled={!canAddTimer()}
+        title="Start {preset.label} timer"
+        aria-label="Start {preset.label} timer"
+      >{preset.label}</button>
+    {/each}
+    <button
+      class="preset-chip preset-chip-custom"
+      onclick={openCreate}
+      title="Custom timer (T)"
+      aria-label="Custom timer"
+    >&#9881; Custom</button>
+  </div>
+
+  <!-- Row 2: Active timer pills (only when timers exist) -->
+  {#if visibleTimers.length > 0}
+    <div class="timer-bar-pills">
       {#each visibleTimers as timer (timer.id)}
         <TimerPill
           {timer}
@@ -102,102 +130,83 @@
           onclick={() => selectTimer(timer.id)}
         />
       {/each}
-
-      {#if canAddTimer()}
-        <button class="btn-new" onclick={openCreate} title="New timer (T)" aria-label="Add new timer">
-          + New
-        </button>
-      {/if}
     </div>
+  {/if}
 
-    {#if showCreate || (selectedTimer !== null)}
+  {#if showCreate || (selectedTimer !== null)}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="timer-overlay-backdrop" onclick={handleOverlayClick}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="timer-overlay-backdrop" onclick={handleOverlayClick}>
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="timer-overlay-panel" style={`top:${overlayTop}px;left:${overlayLeft}px;`} onclick={(e) => e.stopPropagation()}>
-          {#if showCreate}
-            <TimerCreate onclose={closeCreate} />
-          {:else if selectedTimer !== null}
-            <TimerDetail timer={selectedTimer} onclose={closeDetail} />
-          {/if}
-        </div>
-      </div>
-    {/if}
-  </div>
-{:else}
-  <!-- Always mount the keyboard handler even with no timers -->
-  <div class="timer-bar-empty" role="toolbar" aria-label="Timers" bind:this={barEl}>
-    <div class="timer-bar-inner">
-      <button class="btn-new" onclick={openCreate} title="New timer (T)" aria-label="Add new timer">
-        ⏱ Timer
-      </button>
-    </div>
-
-    {#if showCreate}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="timer-overlay-backdrop" onclick={handleOverlayClick}>
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="timer-overlay-panel" style={`top:${overlayTop}px;left:${overlayLeft}px;`} onclick={(e) => e.stopPropagation()}>
+      <div class="timer-overlay-panel" style={`top:${overlayTop}px;left:${overlayLeft}px;`} onclick={(e) => e.stopPropagation()}>
+        {#if showCreate}
           <TimerCreate onclose={closeCreate} />
-        </div>
+        {:else if selectedTimer !== null}
+          <TimerDetail timer={selectedTimer} onclose={closeDetail} />
+        {/if}
       </div>
-    {/if}
-  </div>
-{/if}
+    </div>
+  {/if}
+</div>
 
 <style>
-  .timer-bar,
-  .timer-bar-empty {
+  .timer-bar {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     padding: 6px 12px;
-    gap: 8px;
-    min-height: 40px;
+    gap: 4px;
     flex-shrink: 0;
     position: relative;
     z-index: 50;
   }
 
-  .timer-bar-empty {
-    padding: 4px 12px;
-    min-height: 32px;
-  }
-
-  .timer-bar-inner {
+  .timer-bar-presets {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex: 1;
+    gap: 4px;
     flex-wrap: wrap;
-    min-width: 0;
   }
 
-  .btn-new {
+  .preset-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
+    padding: 3px 10px;
     border-radius: var(--radius);
-    border: 1px dashed var(--border-light);
-    background: transparent;
+    border: 1px solid var(--border-light);
+    background: var(--bg-tertiary);
     color: var(--text-secondary);
-    font-size: 0.82rem;
+    font-size: 0.78rem;
+    font-weight: 500;
     cursor: pointer;
     transition: all var(--transition);
     white-space: nowrap;
-    line-height: 1;
+    line-height: 1.3;
   }
 
-  .btn-new:hover {
+  .preset-chip:hover:not(:disabled) {
     border-color: var(--accent-gold);
     color: var(--accent-gold);
     background: var(--bg-hover);
+  }
+
+  .preset-chip:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .preset-chip-custom {
+    border-style: dashed;
+  }
+
+  .timer-bar-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-width: 0;
   }
 
   /* Dropdown overlay */

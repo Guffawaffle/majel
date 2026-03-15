@@ -213,7 +213,7 @@ export function createApp(appState: AppState): express.Express {
 
   // ─── Security headers (ADR-023 Phase 0) ───────────────────
   // Content-Security-Policy — locks down resource loading.
-  // All inline style="" attrs were removed in Phases 2-3.
+  // One inline <style> in index.html powers the pre-boot splash (keyframes + body bg).
   // JS `.style.*` (CSSOM) is not affected by style-src.
   // img-src/connect-src 'self' blocks CSS-based data exfiltration vectors.
   // Svelte/Vite produces external bundles only — no inline scripts needed.
@@ -221,7 +221,7 @@ export function createApp(appState: AppState): express.Express {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
       "script-src 'self'",
-      "style-src 'self'",
+      "style-src 'self' 'sha256-0s9Rz4xVEaqtQ5PaZpBVT4QtAHAh+NgR3Pet+fGZCvA='",
       "img-src 'self' data:",
       "connect-src 'self'",
       "font-src 'self'",

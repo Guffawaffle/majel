@@ -14,6 +14,7 @@
 
 import type { Timer, TimerState } from "./types.js";
 import { playSound } from "./timer-audio.js";
+import { getPresetById } from "./timer-presets.js";
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -161,6 +162,8 @@ export interface CreateTimerOptions {
   durationMs: number;
   repeating: boolean;
   soundId: number;
+  presetId?: string;
+  launchSource?: "preset" | "custom" | "manual";
 }
 
 export function createTimer(opts: CreateTimerOptions): void {
@@ -175,6 +178,8 @@ export function createTimer(opts: CreateTimerOptions): void {
     soundId: Math.max(0, Math.min(9, opts.soundId)),
     createdAt: Date.now(),
     completedCount: 0,
+    presetId: opts.presetId,
+    launchSource: opts.launchSource,
   };
   timers = [...timers, timer];
   persist();
@@ -216,4 +221,77 @@ export function restartTimer(id: string): void {
 export function setRepeating(id: string, repeating: boolean): void {
   timers = timers.map((t) => (t.id === id ? { ...t, repeating } : t));
   persist();
+}
+
+// ─── Launch Helpers ─────────────────────────────────────────
+
+function formatDurationLabel(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (s === 0) return `${m}m`;
+  return `${m}m ${s}s`;
+}
+
+export function startTimerFromPreset(presetId: string): void {
+  const preset = getPresetById(presetId);
+  if (!preset) return;
+  createTimer({
+    label: preset.label,
+    durationMs: preset.durationMs,
+    repeating: false,
+    soundId: 0,
+    presetId: preset.id,
+    launchSource: "preset",
+  });
+}
+
+export function startCustomTimer(opts: {
+  label?: string;
+  durationMs: number;
+  repeating?: boolean;
+  soundId?: number;
+}): void {
+  createTimer({
+    label: opts.label || formatDurationLabel(opts.durationMs),
+    durationMs: opts.durationMs,
+    repeating: opts.repeating ?? false,
+    soundId: opts.soundId ?? 0,
+    launchSource: "custom",
+  });
+}
+
+// ─── Extend ─────────────────────────────────────────────────
+
+export function extendTimer(id: string, ms: number): void {
+  timers = timers.map((t) => {
+    if (t.id !== id) return t;
+    if (t.state === "running" || t.state === "paused") {
+      return { ...t, remainingMs: t.remainingMs + ms, durationMs: t.durationMs + ms };
+    }
+    if (t.state === "completed") {
+      return { ...t, remainingMs: ms, durationMs: ms, state: "running" as TimerState };
+    }
+    return t;
+  });
+  persist();
+  _startTickIfNeeded();
+}
+
+// ─── Sorted Getter ──────────────────────────────────────────
+
+export function getSortedVisibleTimers(): Timer[] {
+  return timers
+    .filter((t) => t.state !== "stopped")
+    .sort((a, b) => {
+      // completed first
+      const ac = a.state === "completed" ? 0 : 1;
+      const bc = b.state === "completed" ? 0 : 1;
+      if (ac !== bc) return ac - bc;
+      // then by remainingMs ascending
+      if (a.remainingMs !== b.remainingMs) return a.remainingMs - b.remainingMs;
+      // tie-breaker: oldest first
+      return a.createdAt - b.createdAt;
+    });
 }
