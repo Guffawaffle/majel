@@ -80,9 +80,9 @@
   font-weight: 600;
   text-transform: uppercase;
 }
-.cv-verdict-works { background: var(--accent-green-dim, rgba(52, 211, 153, 0.2)); color: var(--accent-green); }
-.cv-verdict-partial { background: var(--accent-orange-dim, rgba(251, 146, 60, 0.2)); color: var(--accent-orange); }
-.cv-verdict-blocked { background: var(--accent-red-dim, rgba(248, 113, 113, 0.2)); color: var(--accent-red); }
+.cv-verdict-works { background: var(--accent-green-dim); color: var(--accent-green); }
+.cv-verdict-partial { background: var(--accent-orange-dim); color: var(--accent-orange); }
+.cv-verdict-blocked { background: var(--accent-red-dim); color: var(--accent-red); }
 .cv-verdict-unknown { background: var(--bg-tertiary); color: var(--text-muted); }
 
 /* ── Validation Matrix ── */
@@ -178,9 +178,9 @@
   font-size: 0.72rem;
   font-weight: 500;
 }
-.cv-effect-works { background: var(--accent-green-dim, rgba(52, 211, 153, 0.15)); color: var(--accent-green); }
-.cv-effect-conditional { background: var(--accent-orange-dim, rgba(251, 146, 60, 0.15)); color: var(--accent-orange); }
-.cv-effect-blocked { background: var(--accent-red-dim, rgba(248, 113, 113, 0.15)); color: var(--accent-red); }
+.cv-effect-works { background: var(--accent-green-dim); color: var(--accent-green); }
+.cv-effect-conditional { background: var(--accent-orange-dim); color: var(--accent-orange); }
+.cv-effect-blocked { background: var(--accent-red-dim); color: var(--accent-red); }
 
 .cv-effect-key { font-weight: 600; }
 .cv-effect-magnitude { opacity: 0.8; }

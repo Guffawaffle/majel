@@ -221,9 +221,9 @@
     outline-offset: 1px;
   }
   .lightbox-btn-close:hover {
-    background: rgba(248, 113, 113, 0.2);
+    background: var(--accent-red-dim);
     color: #f87171;
-    border-color: rgba(248, 113, 113, 0.3);
+    border-color: var(--accent-red-dim);
   }
 
   /* ── Image stage ── */

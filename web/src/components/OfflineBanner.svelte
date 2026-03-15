@@ -52,13 +52,13 @@
   }
 
   .offline-banner {
-    background: var(--accent-orange-dim, rgba(255, 165, 0, 0.15));
+    background: var(--accent-orange-dim);
     border-bottom: 1px solid var(--accent-orange, #ff9900);
     color: var(--accent-orange, #ff9900);
   }
 
   .sync-banner {
-    background: var(--accent-blue-dim, rgba(100, 160, 255, 0.12));
+    background: var(--accent-blue-dim);
     border-bottom: 1px solid var(--accent-blue, #6699cc);
     color: var(--accent-blue, #6699cc);
   }

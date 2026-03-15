@@ -269,7 +269,7 @@
 
   /* ── Conflicts ── */
   .pl-conflicts {
-    background: var(--accent-red-dim, rgba(248, 113, 113, 0.06));
+    background: var(--accent-red-dim);
     border: 1px solid var(--accent-red);
     border-radius: var(--radius);
     padding: 12px 14px;

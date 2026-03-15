@@ -300,7 +300,7 @@
   .step-active {
     opacity: 1;
     color: var(--accent-gold, #f0a030);
-    background: rgba(240, 160, 48, 0.06);
+    background: var(--accent-gold-soft);
   }
 
   .step-done {
@@ -311,7 +311,7 @@
   .step-error {
     opacity: 1;
     color: var(--accent-red, #f87171);
-    background: rgba(248, 113, 113, 0.06);
+    background: var(--accent-red-dim);
   }
 
   .step-indicator {
@@ -358,8 +358,8 @@
   .lcars-error-detail {
     font-size: 13px;
     color: var(--accent-red, #f87171);
-    background: rgba(248, 113, 113, 0.08);
-    border: 1px solid rgba(248, 113, 113, 0.2);
+    background: var(--accent-red-dim);
+    border: 1px solid var(--accent-red-dim);
     border-radius: 6px;
     padding: 12px 20px;
     max-width: 420px;
@@ -372,7 +372,7 @@
     width: 100%;
     max-width: 380px;
     height: 3px;
-    background: rgba(96, 160, 255, 0.1);
+    background: var(--accent-blue-soft);
     border-radius: 2px;
     overflow: hidden;
     position: relative;

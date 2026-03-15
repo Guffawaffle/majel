@@ -38,7 +38,7 @@
   color: var(--text-muted);
   font-weight: 600;
 }
-.fleet-tab.active .fleet-tab-count { background: rgba(240, 160, 48, 0.15); color: var(--accent-gold); }
+.fleet-tab.active .fleet-tab-count { background: var(--accent-gold-soft); color: var(--accent-gold); }
 
 /* Stats */
 .fleet-stats {
@@ -139,15 +139,15 @@
 .fleet-xref {
   font-size: 11px;
   padding: 2px 6px;
-  background: var(--accent-blue-dim, rgba(96, 160, 255, 0.1));
+  background: var(--accent-blue-dim);
   color: var(--accent-blue);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--accent-blue-dim, rgba(96, 160, 255, 0.2));
+  border: 1px solid var(--accent-blue-dim);
 }
 .fleet-reservation-badge {
   font-size: 11px;
   padding: 2px 6px;
-  background: var(--accent-gold-dim, rgba(240, 160, 48, 0.1));
+  background: var(--accent-gold-dim);
   color: var(--accent-gold);
   border-radius: var(--radius-sm);
 }
@@ -214,7 +214,7 @@
 }
 .fleet-action-btn:hover { color: var(--text-primary); border-color: var(--accent-gold); }
 .fleet-action-btn.active {
-  background: rgba(240, 160, 48, 0.15);
+  background: var(--accent-gold-soft);
   color: var(--accent-gold);
   border-color: var(--accent-gold);
 }
@@ -318,13 +318,13 @@
   padding: 2px 6px;
   border-radius: var(--radius-sm);
 }
-.fleet-target-btn.active { background: rgba(240, 160, 48, 0.15); }
+.fleet-target-btn.active { background: var(--accent-gold-soft); }
 
 .fleet-xrefs-inline { display: flex; flex-wrap: wrap; gap: 3px; }
 .fleet-xref-sm {
   font-size: 10px;
   padding: 1px 5px;
-  background: var(--accent-blue-dim, rgba(96, 160, 255, 0.1));
+  background: var(--accent-blue-dim);
   color: var(--accent-blue);
   border-radius: var(--radius-sm);
 }
@@ -332,7 +332,7 @@
 .fleet-xref-dock {
   font-size: 10px;
   padding: 1px 5px;
-  background: var(--accent-green-dim, rgba(52, 211, 153, 0.1));
+  background: var(--accent-green-dim);
   color: var(--accent-green);
   border-radius: var(--radius-sm);
 }

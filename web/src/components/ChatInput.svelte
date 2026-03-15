@@ -294,7 +294,7 @@
   }
   .input-container:focus-within {
     border-color: var(--accent-gold);
-    box-shadow: 0 0 0 1px rgba(240, 160, 48, 0.15);
+    box-shadow: 0 0 0 1px var(--accent-gold-soft);
   }
 
   textarea {
@@ -431,7 +431,7 @@
   }
   .model-card + .model-card { margin-top: 2px; }
   .model-card:hover { background: var(--bg-hover); border-color: var(--border); }
-  .model-card-active { background: var(--bg-hover); border-color: var(--accent-gold-dim, rgba(240,160,48,0.3)); }
+  .model-card-active { background: var(--bg-hover); border-color: var(--accent-gold-dim); }
   .model-card-active:hover { border-color: var(--accent-gold); }
 
   .model-card-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
