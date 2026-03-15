@@ -1,6 +1,13 @@
 /* ═══════════════════════════════════════════════════════════
    Variables — CSS Custom Properties
    Ported from src/client/styles/variables.css (vanilla client)
+
+   Semantic intent (ADR-046 D1):
+     --accent-gold    Primary action, active emphasis, ownership
+     --accent-blue    Structural UI, informational, neutral framing
+     --accent-purple  Secondary emphasis, alternate grouping
+     --accent-green   Success state, owned-positive
+     --accent-red     Danger, error, destructive action
    ═══════════════════════════════════════════════════════════ */
 
 :root {
@@ -17,17 +24,19 @@
   --text-muted:      #8494a7;
 
   /* Accent colors */
-  --accent-gold:     #f0a030;
-  --accent-gold-dim: #b07820;
-  --accent-blue:     #60a0ff;
-  --accent-blue-dim: #3070cc;
-  --accent-green:    #34d399;
-  --accent-green-dim: rgba(52, 211, 153, 0.18);
-  --accent-red:      #f87171;
-  --accent-red-dim:   rgba(248, 113, 113, 0.16);
-  --accent-orange:   #fb923c;
+  --accent-gold:       #f0a030;
+  --accent-gold-dim:   #b07820;
+  --accent-gold-soft:  rgba(240, 160, 48, 0.12);
+  --accent-blue:       #60a0ff;
+  --accent-blue-dim:   #3070cc;
+  --accent-blue-soft:  rgba(96, 160, 255, 0.12);
+  --accent-green:      #34d399;
+  --accent-green-dim:  rgba(52, 211, 153, 0.18);
+  --accent-red:        #f87171;
+  --accent-red-dim:    rgba(248, 113, 113, 0.16);
+  --accent-orange:     #fb923c;
   --accent-orange-dim: rgba(251, 146, 60, 0.18);
-  --accent-purple:   #a78bfa;
+  --accent-purple:     #a78bfa;
 
   /* Structure */
   --border:          #1e293b;
@@ -38,6 +47,18 @@
   --sidebar-width:   240px;
   --max-content:     720px;
   --transition:      0.15s ease;
+
+  /* State (aliased from accent tokens) */
+  --state-success:   var(--accent-green);
+  --state-warning:   var(--accent-gold);
+  --state-danger:    var(--accent-red);
+
+  /* Faction — single source of truth (ADR-046 D4, muted palette) */
+  --faction-federation:  #5b9bd5;
+  --faction-klingon:     #d35f52;
+  --faction-romulan:     #3d9b56;
+  --faction-independent: #8a9199;
+  --faction-borg:        #45b5aa;
 
   /* Semantic */
   --accent-danger:   var(--accent-red);

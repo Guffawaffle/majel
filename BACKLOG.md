@@ -18,16 +18,71 @@
 
 ## Current PM Focus
 
-- **Current program:** None active. ADR-044 complete.
-- **Recently completed:** ADR-044 — Progression-Aware Context (#212, #213, #214). Make Aria progression-blind → progression-aware.
-- **Previously completed:** ADR-008 Phase C — smart import pipeline. ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
+- **Current program:** ADR-046 — LCARS Design System & Token Contract (#219). Phase 1 shipped.
+- **Recently completed:** ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped.
+- **Previously completed:** ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2204 tests across 99 files.
-- **Open issues:** 0 program issues. Backlog-only items remain.
+- **Open issues:** 7 (ADR-046 umbrella + 6 phases).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
+
+---
+
+## Active Program — LCARS Design System & Token Contract (ADR-046, #219)
+
+**Program umbrella:** #219
+**Linked ADR:** [docs/ADR-046-lcars-design-system-token-contract.md](docs/ADR-046-lcars-design-system-token-contract.md)
+**Design date:** 2026-03-15
+**Reviewed by:** Lex (Architecture Review)
+
+### Program Objective
+
+Lock the LCARS token architecture, clean up hardcoded color values,
+add faction accent tokens, and apply restrained LCARS polish to the
+Catalog page — all within documented production scope boundaries.
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| 1 | #220 | Token contract foundation | [~] In progress |
+| 2 | #221 | LCARS theme override cleanup | [ ] |
+| 3 | #222 | Hardcoded rgba cleanup | [ ] |
+| 4 | #223 | Faction badge colors | [ ] |
+| 5 | #224 | Catalog LCARS polish | [ ] |
+| 6 | #225 | Mobile LCARS sanity check | [ ] |
+
+### Definition of Done
+
+- [ ] All tokens defined in variables.css / lcars-theme.css only
+- [ ] Zero hardcoded rgba accent values in view/component CSS
+- [ ] Faction badges render per-faction colors from tokens
+- [ ] Catalog page passes visual check in LCARS + dark themes
+- [ ] Mobile viewport verified for LCARS theme
+- [ ] `npm run ax -- ci` passes
+
+---
+
+## Completed Program — Timer UX Redesign (ADR-045, #215)
+
+**Program umbrella:** #215
+**Linked ADR:** [docs/ADR-045-timer-ux-redesign.md](docs/ADR-045-timer-ux-redesign.md)
+**Design date:** 2026-03-15
+
+### Program Objective
+
+Redesign the timer feature from a form-based creation model to a preset launcher + active stack model optimized for in-game STFC play.
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| 1 | #216 | Timer domain/model groundwork | [x] Done `328e584` |
+| 2 | #217 | Active timer interaction redesign | [x] Done `328e584` |
+| 3 | #218 | Launcher + custom timer UX | [x] Done `328e584` |
 
 ---
 
