@@ -73,7 +73,7 @@ import {
 } from "./app-context.js";
 
 // Boot runner (ADR-047)
-import { runStage, type BootTask } from "./boot-runner.js";
+import { runStage } from "./boot-runner.js";
 
 // Configuration (ADR-005 Phase 3)
 import { bootstrapConfigSync, resolveConfig } from "./config.js";
