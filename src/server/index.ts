@@ -398,9 +398,11 @@ async function boot(): Promise<void> {
   // Phase C will run these with concurrency: 4.
   let resourceDefs: Map<number, ResourceDef>;
 
+  // ADR-047 Phase C: reference-store + cdn-sync chained (local dependency),
+  // remaining tasks run in parallel with bounded concurrency.
   await runStage("reference", [
     {
-      name: "reference-store",
+      name: "reference-store+cdn-sync",
       fn: async () => {
         state.referenceStore = await createReferenceStore(adminPool, pool);
         const purged = await state.referenceStore.purgeLegacyEntries();
@@ -412,13 +414,8 @@ async function boot(): Promise<void> {
           systems: refCounts.systems,
           purgedShips: purged.ships, purgedOfficers: purged.officers,
         }, "reference store online");
-      },
-    },
-    {
-      name: "reference-cdn-sync",
-      fn: async () => {
-        if (!state.referenceStore) return;
-        const refCounts = await state.referenceStore.counts();
+
+        // CDN sync (chained — depends on referenceStore being ready)
         const needsSync = refCounts.officers === 0 || refCounts.ships === 0 ||
           refCounts.research === 0 || refCounts.buildings === 0 ||
           refCounts.hostiles === 0 || refCounts.consumables === 0 ||
@@ -473,11 +470,11 @@ async function boot(): Promise<void> {
         log.boot.info({ count: resourceDefs.size }, "resource definitions loaded");
       },
     },
-  ], log.boot, { concurrency: 1 });
+  ], log.boot, { concurrency: 4 });
 
-  // ─── Stage 2: Game-Domain + Platform Stores (serial for Phase B baseline) ─
-  // ADR-047: All stores that depend on reference tables existing, or are treated
-  // as eventually depending on them. Phase C will run with concurrency: 4.
+  // ─── Stage 2: Game-Domain + Platform Stores ────────────────────────────
+  // ADR-047 Phase C: bounded concurrency (4). effect-store + effect-seed
+  // chained as single task (local dependency).
   await runStage("stores", [
     // Gameplay/Reference-adjacent domain
     {
@@ -567,18 +564,12 @@ async function boot(): Promise<void> {
         log.boot.info("operation event store online (ADR-037, user-scoped)");
       },
     },
-    // Effect store + seed (local dependency: seed awaits store)
+    // Effect store + seed chained (local dependency: seed awaits store)
     {
-      name: "effect-store",
+      name: "effect-store+seed",
       fn: async () => {
         state.effectStore = await createEffectStore(adminPool, pool);
         log.boot.info("effect store schema online (ADR-034)");
-      },
-    },
-    {
-      name: "effect-seed",
-      fn: async () => {
-        if (!state.effectStore) return;
         await loadEffectSeedData(state.effectStore);
         const effectCounts = await state.effectStore.counts();
         log.boot.info({ effects: effectCounts.taxonomyEffectKeys, abilities: effectCounts.catalogAbilities, intents: effectCounts.intentDefs }, "effect seed data loaded (ADR-034)");
@@ -624,7 +615,7 @@ async function boot(): Promise<void> {
         log.boot.info("chat run store online (ADR-036, durable queue)");
       },
     },
-  ], log.boot, { concurrency: 1 });
+  ], log.boot, { concurrency: 4 });
 
   // ─── Stage 3: Engines (serial) ────────────────────────────
   // Engine construction references multiple stores via tool context factory.
