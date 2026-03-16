@@ -18,14 +18,14 @@
 
 ## Current PM Focus
 
-- **Current program:** ADR-046 — LCARS Design System & Token Contract (#219). Phase 1 shipped.
+- **Active programs:** ADR-047 — Staged Boot Architecture (#226). ADR-046 — LCARS Design System (#219), Phases 1–3 shipped.
 - **Recently completed:** ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped.
 - **Previously completed:** ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
-- **Cloud deploy:** Live. Gemini-only (no `VERTEX_PROJECT_ID` in cloud env until quota approved).
+- **Cloud deploy:** Live. Gemini-only. `min-instances=0` (cold start issue — ADR-047 Phase A pending).
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2204 tests across 99 files.
-- **Open issues:** 7 (ADR-046 umbrella + 6 phases).
+- **Open issues:** 11 (ADR-046 × 7 + ADR-047 × 4).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -62,6 +62,38 @@ Catalog page — all within documented production scope boundaries.
 - [ ] Faction badges render per-faction colors from tokens
 - [ ] Catalog page passes visual check in LCARS + dark themes
 - [ ] Mobile viewport verified for LCARS theme
+- [ ] `npm run ax -- ci` passes
+
+---
+
+## Active Program — Staged Boot Architecture (ADR-047, #226)
+
+**Program umbrella:** #226
+**Linked ADR:** [docs/ADR-047-staged-boot-architecture.md](docs/ADR-047-staged-boot-architecture.md)
+**Design date:** 2026-03-16
+**Reviewed by:** Lex (Architecture Review)
+
+### Program Objective
+
+Eliminate cold-start delay on Cloud Run via `min-instances=1`, then refactor
+`boot()` from serial execution into dependency-respecting staged parallelism
+with bounded concurrency, per-task timing, and aggregate failure reporting.
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| A | #227 | Production mitigation (min-instances + CPU boost) | [ ] |
+| B | #228 | Boot runner + stage timing instrumentation | [ ] |
+| C | #229 | Staged parallel boot refactor | [ ] |
+
+### Definition of Done
+
+- [ ] Cloud Run `min-instances=1` and startup CPU boost active
+- [ ] `runStage()` helper exists with concurrency control and timing
+- [ ] `boot()` uses staged execution with documented dependency graph
+- [ ] All boot stages emit structured timing logs
+- [ ] `state.startupComplete` invariant preserved
 - [ ] `npm run ax -- ci` passes
 
 ---

@@ -62,7 +62,7 @@ import { createOperationEventStoreFactory } from "./stores/operation-event-store
 import { createChatRunStore } from "./stores/chat-run-store.js";
 import { createEffectStore } from "./stores/effect-store.js";
 import { loadEffectSeedData } from "./services/effect-seed-loader.js";
-import { loadResourceDefs } from "./services/resource-defs.js";
+import { loadResourceDefs, type ResourceDef } from "./services/resource-defs.js";
 import { createPool, ensureAppRole } from "./db.js";
 // attachScopedMemory imported per-route in routes/chat.ts (ADR-021 D4)
 
@@ -71,6 +71,9 @@ import {
   type AppState,
   buildMicroRunnerFromState,
 } from "./app-context.js";
+
+// Boot runner (ADR-047)
+import { runStage, type BootTask } from "./boot-runner.js";
 
 // Configuration (ADR-005 Phase 3)
 import { bootstrapConfigSync, resolveConfig } from "./config.js";
@@ -323,101 +326,105 @@ export function createApp(appState: AppState): express.Express {
 
 // ─── Startup ────────────────────────────────────────────────────
 async function boot(): Promise<void> {
+  const bootStart = Date.now();
   log.boot.info("Majel initializing");
 
-  // 0. Create PostgreSQL connection pools — dual-pool pattern (#39)
-  // Admin pool (superuser) — DDL/schema only
-  const adminPool = createPool(state.config.databaseAdminUrl);
-  state.adminPool = adminPool;
-  log.boot.info({ url: state.config.databaseAdminUrl.replace(/\/\/.*@/, "//<redacted>@") }, "admin pool created (DDL)");
+  // ─── Stage 0: Foundation (serial) ─────────────────────────
+  // Must be serial — each step requires the previous result.
+  // adminPool and pool are captured as locals and closed over by later stages.
+  let adminPool: ReturnType<typeof createPool>;
+  let pool: ReturnType<typeof createPool>;
 
-  // Ensure non-superuser app role exists (idempotent)
-  try {
-    await ensureAppRole(adminPool);
-    log.boot.info("majel_app role ready");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "ensureAppRole failed — RLS may not work");
-  }
+  await runStage("foundation", [
+    {
+      name: "admin-pool",
+      fn: async () => {
+        adminPool = createPool(state.config.databaseAdminUrl);
+        state.adminPool = adminPool;
+        log.boot.info({ url: state.config.databaseAdminUrl.replace(/\/\/.*@/, "//<redacted>@") }, "admin pool created (DDL)");
+      },
+    },
+    {
+      name: "ensure-role",
+      fn: async () => {
+        await ensureAppRole(adminPool);
+        log.boot.info("majel_app role ready");
+      },
+    },
+    {
+      name: "settings-store",
+      fn: async () => {
+        state.settingsStore = await createSettingsStore(adminPool);
+        log.boot.info("settings store online");
+      },
+    },
+    {
+      name: "resolve-config",
+      fn: async () => {
+        state.config = await resolveConfig(state.settingsStore!);
+      },
+    },
+    {
+      name: "app-pool",
+      fn: async () => {
+        pool = createPool(state.config.databaseUrl);
+        state.pool = pool;
+        log.boot.info({ url: state.config.databaseUrl.replace(/\/\/.*@/, "//<redacted>@") }, "app pool created (RLS enforced)");
+      },
+    },
+    {
+      name: "grants",
+      fn: async () => {
+        try {
+          await adminPool.query(
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO majel_app",
+          );
+        } catch { /* ignore — role may not exist in test environments */ }
+      },
+    },
+    {
+      name: "settings-rebind",
+      fn: async () => {
+        if (state.settingsStore) {
+          state.settingsStore = await createSettingsStore(adminPool, pool);
+          log.boot.debug("settings store re-bound to app pool");
+        }
+      },
+    },
+  ], log.boot, { concurrency: 1 });
 
-  // 1. Initialize settings store (admin pool for DDL, app pool after init)
-  try {
-    state.settingsStore = await createSettingsStore(adminPool);
-    log.boot.info("settings store online");
-    
-    // Re-resolve config now that settings store is available
-    state.config = await resolveConfig(state.settingsStore);
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "settings store init failed");
-  }
+  // ─── Stage 1: Reference + Independent Services (serial for Phase B baseline) ─
+  // ADR-047: Stage 1 members have no FK deps on game-domain stores.
+  // Phase C will run these with concurrency: 4.
+  let resourceDefs: Map<number, ResourceDef>;
 
-  // 1b. Create app pool (non-superuser) — all runtime queries, RLS enforced
-  const pool = createPool(state.config.databaseUrl);
-  state.pool = pool;
-  log.boot.info({ url: state.config.databaseUrl.replace(/\/\/.*@/, "//<redacted>@") }, "app pool created (RLS enforced)");
-
-  // Re-grant privileges on any tables created by settings store init
-  try {
-    await adminPool.query(
-      "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO majel_app",
-    );
-  } catch { /* ignore — role may not exist in test environments */ }
-
-  // 1c. Re-create settings store with app pool for runtime queries.
-  // The initial creation (step 1) used only adminPool because the app pool didn't exist yet
-  // (its URL comes from resolved config). The adminPool is closed after boot, so the store
-  // must be re-bound to the long-lived app pool. initSchema is idempotent (IF NOT EXISTS).
-  if (state.settingsStore) {
-    state.settingsStore = await createSettingsStore(adminPool, pool);
-    log.boot.debug("settings store re-bound to app pool");
-  }
-
-  // 2. Initialize Lex memory — ADR-021: prefer PostgreSQL + RLS when pool is available
-  try {
-    if (adminPool) {
-      const factory = await createFrameStoreFactory(adminPool, pool);
-      state.frameStoreFactory = factory;
-      // Boot-time memory service uses a system-scoped store (for /api/health frame count)
-      state.memoryService = createMemoryService(factory.forUser("system"));
-      log.boot.info("lex memory service online (postgres + RLS)");
-    } else {
-      state.memoryService = createMemoryService();
-      log.boot.info("lex memory service online (sqlite fallback)");
-    }
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "lex memory init failed");
-  }
-
-  // 2b. Initialize session store
-  try {
-    state.sessionStore = await createSessionStore(adminPool, pool);
-    log.boot.info({ sessions: await state.sessionStore.count() }, "session store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "session store init failed");
-  }
-
-  // 2c. Initialize reference store (must precede crew store — FK deps on reference_officers/ships)
-  // CDN snapshot data is synced on first boot or when tables are empty.
-  try {
-    state.referenceStore = await createReferenceStore(adminPool, pool);
-    // Purge legacy raw:* entries that duplicate CDN data (different IDs, different casing)
-    const purged = await state.referenceStore.purgeLegacyEntries();
-    const refCounts = await state.referenceStore.counts();
-    log.boot.info({
-      officers: refCounts.officers, ships: refCounts.ships,
-      research: refCounts.research, buildings: refCounts.buildings,
-      hostiles: refCounts.hostiles, consumables: refCounts.consumables,
-      systems: refCounts.systems,
-      purgedShips: purged.ships, purgedOfficers: purged.officers,
-    }, "reference store online");
-
-    // Auto-sync from CDN snapshot if any reference tables are empty
-    const needsSync = refCounts.officers === 0 || refCounts.ships === 0 ||
-      refCounts.research === 0 || refCounts.buildings === 0 ||
-      refCounts.hostiles === 0 || refCounts.consumables === 0 ||
-      refCounts.systems === 0;
-    if (needsSync) {
-      log.boot.info("empty reference tables detected — running CDN snapshot sync");
-      try {
+  await runStage("reference", [
+    {
+      name: "reference-store",
+      fn: async () => {
+        state.referenceStore = await createReferenceStore(adminPool, pool);
+        const purged = await state.referenceStore.purgeLegacyEntries();
+        const refCounts = await state.referenceStore.counts();
+        log.boot.info({
+          officers: refCounts.officers, ships: refCounts.ships,
+          research: refCounts.research, buildings: refCounts.buildings,
+          hostiles: refCounts.hostiles, consumables: refCounts.consumables,
+          systems: refCounts.systems,
+          purgedShips: purged.ships, purgedOfficers: purged.officers,
+        }, "reference store online");
+      },
+    },
+    {
+      name: "reference-cdn-sync",
+      fn: async () => {
+        if (!state.referenceStore) return;
+        const refCounts = await state.referenceStore.counts();
+        const needsSync = refCounts.officers === 0 || refCounts.ships === 0 ||
+          refCounts.research === 0 || refCounts.buildings === 0 ||
+          refCounts.hostiles === 0 || refCounts.consumables === 0 ||
+          refCounts.systems === 0;
+        if (!needsSync) return;
+        log.boot.info("empty reference tables detected — running CDN snapshot sync");
         const syncResults = await Promise.allSettled([
           refCounts.officers === 0 ? syncCdnOfficers(state.referenceStore) : null,
           refCounts.ships === 0 ? syncCdnShips(state.referenceStore) : null,
@@ -435,258 +442,280 @@ async function boot(): Promise<void> {
         }
         const postSyncCounts = await state.referenceStore.counts();
         log.boot.info(postSyncCounts, "CDN snapshot sync complete");
-      } catch (syncErr) {
-        log.boot.error({ err: syncErr instanceof Error ? syncErr.message : String(syncErr) }, "CDN sync failed");
-      }
-    }
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "reference store init failed");
-  }
+      },
+    },
+    {
+      name: "frame-store-factory",
+      fn: async () => {
+        if (adminPool) {
+          const factory = await createFrameStoreFactory(adminPool, pool);
+          state.frameStoreFactory = factory;
+          state.memoryService = createMemoryService(factory.forUser("system"));
+          log.boot.info("lex memory service online (postgres + RLS)");
+        } else {
+          state.memoryService = createMemoryService();
+          log.boot.info("lex memory service online (sqlite fallback)");
+        }
+      },
+    },
+    {
+      name: "session-store",
+      fn: async () => {
+        state.sessionStore = await createSessionStore(adminPool, pool);
+        log.boot.info({ sessions: await state.sessionStore.count() }, "session store online");
+      },
+    },
+    {
+      name: "resource-defs",
+      fn: async () => {
+        const snapshotDir = path.join(__dirname, "../../data/.stfc-snapshot");
+        resourceDefs = loadResourceDefs(snapshotDir);
+        log.boot.info({ count: resourceDefs.size }, "resource definitions loaded");
+      },
+    },
+  ], log.boot, { concurrency: 1 });
 
-  // 2c′. Load resource definitions (Phase 1 — #183)
-  const snapshotDir = path.join(__dirname, "../../data/.stfc-snapshot");
-  const resourceDefs = loadResourceDefs(snapshotDir);
-  log.boot.info({ count: resourceDefs.size }, "resource definitions loaded");
+  // ─── Stage 2: Game-Domain + Platform Stores (serial for Phase B baseline) ─
+  // ADR-047: All stores that depend on reference tables existing, or are treated
+  // as eventually depending on them. Phase C will run with concurrency: 4.
+  await runStage("stores", [
+    // Gameplay/Reference-adjacent domain
+    {
+      name: "crew-store-factory",
+      fn: async () => {
+        state.crewStoreFactory = await createCrewStoreFactory(adminPool, pool);
+        state.crewStore = state.crewStoreFactory.forUser("local");
+        log.boot.info("crew store online (ADR-025, user-scoped)");
+      },
+    },
+    {
+      name: "receipt-store-factory",
+      fn: async () => {
+        state.receiptStoreFactory = await createReceiptStoreFactory(adminPool, pool);
+        state.receiptStore = state.receiptStoreFactory.forUser("local");
+        const receiptCounts = await state.receiptStore.counts();
+        log.boot.info({ receipts: receiptCounts.total }, "receipt store online (ADR-026, user-scoped)");
+      },
+    },
+    {
+      name: "behavior-store",
+      fn: async () => {
+        state.behaviorStore = await createBehaviorStore(adminPool, pool);
+        const behaviorCounts = await state.behaviorStore.counts();
+        log.boot.info({ rules: behaviorCounts.total, active: behaviorCounts.active }, "behavior store online");
+      },
+    },
+    {
+      name: "overlay-store-factory",
+      fn: async () => {
+        const overlayFactory = await createOverlayStoreFactory(adminPool, pool);
+        state.overlayStoreFactory = overlayFactory;
+        state.overlayStore = overlayFactory.forUser("local");
+        const overlayCounts = await state.overlayStore.counts();
+        log.boot.info({
+          officerOverlays: overlayCounts.officers.total,
+          shipOverlays: overlayCounts.ships.total,
+        }, "overlay store online (RLS-scoped)");
+      },
+    },
+    {
+      name: "target-store-factory",
+      fn: async () => {
+        const targetFactory = await createTargetStoreFactory(adminPool, pool);
+        state.targetStoreFactory = targetFactory;
+        state.targetStore = targetFactory.forUser("local");
+        const targetCounts = await state.targetStore.counts();
+        log.boot.info({ targets: targetCounts.total, active: targetCounts.active }, "target store online (RLS-scoped)");
+      },
+    },
+    {
+      name: "research-store-factory",
+      fn: async () => {
+        const researchFactory = await createResearchStoreFactory(adminPool, pool);
+        state.researchStoreFactory = researchFactory;
+        state.researchStore = researchFactory.forUser("local");
+        const researchCounts = await state.researchStore.counts();
+        log.boot.info({ nodes: researchCounts.nodes, trees: researchCounts.trees }, "research store online (RLS-scoped)");
+      },
+    },
+    {
+      name: "inventory-store-factory",
+      fn: async () => {
+        const inventoryFactory = await createInventoryStoreFactory(adminPool, pool);
+        state.inventoryStoreFactory = inventoryFactory;
+        state.inventoryStore = inventoryFactory.forUser("local");
+        const inventoryCounts = await state.inventoryStore.counts();
+        log.boot.info({ items: inventoryCounts.items, categories: inventoryCounts.categories }, "inventory store online (RLS-scoped)");
+      },
+    },
+    {
+      name: "proposal-store-factory",
+      fn: async () => {
+        const proposalFactory = await createProposalStoreFactory(adminPool, pool);
+        state.proposalStoreFactory = proposalFactory;
+        state.proposalStore = proposalFactory.forUser("local");
+        const proposalCounts = await state.proposalStore.counts();
+        log.boot.info({ proposals: proposalCounts.total }, "proposal store online (ADR-026b, user-scoped)");
+      },
+    },
+    {
+      name: "operation-event-store",
+      fn: async () => {
+        const eventFactory = await createOperationEventStoreFactory(adminPool, pool);
+        state.operationEventStoreFactory = eventFactory;
+        state.operationEventStore = eventFactory.forUser("local");
+        log.boot.info("operation event store online (ADR-037, user-scoped)");
+      },
+    },
+    // Effect store + seed (local dependency: seed awaits store)
+    {
+      name: "effect-store",
+      fn: async () => {
+        state.effectStore = await createEffectStore(adminPool, pool);
+        log.boot.info("effect store schema online (ADR-034)");
+      },
+    },
+    {
+      name: "effect-seed",
+      fn: async () => {
+        if (!state.effectStore) return;
+        await loadEffectSeedData(state.effectStore);
+        const effectCounts = await state.effectStore.counts();
+        log.boot.info({ effects: effectCounts.taxonomyEffectKeys, abilities: effectCounts.catalogAbilities, intents: effectCounts.intentDefs }, "effect seed data loaded (ADR-034)");
+      },
+    },
+    // Auth/Platform domain
+    {
+      name: "invite-store",
+      fn: async () => {
+        state.inviteStore = await createInviteStore(adminPool, pool);
+        const codes = await state.inviteStore.listCodes();
+        log.boot.info({ codes: codes.length, authEnabled: state.config.authEnabled }, "invite store online");
+      },
+    },
+    {
+      name: "user-store",
+      fn: async () => {
+        state.userStore = await createUserStore(adminPool, pool);
+        const userCount = await state.userStore.countUsers();
+        log.boot.info({ users: userCount }, "user store online");
+      },
+    },
+    {
+      name: "audit-store",
+      fn: async () => {
+        state.auditStore = await createAuditStore(adminPool, pool);
+        log.boot.info("audit store online");
+      },
+    },
+    {
+      name: "user-settings-store",
+      fn: async () => {
+        if (state.settingsStore) {
+          state.userSettingsStore = await createUserSettingsStore(adminPool, pool, state.settingsStore);
+          log.boot.info("user settings store online");
+        }
+      },
+    },
+    {
+      name: "chat-run-store",
+      fn: async () => {
+        state.chatRunStore = await createChatRunStore(adminPool, pool);
+        log.boot.info("chat run store online (ADR-036, durable queue)");
+      },
+    },
+  ], log.boot, { concurrency: 1 });
 
-  // 2d. Initialize crew store (ADR-025 — unified composition model, #94 user-scoped)
-  try {
-    state.crewStoreFactory = await createCrewStoreFactory(adminPool, pool);
-    state.crewStore = state.crewStoreFactory.forUser("local");
-    log.boot.info("crew store online (ADR-025, user-scoped)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "crew store init failed");
-  }
-
-  // 2d4. Initialize receipt store (ADR-026, #94 user-scoped)
-  try {
-    state.receiptStoreFactory = await createReceiptStoreFactory(adminPool, pool);
-    state.receiptStore = state.receiptStoreFactory.forUser("local");
-    const receiptCounts = await state.receiptStore.counts();
-    log.boot.info({ receipts: receiptCounts.total }, "receipt store online (ADR-026, user-scoped)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "receipt store init failed");
-  }
-
-  // 2e. Initialize behavior store
-  try {
-    state.behaviorStore = await createBehaviorStore(adminPool, pool);
-    const behaviorCounts = await state.behaviorStore.counts();
-    log.boot.info({ rules: behaviorCounts.total, active: behaviorCounts.active }, "behavior store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "behavior store init failed");
-  }
-
-  // 2f. Initialize overlay store (#85: factory pattern for per-user RLS scoping)
-  try {
-    const overlayFactory = await createOverlayStoreFactory(adminPool, pool);
-    state.overlayStoreFactory = overlayFactory;
-    state.overlayStore = overlayFactory.forUser("local"); // backward compat
-    const overlayCounts = await state.overlayStore.counts();
-    log.boot.info({
-      officerOverlays: overlayCounts.officers.total,
-      shipOverlays: overlayCounts.ships.total,
-    }, "overlay store online (RLS-scoped)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "overlay store init failed");
-  }
-
-  // 2h. Initialize invite store
-  try {
-    state.inviteStore = await createInviteStore(adminPool, pool);
-    const codes = await state.inviteStore.listCodes();
-    log.boot.info({ codes: codes.length, authEnabled: state.config.authEnabled }, "invite store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "invite store init failed");
-  }
-
-  // 2i. Initialize user store (ADR-019)
-  try {
-    state.userStore = await createUserStore(adminPool, pool);
-    const userCount = await state.userStore.countUsers();
-    log.boot.info({ users: userCount }, "user store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "user store init failed");
-  }
-
-  // 2i½. Initialize audit store (#91 Phase A)
-  try {
-    state.auditStore = await createAuditStore(adminPool, pool);
-    log.boot.info("audit store online");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "audit store init failed");
-  }
-
-  // 2i¾. Initialize user settings store (#86)
-  try {
-    if (state.settingsStore) {
-      state.userSettingsStore = await createUserSettingsStore(adminPool, pool, state.settingsStore);
-      log.boot.info("user settings store online");
-    }
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "user settings store init failed");
-  }
-
-  // 2j. Initialize target store (#17, #85: factory pattern for per-user RLS scoping)
-  try {
-    const targetFactory = await createTargetStoreFactory(adminPool, pool);
-    state.targetStoreFactory = targetFactory;
-    state.targetStore = targetFactory.forUser("local"); // backward compat
-    const targetCounts = await state.targetStore.counts();
-    log.boot.info({ targets: targetCounts.total, active: targetCounts.active }, "target store online (RLS-scoped)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "target store init failed");
-  }
-
-  // 2k. Initialize research store (ADR-028 Phase 2)
-  try {
-    const researchFactory = await createResearchStoreFactory(adminPool, pool);
-    state.researchStoreFactory = researchFactory;
-    state.researchStore = researchFactory.forUser("local"); // backward compat
-    const researchCounts = await state.researchStore.counts();
-    log.boot.info({ nodes: researchCounts.nodes, trees: researchCounts.trees }, "research store online (RLS-scoped)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "research store init failed");
-  }
-
-  // 2l. Initialize inventory store (ADR-028 Phase 3)
-  try {
-    const inventoryFactory = await createInventoryStoreFactory(adminPool, pool);
-    state.inventoryStoreFactory = inventoryFactory;
-    state.inventoryStore = inventoryFactory.forUser("local"); // backward compat
-    const inventoryCounts = await state.inventoryStore.counts();
-    log.boot.info({ items: inventoryCounts.items, categories: inventoryCounts.categories }, "inventory store online (RLS-scoped)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "inventory store init failed");
-  }
-
-  // 2m. Initialize proposal store (ADR-026b #93)
-  try {
-    const proposalFactory = await createProposalStoreFactory(adminPool, pool);
-    state.proposalStoreFactory = proposalFactory;
-    state.proposalStore = proposalFactory.forUser("local");
-    const proposalCounts = await state.proposalStore.counts();
-    log.boot.info({ proposals: proposalCounts.total }, "proposal store online (ADR-026b, user-scoped)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "proposal store init failed");
-  }
-
-  // 2n. Initialize effect store (ADR-034 #132 — must follow reference store for FK deps)
-  try {
-    state.effectStore = await createEffectStore(adminPool, pool);
-    await loadEffectSeedData(state.effectStore);
-    const effectCounts = await state.effectStore.counts();
-    log.boot.info({ effects: effectCounts.taxonomyEffectKeys, abilities: effectCounts.catalogAbilities, intents: effectCounts.intentDefs }, "effect store online (ADR-034)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "effect store init failed");
-  }
-
-  // 2o. Initialize operation event store (ADR-037)
-  try {
-    const eventFactory = await createOperationEventStoreFactory(adminPool, pool);
-    state.operationEventStoreFactory = eventFactory;
-    state.operationEventStore = eventFactory.forUser("local");
-    log.boot.info("operation event store online (ADR-037, user-scoped)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "operation event store init failed");
-  }
-
-  // 2p. Initialize chat run store (ADR-036 Day 4)
-  try {
-    state.chatRunStore = await createChatRunStore(adminPool, pool);
-    log.boot.info("chat run store online (ADR-036, durable queue)");
-  } catch (err) {
-    log.boot.error({ err: err instanceof Error ? err.message : String(err) }, "chat run store init failed");
-  }
-
-  // Resolve config from settings store
+  // ─── Stage 3: Engines (serial) ────────────────────────────
+  // Engine construction references multiple stores via tool context factory.
   const { geminiApiKey, vertexProjectId, vertexRegion } = state.config;
 
-  // 3. Initialize chat engines (#85: ToolContextFactory for per-user scoping)
-  if (geminiApiKey) {
-    const runner = await buildMicroRunnerFromState(state);
-    const modelName = DEFAULT_MODEL;
+  await runStage("engines", [
+    {
+      name: "engine-setup",
+      fn: async () => {
+        if (!geminiApiKey) {
+          log.boot.warn("GEMINI_API_KEY not set — chat disabled");
+          return;
+        }
 
-    // Build a ToolContextFactory that creates user-scoped ToolEnv per chat() call (ADR-039 D7)
-    const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStoreFactory || state.targetStoreFactory || state.researchStoreFactory || state.inventoryStoreFactory || state.userSettingsStore) ? {
-      forUser(userId: string) {
-        return {
-          userId,
-          deps: {
-            referenceStore: state.referenceStore,
-            overlayStore: state.overlayStoreFactory?.forUser(userId) ?? null,
-            crewStore: state.crewStoreFactory?.forUser(userId) ?? null,
-            targetStore: state.targetStoreFactory?.forUser(userId) ?? null,
-            receiptStore: state.receiptStoreFactory?.forUser(userId) ?? null,
-            researchStore: state.researchStoreFactory?.forUser(userId) ?? null,
-            inventoryStore: state.inventoryStoreFactory?.forUser(userId) ?? null,
-            userSettingsStore: state.userSettingsStore,
-            resourceDefs: resourceDefs.size > 0 ? resourceDefs : null,
+        const runner = await buildMicroRunnerFromState(state);
+        const modelName = DEFAULT_MODEL;
+
+        const toolContextFactory = (state.referenceStore || state.overlayStoreFactory || state.crewStoreFactory || state.targetStoreFactory || state.researchStoreFactory || state.inventoryStoreFactory || state.userSettingsStore) ? {
+          forUser(userId: string) {
+            return {
+              userId,
+              deps: {
+                referenceStore: state.referenceStore,
+                overlayStore: state.overlayStoreFactory?.forUser(userId) ?? null,
+                crewStore: state.crewStoreFactory?.forUser(userId) ?? null,
+                targetStore: state.targetStoreFactory?.forUser(userId) ?? null,
+                receiptStore: state.receiptStoreFactory?.forUser(userId) ?? null,
+                researchStore: state.researchStoreFactory?.forUser(userId) ?? null,
+                inventoryStore: state.inventoryStoreFactory?.forUser(userId) ?? null,
+                userSettingsStore: state.userSettingsStore,
+                resourceDefs: resourceDefs!.size > 0 ? resourceDefs! : null,
+              },
+            };
           },
-        };
-      },
-    } : null;
+        } : null;
 
-    // Expose toolContextFactory on state for proposal routes (#93)
-    state.toolContextFactory = toolContextFactory;
+        state.toolContextFactory = toolContextFactory;
 
-    const geminiEngine = createGeminiEngine(
-      geminiApiKey,
-      null, // #85 H3: fleet config now injected per-message via chat route (user-scoped)
-      null, // dock briefing removed (ADR-025)
-      runner,
-      modelName,
-      toolContextFactory,
-      state.proposalStoreFactory,  // #93: proposal store for approve-tier mutations
-      state.userSettingsStore,      // #93: trust level overrides
-    );
-    log.boot.info({ model: geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
-
-    // ADR-041 Phase 4: Optionally initialize Claude engine via Vertex AI
-    let claudeEngine = null;
-    if (vertexProjectId) {
-      try {
-        claudeEngine = createClaudeEngine(
-          vertexProjectId,
-          vertexRegion,
-          null, // fleet config injected per-message
-          null, // dock briefing removed
+        const geminiEngine = createGeminiEngine(
+          geminiApiKey,
+          null,
+          null,
           runner,
-          null, // initial model — use Claude default
+          modelName,
           toolContextFactory,
           state.proposalStoreFactory,
           state.userSettingsStore,
         );
-        log.boot.info({ projectId: vertexProjectId, region: vertexRegion }, "claude engine online");
-      } catch (err) {
-        log.boot.warn({ err: (err as Error).message }, "claude engine failed to initialize — Claude models unavailable");
-      }
-    }
+        log.boot.info({ model: geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
 
-    // Wrap in EngineManager for seamless cross-provider model switching
-    state.geminiEngine = createEngineManager({ geminiEngine, claudeEngine });
-    log.boot.info({ model: state.geminiEngine.getModel(), claudeAvailable: !!claudeEngine }, "engine manager online");
-  } else {
-    log.boot.warn("GEMINI_API_KEY not set — chat disabled");
-  }
+        let claudeEngine = null;
+        if (vertexProjectId) {
+          try {
+            claudeEngine = createClaudeEngine(
+              vertexProjectId,
+              vertexRegion,
+              null,
+              null,
+              runner,
+              null,
+              toolContextFactory,
+              state.proposalStoreFactory,
+              state.userSettingsStore,
+            );
+            log.boot.info({ projectId: vertexProjectId, region: vertexRegion }, "claude engine online");
+          } catch (err) {
+            log.boot.warn({ err: (err as Error).message }, "claude engine failed to initialize — Claude models unavailable");
+          }
+        }
 
+        state.geminiEngine = createEngineManager({ geminiEngine, claudeEngine });
+        log.boot.info({ model: state.geminiEngine.getModel(), claudeAvailable: !!claudeEngine }, "engine manager online");
+      },
+    },
+  ], log.boot, { concurrency: 1 });
+
+  // ─── Stage 4: Finalize ────────────────────────────────────
   state.startupComplete = true;
 
-  // Auth bypass banner (#197): make implicit dev-mode behavior visible
   if (!state.config.authEnabled) {
     log.boot.warn(
       "⚠️  AUTH DISABLED — all requests run as admiral. Set MAJEL_ADMIN_TOKEN to enable authentication.",
     );
   }
 
-  // Close admin pool — DDL/schema init is done, no more superuser access needed at runtime.
-  // This prevents accidental RLS bypass via adminPool reference.
   if (state.adminPool) {
     await state.adminPool.end();
     log.boot.info("admin pool closed (DDL complete)");
     state.adminPool = null as unknown as typeof state.adminPool;
   }
 
-  // 4. Start HTTP server
   const app = createApp(state);
   httpServer = app.listen(state.config.port, () => {
     log.boot.info({ port: state.config.port, url: `http://localhost:${state.config.port}` }, "Majel online");
@@ -696,6 +725,9 @@ async function boot(): Promise<void> {
     log.boot.fatal({ err: err.message }, "HTTP server error");
     process.exit(1);
   });
+
+  // boot.total
+  log.boot.info({ durationMs: Date.now() - bootStart }, "boot.total");
 
   // 5. Periodic session cleanup (every hour)
   // Removes expired auth sessions and stale tenant sessions from PostgreSQL.
