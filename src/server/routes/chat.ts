@@ -143,7 +143,7 @@ async function executeChatRun(
 
   try {
     const chatMessage = await buildChatMessage(appState, userId, message);
-    const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId);
+    const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled);
     const answer = typeof result === "string" ? result : result.text;
     const proposals = typeof result === "string" ? undefined : result.proposals;
     const proposalIds = proposals?.map((p) => p.id) ?? [];

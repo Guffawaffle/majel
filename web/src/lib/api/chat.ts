@@ -124,6 +124,7 @@ function waitForRunCompletion(
     }, timeoutMs);
 
     source.onerror = () => {
+      // Single fallback attempt on SSE error — no unbounded polling
       void readRunSnapshot(runId)
         .then((result) => finish(() => resolve(result)))
         .catch((err) => finish(() => reject(err instanceof Error ? err : new Error("AI request failed"))));

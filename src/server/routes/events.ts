@@ -15,6 +15,8 @@ const OP_ID_RE = /^[a-zA-Z0-9._:-]{2,120}$/;
 const ALLOWED_TOPICS = new Set(["chat_run", "runner_job"]);
 const POLL_MS = 1000;
 const KEEPALIVE_MS = 15000;
+/** Server-side hard limit on SSE stream lifetime (#231) */
+const SSE_MAX_LIFETIME_MS = 3 * 60 * 1000;
 const SSE_EVENT_RE = /^[a-zA-Z0-9_.:-]{1,80}$/;
 
 function parseTopic(value: unknown): string | null {
@@ -124,12 +126,14 @@ export function createEventRoutes(appState: AppState): Router {
     let inFlight = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+    let lifetimeTimer: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = (): void => {
       if (closed) return;
       closed = true;
       if (pollTimer) clearInterval(pollTimer);
       if (keepaliveTimer) clearInterval(keepaliveTimer);
+      if (lifetimeTimer) clearTimeout(lifetimeTimer);
       try {
         res.end();
       } catch {
@@ -181,6 +185,7 @@ export function createEventRoutes(appState: AppState): Router {
         inFlight = false;
       }
     }, POLL_MS);
+    pollTimer.unref?.();
 
     keepaliveTimer = setInterval(() => {
       if (closed) return;
@@ -189,6 +194,14 @@ export function createEventRoutes(appState: AppState): Router {
         timestamp: new Date().toISOString(),
       });
     }, KEEPALIVE_MS);
+    keepaliveTimer.unref?.();
+
+    // Server-side hard timeout — prevents orphaned streams (#231)
+    lifetimeTimer = setTimeout(() => {
+      log.http.info({ topic, operationId, userId }, "SSE stream max lifetime reached");
+      cleanup();
+    }, SSE_MAX_LIFETIME_MS);
+    lifetimeTimer.unref?.();
 
     req.on("close", cleanup);
     req.on("aborted", cleanup);

@@ -192,6 +192,8 @@ export function createGeminiEngine(
       ...(tools ? { tools } : {}),
       // Disable automatic function calling — we handle the tool loop ourselves
       automaticFunctionCalling: { disable: true },
+      // Cap output length to prevent unbounded response costs (#234)
+      maxOutputTokens: 4096,
     };
   }
 
@@ -302,6 +304,8 @@ export function createGeminiEngine(
 
   /** Max rounds of function calling before forcing a text response */
   const MAX_TOOL_ROUNDS = 5;
+  /** Per-call timeout for sendMessage inside the tool loop (#233) */
+  const TOOL_CALL_TIMEOUT_MS = 30_000;
 
   const MAX_FIELD_LENGTH = 500;
 
@@ -381,6 +385,7 @@ export function createGeminiEngine(
     scopedContext: ToolEnv,
     userId: string,
     requestId?: string,
+    isCancelled?: () => boolean,
   ): Promise<ChatResult> {
     let functionCalls = initialFunctionCalls;
     let round = 0;
@@ -389,6 +394,15 @@ export function createGeminiEngine(
     const proposals: ProposalSummary[] = [];
 
     while (functionCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
+      // Check cancellation at the top of each round (#232)
+      if (isCancelled?.()) {
+        log.gemini.info({ requestId, sessionId, round }, "tool:cancelled");
+        if (pendingBatch.length > 0) {
+          await createBatchProposal(pendingBatch, userId, proposals);
+        }
+        return { text: "I was interrupted before finishing. Here's what I had so far.", proposals };
+      }
+
       round++;
       log.gemini.debug({
         requestId,
@@ -479,8 +493,17 @@ export function createGeminiEngine(
         }),
       );
 
-      // Send function responses back to the model
-      const result = await chat.sendMessage({ message: responses });
+      // Send function responses back to the model (with per-call timeout #233)
+      const result = await Promise.race([
+        chat.sendMessage({ message: responses }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("sendMessage timeout in tool loop")), TOOL_CALL_TIMEOUT_MS),
+        ),
+      ]);
+      const usageMeta = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+      if (usageMeta) {
+        log.gemini.info({ requestId, sessionId, round, ...usageMeta }, "token:usage");
+      }
       const nextCalls = result.functionCalls;
 
       if (nextCalls && nextCalls.length > 0) {
@@ -507,13 +530,35 @@ export function createGeminiEngine(
       log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:max-rounds");
     }
 
-    // If we get here with no text, ask the model to summarize
-    const summaryResult = await chat.sendMessage({
-      message: "Please provide a text response summarizing the tool results.",
-    });
-    const text = summaryResult.text ?? "";
-    if (!text) {
-      log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:empty-text:fallback");
+    // If we get here with no text, ask the model to summarize (with timeout #233)
+    let text = "";
+    try {
+      const summaryResult = await Promise.race([
+        chat.sendMessage({
+          message: "Please provide a text response summarizing the tool results.",
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("sendMessage timeout on fallback summary")), TOOL_CALL_TIMEOUT_MS),
+        ),
+      ]);
+      const usageMeta = (summaryResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+      if (usageMeta) {
+        log.gemini.info({ requestId, sessionId, round, ...usageMeta }, "token:usage:fallback");
+      }
+      // Guard: if model still returns function calls instead of text, use hardcoded message (#230)
+      if (summaryResult.functionCalls && summaryResult.functionCalls.length > 0) {
+        log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:fallback-still-has-calls");
+        text = "I used several tools to research your question but ran out of processing rounds. Please try rephrasing or breaking your question into smaller parts.";
+      } else {
+        text = summaryResult.text ?? "";
+      }
+      if (!text) {
+        log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:empty-text:fallback");
+        text = "I processed your request but wasn't able to generate a summary. Please try again.";
+      }
+    } catch (err) {
+      log.gemini.warn({ requestId, sessionId, err: err instanceof Error ? err.message : String(err) }, "tool:fallback-timeout");
+      text = "I used several tools to research your question but the final summary timed out. Please try again.";
     }
 
     // Create proposal for any batched items even in the fallback path
@@ -566,7 +611,7 @@ export function createGeminiEngine(
   }
 
   return {
-    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string): Promise<ChatResult> {
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean): Promise<ChatResult> {
       // #85: Namespace session keys by userId to prevent cross-user session leakage
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       return withSessionLock(sessionKey, async () => {
@@ -599,6 +644,10 @@ export function createGeminiEngine(
           () => session.chat.sendMessage({ message: buildMessageParts(augmentedMessage) }),
           "micro-runner",
         );
+        const initUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+        if (initUsage) {
+          log.gemini.info({ requestId, sessionId: sessionKey, ...initUsage }, "token:usage:initial");
+        }
 
         // Check for function calls before text extraction
         let responseText: string;
@@ -607,7 +656,7 @@ export function createGeminiEngine(
 
         if (functionCalls && functionCalls.length > 0) {
           // Handle function call loop — tool results feed back to model
-          const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId);
+          const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
           responseText = chatResult.text;
           chatProposals = chatResult.proposals;
         } else {
@@ -624,6 +673,10 @@ export function createGeminiEngine(
         if (validation.needsRepair && validation.repairPrompt) {
           log.gemini.debug({ sessionId: sessionKey, violations: receipt.validationDetails }, "microrunner:repair");
           const repairResult = await session.chat.sendMessage({ message: validation.repairPrompt });
+          const repairUsage = (repairResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+          if (repairUsage) {
+            log.gemini.info({ requestId, sessionId: sessionKey, ...repairUsage }, "token:usage:repair");
+          }
           responseText = repairResult.text ?? "";
           receipt.repairAttempted = true;
 
@@ -653,6 +706,10 @@ export function createGeminiEngine(
         () => session.chat.sendMessage({ message: buildMessageParts(message) }),
         "standard",
       );
+      const stdUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+      if (stdUsage) {
+        log.gemini.info({ requestId, sessionId: sessionKey, ...stdUsage }, "token:usage:initial");
+      }
 
       // Check for function calls before text extraction
       let responseText: string;
@@ -660,7 +717,7 @@ export function createGeminiEngine(
       const functionCalls = hasToolContext ? result.functionCalls : undefined;
 
       if (functionCalls && functionCalls.length > 0) {
-        const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId);
+        const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
         responseText = chatResult.text;
         chatProposals = chatResult.proposals;
       } else {
