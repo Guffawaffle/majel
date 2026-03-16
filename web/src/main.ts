@@ -2,4 +2,6 @@ import { mount } from "svelte";
 import App from "./App.svelte";
 import "./app.css";
 
-mount(App, { target: document.getElementById("app")! });
+const target = document.getElementById("app")!;
+target.innerHTML = "";
+mount(App, { target });
