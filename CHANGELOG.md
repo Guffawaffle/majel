@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### ADR-047 — Staged Boot Architecture (#226)
+- `src/server/boot-runner.ts`: `runStage()` helper with bounded concurrency, per-task timing, and aggregate failure reporting. Configurable concurrency limit (default: serial). Emits structured `boot.task` and `boot.stage` logs via pino.
+- `boot()` refactored from ~400 lines of serial `try/catch` blocks into 5 named stages using `runStage()`: foundation (serial), reference (concurrency 4), stores (concurrency 4), engines (serial), finalize.
+- `reference-store+cdn-sync` and `effect-store+seed` chained as single tasks to express local dependencies within parallel stages.
+- `boot.total` timing log emitted at end of boot sequence.
+- Cloud Run configured: `min-instances=1`, CPU boost enabled, request-based billing (ADR-047 D1).
+- 9 unit tests for `runStage()` covering serial/concurrent execution, aggregate failure collection, bounded concurrency limits, and per-task timing accuracy. (`test/boot-runner.test.ts`)
+
+### Security
+
+- Updated `devalue` (prototype pollution in `parse`/`unflatten`, GHSA-cfw5-2vxh-hr84, GHSA-mwv9-gp5h-frr4) and `flatted` (unbounded recursion DoS in `parse()`, GHSA-25h7-pfq9-p65f). `npm audit`: 0 vulnerabilities.
+
 #### ADR-008 Phase C — Smart import pipeline (`POST /api/fleet/scan/batch`, `POST /api/fleet/scan/commit`)
 - Batch scan endpoint: `POST /api/fleet/scan/batch` accepts up to 10 images in a single request, returns array of scan results with per-image error reporting. Sequential Gemini calls to avoid rate limits. (`src/server/routes/scan.ts`)
 - Scan commit endpoint: `POST /api/fleet/scan/commit` applies reviewed scan results to overlay tables. Entities matched by refId get UPSERT'd as "owned" with scanned level/rank/tier/power. Preserves existing target/notes. Creates receipt with source_type `image_scan` and full undo inverse. (`src/server/routes/scan.ts`)

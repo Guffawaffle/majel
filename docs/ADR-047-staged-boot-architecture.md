@@ -1,6 +1,6 @@
 # ADR-047 — Staged Boot Architecture
 
-**Status:** Draft  
+**Status:** Accepted (all phases shipped)  
 **Date:** 2026-03-16  
 **Authors:** Guff (PM), GitHub Copilot (Senior Architect)  
 **Reviewed by:** Lex (Architecture Review)  
@@ -87,7 +87,7 @@ Set Cloud Run to maintain one warm instance and enable startup CPU boost.
   idle instance
 - Applied via `gcloud run services update` or the existing
   `npm run cloud:scale -- --min 1` command + a one-time
-  `--startup-cpu-boost` flag on the deploy step
+  `--cpu-boost` flag on the deploy step
 
 ### D2 — Staged Boot with Dependency Graph
 
@@ -154,10 +154,13 @@ Domain annotations preserved for future split opportunity:
 - **Gameplay/Reference-adjacent:** crew, effect, target, research, inventory,
   proposal, overlays, operation-events, receipts, behavior
 
-Note: `effect-seed` is a separate task from `effect-store` init, even though
-both are in Stage 2. Effect store must complete before effect seed can run.
-This is expressed as a local dependency within Stage 2 (effect seed awaits
-effect store), not a separate stage.
+Note: `effect-seed` has a local dependency on `effect-store` — the
+implementation chains them into a single task (`effect-store+seed`) rather
+than using a `dependsOn` mechanism. Similarly, `reference-cdn-sync` is chained
+into `reference-store+cdn-sync` in Stage 1. This means Stage 1 has 4 tasks
+and Stage 2 has 15 tasks (not 16). Per-task timing captures the combined
+duration; individual sub-step timing is visible in the structured log lines
+within each task.
 
 **Stage 3 — Engines (serial or concurrency: 2, after Stage 2)**
 
@@ -236,9 +239,11 @@ Per-task timing enables:
 - Before/after comparison for future DDL consolidation
 - Baseline for Cloud Run performance tuning
 
-Distinct timing entries for compound operations:
-- `reference-store` (init) vs. `reference-counts` vs. `reference-cdn-sync`
-- `effect-store` (init) vs. `effect-seed`
+Compound operations are chained into single tasks for dependency safety:
+- `reference-store+cdn-sync` — combined task in Stage 1
+- `effect-store+seed` — combined task in Stage 2
+
+Sub-step progress is visible via structured log lines within each task.
 
 ### D6 — Readiness Invariant
 
@@ -319,7 +324,7 @@ await runStage("reference", [
 
 | Phase | Issue | Title | Scope |
 |---|---|---|---|
-| A | #227 | Production mitigation | `min-instances=1`, startup CPU boost, `--startup-cpu-boost` on deploy |
+| A | #227 | Production mitigation | `min-instances=1`, startup CPU boost, `--cpu-boost` on deploy |
 | B | #228 | Boot runner + stage timing | `src/server/boot-runner.ts` — `runStage()` helper with concurrency, timing, aggregate failure. Wire timing logs into current serial boot (no parallelism yet) to get baseline numbers. |
 | C | #229 | Staged parallel boot | Refactor `boot()` to use `runStage()` with Stage 0–4 dependency graph. Bounded concurrency (4) on Stages 1 and 2. Aggregate failure reporting. Preserve existing error handling per store. |
 
@@ -331,16 +336,16 @@ changes the boot order. C is the structural refactor.
 
 ### Definition of Done
 
-- [ ] Cloud Run `min-instances=1` and startup CPU boost active
-- [ ] `runStage()` helper exists with concurrency control and timing
-- [ ] `boot()` uses staged execution with documented dependency graph
-- [ ] All boot stages emit structured timing logs (`boot.task`, `boot.stage`, `boot.total`)
-- [ ] Aggregate failure reporting: all task results collected before abort
-- [ ] `state.startupComplete` invariant preserved — no readiness before all stages pass
-- [ ] Effect seed expressed as local dependency on effect store (not a separate stage)
-- [ ] Domain annotations on Stage 2 members preserved in code comments
-- [ ] `npm run ax -- ci` passes
-- [ ] Before/after timing comparison documented (commit message or follow-up note)
+- [x] Cloud Run `min-instances=1` and startup CPU boost active
+- [x] `runStage()` helper exists with concurrency control and timing
+- [x] `boot()` uses staged execution with documented dependency graph
+- [x] All boot stages emit structured timing logs (`boot.task`, `boot.stage`, `boot.total`)
+- [x] Aggregate failure reporting: all task results collected before abort
+- [x] `state.startupComplete` invariant preserved — no readiness before all stages pass
+- [x] Effect seed expressed as local dependency on effect store (chained task)
+- [x] Domain annotations on Stage 2 members preserved in code comments
+- [x] `npm run ax -- ci` passes (2213/2213)
+- [ ] Before/after timing comparison documented (pending first production deploy with timing logs)
 
 ---
 

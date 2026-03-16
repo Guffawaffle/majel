@@ -393,9 +393,9 @@ async function boot(): Promise<void> {
     },
   ], log.boot, { concurrency: 1 });
 
-  // ─── Stage 1: Reference + Independent Services (serial for Phase B baseline) ─
-  // ADR-047: Stage 1 members have no FK deps on game-domain stores.
-  // Phase C will run these with concurrency: 4.
+  // ─── Stage 1: Reference + Independent Services (concurrency: 4) ──
+  // ADR-047 D2: Stage 1 members have no FK deps on game-domain stores.
+  // reference-store + cdn-sync chained as single task (local dependency).
   let resourceDefs: Map<number, ResourceDef>;
 
   // ADR-047 Phase C: reference-store + cdn-sync chained (local dependency),

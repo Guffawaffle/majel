@@ -18,14 +18,14 @@
 
 ## Current PM Focus
 
-- **Active programs:** ADR-047 — Staged Boot Architecture (#226). ADR-046 — LCARS Design System (#219), Phases 1–3 shipped.
-- **Recently completed:** ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped.
+- **Active programs:** ADR-046 — LCARS Design System (#219), Phases 1–3 shipped, 4–6 pending.
+- **Recently completed:** ADR-047 — Staged Boot Architecture (#226). All 3 phases shipped (`55832f2`). ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped.
 - **Previously completed:** ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
-- **Cloud deploy:** Live. Gemini-only. `min-instances=0` (cold start issue — ADR-047 Phase A pending).
+- **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
 - **Tech debt batch:** #189–#193 — all 5 closed.
-- **Test count:** 2204 tests across 99 files.
-- **Open issues:** 11 (ADR-046 × 7 + ADR-047 × 4).
+- **Test count:** 2213 tests across 100 files.
+- **Open issues:** 4 (ADR-046: #219 umbrella + #223, #224, #225).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -48,9 +48,9 @@ Catalog page — all within documented production scope boundaries.
 
 | Phase | Issue | Title | Status |
 |---|---|---|---|
-| 1 | #220 | Token contract foundation | [~] In progress |
-| 2 | #221 | LCARS theme override cleanup | [ ] |
-| 3 | #222 | Hardcoded rgba cleanup | [ ] |
+| 1 | #220 | Token contract foundation | [x] Done `64eb42f` |
+| 2 | #221 | LCARS theme override cleanup | [x] Done `5152afa` |
+| 3 | #222 | Hardcoded rgba cleanup | [x] Done `a4eb353` |
 | 4 | #223 | Faction badge colors | [ ] |
 | 5 | #224 | Catalog LCARS polish | [ ] |
 | 6 | #225 | Mobile LCARS sanity check | [ ] |
@@ -66,7 +66,7 @@ Catalog page — all within documented production scope boundaries.
 
 ---
 
-## Active Program — Staged Boot Architecture (ADR-047, #226)
+## Completed Program — Staged Boot Architecture (ADR-047, #226)
 
 **Program umbrella:** #226
 **Linked ADR:** [docs/ADR-047-staged-boot-architecture.md](docs/ADR-047-staged-boot-architecture.md)
@@ -83,18 +83,18 @@ with bounded concurrency, per-task timing, and aggregate failure reporting.
 
 | Phase | Issue | Title | Status |
 |---|---|---|---|
-| A | #227 | Production mitigation (min-instances + CPU boost) | [ ] |
-| B | #228 | Boot runner + stage timing instrumentation | [ ] |
-| C | #229 | Staged parallel boot refactor | [ ] |
+| A | #227 | Production mitigation (min-instances + CPU boost) | [x] Done |
+| B | #228 | Boot runner + stage timing instrumentation | [x] Done `984ce54` |
+| C | #229 | Staged parallel boot refactor | [x] Done `55832f2` |
 
 ### Definition of Done
 
-- [ ] Cloud Run `min-instances=1` and startup CPU boost active
-- [ ] `runStage()` helper exists with concurrency control and timing
-- [ ] `boot()` uses staged execution with documented dependency graph
-- [ ] All boot stages emit structured timing logs
-- [ ] `state.startupComplete` invariant preserved
-- [ ] `npm run ax -- ci` passes
+- [x] Cloud Run `min-instances=1` and startup CPU boost active
+- [x] `runStage()` helper exists with concurrency control and timing
+- [x] `boot()` uses staged execution with documented dependency graph
+- [x] All boot stages emit structured timing logs
+- [x] `state.startupComplete` invariant preserved
+- [x] `npm run ax -- ci` passes (2213/2213)
 
 ---
 
