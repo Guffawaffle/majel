@@ -18,20 +18,20 @@
 
 ## Current PM Focus
 
-- **Active programs:** ADR-046 — LCARS Design System (#219), Phases 1–4 shipped, 5–6 pending. ADR-048 — Token Budgets (#235), 4 phases planned.
-- **Recently completed:** ADR-047 — Staged Boot Architecture (#226). All 3 phases shipped (`55832f2`). ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped.
+- **Active programs:** ADR-048 — Token Budgets (#235), 4 phases planned.
+- **Recently completed:** ADR-046 — LCARS Design System (#219). All 6 phases shipped. ADR-047 — Staged Boot Architecture (#226). All 3 phases shipped (`55832f2`). ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped.
 - **Previously completed:** ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2261 tests across 102 files.
-- **Open issues:** 14 (ADR-046: #219 + #224, #225; ADR-048: #235–#239; Cost audit: #234 + #240–#246).
+- **Open issues:** 12 (ADR-048: #235–#239; Cost audit: #234 + #240–#246).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
 ---
 
-## Active Program — LCARS Design System & Token Contract (ADR-046, #219)
+## Completed Program — LCARS Design System & Token Contract (ADR-046, #219)
 
 **Program umbrella:** #219
 **Linked ADR:** [docs/ADR-046-lcars-design-system-token-contract.md](docs/ADR-046-lcars-design-system-token-contract.md)
@@ -53,7 +53,7 @@ Catalog page — all within documented production scope boundaries.
 | 3 | #222 | Hardcoded rgba cleanup | [x] Done `a4eb353` |
 | 4 | #223 | Faction badge colors | [x] Done `8348b57` |
 | 5 | #224 | Catalog LCARS polish | [x] Done `ce14782` |
-| 6 | #225 | Mobile LCARS sanity check | [ ] |
+| 6 | #225 | Mobile LCARS sanity check | [x] Done `e654f8c` |
 
 ### Definition of Done
 
