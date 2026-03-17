@@ -315,3 +315,31 @@
 [data-theme="lcars"] .cat-undo-bar button {
   border-radius: 12px;
 }
+
+/* ── Mobile LCARS overrides (ADR-046 Phase 6) ────────────── */
+
+@media (max-width: 480px) {
+  /* Reduce letter-spacing on mobile header to prevent overflow */
+  [data-theme="lcars"] .mobile-header .title {
+    letter-spacing: 2px;
+    font-size: 14px;
+  }
+
+  /* Sidebar logo: tighter spacing on narrow screens */
+  [data-theme="lcars"] .sidebar-logo {
+    letter-spacing: 2px;
+    font-size: 16px;
+  }
+
+  /* Nav buttons: slightly less padding */
+  [data-theme="lcars"] .sidebar-nav-btn {
+    padding: 7px 12px;
+    font-size: 11px;
+  }
+
+  /* Title bar heading: tighter at small widths */
+  [data-theme="lcars"] .title-bar h1 {
+    letter-spacing: 1px;
+    font-size: 14px;
+  }
+}

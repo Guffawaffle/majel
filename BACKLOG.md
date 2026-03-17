@@ -52,7 +52,7 @@ Catalog page — all within documented production scope boundaries.
 | 2 | #221 | LCARS theme override cleanup | [x] Done `5152afa` |
 | 3 | #222 | Hardcoded rgba cleanup | [x] Done `a4eb353` |
 | 4 | #223 | Faction badge colors | [x] Done `8348b57` |
-| 5 | #224 | Catalog LCARS polish | [ ] |
+| 5 | #224 | Catalog LCARS polish | [x] Done `ce14782` |
 | 6 | #225 | Mobile LCARS sanity check | [ ] |
 
 ### Definition of Done
