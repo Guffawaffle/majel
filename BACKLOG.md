@@ -18,14 +18,14 @@
 
 ## Current PM Focus
 
-- **Active programs:** ADR-046 — LCARS Design System (#219), Phases 1–3 shipped, 4–6 pending.
+- **Active programs:** ADR-046 — LCARS Design System (#219), Phases 1–4 shipped, 5–6 pending. ADR-048 — Token Budgets (#235), 4 phases planned.
 - **Recently completed:** ADR-047 — Staged Boot Architecture (#226). All 3 phases shipped (`55832f2`). ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped.
 - **Previously completed:** ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2261 tests across 102 files.
-- **Open issues:** 5 (ADR-046: #219 umbrella + #223, #224, #225; Cost audit: #234 umbrella).
+- **Open issues:** 14 (ADR-046: #219 + #224, #225; ADR-048: #235–#239; Cost audit: #234 + #240–#246).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -80,14 +80,56 @@ Catalog page — all within documented production scope boundaries.
 - [x] `maxOutputTokens: 4096` set
 - [x] `usageMetadata` logging on all sendMessage calls
 
+### Shipped (`4501088`)
+- [x] Batch scan 30s per-image timeout
+- [x] `operation_events` + `operation_streams` 30-day retention (hourly GC via adminPool)
+- [x] `chat_runs` 30-day retention for terminal runs
+- [x] Web lookup cache max-size cap (200) + proactive eviction
+
 ### Remaining (backlog)
-- [ ] Per-user token budgets (ADR-019 schema designed, not implemented)
-- [ ] Gemini context caching for system prompt (90% input discount)
-- [ ] `operation_events` table retention policy
-- [ ] Batch scan per-image timeout
-- [ ] Web lookup cache LRU eviction
-- [ ] `claimInFlight` watchdog reset
-- [ ] Compression middleware SSE exclusion
+- [ ] Per-user token budgets — promoted to #235 (ADR-048)
+- [ ] #240 — Gemini context caching for system prompt
+- [ ] #241 — `claimInFlight` watchdog reset
+- [ ] #242 — Env-gated session cleanup hardening
+- [ ] #243 — Compression middleware SSE exclusion
+- [ ] #244 — Session history summarization
+- [ ] #245 — SMTP transport connection timeout
+- [ ] #246 — `runningRuns` Map cleanup and max-size limit
+
+---
+
+## Planned Program — Per-Rank & Per-User Token Budgets (ADR-048, #235)
+
+**Program umbrella:** #235
+**Linked ADR:** [docs/ADR-048-token-budgets.md](docs/ADR-048-token-budgets.md)
+**Design date:** 2026-03-17
+
+### Program Objective
+
+Persist token usage in a ledger table, enforce per-rank daily budgets
+(ensign=0, lieutenant=50K oken, captain=200K, admiral=unlimited), allow
+admiral per-user overrides, and surface budget status, in both admin panel
+and user-facing chat UI.
+
+### Sequenced Implementation Plan
+
+| Phase | Issue | Title | Status |
+|---|---|---|---|
+| A | #236 | Token    ledger table + recording | [ ] , |
+| B | #237 | Budget config + rank defaults + enforcement | [ ] |
+| C | #238 | Admin panel — budget management tab | [ ] |
+| D | #239 | Per-user overrides + user-facing indicator | [ ] |
+
+### Definition of Done
+
+- [ ] Token ledger records every LLM call
+- [ ] Rank default budgets configurable by admiral
+- [ ] Per-user overrides with admin note field
+- [ ] Pre-flight check rejects over-budget with 429
+- [ ] AdmiralView "Budgets" tab with usage dashboard
+- [ ] User-facing  budget indicator in chat input
+- [ ] 90-day retention    on token_ledger
+- [ ] `npm run ax --        ci` passes at ray phase. boundary
 
 ---
 
