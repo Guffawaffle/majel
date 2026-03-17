@@ -182,15 +182,21 @@ export function createScanRoutes(appState: AppState): Router {
       const errors: Array<{ index: number; error: string }> = [];
 
       // Process sequentially to avoid Gemini rate limits
+      const PER_IMAGE_TIMEOUT_MS = 30_000;
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
         try {
-          const extracted = await extractFromImage(
-            appState.config.geminiApiKey,
-            modelId,
-            { data: img.image.data, mimeType: img.image.mimeType },
-            img.scanType as ScanType,
-          );
+          const extracted = await Promise.race([
+            extractFromImage(
+              appState.config.geminiApiKey,
+              modelId,
+              { data: img.image.data, mimeType: img.image.mimeType },
+              img.scanType as ScanType,
+            ),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Image extraction timed out")), PER_IMAGE_TIMEOUT_MS),
+            ),
+          ]);
           const matched = await crossReference(extracted, appState.referenceStore, overlayStore);
           results.push({ scanType: extracted.scanType, extracted, matched });
         } catch (err) {

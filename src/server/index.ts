@@ -758,6 +758,40 @@ async function boot(): Promise<void> {
           log.boot.info({ purged }, "audit:gc");
         }
       }
+      // Purge completed chat_runs older than 30 days
+      if (state.adminPool) {
+        try {
+          const chatRes = await state.adminPool.query(
+            `DELETE FROM public.chat_runs
+             WHERE status IN ('succeeded','failed','cancelled','timed_out')
+               AND finished_at < NOW() - INTERVAL '30 days'`,
+          );
+          if ((chatRes.rowCount ?? 0) > 0) {
+            log.boot.info({ purged: chatRes.rowCount }, "chat_runs:gc");
+          }
+        } catch (err) {
+          log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "chat_runs:gc:error");
+        }
+      }
+      // Purge operation_events older than 30 days
+      if (state.adminPool) {
+        try {
+          const opRes = await state.adminPool.query(
+            `DELETE FROM operation_events WHERE created_at < NOW() - INTERVAL '30 days'`,
+          );
+          if ((opRes.rowCount ?? 0) > 0) {
+            log.boot.info({ purged: opRes.rowCount }, "operation_events:gc");
+          }
+          const streamRes = await state.adminPool.query(
+            `DELETE FROM operation_streams WHERE created_at < NOW() - INTERVAL '30 days'`,
+          );
+          if ((streamRes.rowCount ?? 0) > 0) {
+            log.boot.info({ purged: streamRes.rowCount }, "operation_streams:gc");
+          }
+        } catch (err) {
+          log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "operation_events:gc:error");
+        }
+      }
     } catch (err) {
       log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "session:gc:error");
     }

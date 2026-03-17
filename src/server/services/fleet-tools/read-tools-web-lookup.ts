@@ -3,7 +3,9 @@ import { log } from "../../logger.js";
 const WEB_LOOKUP_ALLOWLIST = new Set(["stfc.space", "spocks.club", "memory-alpha.fandom.com", "stfc.fandom.com"]);
 const APPROVED_STFC_STREAMS = new Set(["stfc.space", "spocks.club"]);
 const WEB_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
+const WEB_LOOKUP_CACHE_MAX_SIZE = 200;
 const ROBOTS_CACHE_TTL_MS = 60 * 60 * 1000;
+const ROBOTS_CACHE_MAX_SIZE = 50;
 const WEB_LOOKUP_RATE_LIMIT_MAX = 5;
 const WEB_LOOKUP_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const WEB_LOOKUP_FETCH_TIMEOUT_MS = 10_000;
@@ -45,6 +47,29 @@ export function __resetWebLookupStateForTests(): void {
   webLookupMetrics.rateLimited = 0;
   webLookupMetrics.robotsBlocked = 0;
   webLookupMetrics.failures = 0;
+}
+
+/** Evict expired cache entries + enforce max-size cap. */
+function evictExpiredCacheEntries(): void {
+  const now = Date.now();
+  for (const [key, entry] of webLookupCache) {
+    if (entry.expiresAt <= now) webLookupCache.delete(key);
+  }
+  // If still over cap, remove oldest entries (FIFO via Map insertion order)
+  while (webLookupCache.size > WEB_LOOKUP_CACHE_MAX_SIZE) {
+    const first = webLookupCache.keys().next();
+    if (first.done) break;
+    webLookupCache.delete(first.value);
+  }
+  // Same for robots cache
+  for (const [key, entry] of robotsCache) {
+    if (now - entry.checkedAt > ROBOTS_CACHE_TTL_MS) robotsCache.delete(key);
+  }
+  while (robotsCache.size > ROBOTS_CACHE_MAX_SIZE) {
+    const first = robotsCache.keys().next();
+    if (first.done) break;
+    robotsCache.delete(first.value);
+  }
 }
 
 function normalizeLookupDomain(input: string): string {
@@ -451,6 +476,7 @@ export async function webLookup(
   };
 
   if (!("error" in result)) {
+    evictExpiredCacheEntries();
     webLookupCache.set(cacheKey, {
       expiresAt: Date.now() + WEB_LOOKUP_CACHE_TTL_MS,
       payload,
