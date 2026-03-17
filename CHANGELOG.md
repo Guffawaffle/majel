@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Cost & Runaway Safety Hardening (#234)
+- `maxOutputTokens: 4096` set on Gemini `buildChatConfig()` to cap response length.
+- `usageMetadata` (prompt/candidate/total token counts) logged on all `sendMessage` calls: initial, tool loop rounds, fallback summary, repair pass.
+- Mid-execution cancellation threaded into `handleFunctionCalls()` — `isCancelled()` checked at the top of each tool round. (#232)
+- 30s `Promise.race` timeout on all `sendMessage` calls inside the tool loop and fallback summary. (#233)
+- Fallback summary after max tool rounds now guards against model returning more function calls instead of text — returns hardcoded user-facing message. (#230)
+- SSE event stream: 3-minute server-side max lifetime timer. `.unref()` added to poll and keepalive timers. (#231)
+- Client SSE `onerror` handler documented as single-attempt fallback (no unbounded polling).
+
 #### ADR-047 — Staged Boot Architecture (#226)
 - `src/server/boot-runner.ts`: `runStage()` helper with bounded concurrency, per-task timing, and aggregate failure reporting. Configurable concurrency limit (default: serial). Emits structured `boot.task` and `boot.stage` logs via pino.
 - `boot()` refactored from ~400 lines of serial `try/catch` blocks into 5 named stages using `runStage()`: foundation (serial), reference (concurrency 4), stores (concurrency 4), engines (serial), finalize.

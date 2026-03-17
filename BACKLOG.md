@@ -25,7 +25,7 @@
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2213 tests across 100 files.
-- **Open issues:** 4 (ADR-046: #219 umbrella + #223, #224, #225).
+- **Open issues:** 5 (ADR-046: #219 umbrella + #223, #224, #225; Cost audit: #234 umbrella).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -63,6 +63,31 @@ Catalog page — all within documented production scope boundaries.
 - [ ] Catalog page passes visual check in LCARS + dark themes
 - [ ] Mobile viewport verified for LCARS theme
 - [ ] `npm run ax -- ci` passes
+
+---
+
+## Active — Cost & Runaway Safety Audit (#234)
+
+**Umbrella issue:** #234
+**Incident date:** 2026-03-16 (single chat message → 1.3 min runaway SSE stream)
+**Root cause:** Cumulative latency from 5 tool rounds × ~16s each. `MAX_TOOL_ROUNDS` limit worked but exposed 4 bugs + 12 cost/safety gaps.
+
+### Shipped (`9b9c123`)
+- [x] #232 — Mid-execution cancellation in tool loop
+- [x] #233 — 30s timeout on inner sendMessage calls
+- [x] #230 — Fallback summary guards function calls in response
+- [x] #231 — SSE 3-min server-side max lifetime + `.unref()` on timers
+- [x] `maxOutputTokens: 4096` set
+- [x] `usageMetadata` logging on all sendMessage calls
+
+### Remaining (backlog)
+- [ ] Per-user token budgets (ADR-019 schema designed, not implemented)
+- [ ] Gemini context caching for system prompt (90% input discount)
+- [ ] `operation_events` table retention policy
+- [ ] Batch scan per-image timeout
+- [ ] Web lookup cache LRU eviction
+- [ ] `claimInFlight` watchdog reset
+- [ ] Compression middleware SSE exclusion
 
 ---
 
