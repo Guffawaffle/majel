@@ -196,7 +196,9 @@ export function createProposalRoutes(appState: AppState): Router {
         const results: Array<{ tool: string; success: boolean; result?: object; error?: string }> = [];
 
         for (const item of proposal.batchItems) {
-          const result = await executeFleetTool(item.tool, item.args, toolContext) as Record<string, unknown>;
+          // Inject dry_run: false so mutation tools actually persist (same as single-tool path)
+          const applyArgs = { ...item.args, dry_run: false };
+          const result = await executeFleetTool(item.tool, applyArgs, toolContext) as Record<string, unknown>;
           if (result.error) {
             results.push({ tool: item.tool, success: false, error: String(result.error) });
             // Continue with remaining items — partial application is acceptable

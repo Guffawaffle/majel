@@ -644,9 +644,150 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     expect(mockedExecute.mock.calls.length).toBe(callsBefore);
     expect(store.apply).not.toHaveBeenCalled();
   });
-});
 
-// ─── POST /api/mutations/proposals/:id/decline ──────────────
+  it("single-tool apply injects dry_run: false into executeFleetTool args", async () => {
+    const { createHash } = await import("node:crypto");
+    const args = { export: { version: "1.0", officers: [] } };
+    const argsHash = createHash("sha256").update(canonicalStringify(args)).digest("hex");
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      argsJson: args,
+      argsHash,
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      apply: vi.fn().mockResolvedValue({ ...proposal, status: "applied" }),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    mockedExecute.mockResolvedValueOnce({
+      tool: "sync_overlay",
+      dryRun: false,
+      summary: { officers: { input: 5, changed: 3 } },
+      receipt: { id: 42 },
+    });
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    // Verify that dry_run: false was injected
+    const lastCall = mockedExecute.mock.calls[mockedExecute.mock.calls.length - 1];
+    expect(lastCall[0]).toBe("sync_overlay");
+    expect((lastCall[1] as Record<string, unknown>).dry_run).toBe(false);
+  });
+
+  it("batch apply injects dry_run: false for each item", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchItems = [
+      { tool: "assign_dock", args: { dock_number: 1, loadout_id: 10 }, preview: "Assign dock 1 → loadout 10" },
+      { tool: "assign_dock", args: { dock_number: 2, loadout_id: 20 }, preview: "Assign dock 2 → loadout 20" },
+    ];
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      tool: "_batch",
+      argsJson: { batchItems },
+      argsHash: createHash("sha256").update(canonicalStringify(batchItems)).digest("hex"),
+      batchItems,
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      apply: vi.fn().mockResolvedValue({ ...proposal, status: "applied" }),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    // Both batch items succeed
+    mockedExecute
+      .mockResolvedValueOnce({ tool: "assign_dock", applied: true })
+      .mockResolvedValueOnce({ tool: "assign_dock", applied: true });
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.applied).toBe(true);
+    expect(res.body.data.batch_results).toHaveLength(2);
+    expect(res.body.data.summary).toContain("2/2");
+
+    // Verify dry_run: false was injected for EACH batch item
+    const recentCalls = mockedExecute.mock.calls.slice(-2);
+    expect(recentCalls[0][0]).toBe("assign_dock");
+    expect((recentCalls[0][1] as Record<string, unknown>).dry_run).toBe(false);
+    expect((recentCalls[0][1] as Record<string, unknown>).dock_number).toBe(1);
+    expect(recentCalls[1][0]).toBe("assign_dock");
+    expect((recentCalls[1][1] as Record<string, unknown>).dry_run).toBe(false);
+    expect((recentCalls[1][1] as Record<string, unknown>).dock_number).toBe(2);
+    expect(store.apply).toHaveBeenCalledWith(proposal.id, 0);
+  });
+
+  it("batch apply reports partial failures without blocking other items", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchItems = [
+      { tool: "assign_dock", args: { dock_number: 1, loadout_id: 10 }, preview: "Assign dock 1" },
+      { tool: "assign_dock", args: { dock_number: 2, loadout_id: 20 }, preview: "Assign dock 2" },
+      { tool: "assign_dock", args: { dock_number: 3, loadout_id: 30 }, preview: "Assign dock 3" },
+    ];
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      tool: "_batch",
+      argsJson: { batchItems },
+      argsHash: createHash("sha256").update(canonicalStringify(batchItems)).digest("hex"),
+      batchItems,
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      apply: vi.fn().mockResolvedValue({ ...proposal, status: "applied" }),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    // Item 1 succeeds, item 2 fails, item 3 succeeds
+    mockedExecute
+      .mockResolvedValueOnce({ tool: "assign_dock", applied: true })
+      .mockResolvedValueOnce({ error: "Dock 2 already assigned" })
+      .mockResolvedValueOnce({ tool: "assign_dock", applied: true });
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.applied).toBe(true);
+    expect(res.body.data.batch_results).toHaveLength(3);
+    expect(res.body.data.batch_results[0].success).toBe(true);
+    expect(res.body.data.batch_results[1].success).toBe(false);
+    expect(res.body.data.batch_results[1].error).toContain("Dock 2");
+    expect(res.body.data.batch_results[2].success).toBe(true);
+    expect(res.body.data.summary).toContain("2/3");
+    // All 3 items were still executed with dry_run: false
+    const recentCalls = mockedExecute.mock.calls.slice(-3);
+    for (const call of recentCalls) {
+      expect((call[1] as Record<string, unknown>).dry_run).toBe(false);
+    }
+  });
+});
 
 describe("POST /api/mutations/proposals/:id/decline", () => {
   it("returns 404 for unknown proposal", async () => {
