@@ -229,3 +229,89 @@
 [data-theme="lcars"] {
   --focus-ring: 0 0 0 2px var(--accent-gold);
 }
+
+/* ── Catalog (ADR-046 Phase 5) ───────────────────────────── */
+
+/* Cards inherit LCARS radii + gold hover accent */
+[data-theme="lcars"] .cat-card {
+  border-radius: 16px;
+  border-left: 4px solid var(--accent-gold);
+}
+[data-theme="lcars"] .cat-card:hover {
+  border-color: var(--accent-gold);
+}
+[data-theme="lcars"] .cat-card.owned {
+  border-left: 4px solid var(--accent-green);
+}
+
+/* Card name: LCARS geometric font */
+[data-theme="lcars"] .cat-card-name {
+  font-family: var(--font-lcars);
+  letter-spacing: 0.5px;
+}
+
+/* Tabs: pill-shaped, uppercase to match nav buttons */
+[data-theme="lcars"] .cat-tab {
+  border-radius: 20px 20px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Tab count badges: rounder */
+[data-theme="lcars"] .cat-tab-count {
+  border-radius: 12px;
+}
+
+/* Filter chips: LCARS pill shape */
+[data-theme="lcars"] .cat-chip {
+  border-radius: 16px;
+  border-width: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 11px;
+}
+
+/* Dropdowns: match LCARS input style */
+[data-theme="lcars"] .cat-dropdown {
+  border-radius: 12px;
+  border-width: 2px;
+}
+
+/* Letter bar buttons: rounder */
+[data-theme="lcars"] .cat-letter {
+  border-radius: 10px;
+  border-width: 2px;
+  font-weight: 600;
+}
+
+/* Bulk action buttons: pill-shaped */
+[data-theme="lcars"] .cat-bulk-btn {
+  border-radius: 16px;
+  border-width: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 11px;
+}
+
+/* Card action buttons: rounder */
+[data-theme="lcars"] .cat-action-btn {
+  border-radius: 12px;
+  border-width: 2px;
+}
+
+/* Search input: match LCARS input convention */
+[data-theme="lcars"] .cat-search {
+  border-radius: 12px;
+  border-width: 2px;
+}
+
+/* Undo bar: LCARS radii */
+[data-theme="lcars"] .cat-undo-bar {
+  border-radius: 16px;
+  border-width: 2px;
+}
+[data-theme="lcars"] .cat-undo-bar button {
+  border-radius: 12px;
+}
