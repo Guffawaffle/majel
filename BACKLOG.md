@@ -24,7 +24,7 @@
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
 - **Tech debt batch:** #189–#193 — all 5 closed.
-- **Test count:** 2213 tests across 100 files.
+- **Test count:** 2261 tests across 102 files.
 - **Open issues:** 5 (ADR-046: #219 umbrella + #223, #224, #225; Cost audit: #234 umbrella).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
@@ -51,7 +51,7 @@ Catalog page — all within documented production scope boundaries.
 | 1 | #220 | Token contract foundation | [x] Done `64eb42f` |
 | 2 | #221 | LCARS theme override cleanup | [x] Done `5152afa` |
 | 3 | #222 | Hardcoded rgba cleanup | [x] Done `a4eb353` |
-| 4 | #223 | Faction badge colors | [ ] |
+| 4 | #223 | Faction badge colors | [x] Done `8348b57` |
 | 5 | #224 | Catalog LCARS polish | [ ] |
 | 6 | #225 | Mobile LCARS sanity check | [ ] |
 

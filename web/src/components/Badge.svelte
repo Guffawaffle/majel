@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { officerClassShort, officerClassCss, hullTypeLabel, rarityRank } from "../lib/game-enums.js";
+  import { officerClassShort, officerClassCss, factionCss, hullTypeLabel, rarityRank } from "../lib/game-enums.js";
 
   interface Props {
     /** Badge variant */
@@ -40,7 +40,7 @@
       case "hull":
         return "badge badge-hull";
       case "faction":
-        return "badge badge-faction";
+        return `badge badge-faction ${factionCss(value as string)}`;
       case "group":
         return "badge badge-group";
       case "target":
@@ -92,7 +92,12 @@
   .class-eng { background: var(--accent-green); }
 
   .badge-hull { color: var(--accent-blue); }
-  .badge-faction { color: var(--accent-blue); }
+  .badge-faction { color: var(--faction-independent); }
+  .faction-federation { color: var(--faction-federation); }
+  .faction-klingon { color: var(--faction-klingon); }
+  .faction-romulan { color: var(--faction-romulan); }
+  .faction-borg { color: var(--faction-borg); }
+  .faction-independent { color: var(--faction-independent); }
   .badge-group { color: var(--text-muted); }
   .badge-target { background: none; padding: 0; }
   .badge-conflict { background: none; padding: 0; }

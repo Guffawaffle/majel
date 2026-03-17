@@ -55,6 +55,22 @@ export function officerClassCss(id: number | null | undefined): string {
   }
 }
 
+// ─── Faction CSS ────────────────────────────────────────────
+
+const FACTION_CSS: Record<string, string> = {
+  federation: "faction-federation",
+  klingon: "faction-klingon",
+  romulan: "faction-romulan",
+  borg: "faction-borg",
+  assimilated: "faction-borg",
+};
+
+/** Returns a CSS class suffix for faction badge coloring. */
+export function factionCss(value: string | null | undefined): string {
+  if (!value) return "faction-independent";
+  return FACTION_CSS[value.toLowerCase()] ?? "faction-independent";
+}
+
 // ─── Rarity ─────────────────────────────────────────────────
 
 export const RARITY_ORDER: Record<string, number> = {
