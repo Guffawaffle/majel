@@ -329,10 +329,15 @@ describe("createGeminiEngine", () => {
     });
     const mockCachesDelete = vi.fn().mockResolvedValue(undefined);
 
+    const mockGenerateContent = vi.fn().mockResolvedValue({
+      text: "[Summary of earlier conversation]",
+    });
+
     class MockGoogleGenAI {
       constructor(_opts: { apiKey: string }) {}
       chats = { create: mockChatsCreate };
       caches = { create: mockCachesCreate, delete: mockCachesDelete };
+      models = { generateContent: mockGenerateContent };
     }
 
     return {
@@ -474,28 +479,45 @@ describe("createGeminiEngine", () => {
     expect(engine.getHistory("anon-session")).toHaveLength(2);
   });
 
-  it("rebuilds SDK Chat when history exceeds turn limit", async () => {
-    // SESSION_MAX_TURNS = 50, so 100 history entries (50 pairs) triggers trim
+  it("summarizes older turns when history exceeds SUMMARIZE_AFTER_TURNS threshold", async () => {
+    // SUMMARIZE_AFTER_TURNS = 20, so 21 messages triggers summarization
     const engine = createGeminiEngine("fake-key");
 
-    // Send 51 messages to exceed the 50-turn limit
-    for (let i = 0; i < 51; i++) {
-      await engine.chat(`msg-${i}`, "trim-test");
+    for (let i = 0; i < 21; i++) {
+      await engine.chat(`msg-${i}`, "summarize-test");
     }
 
-    const history = engine.getHistory("trim-test");
-    // Should be capped at 50 turns (100 entries)
-    expect(history.length).toBeLessThanOrEqual(100);
-    // Oldest messages should have been dropped
-    expect(history[0].text).not.toBe("msg-0");
+    const history = engine.getHistory("summarize-test");
+    // After summarization, history should be shorter than 42 messages (21 turns × 2)
+    expect(history.length).toBeLessThan(42);
 
-    // The mock's chats.create should have been called more than once for this session
-    // (once on creation, again on rebuild after trim)
+    // Summarization should have been called
     const { GoogleGenAI } = await import("@google/genai");
     const ai = new GoogleGenAI({ apiKey: "fake" });
-    // chats.create is called: once per session creation + once per rebuild
-    // We have 4 sessions across all tests in this describe, but the trim-test
-    // session should have triggered at least one rebuild
+    expect((ai.models.generateContent as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+
+    // SDK Chat should have been rebuilt
     expect((ai.chats.create as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("hard-caps history at SESSION_MAX_TURNS even if summarization fails", async () => {
+    // Force summarization to fail
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: "fake" });
+    (ai.models.generateContent as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("API error"));
+
+    const engine = createGeminiEngine("fake-key");
+
+    // Send 51 messages to exceed both thresholds
+    for (let i = 0; i < 51; i++) {
+      await engine.chat(`msg-${i}`, "hard-cap-test");
+    }
+
+    const history = engine.getHistory("hard-cap-test");
+    // Hard cap at 50 turns (100 messages)
+    expect(history.length).toBeLessThanOrEqual(100);
+
+    // Restore mock for subsequent tests
+    (ai.models.generateContent as ReturnType<typeof vi.fn>).mockResolvedValue({ text: "[Summary]" });
   });
 });

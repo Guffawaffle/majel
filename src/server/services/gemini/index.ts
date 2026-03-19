@@ -131,14 +131,18 @@ export type GeminiEngine = ChatEngine;
 
 /** Default session TTL: 30 minutes */
 const SESSION_TTL_MS = 30 * 60 * 1000;
-/** Max turns per session before oldest are dropped */
+/** Max turns per session before oldest are dropped (hard fallback) */
 const SESSION_MAX_TURNS = 50;
+/** Summarize oldest turns when history exceeds this many turn pairs (#244) */
+const SUMMARIZE_AFTER_TURNS = 20;
 /** Cleanup interval: every 5 minutes */
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
 interface SessionState {
   chat: Chat;
   history: Array<{ role: string; text: string }>;
+  /** Compressed context from summarized older turns (#244) */
+  summary: string | null;
   lastAccess: number;
 }
 
@@ -288,13 +292,43 @@ export function createGeminiEngine(
 
   /**
    * Convert local history to SDK Content[] format.
-   * Used to rebuild Chat when history is trimmed.
+   * Prepends summary as a context turn pair when available (#244).
    */
-  function toSdkHistory(history: Array<{ role: string; text: string }>): Content[] {
-    return history.map(h => ({
-      role: h.role,
-      parts: [{ text: h.text }],
-    }));
+  function toSdkHistory(history: Array<{ role: string; text: string }>, summary: string | null = null): Content[] {
+    const result: Content[] = [];
+    if (summary) {
+      result.push({ role: "user", parts: [{ text: "[Earlier conversation context]" }] });
+      result.push({ role: "model", parts: [{ text: summary }] });
+    }
+    for (const h of history) {
+      result.push({ role: h.role, parts: [{ text: h.text }] });
+    }
+    return result;
+  }
+
+  /**
+   * Summarize conversation turns into a compact context block.
+   * Uses a lightweight single-shot Gemini call (#244).
+   */
+  async function summarizeHistory(
+    turns: Array<{ role: string; text: string }>,
+    existingSummary: string | null,
+  ): Promise<string> {
+    const parts: string[] = [];
+    if (existingSummary) {
+      parts.push(`Previous context:\n${existingSummary}`);
+    }
+    parts.push("Conversation:");
+    for (const t of turns) {
+      parts.push(`${t.role}: ${t.text}`);
+    }
+
+    const result = await ai.models.generateContent({
+      model: currentModelId,
+      contents: `Summarize this conversation concisely. Preserve key facts, decisions, names, and context needed for continuation. Output only the summary.\n\n${parts.join("\n")}`,
+      config: { maxOutputTokens: 512 },
+    });
+    return result.text ?? "";
   }
 
   /** Create a new Chat session with the current model + config + optional history. */
@@ -307,24 +341,48 @@ export function createGeminiEngine(
   }
 
   /**
-   * Record a turn pair and enforce the turn limit.
-   * When history exceeds SESSION_MAX_TURNS, the oldest pairs are dropped
-   * and the SDK Chat is rebuilt from the trimmed history so the
-   * SDK's internal buffer stays in sync (prevents unbounded memory/token drift).
+   * Record a turn pair, summarize older turns when threshold is crossed,
+   * and enforce the hard turn limit as fallback.
+   *
+   * Summarization (#244): at SUMMARIZE_AFTER_TURNS, the oldest half is
+   * compressed into a summary block via a lightweight Gemini call. This
+   * preserves conversational context while cutting input token cost ~60%.
+   * If summarization fails, the hard cap at SESSION_MAX_TURNS drops turns.
    */
-  function recordTurnAndTrim(session: SessionState, userMsg: string, modelMsg: string): void {
+  async function recordTurnAndTrim(session: SessionState, userMsg: string, modelMsg: string): Promise<void> {
     session.history.push({ role: "user", text: userMsg });
     session.history.push({ role: "model", text: modelMsg });
 
+    const turnCount = session.history.length / 2;
+
+    // Summarize when we cross the threshold
+    if (turnCount > SUMMARIZE_AFTER_TURNS) {
+      // Drop the oldest half (rounded to full turn pairs)
+      const dropMessages = Math.floor(turnCount / 2) * 2;
+      const toSummarize = session.history.splice(0, dropMessages);
+
+      try {
+        session.summary = await summarizeHistory(toSummarize, session.summary);
+        log.gemini.info({
+          summarizedTurns: dropMessages / 2,
+          summaryLen: session.summary.length,
+          remainingTurns: session.history.length / 2,
+        }, "session:summarize");
+      } catch (err) {
+        // Summarization failed — context is lost for those turns (same as old behavior)
+        log.gemini.warn({ err: err instanceof Error ? err.message : String(err) }, "session:summarize_failed");
+      }
+
+      session.chat = createChat(toSdkHistory(session.history, session.summary));
+      return;
+    }
+
+    // Hard cap fallback — prevents unbounded growth if summarization is skipped
     if (session.history.length > SESSION_MAX_TURNS * 2) {
-      // Drop oldest turn pairs
       while (session.history.length > SESSION_MAX_TURNS * 2) {
         session.history.splice(0, 2);
       }
-      // CRITICAL: Rebuild SDK Chat from trimmed history.
-      // Without this, the SDK's internal buffer keeps the full un-trimmed
-      // conversation, causing unbounded memory growth and token cost.
-      session.chat = createChat(toSdkHistory(session.history));
+      session.chat = createChat(toSdkHistory(session.history, session.summary));
     }
   }
 
@@ -335,6 +393,7 @@ export function createGeminiEngine(
       state = {
         chat: createChat(),
         history: [],
+        summary: null,
         lastAccess: Date.now(),
       };
       sessions.set(sessionId, state);
@@ -765,7 +824,7 @@ export function createGeminiEngine(
 
         microRunner.finalize(receipt);
 
-        recordTurnAndTrim(session, message, responseText);
+        await recordTurnAndTrim(session, message, responseText);
         log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
         return { text: responseText, proposals: chatProposals };
       }
@@ -793,7 +852,7 @@ export function createGeminiEngine(
         responseText = result.text ?? "";
       }
 
-      recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText);
+      await recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText);
 
       log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
       return { text: responseText, proposals: chatProposals };

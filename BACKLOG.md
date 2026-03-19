@@ -25,7 +25,7 @@
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2261 tests across 102 files.
-- **Open issues:** 9 (ADR-048: #235–#239; Cost audit: #234 + #240, #244, #247).
+- **Open issues:** 8 (ADR-048: #235–#239; Cost audit: #234 + #244, #247).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -95,7 +95,7 @@ Catalog page — all within documented production scope boundaries.
 
 ### Remaining (backlog)
 - [ ] Per-user token budgets — promoted to #235 (ADR-048)
-- [ ] #240 — Gemini context caching for system prompt
+- [x] #240 — Gemini context caching for system prompt (`f7a6afa`)
 - [ ] #244 — Session history summarization
 - [ ] #247 — Unbounded overlay list operations
 
