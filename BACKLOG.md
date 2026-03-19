@@ -19,13 +19,13 @@
 ## Current PM Focus
 
 - **Active programs:** ADR-048 — Token Budgets (#235), 4 phases planned.
-- **Recently completed:** ADR-046 — LCARS Design System (#219). All 6 phases shipped. ADR-047 — Staged Boot Architecture (#226). All 3 phases shipped (`55832f2`). ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped.
+- **Recently completed:** ADR-046 — LCARS Design System (#219). All 6 phases shipped. ADR-047 — Staged Boot Architecture (#226). All 3 phases shipped (`55832f2`). ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped. Cost & Runaway Safety Audit (#234). All 18 items shipped across 6 commits.
 - **Previously completed:** ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2261 tests across 102 files.
-- **Open issues:** 7 (ADR-048: #235–#239; Cost audit: #234).
+- **Open issues:** 6 (ADR-048: #235–#239).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -66,7 +66,7 @@ Catalog page — all within documented production scope boundaries.
 
 ---
 
-## Active — Cost & Runaway Safety Audit (#234)
+## Completed — Cost & Runaway Safety Audit (#234)
 
 **Umbrella issue:** #234
 **Incident date:** 2026-03-16 (single chat message → 1.3 min runaway SSE stream)
