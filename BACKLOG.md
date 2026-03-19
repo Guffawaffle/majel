@@ -118,14 +118,14 @@ and user-facing chat UI.
 
 | Phase | Issue | Title | Status |
 |---|---|---|---|
-| A | #236 | Token    ledger table + recording | [ ] , |
+| A | #236 | Token ledger table + recording | [x] |
 | B | #237 | Budget config + rank defaults + enforcement | [ ] |
 | C | #238 | Admin panel — budget management tab | [ ] |
 | D | #239 | Per-user overrides + user-facing indicator | [ ] |
 
 ### Definition of Done
 
-- [ ] Token ledger records every LLM call
+- [x] Token ledger records every LLM call
 - [ ] Rank default budgets configurable by admiral
 - [ ] Per-user overrides with admin note field
 - [ ] Pre-flight check rejects over-budget with 429
