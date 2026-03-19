@@ -25,7 +25,7 @@
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
 - **Tech debt batch:** #189–#193 — all 5 closed.
 - **Test count:** 2261 tests across 102 files.
-- **Open issues:** 12 (ADR-048: #235–#239; Cost audit: #234 + #240–#246).
+- **Open issues:** 9 (ADR-048: #235–#239; Cost audit: #234 + #240, #244, #247).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -86,15 +86,18 @@ Catalog page — all within documented production scope boundaries.
 - [x] `chat_runs` 30-day retention for terminal runs
 - [x] Web lookup cache max-size cap (200) + proactive eviction
 
+### Shipped (`9e2dad4`)
+- [x] #241 — `claimInFlight` 60s watchdog reset
+- [x] #242 — Env-gated session cleanup startup warning
+- [x] #243 — Compression middleware SSE exclusion
+- [x] #245 — SMTP transport 10s connection timeout
+- [x] #246 — `runningRuns` Map max-size cap (10)
+
 ### Remaining (backlog)
 - [ ] Per-user token budgets — promoted to #235 (ADR-048)
 - [ ] #240 — Gemini context caching for system prompt
-- [ ] #241 — `claimInFlight` watchdog reset
-- [ ] #242 — Env-gated session cleanup hardening
-- [ ] #243 — Compression middleware SSE exclusion
 - [ ] #244 — Session history summarization
-- [ ] #245 — SMTP transport connection timeout
-- [ ] #246 — `runningRuns` Map cleanup and max-size limit
+- [ ] #247 — Unbounded overlay list operations
 
 ---
 
