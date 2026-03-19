@@ -61,6 +61,7 @@ import { createProposalStoreFactory } from "./stores/proposal-store.js";
 import { createOperationEventStoreFactory } from "./stores/operation-event-store.js";
 import { createChatRunStore } from "./stores/chat-run-store.js";
 import { createEffectStore } from "./stores/effect-store.js";
+import { createTokenLedgerStore } from "./stores/token-ledger-store.js";
 import { loadEffectSeedData } from "./services/effect-seed-loader.js";
 import { loadResourceDefs, type ResourceDef } from "./services/resource-defs.js";
 import { createPool, ensureAppRole } from "./db.js";
@@ -158,6 +159,7 @@ const state: AppState = {
   chatRunStore: null,
   toolContextFactory: null,
   effectStore: null,
+  tokenLedgerStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -621,6 +623,13 @@ async function boot(): Promise<void> {
         log.boot.info("chat run store online (ADR-036, durable queue)");
       },
     },
+    {
+      name: "token-ledger-store",
+      fn: async () => {
+        state.tokenLedgerStore = await createTokenLedgerStore(adminPool, pool);
+        log.boot.info("token ledger store online (ADR-048)");
+      },
+    },
   ], log.boot, { concurrency: 4 });
 
   // ─── Stage 3: Engines (serial) ────────────────────────────
@@ -669,6 +678,11 @@ async function boot(): Promise<void> {
           toolContextFactory,
           state.proposalStoreFactory,
           state.userSettingsStore,
+          state.tokenLedgerStore
+            ? (userId: string, modelId: string, operation: string, inputTokens: number, outputTokens: number) => {
+                state.tokenLedgerStore!.record({ userId, modelId, operation: operation as import("./stores/token-ledger-store.js").TokenOperation, inputTokens, outputTokens });
+              }
+            : null,
         );
         log.boot.info({ model: geminiEngine.getModel(), microRunner: !!runner }, "gemini engine online");
 
@@ -796,6 +810,17 @@ async function boot(): Promise<void> {
           }
         } catch (err) {
           log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "operation_events:gc:error");
+        }
+      }
+      // Purge token_ledger entries older than 90 days (ADR-048)
+      if (state.tokenLedgerStore) {
+        try {
+          const purged = await state.tokenLedgerStore.purgeOlderThan("90 days");
+          if (purged > 0) {
+            log.boot.info({ purged }, "token_ledger:gc");
+          }
+        } catch (err) {
+          log.boot.warn({ err: err instanceof Error ? err.message : String(err) }, "token_ledger:gc:error");
         }
       }
     } catch (err) {

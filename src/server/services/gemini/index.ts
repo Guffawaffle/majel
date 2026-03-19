@@ -127,6 +127,12 @@ export interface ChatResult {
  */
 export type GeminiEngine = ChatEngine;
 
+/** Callback for recording token usage (ADR-048 Phase A, #236). */
+export type TokenUsageCallback = (
+  userId: string, modelId: string, operation: string,
+  inputTokens: number, outputTokens: number,
+) => void;
+
 // ─── Constants ────────────────────────────────────────────────
 
 /** Default session TTL: 30 minutes */
@@ -171,6 +177,7 @@ export function createGeminiEngine(
   toolContextFactory?: ToolContextFactory | null,
   proposalStoreFactory?: ProposalStoreFactory | null,
   _userSettingsStore?: UserSettingsStore | null,
+  onTokenUsage?: TokenUsageCallback | null,
 ): GeminiEngine {
   // I5: Fail fast with clear message if API key is missing
   if (!apiKey) {
@@ -313,6 +320,7 @@ export function createGeminiEngine(
   async function summarizeHistory(
     turns: Array<{ role: string; text: string }>,
     existingSummary: string | null,
+    userId?: string,
   ): Promise<string> {
     const parts: string[] = [];
     if (existingSummary) {
@@ -328,6 +336,10 @@ export function createGeminiEngine(
       contents: `Summarize this conversation concisely. Preserve key facts, decisions, names, and context needed for continuation. Output only the summary.\n\n${parts.join("\n")}`,
       config: { maxOutputTokens: 512 },
     });
+    const usageMeta = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+    if (usageMeta) {
+      onTokenUsage?.(userId ?? "local", currentModelId, "summarize", usageMeta.promptTokenCount ?? 0, usageMeta.candidatesTokenCount ?? 0);
+    }
     return result.text ?? "";
   }
 
@@ -349,7 +361,7 @@ export function createGeminiEngine(
    * preserves conversational context while cutting input token cost ~60%.
    * If summarization fails, the hard cap at SESSION_MAX_TURNS drops turns.
    */
-  async function recordTurnAndTrim(session: SessionState, userMsg: string, modelMsg: string): Promise<void> {
+  async function recordTurnAndTrim(session: SessionState, userMsg: string, modelMsg: string, userId?: string): Promise<void> {
     session.history.push({ role: "user", text: userMsg });
     session.history.push({ role: "model", text: modelMsg });
 
@@ -362,7 +374,7 @@ export function createGeminiEngine(
       const toSummarize = session.history.splice(0, dropMessages);
 
       try {
-        session.summary = await summarizeHistory(toSummarize, session.summary);
+        session.summary = await summarizeHistory(toSummarize, session.summary, userId);
         log.gemini.info({
           summarizedTurns: dropMessages / 2,
           summaryLen: session.summary.length,
@@ -631,6 +643,7 @@ export function createGeminiEngine(
       const usageMeta = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
       if (usageMeta) {
         log.gemini.info({ requestId, sessionId, round, ...usageMeta }, "token:usage");
+        onTokenUsage?.(userId, currentModelId, "tool_call", usageMeta.promptTokenCount ?? 0, usageMeta.candidatesTokenCount ?? 0);
       }
       const nextCalls = result.functionCalls;
 
@@ -672,6 +685,7 @@ export function createGeminiEngine(
       const usageMeta = (summaryResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
       if (usageMeta) {
         log.gemini.info({ requestId, sessionId, round, ...usageMeta }, "token:usage:fallback");
+        onTokenUsage?.(userId, currentModelId, "fallback", usageMeta.promptTokenCount ?? 0, usageMeta.candidatesTokenCount ?? 0);
       }
       // Guard: if model still returns function calls instead of text, use hardcoded message (#230)
       if (summaryResult.functionCalls && summaryResult.functionCalls.length > 0) {
@@ -775,6 +789,7 @@ export function createGeminiEngine(
         const initUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
         if (initUsage) {
           log.gemini.info({ requestId, sessionId: sessionKey, ...initUsage }, "token:usage:initial");
+          onTokenUsage?.(effectiveUserId, currentModelId, "chat", initUsage.promptTokenCount ?? 0, initUsage.candidatesTokenCount ?? 0);
         }
 
         // Check for function calls before text extraction
@@ -804,6 +819,7 @@ export function createGeminiEngine(
           const repairUsage = (repairResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
           if (repairUsage) {
             log.gemini.info({ requestId, sessionId: sessionKey, ...repairUsage }, "token:usage:repair");
+            onTokenUsage?.(effectiveUserId, currentModelId, "repair", repairUsage.promptTokenCount ?? 0, repairUsage.candidatesTokenCount ?? 0);
           }
           responseText = repairResult.text ?? "";
           receipt.repairAttempted = true;
@@ -824,7 +840,7 @@ export function createGeminiEngine(
 
         microRunner.finalize(receipt);
 
-        await recordTurnAndTrim(session, message, responseText);
+        await recordTurnAndTrim(session, message, responseText, effectiveUserId);
         log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
         return { text: responseText, proposals: chatProposals };
       }
@@ -837,6 +853,7 @@ export function createGeminiEngine(
       const stdUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
       if (stdUsage) {
         log.gemini.info({ requestId, sessionId: sessionKey, ...stdUsage }, "token:usage:initial");
+        onTokenUsage?.(effectiveUserId, currentModelId, "chat", stdUsage.promptTokenCount ?? 0, stdUsage.candidatesTokenCount ?? 0);
       }
 
       // Check for function calls before text extraction
@@ -852,7 +869,7 @@ export function createGeminiEngine(
         responseText = result.text ?? "";
       }
 
-      await recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText);
+      await recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText, effectiveUserId);
 
       log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
       return { text: responseText, proposals: chatProposals };
