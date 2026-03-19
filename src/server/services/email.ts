@@ -56,6 +56,9 @@ function getSmtpTransport(): Transporter | null {
     port,
     secure: port === 465,
     auth: user ? { user, pass } : undefined,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
   });
 
   log.boot.info({ host, port, user: user || "(none)" }, "SMTP email transport configured");

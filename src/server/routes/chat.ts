@@ -252,7 +252,10 @@ export function createChatRoutes(appState: AppState): Router {
   const router = createSafeRouter();
 
   const runningRuns = new Map<string, { cancelled: boolean; cancelledStatus: RunFinalStatus; lockToken: string }>();
+  const RUNNING_RUNS_MAX = 10;
   let claimInFlight = false;
+  let claimWatchdog: ReturnType<typeof setTimeout> | null = null;
+  const CLAIM_WATCHDOG_MS = 60_000;
 
   const processClaimedRun = async (
     claimed: { runId: string; sessionId: string; tabId: string; userId: string; message: string; imagePart?: ImagePart; requestId?: string; isAdmiral: boolean },
@@ -339,7 +342,18 @@ export function createChatRoutes(appState: AppState): Router {
 
   const claimAndProcessOne = async (): Promise<void> => {
     if (!appState.chatRunStore || claimInFlight) return;
+    if (runningRuns.size >= RUNNING_RUNS_MAX) {
+      log.gemini.warn({ event: "chat_run.at_capacity", running: runningRuns.size, max: RUNNING_RUNS_MAX }, "running runs at max capacity — skipping claim");
+      return;
+    }
     claimInFlight = true;
+    claimWatchdog = setTimeout(() => {
+      if (claimInFlight) {
+        log.gemini.warn({ event: "chat_run.claim_watchdog" }, "claimInFlight watchdog fired — resetting stuck flag");
+        claimInFlight = false;
+      }
+    }, CLAIM_WATCHDOG_MS);
+    claimWatchdog.unref?.();
     try {
       const requeued = await appState.chatRunStore.requeueStaleRunning(RUN_STALE_REQUEUE_MS);
       if (requeued > 0) {
@@ -377,6 +391,10 @@ export function createChatRoutes(appState: AppState): Router {
       }, lockToken);
     } finally {
       claimInFlight = false;
+      if (claimWatchdog) {
+        clearTimeout(claimWatchdog);
+        claimWatchdog = null;
+      }
     }
   };
 

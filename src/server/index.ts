@@ -194,7 +194,13 @@ export function createApp(appState: AppState): express.Express {
   app.use(cookieParser());
 
   // Response compression — 60-70% smaller JS/CSS/JSON responses (ADR-023)
-  app.use(compression());
+  // Exclude SSE streams — compression buffers responses, delaying event delivery (#243)
+  app.use(compression({
+    filter: (req, res) => {
+      if (res.getHeader("Content-Type") === "text/event-stream") return false;
+      return compression.filter(req, res);
+    },
+  }));
 
   // Structured HTTP request logging
   app.use(
