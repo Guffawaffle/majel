@@ -26,7 +26,7 @@ export function createFleetMixin(scope: ScopeProvider, userId: string) {
 
     async listDocks(): Promise<Dock[]> {
       return scope.read(async (client) => {
-        const result = await client.query(`SELECT ${DOCK_COLS} FROM docks ORDER BY dock_number`);
+        const result = await client.query(`SELECT ${DOCK_COLS} FROM docks ORDER BY dock_number LIMIT 500`);
         return result.rows as Dock[];
       });
     },
@@ -69,7 +69,7 @@ export function createFleetMixin(scope: ScopeProvider, userId: string) {
 
     async listFleetPresets(): Promise<FleetPresetWithSlots[]> {
       return scope.read(async (client) => {
-        const result = await client.query(`SELECT ${FP_COLS} FROM fleet_presets ORDER BY name`);
+        const result = await client.query(`SELECT ${FP_COLS} FROM fleet_presets ORDER BY name LIMIT 500`);
         return attachSlots(client, result.rows as FleetPreset[]);
       });
     },
@@ -165,7 +165,7 @@ export function createFleetMixin(scope: ScopeProvider, userId: string) {
         if (filters?.dockNumber !== undefined) { clauses.push(`dock_number = $${idx++}`); params.push(filters.dockNumber); }
         const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
         const result = await client.query(
-          `SELECT ${PI_COLS} FROM plan_items ${where} ORDER BY priority, id`,
+          `SELECT ${PI_COLS} FROM plan_items ${where} ORDER BY priority, id LIMIT 500`,
           params,
         );
         return result.rows as PlanItem[];
@@ -254,7 +254,7 @@ export function createFleetMixin(scope: ScopeProvider, userId: string) {
 
     async listReservations(): Promise<OfficerReservation[]> {
       return scope.read(async (client) => {
-        const result = await client.query(`SELECT ${RES_COLS} FROM officer_reservations ORDER BY officer_id`);
+        const result = await client.query(`SELECT ${RES_COLS} FROM officer_reservations ORDER BY officer_id LIMIT 500`);
         return result.rows as OfficerReservation[];
       });
     },

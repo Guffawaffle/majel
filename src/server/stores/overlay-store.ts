@@ -279,7 +279,7 @@ const SQL = {
       target_note = excluded.target_note,
       target_priority = excluded.target_priority,
       updated_at = excluded.updated_at`,
-  listOfficerOverlays: `${OFFICER_SELECT} ORDER BY ref_id`,
+  listOfficerOverlays: `${OFFICER_SELECT} ORDER BY ref_id LIMIT 500`,
   deleteOfficerOverlay: `DELETE FROM officer_overlay WHERE ref_id = $1`,
 
   getShipOverlay: `${SHIP_SELECT} WHERE ref_id = $1`,
@@ -294,7 +294,7 @@ const SQL = {
       target_note = excluded.target_note,
       target_priority = excluded.target_priority,
       updated_at = excluded.updated_at`,
-  listShipOverlays: `${SHIP_SELECT} ORDER BY ref_id`,
+  listShipOverlays: `${SHIP_SELECT} ORDER BY ref_id LIMIT 500`,
   deleteShipOverlay: `DELETE FROM ship_overlay WHERE ref_id = $1`,
 
   bulkUpsertOfficerOwnership: `INSERT INTO officer_overlay (user_id, ref_id, ownership_state, target, updated_at)

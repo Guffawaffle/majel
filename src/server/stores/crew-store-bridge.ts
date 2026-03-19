@@ -26,7 +26,7 @@ export function createBridgeMixin(scope: ScopeProvider, userId: string) {
 
     async listBridgeCores(): Promise<BridgeCoreWithMembers[]> {
       return scope.read(async (client) => {
-        const result = await client.query(`SELECT ${BC_COLS} FROM bridge_cores ORDER BY name`);
+        const result = await client.query(`SELECT ${BC_COLS} FROM bridge_cores ORDER BY name LIMIT 500`);
         return attachMembers(client, result.rows as BridgeCore[]);
       });
     },
@@ -116,7 +116,7 @@ export function createBridgeMixin(scope: ScopeProvider, userId: string) {
 
     async listBelowDeckPolicies(): Promise<BelowDeckPolicy[]> {
       return scope.read(async (client) => {
-        const result = await client.query(`SELECT ${BDP_COLS} FROM below_deck_policies ORDER BY name`);
+        const result = await client.query(`SELECT ${BDP_COLS} FROM below_deck_policies ORDER BY name LIMIT 500`);
         return result.rows as BelowDeckPolicy[];
       });
     },

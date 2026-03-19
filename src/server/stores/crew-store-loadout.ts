@@ -35,7 +35,7 @@ export function createLoadoutMixin(scope: ScopeProvider, userId: string) {
         if (filters?.tag) { clauses.push(`tags @> $${idx++}::jsonb`); params.push(JSON.stringify([filters.tag])); }
         const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
         const result = await client.query(
-          `SELECT ${LOADOUT_COLS} FROM loadouts ${where} ORDER BY priority DESC, name`,
+          `SELECT ${LOADOUT_COLS} FROM loadouts ${where} ORDER BY priority DESC, name LIMIT 500`,
           params,
         );
         return result.rows as Loadout[];
@@ -169,7 +169,7 @@ export function createLoadoutMixin(scope: ScopeProvider, userId: string) {
     async listVariants(baseLoadoutId: number): Promise<LoadoutVariant[]> {
       return scope.read(async (client) => {
         const result = await client.query(
-          `SELECT ${VARIANT_COLS} FROM loadout_variants WHERE base_loadout_id = $1 ORDER BY name`,
+          `SELECT ${VARIANT_COLS} FROM loadout_variants WHERE base_loadout_id = $1 ORDER BY name LIMIT 500`,
           [baseLoadoutId],
         );
         return result.rows as LoadoutVariant[];
