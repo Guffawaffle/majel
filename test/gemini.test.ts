@@ -323,9 +323,16 @@ describe("createGeminiEngine", () => {
 
     const mockChatsCreate = vi.fn().mockReturnValue(mockChat);
 
+    const mockCachesCreate = vi.fn().mockResolvedValue({
+      name: "cachedContents/fake-cache-id",
+      usageMetadata: { totalTokenCount: 750 },
+    });
+    const mockCachesDelete = vi.fn().mockResolvedValue(undefined);
+
     class MockGoogleGenAI {
       constructor(_opts: { apiKey: string }) {}
       chats = { create: mockChatsCreate };
+      caches = { create: mockCachesCreate, delete: mockCachesDelete };
     }
 
     return {

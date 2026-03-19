@@ -184,8 +184,65 @@ export function createGeminiEngine(
     ? [{ functionDeclarations: FLEET_TOOL_DECLARATIONS }]
     : undefined;
 
+  // ── Context caching (#240) ────────────────────────────────────
+  // Cache the static system instruction to reduce per-request input token cost.
+  // When cached, Gemini charges ~75% less for the cached portion.
+  const CACHE_TTL = "3600s"; // 1 hour — matches session cleanup cycle
+  let cachedContentName: string | null = null;
+
+  async function createContextCache(): Promise<string | null> {
+    try {
+      const cached = await ai.caches.create({
+        model: currentModelId,
+        config: {
+          systemInstruction,
+          ...(tools ? { tools } : {}),
+          ttl: CACHE_TTL,
+          displayName: `majel-system-${currentModelId}`,
+        },
+      });
+      if (cached.name) {
+        log.gemini.info({
+          cacheName: cached.name,
+          model: currentModelId,
+          tokenCount: cached.usageMetadata?.totalTokenCount,
+        }, "context_cache:created");
+        return cached.name;
+      }
+      return null;
+    } catch (err) {
+      log.gemini.warn({
+        err: err instanceof Error ? err.message : String(err),
+        model: currentModelId,
+      }, "context_cache:create_failed — falling back to inline systemInstruction");
+      return null;
+    }
+  }
+
+  async function deleteContextCache(): Promise<void> {
+    if (!cachedContentName) return;
+    const name = cachedContentName;
+    cachedContentName = null;
+    try {
+      await ai.caches.delete({ name });
+      log.gemini.debug({ cacheName: name }, "context_cache:deleted");
+    } catch {
+      // Best-effort cleanup — cache will expire via TTL anyway
+    }
+  }
+
   /** Build a GenerateContentConfig shared by all chat sessions for this engine. */
   function buildChatConfig(): GenerateContentConfig {
+    // When a context cache is active, use it instead of inline systemInstruction.
+    // The cache already contains the system prompt + tool declarations.
+    if (cachedContentName) {
+      return {
+        cachedContent: cachedContentName,
+        safetySettings: SAFETY_SETTINGS,
+        automaticFunctionCalling: { disable: true },
+        maxOutputTokens: 4096,
+      };
+    }
     return {
       systemInstruction,
       safetySettings: SAFETY_SETTINGS,
@@ -219,6 +276,15 @@ export function createGeminiEngine(
     toolCount: hasToolContext ? FLEET_TOOL_DECLARATIONS.length : 0,
     promptLen: systemInstruction.length,
   }, "init");
+
+  // Attempt to create context cache at engine init (async, non-blocking).
+  // If it fails, buildChatConfig() falls back to inline systemInstruction.
+  void createContextCache().then((name) => {
+    if (name) {
+      cachedContentName = name;
+      chatConfig = buildChatConfig();
+    }
+  });
 
   /**
    * Convert local history to SDK Content[] format.
@@ -764,7 +830,15 @@ export function createGeminiEngine(
 
       const previousModel = currentModelId;
       currentModelId = modelId;
-      // Rebuild chat config — new sessions will use the updated model ID
+
+      // Invalidate context cache for the old model and create one for the new model
+      void deleteContextCache().then(() => createContextCache()).then((name) => {
+        cachedContentName = name;
+        chatConfig = buildChatConfig();
+      });
+
+      // Rebuild chat config immediately (will use inline systemInstruction
+      // until the new cache is ready)
       chatConfig = buildChatConfig();
 
       // Clear all sessions — new model needs fresh chat context
@@ -782,6 +856,8 @@ export function createGeminiEngine(
     close(): void {
       // M2: Clear cleanup timer to prevent leaks in tests
       if (cleanupTimer) clearInterval(cleanupTimer);
+      // Clean up context cache (#240)
+      void deleteContextCache();
       sessions.clear();
       sessionLocks.clear();
       log.gemini.debug("engine:close");
