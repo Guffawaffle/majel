@@ -255,7 +255,7 @@ export function createChatRoutes(appState: AppState): Router {
   const RUNNING_RUNS_MAX = 10;
   let claimInFlight = false;
   let claimWatchdog: ReturnType<typeof setTimeout> | null = null;
-  const CLAIM_WATCHDOG_MS = 60_000;
+  const CLAIM_WATCHDOG_MS = 10_000; // Guards claim DB ops only, not chat execution (#249)
 
   const processClaimedRun = async (
     claimed: { runId: string; sessionId: string; tabId: string; userId: string; message: string; imagePart?: ImagePart; requestId?: string; isAdmiral: boolean },
@@ -343,7 +343,7 @@ export function createChatRoutes(appState: AppState): Router {
   const claimAndProcessOne = async (): Promise<void> => {
     if (!appState.chatRunStore || claimInFlight) return;
     if (runningRuns.size >= RUNNING_RUNS_MAX) {
-      log.gemini.warn({ event: "chat_run.at_capacity", running: runningRuns.size, max: RUNNING_RUNS_MAX }, "running runs at max capacity — skipping claim");
+      log.gemini.debug({ event: "chat_run.at_capacity", running: runningRuns.size, max: RUNNING_RUNS_MAX }, "running runs at max capacity — skipping claim");
       return;
     }
     claimInFlight = true;
@@ -378,6 +378,16 @@ export function createChatRoutes(appState: AppState): Router {
       const imagePart = req.imagePart && typeof req.imagePart === "object"
         ? (req.imagePart as ImagePart)
         : undefined;
+
+      // Release claim lock BEFORE processing — processClaimedRun is self-contained
+      // with its own lockToken, runningRuns entry, and timeout. The claimInFlight
+      // flag only needs to serialize the claim DB operations, not chat execution.
+      // Without this, the 10s watchdog would race against 5-minute chat runs (#249).
+      claimInFlight = false;
+      if (claimWatchdog) {
+        clearTimeout(claimWatchdog);
+        claimWatchdog = null;
+      }
 
       await processClaimedRun({
         runId: claimed.run.id,

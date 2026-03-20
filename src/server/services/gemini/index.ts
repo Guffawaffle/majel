@@ -432,9 +432,11 @@ export function createGeminiEngine(
   }
 
   // Periodic cleanup (only in non-test environments)
-  const isTest = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
-  if (isTest && process.env.NODE_ENV === "production") {
-    log.gemini.warn("VITEST env var set in production — session cleanup disabled. This is a misconfiguration.");
+  // Production safety: never skip cleanup in production, even if VITEST is set (#249)
+  const isProduction = process.env.NODE_ENV === "production";
+  const isTest = !isProduction && (process.env.NODE_ENV === "test" || process.env.VITEST === "true");
+  if (!isTest && process.env.VITEST === "true" && isProduction) {
+    log.gemini.warn("VITEST env var set in production — ignoring it, session cleanup will run normally.");
   }
   const cleanupTimer = isTest ? null : setInterval(cleanupSessions, CLEANUP_INTERVAL_MS);
   if (cleanupTimer) {
