@@ -369,27 +369,29 @@ export function createGeminiEngine(
 
     // Summarize when we cross the threshold
     if (turnCount > SUMMARIZE_AFTER_TURNS) {
-      // Drop the oldest half (rounded to full turn pairs)
+      // Identify the oldest half (rounded to full turn pairs) for summarization.
+      // Splice only AFTER success so turns are preserved on failure (#248).
       const dropMessages = Math.floor(turnCount / 2) * 2;
-      const toSummarize = session.history.splice(0, dropMessages);
+      const toSummarize = session.history.slice(0, dropMessages);
 
       try {
         session.summary = await summarizeHistory(toSummarize, session.summary, userId);
+        // Summarization succeeded — now remove the summarized turns
+        session.history.splice(0, dropMessages);
         log.gemini.info({
           summarizedTurns: dropMessages / 2,
           summaryLen: session.summary.length,
           remainingTurns: session.history.length / 2,
         }, "session:summarize");
+        session.chat = createChat(toSdkHistory(session.history, session.summary));
+        return;
       } catch (err) {
-        // Summarization failed — context is lost for those turns (same as old behavior)
+        // Summarization failed — turns are preserved, fall through to hard cap
         log.gemini.warn({ err: err instanceof Error ? err.message : String(err) }, "session:summarize_failed");
       }
-
-      session.chat = createChat(toSdkHistory(session.history, session.summary));
-      return;
     }
 
-    // Hard cap fallback — prevents unbounded growth if summarization is skipped
+    // Hard cap fallback — prevents unbounded growth if summarization is skipped or fails
     if (session.history.length > SESSION_MAX_TURNS * 2) {
       while (session.history.length > SESSION_MAX_TURNS * 2) {
         session.history.splice(0, 2);

@@ -92,6 +92,12 @@ interface SessionState {
 
 // ─── Engine Factory ───────────────────────────────────────────
 
+/** Callback for recording token usage (ADR-048 Phase A, #248). */
+export type ClaudeTokenUsageCallback = (
+  userId: string, modelId: string, operation: string,
+  inputTokens: number, outputTokens: number,
+) => void;
+
 export function createClaudeEngine(
   projectId: string,
   region: string,
@@ -102,6 +108,7 @@ export function createClaudeEngine(
   toolContextFactory?: ToolContextFactory | null,
   proposalStoreFactory?: ProposalStoreFactory | null,
   _userSettingsStore?: UserSettingsStore | null,
+  onTokenUsage?: ClaudeTokenUsageCallback | null,
 ): ChatEngine {
   if (!projectId) {
     throw new Error("VERTEX_PROJECT_ID is required — cannot create Claude engine without it");
@@ -338,6 +345,12 @@ export function createClaudeEngine(
         }),
         `claude-chat-round-${round}`,
       );
+
+      // Track token usage (#248 — closes Claude blind spot)
+      if (onTokenUsage && response.usage) {
+        const op = response.stop_reason === "tool_use" ? "tool_call" : "chat";
+        onTokenUsage(userId, currentModelId, op, response.usage.input_tokens, response.usage.output_tokens);
+      }
 
       // Extract text from content blocks
       const textBlocks = response.content.filter((b) => b.type === "text");

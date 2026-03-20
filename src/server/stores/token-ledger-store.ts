@@ -18,17 +18,24 @@ const SCHEMA_STATEMENTS = [
     id            BIGSERIAL PRIMARY KEY,
     user_id       TEXT NOT NULL,
     model_id      TEXT NOT NULL,
-    operation     TEXT NOT NULL CHECK (operation IN ('chat','tool_call','scan','repair','fallback','summarize')),
+    operation     TEXT NOT NULL CHECK (operation IN ('chat','tool_call','repair','fallback','summarize')),
     input_tokens  INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS idx_token_ledger_user_period ON token_ledger (user_id, created_at)`,
+  // Migration: remove dead 'scan' operation from CHECK constraint (#248)
+  `DO $$ BEGIN
+    ALTER TABLE token_ledger DROP CONSTRAINT IF EXISTS token_ledger_operation_check;
+    ALTER TABLE token_ledger ADD CONSTRAINT token_ledger_operation_check
+      CHECK (operation IN ('chat','tool_call','repair','fallback','summarize'));
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END $$`,
 ];
 
 // ─── Types ──────────────────────────────────────────────────────
 
-export type TokenOperation = "chat" | "tool_call" | "scan" | "repair" | "fallback" | "summarize";
+export type TokenOperation = "chat" | "tool_call" | "repair" | "fallback" | "summarize";
 
 export interface TokenRecord {
   userId: string;

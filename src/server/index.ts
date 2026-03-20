@@ -699,6 +699,11 @@ async function boot(): Promise<void> {
               toolContextFactory,
               state.proposalStoreFactory,
               state.userSettingsStore,
+              state.tokenLedgerStore
+                ? (userId: string, modelId: string, operation: string, inputTokens: number, outputTokens: number) => {
+                    state.tokenLedgerStore!.record({ userId, modelId, operation: operation as import("./stores/token-ledger-store.js").TokenOperation, inputTokens, outputTokens });
+                  }
+                : null,
             );
             log.boot.info({ projectId: vertexProjectId, region: vertexRegion }, "claude engine online");
           } catch (err) {

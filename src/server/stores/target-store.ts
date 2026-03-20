@@ -293,8 +293,8 @@ const COLS = `id, target_type, ref_id, loadout_id, target_tier, target_rank, tar
   reason, priority, status, auto_suggested, created_at, updated_at, achieved_at`;
 
 const SQL = {
-  list: `SELECT ${COLS} FROM targets ORDER BY priority ASC, created_at DESC`,
-  listByRefId: `SELECT ${COLS} FROM targets WHERE ref_id = $1 ORDER BY priority ASC, created_at DESC`,
+  list: `SELECT ${COLS} FROM targets ORDER BY priority ASC, created_at DESC LIMIT 500`,
+  listByRefId: `SELECT ${COLS} FROM targets WHERE ref_id = $1 ORDER BY priority ASC, created_at DESC LIMIT 500`,
   get: `SELECT ${COLS} FROM targets WHERE id = $1`,
   create: `INSERT INTO targets (user_id, target_type, ref_id, loadout_id, target_tier, target_rank, target_level, reason, priority, auto_suggested)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
