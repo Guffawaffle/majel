@@ -88,4 +88,33 @@ describe("token-ledger-store", () => {
     expect(usage.inputTokens).toBe(200);
     expect(usage.callCount).toBe(1);
   });
+
+  // ── usageByUser (admin dashboard) ───────────────────────────
+
+  it("usageByUser returns aggregated rows per user per day", async () => {
+    const store = await createTokenLedgerStore(pool);
+
+    await store.record({ userId: "user-1", modelId: "gemini-2.0-flash", operation: "chat", inputTokens: 100, outputTokens: 50 });
+    await store.record({ userId: "user-1", modelId: "gemini-2.0-flash", operation: "chat", inputTokens: 200, outputTokens: 80 });
+    await store.record({ userId: "user-2", modelId: "gemini-2.0-flash", operation: "chat", inputTokens: 300, outputTokens: 100 });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = await store.usageByUser(today, today);
+    expect(rows.length).toBe(2);
+
+    const u1 = rows.find((r) => r.userId === "user-1");
+    const u2 = rows.find((r) => r.userId === "user-2");
+    expect(u1).toBeDefined();
+    expect(u1!.totalTokens).toBe(430);
+    expect(u1!.callCount).toBe(2);
+    expect(u2).toBeDefined();
+    expect(u2!.totalTokens).toBe(400);
+    expect(u2!.callCount).toBe(1);
+  });
+
+  it("usageByUser returns empty array for date range with no data", async () => {
+    const store = await createTokenLedgerStore(pool);
+    const rows = await store.usageByUser("2020-01-01", "2020-01-01");
+    expect(rows).toEqual([]);
+  });
 });

@@ -18,15 +18,20 @@
     adminDeleteAllSessions,
     adminListModels,
     adminSetModelAvailability,
+    adminGetBudgetDefaults,
+    adminSetBudgetDefaults,
+    adminGetUsage,
+    adminGetOverrides,
+    adminSetOverride,
   } from "../lib/api/admiral.js";
   import type { InviteOpts } from "../lib/api/admiral.js";
-  import type { AdminUser, AdminInvite, AdminSession, AdminModelEntry, Role } from "../lib/types.js";
+  import type { AdminUser, AdminInvite, AdminSession, AdminModelEntry, Role, BudgetRankDefaults, UsageRow, BudgetOverride } from "../lib/types.js";
   import { confirm } from "../components/ConfirmDialog.svelte";
   import { getUser } from "../lib/auth.svelte.js";
 
   // ── State ──
 
-  let activeTab = $state<"users" | "invites" | "sessions" | "models">("users");
+  let activeTab = $state<"users" | "invites" | "sessions" | "models" | "budgets">("users");
   let loading = $state(true);
   let error = $state("");
 
@@ -35,6 +40,19 @@
   let sessions = $state<AdminSession[]>([]);
   let models = $state<AdminModelEntry[]>([]);
   let togglingModel = $state<string | null>(null);
+
+  // Budget state
+  let budgetDefaults = $state<BudgetRankDefaults | null>(null);
+  let budgetUsage = $state<UsageRow[]>([]);
+  let budgetOverrides = $state<BudgetOverride[]>([]);
+  let budgetFrom = $state(new Date().toISOString().slice(0, 10));
+  let budgetTo = $state(new Date().toISOString().slice(0, 10));
+  let savingBudget = $state(false);
+
+  // Override form
+  let overrideUserId = $state("");
+  let overrideLimit = $state("");
+  let overrideNote = $state("");
 
   // Invite form
   let invLabel = $state("");
@@ -70,6 +88,15 @@
         sessions = await adminListSessions();
       } else if (target === "models") {
         models = await adminListModels();
+      } else if (target === "budgets") {
+        const [defaults, overridesData, usageData] = await Promise.all([
+          adminGetBudgetDefaults(),
+          adminGetOverrides(),
+          adminGetUsage(budgetFrom, budgetTo),
+        ]);
+        budgetDefaults = defaults;
+        budgetOverrides = overridesData;
+        budgetUsage = usageData.usage;
       }
       loaded.add(target);
     } catch (err: unknown) {
@@ -232,6 +259,59 @@
     } catch (err: unknown) { error = err instanceof Error ? err.message : "Reset failed."; }
     finally { togglingModel = null; }
   }
+
+  // ── Actions: Budgets ──
+
+  function fmtTokens(n: number): string {
+    if (n === -1) return "∞";
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+    return String(n);
+  }
+
+  async function handleSaveBudgetDefaults() {
+    if (!budgetDefaults) return;
+    savingBudget = true;
+    try {
+      await adminSetBudgetDefaults(budgetDefaults.defaults, budgetDefaults.paddingPct);
+      loaded.delete("budgets");
+      await refreshActiveTab("budgets");
+    } catch (err: unknown) { error = err instanceof Error ? err.message : "Save failed."; }
+    finally { savingBudget = false; }
+  }
+
+  async function handleRefreshUsage() {
+    loading = true;
+    try {
+      const data = await adminGetUsage(budgetFrom, budgetTo);
+      budgetUsage = data.usage;
+    } catch (err: unknown) { error = err instanceof Error ? err.message : "Usage fetch failed."; }
+    finally { loading = false; }
+  }
+
+  async function handleSetOverride() {
+    if (!overrideUserId.trim()) return;
+    const limit = overrideLimit.trim() === "" ? null : Number(overrideLimit);
+    if (limit !== null && (!Number.isInteger(limit) || limit < -1)) {
+      error = "Daily limit must be an integer >= -1, or blank to remove";
+      return;
+    }
+    try {
+      await adminSetOverride(overrideUserId.trim(), limit, overrideNote.trim() || null);
+      overrideUserId = "";
+      overrideLimit = "";
+      overrideNote = "";
+      budgetOverrides = await adminGetOverrides();
+    } catch (err: unknown) { error = err instanceof Error ? err.message : "Override failed."; }
+  }
+
+  async function handleRemoveOverride(userId: string) {
+    if (!(await confirm({ title: `Remove budget override for ${userId.slice(0, 12)}…?`, severity: "warning" }))) return;
+    try {
+      await adminSetOverride(userId, null, null);
+      budgetOverrides = await adminGetOverrides();
+    } catch (err: unknown) { error = err instanceof Error ? err.message : "Remove failed."; }
+  }
 </script>
 
 <section class="admiral">
@@ -241,6 +321,7 @@
     <button class="adm-tab" class:active={activeTab === "invites"} onclick={() => (activeTab = "invites")} role="tab" aria-selected={activeTab === "invites"}>🎫 Invites</button>
     <button class="adm-tab" class:active={activeTab === "sessions"} onclick={() => (activeTab = "sessions")} role="tab" aria-selected={activeTab === "sessions"}>🔑 Sessions</button>
     <button class="adm-tab" class:active={activeTab === "models"} onclick={() => (activeTab = "models")} role="tab" aria-selected={activeTab === "models"}>🤖 Models</button>
+    <button class="adm-tab" class:active={activeTab === "budgets"} onclick={() => (activeTab = "budgets")} role="tab" aria-selected={activeTab === "budgets"}>💰 Budgets</button>
   </nav>
 
   {#if error}
@@ -439,6 +520,106 @@
       </table>
     </div>
     <div class="adm-count">{models.length} model(s)</div>
+
+  {:else if activeTab === "budgets"}
+    {#if budgetDefaults}
+      <!-- Rank Defaults -->
+      <h3 class="adm-section-title">Rank Default Budgets (daily tokens)</h3>
+      <div class="adm-budget-grid">
+        {#each ROLES as role}
+          <label class="adm-budget-label">
+            <span class="adm-budget-rank">{role}</span>
+            <input
+              class="adm-input adm-input-sm"
+              type="number"
+              min="-1"
+              bind:value={budgetDefaults.defaults[role]}
+            />
+            <span class="adm-budget-hint">{fmtTokens(budgetDefaults.defaults[role] ?? -1)}</span>
+          </label>
+        {/each}
+        <label class="adm-budget-label">
+          <span class="adm-budget-rank">Warning %</span>
+          <input
+            class="adm-input adm-input-sm"
+            type="number"
+            min="0"
+            max="50"
+            bind:value={budgetDefaults.paddingPct}
+          />
+          <span class="adm-budget-hint">Warn at {100 - (budgetDefaults.paddingPct ?? 10)}% consumed</span>
+        </label>
+      </div>
+      <button class="adm-btn adm-btn-primary" disabled={savingBudget} onclick={handleSaveBudgetDefaults}>
+        {savingBudget ? "Saving…" : "Save Defaults"}
+      </button>
+
+      <!-- Per-user Overrides -->
+      <h3 class="adm-section-title" style="margin-top:24px">Per-User Overrides</h3>
+      <div class="adm-override-form">
+        <input class="adm-input" placeholder="User ID" bind:value={overrideUserId} />
+        <input class="adm-input adm-input-sm" type="number" min="-1" placeholder="Limit (-1=∞)" bind:value={overrideLimit} />
+        <input class="adm-input" placeholder="Note (optional)" bind:value={overrideNote} />
+        <button class="adm-btn adm-btn-primary" onclick={handleSetOverride}>Set Override</button>
+      </div>
+      {#if budgetOverrides.length > 0}
+        <div class="adm-table-wrap">
+          <table class="adm-table" aria-label="Budget overrides">
+            <thead>
+              <tr><th>User</th><th>Daily Limit</th><th>Note</th><th>Set By</th><th>Updated</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {#each budgetOverrides as o (o.userId)}
+                <tr>
+                  <td><span class="adm-code">{o.userId.slice(0, 12)}…</span></td>
+                  <td>{o.dailyLimit === null ? "rank default" : fmtTokens(o.dailyLimit)}</td>
+                  <td>{o.note ?? "—"}</td>
+                  <td>{o.setBy ? o.setBy.slice(0, 8) + "…" : "—"}</td>
+                  <td class="adm-cell-date">{new Date(o.updatedAt).toLocaleDateString()}</td>
+                  <td class="adm-cell-actions">
+                    <button class="adm-btn adm-btn-danger" onclick={() => handleRemoveOverride(o.userId)}>🗑️</button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {:else}
+        <p class="adm-empty">No per-user overrides set.</p>
+      {/if}
+      <div class="adm-count">{budgetOverrides.length} override(s)</div>
+
+      <!-- Usage Dashboard -->
+      <h3 class="adm-section-title" style="margin-top:24px">Token Usage</h3>
+      <div class="adm-usage-controls">
+        <label>From <input class="adm-input adm-input-sm" type="date" bind:value={budgetFrom} /></label>
+        <label>To <input class="adm-input adm-input-sm" type="date" bind:value={budgetTo} /></label>
+        <button class="adm-btn" onclick={handleRefreshUsage}>Refresh</button>
+      </div>
+      {#if budgetUsage.length > 0}
+        <div class="adm-table-wrap">
+          <table class="adm-table" aria-label="Token usage">
+            <thead>
+              <tr><th>User</th><th>Date</th><th>Tokens</th><th>Calls</th></tr>
+            </thead>
+            <tbody>
+              {#each budgetUsage as row (row.userId + row.date)}
+                <tr>
+                  <td><span class="adm-code">{row.userId.slice(0, 12)}…</span></td>
+                  <td>{row.date}</td>
+                  <td>{fmtTokens(row.totalTokens)}</td>
+                  <td>{row.callCount}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {:else}
+        <p class="adm-empty">No usage data for this period.</p>
+      {/if}
+    {:else}
+      <p class="adm-empty">Budget data not loaded.</p>
+    {/if}
   {/if}
 </section>
 
@@ -636,5 +817,56 @@
     .admiral { padding: 12px; }
     .adm-invite-form { flex-direction: column; align-items: stretch; }
     .adm-input-sm { width: 100%; }
+  }
+
+  /* ── Budget tab ── */
+  .adm-section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 12px;
+  }
+  .adm-budget-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .adm-budget-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+  }
+  .adm-budget-rank {
+    text-transform: capitalize;
+    font-weight: 600;
+    min-width: 80px;
+    color: var(--text-muted);
+  }
+  .adm-budget-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    min-width: 60px;
+  }
+  .adm-override-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .adm-usage-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+  }
+  .adm-usage-controls label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
   }
 </style>

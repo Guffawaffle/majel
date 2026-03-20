@@ -52,6 +52,13 @@ export interface DailyUsage {
   callCount: number;
 }
 
+export interface UserUsageRow {
+  userId: string;
+  date: string;
+  totalTokens: number;
+  callCount: number;
+}
+
 // ─── Store ──────────────────────────────────────────────────────
 
 export interface TokenLedgerStore {
@@ -59,6 +66,8 @@ export interface TokenLedgerStore {
   record(entry: TokenRecord): Promise<void>;
   /** Get aggregated daily usage for a user (defaults to today). */
   dailyUsage(userId: string, date?: Date): Promise<DailyUsage>;
+  /** Get aggregated daily usage per user over a date range (admin dashboard). */
+  usageByUser(from: string, to: string): Promise<UserUsageRow[]>;
   /** Purge records older than the given interval (e.g., '90 days'). */
   purgeOlderThan(interval: string): Promise<number>;
 }
@@ -105,6 +114,23 @@ export async function createTokenLedgerStore(adminPool: Pool, runtimePool?: Pool
         [interval],
       );
       return result.rowCount ?? 0;
+    },
+
+    async usageByUser(from: string, to: string): Promise<UserUsageRow[]> {
+      const result = await pool.query(
+        `SELECT
+           user_id AS "userId",
+           DATE(created_at)::text AS "date",
+           COALESCE(SUM(input_tokens + output_tokens), 0)::int AS "totalTokens",
+           COUNT(*)::int AS "callCount"
+         FROM token_ledger
+         WHERE created_at >= $1::date
+           AND created_at < ($2::date + INTERVAL '1 day')
+         GROUP BY user_id, DATE(created_at)
+         ORDER BY DATE(created_at) DESC, user_id`,
+        [from, to],
+      );
+      return result.rows as UserUsageRow[];
     },
   };
 }

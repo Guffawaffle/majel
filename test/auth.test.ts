@@ -477,3 +477,46 @@ describe("Route Protection (auth enforced)", () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ─── /api/me/budget ─────────────────────────────────────────────
+
+describe("/api/me/budget", () => {
+  it("returns budget status for authenticated user (dev mode)", async () => {
+    await cleanDatabase(pool);
+    const settingsStore = await (await import("../src/server/stores/settings.js")).createSettingsStore(pool);
+    const ledgerStore = await (await import("../src/server/stores/token-ledger-store.js")).createTokenLedgerStore(pool);
+    const budgetStore = await (await import("../src/server/stores/token-budget-store.js")).createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+
+    // Dev mode (authEnabled false) → user is "local" / "admiral" → unlimited
+    const app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore, tokenBudgetStore: budgetStore }));
+    const res = await testRequest(app).get("/api/me/budget");
+    expect(res.status).toBe(200);
+    expect(res.body.data.dailyLimit).toBe(-1);
+    expect(res.body.data.source).toBe("unlimited");
+    expect(res.body.data.warning).toBe(false);
+  });
+
+  it("returns 503 when budget store unavailable", async () => {
+    const app = createApp(makeState());
+    const res = await testRequest(app).get("/api/me/budget");
+    expect(res.status).toBe(503);
+  });
+
+  it("returns status with remaining=0 when budget exceeded", async () => {
+    await cleanDatabase(pool);
+    const settingsStore = await (await import("../src/server/stores/settings.js")).createSettingsStore(pool);
+    const ledgerStore = await (await import("../src/server/stores/token-ledger-store.js")).createTokenLedgerStore(pool);
+    const budgetStore = await (await import("../src/server/stores/token-budget-store.js")).createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+
+    // Set "local" user (dev mode) to ensign (budget = 0, immediate exceed)
+    await budgetStore.setOverride("local", 1000, "test", "admin");
+    await ledgerStore.record({ userId: "local", modelId: "test", operation: "chat", inputTokens: 1500, outputTokens: 0 });
+
+    const app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore, tokenBudgetStore: budgetStore }));
+    const res = await testRequest(app).get("/api/me/budget");
+    // Should return 200 (not 429) with status showing remaining=0
+    expect(res.status).toBe(200);
+    expect(res.body.data.remaining).toBe(0);
+    expect(res.body.data.consumed).toBe(1500);
+  });
+});

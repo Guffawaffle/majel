@@ -50,6 +50,8 @@ export function makeState(overrides: Partial<AppState> = {}): AppState {
     chatRunStore: null,
     toolContextFactory: null,
     effectStore: null,
+    tokenLedgerStore: null,
+    tokenBudgetStore: null,
     startupComplete: false,
     config: bootstrapConfigSync(),
     ...overrides,

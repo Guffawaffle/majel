@@ -76,6 +76,8 @@ interface ExecuteChatResult {
     proposalCount: number;
     proposalIds: string[];
   };
+  /** Present when user is in the budget grace zone — UI should show \"wrapping up\" indicator. */
+  budgetWarning?: { remaining: number; dailyLimit: number; resetsAt: string };
 }
 
 async function buildChatMessage(appState: AppState, userId: string | undefined, message: string): Promise<string> {
@@ -146,13 +148,17 @@ async function executeChatRun(
 
   try {
     // ── Pre-flight budget check (ADR-048 Phase B) ───────────────
+    let budgetWarning: ExecuteChatResult["budgetWarning"];
     if (appState.tokenBudgetStore && userId) {
       let role: Role = userRole ?? "ensign";
       if (!userRole && appState.userStore) {
         const user = await appState.userStore.getUser(userId);
         if (user) role = user.role;
       }
-      await appState.tokenBudgetStore.checkBudget(userId, role);
+      const budgetStatus = await appState.tokenBudgetStore.checkBudget(userId, role);
+      if (budgetStatus.warning) {
+        budgetWarning = { remaining: budgetStatus.remaining, dailyLimit: budgetStatus.dailyLimit, resetsAt: budgetStatus.resetsAt };
+      }
     }
 
     const chatMessage = await buildChatMessage(appState, userId, message);
@@ -237,6 +243,7 @@ async function executeChatRun(
       answer,
       proposals: proposals && proposals.length > 0 ? proposals : undefined,
       trace,
+      budgetWarning,
     };
   } catch (err: unknown) {
     const errMessage = err instanceof Error ? err.message : String(err);
@@ -581,6 +588,7 @@ export function createChatRoutes(appState: AppState): Router {
         answer: result.answer,
         proposals: result.proposals,
         trace: result.trace,
+        budgetWarning: result.budgetWarning,
       });
     } catch (err: unknown) {
       if (res.headersSent) return;

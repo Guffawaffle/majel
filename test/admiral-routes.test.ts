@@ -403,3 +403,190 @@ describe("Admiral routes — model management", () => {
     expect(res.status).toBe(503);
   });
 });
+
+// ── Budget admin routes ─────────────────────────────────────────
+
+describe("Admiral routes — budget management", () => {
+  let app: Express;
+  let settingsStore: SettingsStore;
+
+  beforeEach(async () => {
+    await cleanDatabase(pool);
+    settingsStore = await createSettingsStore(pool);
+    app = createApp(makeState({ settingsStore }));
+  });
+
+  // ── GET /budgets/rank-defaults ──
+
+  it("GET rank-defaults returns defaults and paddingPct", async () => {
+    const res = await testRequest(app).get("/api/admiral/budgets/rank-defaults").set("Authorization", bearer);
+    expect(res.status).toBe(200);
+    const { defaults, paddingPct } = res.body.data;
+    expect(defaults).toBeDefined();
+    expect(typeof defaults.ensign).toBe("number");
+    expect(typeof defaults.lieutenant).toBe("number");
+    expect(typeof defaults.captain).toBe("number");
+    expect(typeof defaults.admiral).toBe("number");
+    expect(paddingPct).toBe(10);
+  });
+
+  it("GET rank-defaults → 503 when settingsStore null", async () => {
+    app = createApp(makeState());
+    const res = await testRequest(app).get("/api/admiral/budgets/rank-defaults").set("Authorization", bearer);
+    expect(res.status).toBe(503);
+  });
+
+  // ── PUT /budgets/rank-defaults ──
+
+  it("PUT rank-defaults updates lieutenant budget", async () => {
+    const res = await testRequest(app).put("/api/admiral/budgets/rank-defaults").set("Authorization", bearer)
+      .send({ defaults: { lieutenant: 100000 } });
+    expect(res.status).toBe(200);
+
+    // Verify it was persisted
+    const check = await testRequest(app).get("/api/admiral/budgets/rank-defaults").set("Authorization", bearer);
+    expect(check.body.data.defaults.lieutenant).toBe(100000);
+  });
+
+  it("PUT rank-defaults updates paddingPct", async () => {
+    const res = await testRequest(app).put("/api/admiral/budgets/rank-defaults").set("Authorization", bearer)
+      .send({ paddingPct: 25 });
+    expect(res.status).toBe(200);
+
+    const check = await testRequest(app).get("/api/admiral/budgets/rank-defaults").set("Authorization", bearer);
+    expect(check.body.data.paddingPct).toBe(25);
+  });
+
+  it("PUT rank-defaults rejects invalid budget value", async () => {
+    const res = await testRequest(app).put("/api/admiral/budgets/rank-defaults").set("Authorization", bearer)
+      .send({ defaults: { lieutenant: -5 } });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT rank-defaults rejects paddingPct > 50", async () => {
+    const res = await testRequest(app).put("/api/admiral/budgets/rank-defaults").set("Authorization", bearer)
+      .send({ paddingPct: 51 });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT rank-defaults rejects paddingPct < 0", async () => {
+    const res = await testRequest(app).put("/api/admiral/budgets/rank-defaults").set("Authorization", bearer)
+      .send({ paddingPct: -1 });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT rank-defaults → 503 when settingsStore null", async () => {
+    app = createApp(makeState());
+    const res = await testRequest(app).put("/api/admiral/budgets/rank-defaults").set("Authorization", bearer)
+      .send({ defaults: { lieutenant: 100000 } });
+    expect(res.status).toBe(503);
+  });
+
+  // ── GET /budgets/usage ──
+
+  it("GET usage → 503 when tokenLedgerStore null", async () => {
+    const res = await testRequest(app).get("/api/admiral/budgets/usage").set("Authorization", bearer);
+    expect(res.status).toBe(503);
+  });
+
+  it("GET usage rejects invalid date format", async () => {
+    const { createTokenLedgerStore } = await import("../src/server/stores/token-ledger-store.js");
+    const ledgerStore = await createTokenLedgerStore(pool);
+    app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore }));
+
+    const res = await testRequest(app).get("/api/admiral/budgets/usage?from=bad&to=bad").set("Authorization", bearer);
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("YYYY-MM-DD");
+  });
+
+  it("GET usage returns empty array when no data", async () => {
+    const { createTokenLedgerStore } = await import("../src/server/stores/token-ledger-store.js");
+    const ledgerStore = await createTokenLedgerStore(pool);
+    app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore }));
+
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await testRequest(app).get(`/api/admiral/budgets/usage?from=${today}&to=${today}`).set("Authorization", bearer);
+    expect(res.status).toBe(200);
+    expect(res.body.data.usage).toEqual([]);
+  });
+
+  // ── GET /budgets/overrides ──
+
+  it("GET overrides → 503 when tokenBudgetStore null", async () => {
+    const res = await testRequest(app).get("/api/admiral/budgets/overrides").set("Authorization", bearer);
+    expect(res.status).toBe(503);
+  });
+
+  it("GET overrides returns empty array initially", async () => {
+    const { createTokenLedgerStore } = await import("../src/server/stores/token-ledger-store.js");
+    const { createTokenBudgetStore } = await import("../src/server/stores/token-budget-store.js");
+    const ledgerStore = await createTokenLedgerStore(pool);
+    const budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+    app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore, tokenBudgetStore: budgetStore }));
+
+    const res = await testRequest(app).get("/api/admiral/budgets/overrides").set("Authorization", bearer);
+    expect(res.status).toBe(200);
+    expect(res.body.data.overrides).toEqual([]);
+  });
+
+  // ── PUT /budgets/overrides/:userId ──
+
+  it("PUT overrides → 503 when tokenBudgetStore null", async () => {
+    const res = await testRequest(app).put("/api/admiral/budgets/overrides/user-1").set("Authorization", bearer)
+      .send({ dailyLimit: 100000 });
+    expect(res.status).toBe(503);
+  });
+
+  it("PUT overrides sets and GET overrides returns it", async () => {
+    const { createTokenLedgerStore } = await import("../src/server/stores/token-ledger-store.js");
+    const { createTokenBudgetStore } = await import("../src/server/stores/token-budget-store.js");
+    const ledgerStore = await createTokenLedgerStore(pool);
+    const budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+    app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore, tokenBudgetStore: budgetStore }));
+
+    const setRes = await testRequest(app).put("/api/admiral/budgets/overrides/user-1").set("Authorization", bearer)
+      .send({ dailyLimit: 100000, note: "Power user" });
+    expect(setRes.status).toBe(200);
+    expect(setRes.body.data.dailyLimit).toBe(100000);
+
+    const listRes = await testRequest(app).get("/api/admiral/budgets/overrides").set("Authorization", bearer);
+    expect(listRes.body.data.overrides.length).toBe(1);
+    expect(listRes.body.data.overrides[0].dailyLimit).toBe(100000);
+  });
+
+  it("PUT overrides rejects invalid dailyLimit", async () => {
+    const { createTokenLedgerStore } = await import("../src/server/stores/token-ledger-store.js");
+    const { createTokenBudgetStore } = await import("../src/server/stores/token-budget-store.js");
+    const ledgerStore = await createTokenLedgerStore(pool);
+    const budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+    app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore, tokenBudgetStore: budgetStore }));
+
+    const res = await testRequest(app).put("/api/admiral/budgets/overrides/user-1").set("Authorization", bearer)
+      .send({ dailyLimit: -5 });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT overrides rejects note > 500 chars", async () => {
+    const { createTokenLedgerStore } = await import("../src/server/stores/token-ledger-store.js");
+    const { createTokenBudgetStore } = await import("../src/server/stores/token-budget-store.js");
+    const ledgerStore = await createTokenLedgerStore(pool);
+    const budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+    app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore, tokenBudgetStore: budgetStore }));
+
+    const res = await testRequest(app).put("/api/admiral/budgets/overrides/user-1").set("Authorization", bearer)
+      .send({ dailyLimit: 100000, note: "x".repeat(501) });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT overrides rejects empty userId", async () => {
+    const { createTokenLedgerStore } = await import("../src/server/stores/token-ledger-store.js");
+    const { createTokenBudgetStore } = await import("../src/server/stores/token-budget-store.js");
+    const ledgerStore = await createTokenLedgerStore(pool);
+    const budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+    app = createApp(makeState({ settingsStore, tokenLedgerStore: ledgerStore, tokenBudgetStore: budgetStore }));
+
+    const res = await testRequest(app).put("/api/admiral/budgets/overrides/%20").set("Authorization", bearer)
+      .send({ dailyLimit: 100000 });
+    expect(res.status).toBe(400);
+  });
+});

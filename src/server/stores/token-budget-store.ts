@@ -40,6 +40,8 @@ export interface BudgetStatus {
   remaining: number;         // -1 = unlimited
   resetsAt: string;          // ISO timestamp of next UTC midnight
   source: "override" | "rank" | "unlimited";
+  /** True when consumed >= (dailyLimit - padding). Signals "wrap up" to the UI/chat. */
+  warning: boolean;
 }
 
 /** Thrown when a user exceeds their token budget. */
@@ -123,6 +125,12 @@ export async function createTokenBudgetStore(
     return typeof value === "number" ? value : -1;
   }
 
+  /** Resolve the padding percentage (0–50) from settings. */
+  async function getPaddingPct(): Promise<number> {
+    const value = await settingsStore.getTyped("budget.padding_pct");
+    return typeof value === "number" ? Math.max(0, Math.min(50, value)) : 10;
+  }
+
   return {
     async getOverride(userId: string): Promise<BudgetOverride | null> {
       const result = await pool.query(SQL.getOverride, [userId]);
@@ -164,12 +172,12 @@ export async function createTokenBudgetStore(
 
       // 2. Unlimited — skip usage query
       if (dailyLimit === -1) {
-        return { dailyLimit: -1, consumed: 0, remaining: -1, resetsAt: nextUtcMidnight(), source: "unlimited" };
+        return { dailyLimit: -1, consumed: 0, remaining: -1, resetsAt: nextUtcMidnight(), source: "unlimited", warning: false };
       }
 
       // 3. Zero budget — reject without querying
       if (dailyLimit === 0) {
-        const status: BudgetStatus = { dailyLimit: 0, consumed: 0, remaining: 0, resetsAt: nextUtcMidnight(), source };
+        const status: BudgetStatus = { dailyLimit: 0, consumed: 0, remaining: 0, resetsAt: nextUtcMidnight(), source, warning: false };
         throw new TokenBudgetExceededError(status);
       }
 
@@ -177,7 +185,13 @@ export async function createTokenBudgetStore(
       const usage: DailyUsage = await tokenLedgerStore.dailyUsage(userId);
       const consumed = usage.totalTokens;
       const remaining = Math.max(0, dailyLimit - consumed);
-      const status: BudgetStatus = { dailyLimit, consumed, remaining, resetsAt: nextUtcMidnight(), source };
+
+      // 5. Resolve padding for grace-zone warning
+      const paddingPct = await getPaddingPct();
+      const warningThreshold = dailyLimit - Math.floor(dailyLimit * paddingPct / 100);
+      const warning = paddingPct > 0 && consumed >= warningThreshold && consumed < dailyLimit;
+
+      const status: BudgetStatus = { dailyLimit, consumed, remaining, resetsAt: nextUtcMidnight(), source, warning };
 
       if (consumed >= dailyLimit) {
         throw new TokenBudgetExceededError(status);

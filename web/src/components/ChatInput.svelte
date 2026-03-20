@@ -17,8 +17,9 @@
   import { refreshSessions } from "../lib/sessions.svelte.js";
   import { hasRole } from "../lib/auth.svelte.js";
   import { fetchModels, selectModel } from "../lib/api/models.js";
+  import { fetchBudgetStatus } from "../lib/api/chat.js";
   import { addSystemMessage } from "../lib/chat.svelte.js";
-  import type { ModelsResponse } from "../lib/types.js";
+  import type { ModelsResponse, BudgetStatus } from "../lib/types.js";
   import { onDestroy, onMount } from "svelte";
 
   // ── Text input ──
@@ -57,7 +58,23 @@
     inputText = "";
     if (textareaEl) textareaEl.style.height = "auto";
     await send(text, scheduleSessionsRefresh);
+    // Refresh budget after send completes
+    budgetStatus = await fetchBudgetStatus();
   }
+
+  // ── Budget Indicator ──
+  let budgetStatus = $state<BudgetStatus | null>(null);
+
+  const budgetLabel = $derived.by(() => {
+    const s = budgetStatus;
+    if (!s || s.dailyLimit === -1) return null;
+    if (s.remaining <= 0) return { text: "Budget exceeded", color: "red" };
+    const pct = s.dailyLimit > 0 ? (s.consumed / s.dailyLimit) * 100 : 0;
+    const rem = s.remaining >= 1000 ? `${(s.remaining / 1000).toFixed(0)}K` : String(s.remaining);
+    if (pct >= 95) return { text: `${rem} tokens left`, color: "red" };
+    if (s.warning) return { text: `${rem} tokens left`, color: "amber" };
+    return { text: `${rem} remaining`, color: "muted" };
+  });
 
   // ── Image ──
   let fileInputEl: HTMLInputElement | undefined = $state();
@@ -107,6 +124,7 @@
     if (hasRole("admiral")) {
       try { modelsData = await fetchModels(); } catch { /* non-admiral or error */ }
     }
+    budgetStatus = await fetchBudgetStatus();
   });
 
   onDestroy(() => {
@@ -241,6 +259,9 @@
         ·
       {/if}
       <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline
+      {#if budgetLabel}{@const b = budgetLabel}
+        · <span class="budget-indicator budget-{b.color}">{b.text}</span>
+      {/if}
     </p>
 
     <!-- Model picker dropdown -->
@@ -332,6 +353,11 @@
     background: var(--bg-tertiary); padding: 1px 5px; border-radius: 3px;
     border: 1px solid var(--border); font-family: inherit; font-size: 0.9em;
   }
+
+  .budget-indicator { font-size: 0.72rem; font-weight: 600; }
+  .budget-muted { color: var(--text-muted); }
+  .budget-amber { color: #e0a030; }
+  .budget-red { color: var(--accent-red, #e55); }
 
   /* ── Image upload ── */
   .visually-hidden {

@@ -314,6 +314,27 @@ export function createAuthRoutes(appState: AppState): Router {
     });
   });
 
+  // ── GET /api/me/budget (ADR-048 Phase D) ──────────────────
+  router.get("/api/me/budget", requireRole(appState, "ensign"), ...(ctxMw ? [ctxMw] : []), async (_req, res) => {
+    if (!appState.tokenBudgetStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Budget system not available", 503);
+    }
+    const ctx = res.locals.ctx;
+    const userId = ctx?.identity.userId ?? (res.locals.userId as string);
+    const role = (res.locals.userRole as string) ?? "ensign";
+    try {
+      const status = await appState.tokenBudgetStore.checkBudget(userId, role as import("../stores/user-store.js").Role);
+      sendOk(res, status);
+    } catch (err: unknown) {
+      // Budget exceeded — still return the status, just with remaining=0
+      if (err && typeof err === "object" && "status" in err) {
+        sendOk(res, (err as { status: unknown }).status);
+      } else {
+        throw err;
+      }
+    }
+  });
+
   // ── POST /api/auth/logout ─────────────────────────────────
   router.post("/api/auth/logout", ...(ctxMw ? [ctxMw] : []), async (req, res) => {
     // Destroy user session if present

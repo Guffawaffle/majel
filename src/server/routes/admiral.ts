@@ -22,6 +22,7 @@ import { AUDIT_EVENTS, type AuditEntry, type AuditEvent } from "../stores/audit-
 import { MODEL_REGISTRY_MAP } from "../services/gemini/model-registry.js";
 import { resolveModelAvailability, parseModelOverrides } from "../services/model-availability.js";
 import type { ProviderCapabilities } from "../services/model-availability.js";
+import { ROLES } from "../stores/user-store.js";
 import type { Router } from "express";
 
 export function createAdmiralRoutes(appState: AppState): Router {
@@ -312,6 +313,96 @@ export function createAdmiralRoutes(appState: AppState): Router {
       effectiveAvailable: avail.available,
       unavailableReason: avail.effectiveReason ?? null,
     });
+  });
+
+  // ── GET /api/admiral/budgets/rank-defaults ─────────────────
+  router.get("/api/admiral/budgets/rank-defaults", async (_req, res) => {
+    if (!appState.settingsStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Settings store not available", 503);
+    }
+    const defaults: Record<string, number> = {};
+    for (const role of ROLES) {
+      const value = await appState.settingsStore.getTyped(`budget.${role}`);
+      defaults[role] = typeof value === "number" ? value : -1;
+    }
+    const paddingValue = await appState.settingsStore.getTyped("budget.padding_pct");
+    const paddingPct = typeof paddingValue === "number" ? paddingValue : 10;
+    sendOk(res, { defaults, paddingPct });
+  });
+
+  // ── PUT /api/admiral/budgets/rank-defaults ─────────────────
+  router.put("/api/admiral/budgets/rank-defaults", async (req, res) => {
+    if (!appState.settingsStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Settings store not available", 503);
+    }
+    const { defaults, paddingPct } = req.body ?? {};
+    if (defaults && typeof defaults === "object") {
+      for (const role of ROLES) {
+        if (role in defaults) {
+          const v = Number(defaults[role]);
+          if (!Number.isInteger(v) || v < -1) {
+            return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid budget for ${role}: must be integer >= -1`, 400);
+          }
+          await appState.settingsStore.set(`budget.${role}`, String(v));
+        }
+      }
+    }
+    if (paddingPct !== undefined) {
+      const p = Number(paddingPct);
+      if (!Number.isInteger(p) || p < 0 || p > 50) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "paddingPct must be integer 0–50", 400);
+      }
+      await appState.settingsStore.set("budget.padding_pct", String(p));
+    }
+    sendOk(res, { updated: true });
+  });
+
+  // ── GET /api/admiral/budgets/usage ─────────────────────────
+  router.get("/api/admiral/budgets/usage", async (req, res) => {
+    if (!appState.tokenLedgerStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Token ledger not available", 503);
+    }
+    const from = String(req.query.from ?? new Date().toISOString().slice(0, 10));
+    const to = String(req.query.to ?? new Date().toISOString().slice(0, 10));
+    // Validate date format (YYYY-MM-DD)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "from/to must be YYYY-MM-DD", 400);
+    }
+    const rows = await appState.tokenLedgerStore.usageByUser(from, to);
+    sendOk(res, { usage: rows, from, to });
+  });
+
+  // ── GET /api/admiral/budgets/overrides ─────────────────────
+  router.get("/api/admiral/budgets/overrides", async (_req, res) => {
+    if (!appState.tokenBudgetStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Budget store not available", 503);
+    }
+    const overrides = await appState.tokenBudgetStore.listOverrides();
+    sendOk(res, { overrides });
+  });
+
+  // ── PUT /api/admiral/budgets/overrides/:userId ─────────────
+  router.put("/api/admiral/budgets/overrides/:userId", async (req, res) => {
+    if (!appState.tokenBudgetStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Budget store not available", 503);
+    }
+    const userId = String(req.params.userId ?? "").trim();
+    if (!userId || userId.length > 200) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "Invalid userId", 400);
+    }
+    const { dailyLimit, note } = req.body ?? {};
+    if (dailyLimit !== null && dailyLimit !== undefined) {
+      const v = Number(dailyLimit);
+      if (!Number.isInteger(v) || v < -1) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "dailyLimit must be integer >= -1, or null to remove", 400);
+      }
+    }
+    if (note !== undefined && note !== null && (typeof note !== "string" || note.length > 500)) {
+      return sendFail(res, ErrorCode.INVALID_PARAM, "note must be a string of 500 chars or fewer", 400);
+    }
+    const setBy = (res.locals.userId as string | undefined) ?? "unknown";
+    await appState.tokenBudgetStore.setOverride(userId, dailyLimit ?? null, note ?? null, setBy);
+    sendOk(res, { userId, dailyLimit: dailyLimit ?? null });
   });
 
   return router;

@@ -297,6 +297,16 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     type: "number",
     default: "-1",
     min: -1,
+  },
+  {
+    key: "budget.padding_pct",
+    category: "budget",
+    label: "Budget Warning Threshold (%)",
+    description: "Percentage of budget remaining that triggers a \"wrapping up\" warning. 10 = warn at 90% consumed. 0 = no warning.",
+    type: "number",
+    default: "10",
+    min: 0,
+    max: 50,
   },];
 
 /** Lookup map for fast access. */

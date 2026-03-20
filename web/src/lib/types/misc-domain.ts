@@ -27,6 +27,35 @@ export interface AdminSession {
   lastSeenAt: string;
 }
 
+export interface BudgetRankDefaults {
+  defaults: Record<string, number>;
+  paddingPct: number;
+}
+
+export interface UsageRow {
+  userId: string;
+  date: string;
+  totalTokens: number;
+  callCount: number;
+}
+
+export interface BudgetOverride {
+  userId: string;
+  dailyLimit: number | null;
+  note: string | null;
+  setBy: string | null;
+  updatedAt: string;
+}
+
+export interface BudgetStatus {
+  dailyLimit: number;
+  consumed: number;
+  remaining: number;
+  resetsAt: string;
+  source: "override" | "rank" | "unlimited";
+  warning: boolean;
+}
+
 export interface DiagnosticHealth {
   system: {
     version: string;

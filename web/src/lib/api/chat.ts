@@ -2,7 +2,7 @@
  * Chat API — send messages, load history, search recall.
  */
 
-import type { ChatImage, ChatResponse, HistoryResponse, RecallResponse } from "../types.js";
+import type { ChatImage, ChatResponse, HistoryResponse, RecallResponse, BudgetStatus } from "../types.js";
 import { apiFetch, apiPost, qs } from "./fetch.js";
 import { runLockedMutation } from "./mutation.js";
 
@@ -265,5 +265,14 @@ export async function searchRecall(query: string): Promise<RecallResponse> {
     );
   } catch {
     return { query, results: [] };
+  }
+}
+
+/** Fetch the authenticated user's current budget status. */
+export async function fetchBudgetStatus(): Promise<BudgetStatus | null> {
+  try {
+    return await apiFetch<BudgetStatus>("/api/me/budget");
+  } catch {
+    return null;
   }
 }

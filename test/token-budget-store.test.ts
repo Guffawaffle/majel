@@ -33,6 +33,7 @@ describe("token-budget-store", () => {
     expect(status.dailyLimit).toBe(-1);
     expect(status.remaining).toBe(-1);
     expect(status.source).toBe("unlimited");
+    expect(status.warning).toBe(false);
   });
 
   it("rejects ensign with zero budget (no LLM access)", async () => {
@@ -54,6 +55,7 @@ describe("token-budget-store", () => {
     expect(status.consumed).toBe(0);
     expect(status.remaining).toBe(50000);
     expect(status.source).toBe("rank");
+    expect(status.warning).toBe(false);
   });
 
   it("allows captain within budget", async () => {
@@ -61,6 +63,7 @@ describe("token-budget-store", () => {
     expect(status.dailyLimit).toBe(200000);
     expect(status.remaining).toBe(200000);
     expect(status.source).toBe("rank");
+    expect(status.warning).toBe(false);
   });
 
   // ── Usage enforcement ───────────────────────────────────────
@@ -92,6 +95,7 @@ describe("token-budget-store", () => {
     const status = await budgetStore.checkBudget("user-1", "lieutenant");
     expect(status.consumed).toBe(15000);
     expect(status.remaining).toBe(35000);
+    expect(status.warning).toBe(false);
   });
 
   // ── Per-user override resolution ────────────────────────────
@@ -102,6 +106,7 @@ describe("token-budget-store", () => {
     const status = await budgetStore.checkBudget("user-1", "lieutenant");
     expect(status.dailyLimit).toBe(100000);
     expect(status.source).toBe("override");
+    expect(status.warning).toBe(false);
   });
 
   it("per-user unlimited override (-1) grants unlimited", async () => {
@@ -111,6 +116,7 @@ describe("token-budget-store", () => {
     expect(status.dailyLimit).toBe(-1);
     expect(status.remaining).toBe(-1);
     expect(status.source).toBe("unlimited");
+    expect(status.warning).toBe(false);
   });
 
   it("removing override reverts to rank default", async () => {
@@ -120,6 +126,7 @@ describe("token-budget-store", () => {
     const status = await budgetStore.checkBudget("user-1", "lieutenant");
     expect(status.dailyLimit).toBe(50000);
     expect(status.source).toBe("rank");
+    expect(status.warning).toBe(false);
   });
 
   // ── Override CRUD ───────────────────────────────────────────
@@ -187,8 +194,85 @@ describe("token-budget-store", () => {
       expect(e.name).toBe("TokenBudgetExceededError");
       expect(e.status).toBeDefined();
       expect(e.status.dailyLimit).toBe(0);
+      expect(e.status.warning).toBe(false);
       return;
     }
     expect.fail("Expected TokenBudgetExceededError to be thrown");
+  });
+
+  // ── Warning / padding threshold ─────────────────────────────
+
+  it("sets warning=true when consumed reaches warning threshold", async () => {
+    const ledgerStore = await createTokenLedgerStore(pool);
+    budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+
+    // lieutenant budget = 50000, default padding = 10% → warning threshold = 45000
+    // Record 46000 tokens (above 45000 threshold but below 50000 limit)
+    await ledgerStore.record({ userId: "user-1", modelId: "gemini-2.0-flash", operation: "chat", inputTokens: 30000, outputTokens: 16000 });
+
+    const status = await budgetStore.checkBudget("user-1", "lieutenant");
+    expect(status.consumed).toBe(46000);
+    expect(status.remaining).toBe(4000);
+    expect(status.warning).toBe(true);
+  });
+
+  it("warning=false when consumed is below warning threshold", async () => {
+    const ledgerStore = await createTokenLedgerStore(pool);
+    budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+
+    // lieutenant budget = 50000, default padding = 10% → warning threshold = 45000
+    // Record 44000 tokens (below 45000 threshold)
+    await ledgerStore.record({ userId: "user-1", modelId: "gemini-2.0-flash", operation: "chat", inputTokens: 30000, outputTokens: 14000 });
+
+    const status = await budgetStore.checkBudget("user-1", "lieutenant");
+    expect(status.consumed).toBe(44000);
+    expect(status.warning).toBe(false);
+  });
+
+  it("respects custom padding_pct from settings", async () => {
+    const ledgerStore = await createTokenLedgerStore(pool);
+    budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+
+    // Set padding to 20% → warning threshold = 50000 - 10000 = 40000
+    await settingsStore.set("budget.padding_pct", "20");
+
+    // Record 41000 tokens (above 40000 threshold)
+    await ledgerStore.record({ userId: "user-1", modelId: "gemini-2.0-flash", operation: "chat", inputTokens: 25000, outputTokens: 16000 });
+
+    const status = await budgetStore.checkBudget("user-1", "lieutenant");
+    expect(status.consumed).toBe(41000);
+    expect(status.warning).toBe(true);
+  });
+
+  it("warning=false when padding_pct is 0", async () => {
+    const ledgerStore = await createTokenLedgerStore(pool);
+    budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+
+    // Set padding to 0% → no warning zone
+    await settingsStore.set("budget.padding_pct", "0");
+
+    // Record 49000 tokens — very close to limit but padding is disabled
+    await ledgerStore.record({ userId: "user-1", modelId: "gemini-2.0-flash", operation: "chat", inputTokens: 30000, outputTokens: 19000 });
+
+    const status = await budgetStore.checkBudget("user-1", "lieutenant");
+    expect(status.consumed).toBe(49000);
+    expect(status.warning).toBe(false);
+  });
+
+  it("exceeded error status has warning=false (past the warning zone)", async () => {
+    const ledgerStore = await createTokenLedgerStore(pool);
+    budgetStore = await createTokenBudgetStore(pool, pool, settingsStore, ledgerStore);
+
+    // Exceed the lieutenant limit entirely
+    await ledgerStore.record({ userId: "user-1", modelId: "gemini-2.0-flash", operation: "chat", inputTokens: 30000, outputTokens: 25000 });
+
+    try {
+      await budgetStore.checkBudget("user-1", "lieutenant");
+      expect.fail("Expected TokenBudgetExceededError");
+    } catch (err) {
+      const e = err as TokenBudgetExceededError;
+      expect(e.status.consumed).toBe(55000);
+      expect(e.status.warning).toBe(false);
+    }
   });
 });
