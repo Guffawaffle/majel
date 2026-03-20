@@ -27,7 +27,7 @@ import { log } from "../logger.js";
  */
 export interface SettingDef {
   key: string;
-  category: "display" | "model" | "system" | "fleet" | "intent";
+  category: "display" | "model" | "system" | "fleet" | "intent" | "budget";
   label: string;
   description: string;
   type: "string" | "number" | "boolean" | "json";
@@ -261,7 +261,43 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     type: "json",
     default: "{}",
   },
-];
+  // ── Budget (ADR-048 Phase B) ────────────────────────────────
+  {
+    key: "budget.ensign",
+    category: "budget",
+    label: "Ensign Daily Budget",
+    description: "Daily token budget for Ensign rank. 0 = no LLM access, -1 = unlimited.",
+    type: "number",
+    default: "0",
+    min: -1,
+  },
+  {
+    key: "budget.lieutenant",
+    category: "budget",
+    label: "Lieutenant Daily Budget",
+    description: "Daily token budget for Lieutenant rank. -1 = unlimited.",
+    type: "number",
+    default: "50000",
+    min: -1,
+  },
+  {
+    key: "budget.captain",
+    category: "budget",
+    label: "Captain Daily Budget",
+    description: "Daily token budget for Captain rank. -1 = unlimited.",
+    type: "number",
+    default: "200000",
+    min: -1,
+  },
+  {
+    key: "budget.admiral",
+    category: "budget",
+    label: "Admiral Daily Budget",
+    description: "Daily token budget for Admiral rank. -1 = unlimited.",
+    type: "number",
+    default: "-1",
+    min: -1,
+  },];
 
 /** Lookup map for fast access. */
 const SCHEMA_MAP = new Map<string, SettingDef>(

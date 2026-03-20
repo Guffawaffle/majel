@@ -25,6 +25,8 @@ import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL } from "../services/gemini/i
 import { resolveAllModelAvailability, resolveModelAvailability, parseModelOverrides } from "../services/model-availability.js";
 import type { ProviderCapabilities } from "../services/model-availability.js";
 import type { ImagePart } from "../services/gemini/index.js";
+import type { Role } from "../stores/user-store.js";
+import { TokenBudgetExceededError } from "../stores/token-budget-store.js";
 
 /** Allowed image MIME types for multimodal chat (ADR-008) */
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -48,6 +50,7 @@ interface ExecuteChatInput extends RunRouting {
   message: string;
   imagePart?: ImagePart;
   userId?: string;
+  userRole?: Role;
   requestId?: string;
   isAdmiral: boolean;
 }
@@ -115,7 +118,7 @@ async function executeChatRun(
   input: ExecuteChatInput,
   options?: ExecuteChatOptions,
 ): Promise<ExecuteChatResult | null> {
-  const { runId, sessionId, tabId, message, imagePart, userId, requestId, isAdmiral } = input;
+  const { runId, sessionId, tabId, message, imagePart, userId, userRole, requestId, isAdmiral } = input;
   const eventStore = userId && appState.operationEventStoreFactory
     ? appState.operationEventStoreFactory.forUser(userId)
     : null;
@@ -142,6 +145,16 @@ async function executeChatRun(
   }
 
   try {
+    // ── Pre-flight budget check (ADR-048 Phase B) ───────────────
+    if (appState.tokenBudgetStore && userId) {
+      let role: Role = userRole ?? "ensign";
+      if (!userRole && appState.userStore) {
+        const user = await appState.userStore.getUser(userId);
+        if (user) role = user.role;
+      }
+      await appState.tokenBudgetStore.checkBudget(userId, role);
+    }
+
     const chatMessage = await buildChatMessage(appState, userId, message);
     const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled);
     const answer = typeof result === "string" ? result : result.text;
@@ -332,6 +345,17 @@ export function createChatRoutes(appState: AppState): Router {
       log.gemini.error({ event: "chat_run.worker.failed", err: errMessage, runId: claimed.runId, traceId, sessionId: claimed.sessionId, userId: claimed.userId, tabId: claimed.tabId }, "async chat run failed");
       if (appState.chatRunStore) {
         await appState.chatRunStore.finish(claimed.runId, lockToken, "failed");
+      }
+      // Emit budget-exceeded event so client gets a structured error
+      if (err instanceof TokenBudgetExceededError && watchdogStore) {
+        await watchdogStore.emit({
+          topic: "chat_run",
+          operationId: claimed.runId,
+          routing: { sessionId: claimed.sessionId, tabId: claimed.tabId },
+          eventType: "run.budget_exceeded",
+          status: "failed",
+          payloadJson: { ...err.status, traceId },
+        }).catch(() => { /* best-effort */ });
       }
     } finally {
       clearInterval(watchdogTimer);
@@ -537,6 +561,7 @@ export function createChatRoutes(appState: AppState): Router {
         message,
         imagePart,
         userId,
+        userRole: (res.locals.userRole as Role | undefined),
         requestId,
         isAdmiral,
       });
@@ -558,9 +583,19 @@ export function createChatRoutes(appState: AppState): Router {
         trace: result.trace,
       });
     } catch (err: unknown) {
+      if (res.headersSent) return;
+
+      // ADR-048 Phase B: Token budget exceeded → 429
+      if (err instanceof TokenBudgetExceededError) {
+        const s = err.status;
+        return sendFail(res, ErrorCode.TOKEN_BUDGET_EXCEEDED, err.message, 429, {
+          detail: { dailyLimit: s.dailyLimit, consumed: s.consumed, remaining: s.remaining, resetsAt: s.resetsAt },
+          hints: ["Wait until your daily budget resets at UTC midnight", "Ask an Admiral to increase your budget"],
+        });
+      }
+
       const errMessage = err instanceof Error ? err.message : String(err);
       log.gemini.error({ err: errMessage }, "chat request failed");
-      if (res.headersSent) return;
       sendFail(res, ErrorCode.GEMINI_ERROR, "AI request failed", 500, {
         ...(isAdmiral
           ? {

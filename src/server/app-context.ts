@@ -29,6 +29,7 @@ import type { OperationEventStore, OperationEventStoreFactory } from "./stores/o
 import type { ChatRunStore } from "./stores/chat-run-store.js";
 import type { EffectStore } from "./stores/effect-store.js";
 import type { TokenLedgerStore } from "./stores/token-ledger-store.js";
+import type { TokenBudgetStore } from "./stores/token-budget-store.js";
 import type { ToolContextFactory } from "./services/fleet-tools/index.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
@@ -97,6 +98,8 @@ export interface AppState {
   effectStore: EffectStore | null;
   /** ADR-048 Phase A: Token usage ledger for LLM cost tracking. */
   tokenLedgerStore: TokenLedgerStore | null;
+  /** ADR-048 Phase B: Per-user budget overrides + enforcement. */
+  tokenBudgetStore: TokenBudgetStore | null;
   startupComplete: boolean;
   config: AppConfig;
 }

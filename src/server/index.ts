@@ -62,6 +62,7 @@ import { createOperationEventStoreFactory } from "./stores/operation-event-store
 import { createChatRunStore } from "./stores/chat-run-store.js";
 import { createEffectStore } from "./stores/effect-store.js";
 import { createTokenLedgerStore } from "./stores/token-ledger-store.js";
+import { createTokenBudgetStore } from "./stores/token-budget-store.js";
 import { loadEffectSeedData } from "./services/effect-seed-loader.js";
 import { loadResourceDefs, type ResourceDef } from "./services/resource-defs.js";
 import { createPool, ensureAppRole } from "./db.js";
@@ -160,6 +161,7 @@ const state: AppState = {
   toolContextFactory: null,
   effectStore: null,
   tokenLedgerStore: null,
+  tokenBudgetStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -631,6 +633,12 @@ async function boot(): Promise<void> {
       },
     },
   ], log.boot, { concurrency: 4 });
+
+  // Token budget store — depends on settingsStore (Stage 0) + tokenLedgerStore (Stage 2)
+  if (state.settingsStore && state.tokenLedgerStore && state.adminPool && state.pool) {
+    state.tokenBudgetStore = await createTokenBudgetStore(state.adminPool, state.pool, state.settingsStore, state.tokenLedgerStore);
+    log.boot.info("token budget store online (ADR-048 Phase B)");
+  }
 
   // ─── Stage 3: Engines (serial) ────────────────────────────
   // Engine construction references multiple stores via tool context factory.
