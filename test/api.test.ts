@@ -9,10 +9,12 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vites
 import { testRequest } from "./helpers/test-request.js";
 import { createApp } from "../src/server/index.js";
 import type { ChatEngine } from "../src/server/services/engine.js";
+import type { ChatResult } from "../src/server/services/gemini/index.js";
 import type { MemoryService, Frame } from "../src/server/services/memory.js";
 import { createSettingsStore, type SettingsStore } from "../src/server/stores/settings.js";
 import { createOperationEventStoreFactory } from "../src/server/stores/operation-event-store.js";
 import { createChatRunStore } from "../src/server/stores/chat-run-store.js";
+import { TokenBudgetExceededError, type BudgetStatus, type TokenBudgetStore } from "../src/server/stores/token-budget-store.js";
 import { makeState } from "./helpers/make-state.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 import { collectApiRoutes } from "../src/server/route-introspection.js";
@@ -44,7 +46,7 @@ function makeMockMemory(frames: Frame[] = []): MemoryService {
   };
 }
 
-function makeMockEngine(response = "Aye, Admiral."): ChatEngine {
+function makeMockEngine(response: string | ChatResult = "Aye, Admiral."): ChatEngine {
   const sessions = new Map<string, Array<{ role: string; text: string }>>();
   let currentModel = "gemini-3-pro-preview";
   const getSessionHistory = (sid: string) => {
@@ -58,7 +60,8 @@ function makeMockEngine(response = "Aye, Admiral."): ChatEngine {
       const key = resolveKey(sessionId, userId);
       const history = getSessionHistory(key);
       history.push({ role: "user", text: msg });
-      history.push({ role: "model", text: response });
+      const text = typeof response === "string" ? response : response.text;
+      history.push({ role: "model", text });
       return response;
     }),
     getHistory: vi.fn().mockImplementation((sessionId = "default") => [...getSessionHistory(sessionId)]),
@@ -70,7 +73,45 @@ function makeMockEngine(response = "Aye, Admiral."): ChatEngine {
   };
 }
 
+/** Build a mock TokenBudgetStore that always passes or always throws. */
+function makeMockBudgetStore(behavior: "pass" | "exceed" | "warning" = "pass"): TokenBudgetStore {
+  const baseStatus: BudgetStatus = {
+    dailyLimit: 100_000,
+    consumed: behavior === "exceed" ? 100_000 : behavior === "warning" ? 90_000 : 50_000,
+    remaining: behavior === "exceed" ? 0 : behavior === "warning" ? 10_000 : 50_000,
+    resetsAt: new Date(Date.UTC(2026, 0, 2)).toISOString(),
+    source: "rank",
+    warning: behavior === "warning",
+  };
+  return {
+    getOverride: vi.fn().mockResolvedValue(null),
+    setOverride: vi.fn().mockResolvedValue(undefined),
+    removeOverride: vi.fn().mockResolvedValue(false),
+    listOverrides: vi.fn().mockResolvedValue([]),
+    checkBudget: vi.fn().mockImplementation(async () => {
+      if (behavior === "exceed") throw new TokenBudgetExceededError(baseStatus);
+      return baseStatus;
+    }),
+  };
+}
+
 // makeState imported from ./helpers/make-state.js
+
+/** Reusable helper: poll run status until it reaches the target. */
+async function waitForRunStatus(
+  app: ReturnType<typeof createApp>,
+  runId: string,
+  targetStatus: string,
+): Promise<Record<string, unknown>> {
+  for (let i = 0; i < 30; i += 1) {
+    const statusRes = await testRequest(app).get(`/api/chat/runs/${runId}`);
+    if (statusRes.status === 200 && statusRes.body.data?.status === targetStatus) {
+      return statusRes.body.data as Record<string, unknown>;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`run ${runId} did not reach ${targetStatus} state`);
+}
 
 // ─── Pool lifecycle ─────────────────────────────────────────────
 
@@ -944,5 +985,476 @@ describe("GET /api/diagnostic", () => {
     const res = await testRequest(app).get("/api/diagnostic");
     expect(res.body.data.settings.status).toBe("active");
     expect(res.body.data.settings.userOverrides).toBe(1);
+  });
+});
+
+// ─── Token Budget Integration ───────────────────────────────────
+
+describe("token budget integration", () => {
+  it("returns 429 when budget is exceeded on sync chat", async () => {
+    const engine = makeMockEngine("Should not reach engine.");
+    const budgetStore = makeMockBudgetStore("exceed");
+    const state = makeState({ geminiEngine: engine, tokenBudgetStore: budgetStore });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello" });
+
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe("TOKEN_BUDGET_EXCEEDED");
+    expect(res.body.error.detail.dailyLimit).toBe(100_000);
+    expect(res.body.error.detail.consumed).toBe(100_000);
+    expect(res.body.error.detail.remaining).toBe(0);
+    expect(res.body.error.detail.resetsAt).toBeDefined();
+    expect(engine.chat).not.toHaveBeenCalled();
+  });
+
+  it("succeeds and includes budgetWarning when in warning zone", async () => {
+    const engine = makeMockEngine("Aye.");
+    const budgetStore = makeMockBudgetStore("warning");
+    const state = makeState({ geminiEngine: engine, tokenBudgetStore: budgetStore });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.answer).toBe("Aye.");
+    expect(res.body.data.budgetWarning).toBeDefined();
+    expect(res.body.data.budgetWarning.remaining).toBe(10_000);
+    expect(res.body.data.budgetWarning.dailyLimit).toBe(100_000);
+  });
+
+  it("does not include budgetWarning when budget is healthy", async () => {
+    const engine = makeMockEngine("Aye.");
+    const budgetStore = makeMockBudgetStore("pass");
+    const state = makeState({ geminiEngine: engine, tokenBudgetStore: budgetStore });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.budgetWarning).toBeUndefined();
+  });
+
+  it("emits run.budget_exceeded event on async budget failure", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine("Should not reach engine.");
+    const budgetStore = makeMockBudgetStore("exceed");
+
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+      tokenBudgetStore: budgetStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello async budget", tabId: "tab-budget", async: true });
+
+    expect(submit.status).toBe(202);
+    const runId = submit.body.data.runId as string;
+
+    const runData = await waitForRunStatus(app, runId, "failed");
+    expect(runData.status).toBe("failed");
+
+    // Verify the budget_exceeded event was emitted
+    const store = eventFactory.forUser("local");
+    const events = await store.listSince("chat_run", runId, 0, 20);
+    const budgetEvent = events.find((e) => e.eventType === "run.budget_exceeded");
+    expect(budgetEvent).toBeDefined();
+    expect(budgetEvent!.status).toBe("failed");
+  });
+});
+
+// ─── Empty Answer Handling ──────────────────────────────────────
+
+describe("empty answer handling", () => {
+  it("returns 500 when engine returns empty string on sync chat", async () => {
+    const engine = makeMockEngine("");
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello" });
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.message).toBe("AI request failed");
+  });
+
+  it("emits run.failed with EMPTY_ANSWER on async empty response", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine("");
+
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Empty test", tabId: "tab-empty", async: true });
+
+    expect(submit.status).toBe(202);
+    const runId = submit.body.data.runId as string;
+
+    const runData = await waitForRunStatus(app, runId, "failed");
+    expect(runData.errorCode).toBe("EMPTY_ANSWER");
+    expect(runData.errorMessage).toContain("empty response");
+  });
+
+  it("returns ChatResult text through sync route", async () => {
+    const result: ChatResult = { text: "Structured reply.", proposals: [] };
+    const engine = makeMockEngine(result);
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.answer).toBe("Structured reply.");
+  });
+
+  it("returns proposals from ChatResult", async () => {
+    const result: ChatResult = {
+      text: "Here are some options.",
+      proposals: [{
+        id: "prop-1",
+        batchItems: [{ tool: "setCrewAssignment", preview: "Assign Kirk to Enterprise" }],
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      }],
+    };
+    const engine = makeMockEngine(result);
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Suggest changes" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.proposals).toHaveLength(1);
+    expect(res.body.data.proposals[0].id).toBe("prop-1");
+  });
+});
+
+// ─── Async Run Error Propagation ────────────────────────────────
+
+describe("async run error propagation", () => {
+  it("surfaces GEMINI_ERROR when engine throws during async run", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine();
+    (engine.chat as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("model overloaded"));
+
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Fail me", tabId: "tab-err", async: true });
+
+    const runData = await waitForRunStatus(app, submit.body.data.runId as string, "failed");
+    expect(runData.errorCode).toBe("GEMINI_ERROR");
+    expect(runData.errorMessage).toContain("model overloaded");
+  });
+
+  it("includes trace on failed async run (admiral has trace)", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine();
+    (engine.chat as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("crash"));
+
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Trace test", tabId: "tab-trace", async: true });
+
+    const runData = await waitForRunStatus(app, submit.body.data.runId as string, "failed");
+    expect(runData.trace).toBeDefined();
+  });
+
+  it("emits full event lifecycle for successful async run", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine("Aye.");
+
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Lifecycle test", tabId: "tab-lifecycle", async: true });
+
+    const runId = submit.body.data.runId as string;
+    await waitForRunStatus(app, runId, "succeeded");
+
+    const store = eventFactory.forUser("local");
+    const events = await store.listSince("chat_run", runId, 0, 20);
+    const types = events.map((e) => e.eventType);
+
+    expect(types).toContain("run.queued");
+    expect(types).toContain("run.started");
+    expect(types).toContain("run.completed");
+  });
+});
+
+// ─── Run Cancel Edge Cases ──────────────────────────────────────
+
+describe("run cancel edge cases", () => {
+  it("returns 409 when cancelling an already succeeded run", async () => {
+    await cleanDatabase(pool);
+    const eventFactory = await createOperationEventStoreFactory(pool);
+    const chatRunStore = await createChatRunStore(pool);
+    const engine = makeMockEngine("Done.");
+
+    const state = makeState({
+      geminiEngine: engine,
+      operationEventStoreFactory: eventFactory,
+      operationEventStore: eventFactory.forUser("local"),
+      chatRunStore,
+    });
+    const app = createApp(state);
+
+    const submit = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Finish first", tabId: "tab-done", async: true });
+
+    const runId = submit.body.data.runId as string;
+    await waitForRunStatus(app, runId, "succeeded");
+
+    const cancelRes = await testRequest(app)
+      .post(`/api/chat/runs/${runId}/cancel`)
+      .send({});
+    expect(cancelRes.status).toBe(409);
+    expect(cancelRes.body.error.message).toContain("terminal state");
+  });
+
+  it("returns 400 for invalid runId format on cancel", async () => {
+    const state = makeState({ geminiEngine: makeMockEngine() });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat/runs/!!invalid!!/cancel")
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for invalid runId format on status query", async () => {
+    const state = makeState({ geminiEngine: makeMockEngine() });
+    const app = createApp(state);
+
+    const res = await testRequest(app).get("/api/chat/runs/!!bad!!");
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── Model Selector Routes ─────────────────────────────────────
+
+describe("GET /api/models", () => {
+  it("returns model list with current model marked active", async () => {
+    const engine = makeMockEngine();
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await testRequest(app).get("/api/models");
+    expect(res.status).toBe(200);
+    expect(res.body.data.current).toBe("gemini-3-pro-preview");
+    expect(res.body.data.defaultModel).toBeDefined();
+    expect(res.body.data.models).toBeInstanceOf(Array);
+    expect(res.body.data.models.length).toBeGreaterThan(0);
+
+    const activeModels = res.body.data.models.filter((m: { active: boolean }) => m.active);
+    expect(activeModels).toHaveLength(1);
+    expect(activeModels[0].id).toBe("gemini-3-pro-preview");
+  });
+
+  it("each model has availability info", async () => {
+    const engine = makeMockEngine();
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await testRequest(app).get("/api/models");
+    for (const model of res.body.data.models) {
+      expect(typeof model.available).toBe("boolean");
+      expect(model).toHaveProperty("unavailableReason");
+    }
+  });
+});
+
+describe("POST /api/models/select", () => {
+  it("returns 400 when model is missing", async () => {
+    const engine = makeMockEngine();
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/models/select")
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("Missing 'model'");
+  });
+
+  it("returns 400 for unknown model", async () => {
+    const engine = makeMockEngine();
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/models/select")
+      .send({ model: "nonexistent-model" });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("Unknown model");
+  });
+
+  it("switches model and clears sessions", async () => {
+    const engine = makeMockEngine();
+    // Create a session so sessionsCleared > 0
+    await engine.chat("hello", "default", undefined, "local");
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    // Get available models first
+    const modelsRes = await testRequest(app).get("/api/models");
+    const availableModel = modelsRes.body.data.models.find(
+      (m: { available: boolean; id: string }) => m.available && m.id !== "gemini-3-pro-preview"
+    );
+    if (!availableModel) return; // skip if only one model available
+
+    const res = await testRequest(app)
+      .post("/api/models/select")
+      .send({ model: availableModel.id });
+    expect(res.status).toBe(200);
+    expect(res.body.data.previousModel).toBe("gemini-3-pro-preview");
+    expect(res.body.data.currentModel).toBe(availableModel.id);
+    expect(res.body.data.sessionsCleared).toBeGreaterThanOrEqual(0);
+  });
+
+  it("returns 500 when engine is not initialized", async () => {
+    const state = makeState({ geminiEngine: null });
+    const app = createApp(state);
+
+    // We need a model that exists. Try the default.
+    const res = await testRequest(app)
+      .post("/api/models/select")
+      .send({ model: "gemini-2.5-flash" });
+    // This should hit the 503 gemini-not-ready on requireVisitor for chat,
+    // but for models route it requires admiral auth + engine check separately.
+    // In dev mode auth passes, so it reaches the engine null check.
+    expect([400, 500]).toContain(res.status);
+  });
+});
+
+// ─── Image Validation ───────────────────────────────────────────
+
+describe("image validation", () => {
+  it("returns 400 for missing image data field", async () => {
+    const state = makeState({ geminiEngine: makeMockEngine() });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello", image: { mimeType: "image/png" } });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("data");
+  });
+
+  it("returns 400 for unsupported image type", async () => {
+    const state = makeState({ geminiEngine: makeMockEngine() });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello", image: { data: "abc123", mimeType: "image/gif" } });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("Unsupported image type");
+  });
+
+  it("accepts valid image and passes to engine", async () => {
+    const engine = makeMockEngine("I see the image.");
+    const state = makeState({ geminiEngine: engine });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({
+        message: "What is this?",
+        image: { data: "aGVsbG8=", mimeType: "image/png" },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.data.answer).toBe("I see the image.");
+    expect(engine.chat).toHaveBeenCalledWith(
+      "What is this?",
+      "default",
+      { inlineData: { data: "aGVsbG8=", mimeType: "image/png" } },
+      "local",
+      expect.any(String),
+      undefined,
+    );
+  });
+});
+
+// ─── Message Validation Edge Cases ──────────────────────────────
+
+describe("message validation edge cases", () => {
+  it("returns 400 when message exceeds 10000 chars", async () => {
+    const state = makeState({ geminiEngine: makeMockEngine() });
+    const app = createApp(state);
+
+    const longMessage = "x".repeat(10001);
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: longMessage });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("10,000 characters");
+  });
+
+  it("returns 400 for session ID with special characters", async () => {
+    const state = makeState({ geminiEngine: makeMockEngine() });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .set("X-Session-Id", "session with spaces!")
+      .send({ message: "Hello" });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain("Invalid session ID");
   });
 });

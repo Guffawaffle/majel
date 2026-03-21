@@ -74,6 +74,8 @@ export interface ChatTrace {
   answerChars?: number;
   proposalCount?: number;
   proposalIds?: string[];
+  /** Names of mutation tools that auto-executed during the chat turn. */
+  toolCalls?: string[];
   error?: string;
 }
 
@@ -89,6 +91,8 @@ export interface ChatResponse {
   answer: string;
   proposals?: ChatProposal[];
   trace?: ChatTrace;
+  /** Cache mutation keys to invalidate after auto-trust tool execution. */
+  mutations?: string[];
   [key: string]: unknown;
 }
 

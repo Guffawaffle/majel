@@ -96,6 +96,37 @@ export function isMutationTool(toolName: string): boolean {
   return toolName in DEFAULT_TRUST || MUTATION_TOOL_NAME_PATTERN.test(toolName);
 }
 
+// ─── Tool → Client Cache Mutation Key ───────────────────────────
+
+/**
+ * Maps tool names to client cache invalidation keys (INVALIDATION_MAP keys).
+ * Only includes tools whose mutations affect client-cached data.
+ * Tools not listed here have no client-side cache to invalidate.
+ */
+const TOOL_MUTATION_KEY: Record<string, string> = {
+  set_officer_overlay: "officer-overlay",
+  set_ship_overlay: "ship-overlay",
+  create_bridge_core: "bridge-core",
+  create_loadout: "crew-loadout",
+  create_variant: "crew-variant",
+  assign_dock: "crew-dock",
+  update_dock: "crew-dock",
+  remove_dock_assignment: "crew-dock",
+  set_reservation: "officer-reservation",
+  activate_preset: "fleet-preset",
+  // Broad flush for sync operations (matches applyProposal behavior)
+  sync_overlay: "import-commit",
+  sync_research: "import-commit",
+};
+
+/**
+ * Resolve the client cache mutation key for a tool, if any.
+ * Returns null for tools that don't affect client-cached data.
+ */
+export function getMutationKey(toolName: string): string | null {
+  return TOOL_MUTATION_KEY[toolName] ?? null;
+}
+
 /**
  * Get the full default trust map (for diagnostics/settings UI).
  */

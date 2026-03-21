@@ -27,6 +27,7 @@ import type { ProviderCapabilities } from "../services/model-availability.js";
 import type { ImagePart } from "../services/gemini/index.js";
 import type { Role } from "../stores/user-store.js";
 import { TokenBudgetExceededError } from "../stores/token-budget-store.js";
+import { getMutationKey } from "../services/fleet-tools/trust.js";
 
 /** Allowed image MIME types for multimodal chat (ADR-008) */
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -75,7 +76,10 @@ interface ExecuteChatResult {
     answerChars: number;
     proposalCount: number;
     proposalIds: string[];
+    toolCalls?: string[];
   };
+  /** Cache mutation keys for client-side invalidation after auto-trust tool execution. */
+  mutations?: string[];
   /** Present when user is in the budget grace zone — UI should show \"wrapping up\" indicator. */
   budgetWarning?: { remaining: number; dailyLimit: number; resetsAt: string };
 }
@@ -146,8 +150,8 @@ async function executeChatRun(
     });
   }
 
+  let failureEventEmitted = false;
   try {
-    // ── Pre-flight budget check (ADR-048 Phase B) ───────────────
     let budgetWarning: ExecuteChatResult["budgetWarning"];
     if (appState.tokenBudgetStore && userId) {
       let role: Role = userRole ?? "ensign";
@@ -166,6 +170,12 @@ async function executeChatRun(
     const answer = typeof result === "string" ? result : result.text;
     const proposals = typeof result === "string" ? undefined : result.proposals;
     const proposalIds = proposals?.map((p) => p.id) ?? [];
+    const executedTools = typeof result === "string" ? undefined : result.executedTools;
+
+    // Derive cache mutation keys from auto-executed tools
+    const mutations = executedTools?.length
+      ? [...new Set(executedTools.map(getMutationKey).filter((k): k is string => k !== null))]
+      : undefined;
 
     const trace = isAdmiral
       ? {
@@ -177,6 +187,7 @@ async function executeChatRun(
           answerChars: answer.length,
           proposalCount: proposalIds.length,
           proposalIds,
+          toolCalls: executedTools?.length ? executedTools : undefined,
         }
       : undefined;
 
@@ -194,12 +205,35 @@ async function executeChatRun(
           payloadJson: {
             phase: status === "timed_out" ? "chat.timed_out" : "chat.cancelled",
             reason,
+            trace,
             traceId,
           },
         });
       }
       log.gemini.info({ event: "chat_run.terminated", runId, traceId, status, reason, userId, sessionId, tabId }, "chat run terminated before completion");
       return null;
+    }
+
+    if (!answer) {
+      log.gemini.warn({ requestId, sessionId, userId, hasImage: !!imagePart }, "chat:empty-answer");
+      if (eventStore) {
+        await eventStore.emit({
+          topic: "chat_run",
+          operationId: runId,
+          routing: { sessionId, tabId },
+          eventType: "run.failed",
+          status: "failed",
+          payloadJson: {
+            phase: "chat.failed",
+            errorCode: "EMPTY_ANSWER",
+            errorMessage: "AI returned an empty response — please try again",
+            trace,
+            traceId,
+          },
+        });
+      }
+      failureEventEmitted = true;
+      throw new Error("AI returned an empty response — please try again");
     }
 
     if (eventStore) {
@@ -214,15 +248,12 @@ async function executeChatRun(
           answer,
           proposals,
           trace,
+          mutations,
           answerChars: answer.length,
           proposalCount: proposalIds.length,
           traceId,
         },
       });
-    }
-
-    if (!answer) {
-      log.gemini.warn({ requestId, sessionId, userId, hasImage: !!imagePart }, "chat:empty-answer");
     }
 
     const memory = appState.memoryService;
@@ -243,11 +274,22 @@ async function executeChatRun(
       answer,
       proposals: proposals && proposals.length > 0 ? proposals : undefined,
       trace,
+      mutations,
       budgetWarning,
     };
   } catch (err: unknown) {
     const errMessage = err instanceof Error ? err.message : String(err);
-    if (eventStore) {
+    const errorTrace = isAdmiral
+      ? {
+          timestamp: new Date().toISOString(),
+          requestId: requestId ?? null,
+          sessionId,
+          userId: userId ?? null,
+          hasImage: !!imagePart,
+          error: errMessage,
+        }
+      : undefined;
+    if (eventStore && !failureEventEmitted) {
       await eventStore.emit({
         topic: "chat_run",
         operationId: runId,
@@ -258,6 +300,7 @@ async function executeChatRun(
           phase: "chat.failed",
           errorCode: "GEMINI_ERROR",
           errorMessage: errMessage,
+          trace: errorTrace,
           requestId: requestId ?? null,
           traceId,
         },
@@ -588,6 +631,7 @@ export function createChatRoutes(appState: AppState): Router {
         answer: result.answer,
         proposals: result.proposals,
         trace: result.trace,
+        mutations: result.mutations,
         budgetWarning: result.budgetWarning,
       });
     } catch (err: unknown) {

@@ -2,9 +2,19 @@
  * Chat API — send messages, load history, search recall.
  */
 
-import type { ChatImage, ChatResponse, HistoryResponse, RecallResponse, BudgetStatus } from "../types.js";
+import type { ChatImage, ChatResponse, ChatTrace, HistoryResponse, RecallResponse, BudgetStatus } from "../types.js";
 import { apiFetch, apiPost, qs } from "./fetch.js";
 import { runLockedMutation } from "./mutation.js";
+
+/** Error subclass that carries an Admiral trace for diagnostic display. */
+export class ChatError extends Error {
+  trace?: ChatTrace;
+  constructor(message: string, trace?: ChatTrace) {
+    super(message);
+    this.name = "ChatError";
+    this.trace = trace;
+  }
+}
 
 /** Callback interface for run lifecycle events. */
 export interface RunProgressCallbacks {
@@ -37,8 +47,10 @@ interface ChatRunStatusResponse {
   tabId?: string;
   status: string;
   answer: string | null;
+  errorMessage?: string;
   proposals: ChatResponse["proposals"];
   trace: ChatResponse["trace"] | null;
+  mutations?: string[];
 }
 
 function parseStreamData(raw: string): StreamEventData | null {
@@ -52,17 +64,19 @@ function parseStreamData(raw: string): StreamEventData | null {
 
 async function readRunSnapshot(runId: string): Promise<ChatResponse> {
   const status = await apiFetch<ChatRunStatusResponse>(`/api/chat/runs/${encodeURIComponent(runId)}`);
+  const snapshotTrace = (status.trace ?? undefined) as ChatTrace | undefined;
   if (status.status === "failed") {
-    throw new Error("AI request failed");
+    const msg = status.errorMessage ?? "AI request failed";
+    throw new ChatError(msg, snapshotTrace);
   }
   if (status.status === "cancelled") {
-    throw new Error("Chat run was cancelled");
+    throw new ChatError("Chat run was cancelled", snapshotTrace);
   }
   if (status.status === "timed_out") {
-    throw new Error("Chat run timed out");
+    throw new ChatError("Chat run timed out", snapshotTrace);
   }
   if (!status.answer) {
-    throw new Error("Chat run did not return an answer");
+    throw new ChatError("Chat run did not return an answer", snapshotTrace);
   }
   return {
     runId: status.runId,
@@ -71,6 +85,7 @@ async function readRunSnapshot(runId: string): Promise<ChatResponse> {
     answer: status.answer,
     proposals: status.proposals,
     trace: status.trace ?? undefined,
+    mutations: status.mutations ?? undefined,
   };
 }
 
@@ -113,6 +128,7 @@ function waitForRunCompletion(
           answer,
           proposals: Array.isArray(payload.proposals) ? (payload.proposals as ChatResponse["proposals"]) : undefined,
           trace: (payload.trace as ChatResponse["trace"] | undefined) ?? undefined,
+          mutations: Array.isArray(payload.mutations) ? (payload.mutations as string[]) : undefined,
         });
       });
     };
@@ -170,18 +186,26 @@ function waitForRunCompletion(
 
     source.addEventListener("run.failed", (event) => {
       const parsed = parseStreamData((event as MessageEvent).data);
-      const msg = parsed?.payload && typeof parsed.payload.error === "string"
-        ? parsed.payload.error
-        : "AI request failed";
-      finish(() => reject(new Error(msg)));
+      const payload = parsed?.payload;
+      const msg = payload && typeof payload.errorMessage === "string"
+        ? payload.errorMessage
+        : payload && typeof payload.error === "string"
+          ? payload.error
+          : "AI request failed";
+      const failTrace = (payload?.trace ?? undefined) as ChatTrace | undefined;
+      finish(() => reject(new ChatError(msg, failTrace)));
     });
 
-    source.addEventListener("run.cancelled", () => {
-      finish(() => reject(new Error("Chat run was cancelled")));
+    source.addEventListener("run.cancelled", (event) => {
+      const parsed = parseStreamData((event as MessageEvent).data);
+      const trace = (parsed?.payload?.trace ?? undefined) as ChatTrace | undefined;
+      finish(() => reject(new ChatError("Chat run was cancelled", trace)));
     });
 
-    source.addEventListener("run.timed_out", () => {
-      finish(() => reject(new Error("Chat run timed out")));
+    source.addEventListener("run.timed_out", (event) => {
+      const parsed = parseStreamData((event as MessageEvent).data);
+      const trace = (parsed?.payload?.trace ?? undefined) as ChatTrace | undefined;
+      finish(() => reject(new ChatError("Chat run timed out", trace)));
     });
   });
 }

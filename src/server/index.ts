@@ -234,7 +234,7 @@ export function createApp(appState: AppState): express.Express {
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
       "script-src 'self'",
-      "style-src 'self' 'sha256-0s9Rz4xVEaqtQ5PaZpBVT4QtAHAh+NgR3Pet+fGZCvA='",
+      "style-src 'self' 'sha256-JRqjmFg9DSaqoKAG+5WW/DiTGPvMQwqOm3UkLsYDApw='",
       "img-src 'self' data:",
       "connect-src 'self'",
       "font-src 'self'",

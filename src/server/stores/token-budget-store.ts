@@ -40,7 +40,7 @@ export interface BudgetStatus {
   remaining: number;         // -1 = unlimited
   resetsAt: string;          // ISO timestamp of next UTC midnight
   source: "override" | "rank" | "unlimited";
-  /** True when consumed >= (dailyLimit - padding). Signals "wrap up" to the UI/chat. */
+  /** True when consumed >= (dailyLimit - padding). Signals "wrapping up" to the UI/chat. */
   warning: boolean;
 }
 
@@ -191,13 +191,15 @@ export async function createTokenBudgetStore(
       const warningThreshold = dailyLimit - Math.floor(dailyLimit * paddingPct / 100);
       const warning = paddingPct > 0 && consumed >= warningThreshold && consumed < dailyLimit;
 
-      const status: BudgetStatus = { dailyLimit, consumed, remaining, resetsAt: nextUtcMidnight(), source, warning };
-
+      // 6. Budget gate — block NEW messages when consumed >= dailyLimit.
+      //    Once a message passes this gate, it always completes regardless of
+      //    how many tokens it uses. We never kill an in-flight chat. (#250)
       if (consumed >= dailyLimit) {
+        const status: BudgetStatus = { dailyLimit, consumed, remaining: 0, resetsAt: nextUtcMidnight(), source, warning: false };
         throw new TokenBudgetExceededError(status);
       }
 
-      return status;
+      return { dailyLimit, consumed, remaining, resetsAt: nextUtcMidnight(), source, warning };
     },
   };
 }

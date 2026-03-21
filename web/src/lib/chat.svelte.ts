@@ -7,8 +7,10 @@
  */
 
 import type { ChatImage, ChatMessage, ChatProposal, ChatResponse, ChatTrace } from "./types.js";
+import { ChatError } from "./api/chat.js";
 import { sendChat as apiSendChat, cancelRun as apiCancelRun } from "./api/chat.js";
 import type { RunProgressCallbacks } from "./api/chat.js";
+import { invalidateForMutation } from "./cache/cached-fetch.js";
 
 // ─── Run phase type (ADR-043) ───────────────────────────────
 
@@ -288,9 +290,18 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
       trace: result.trace,
       elapsedMs: finalElapsed,
     });
+
+    // Invalidate client caches affected by auto-trust mutations
+    if (result.mutations?.length) {
+      for (const key of result.mutations) {
+        void invalidateForMutation(key);
+      }
+    }
+
     onSent?.();
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : "Something went wrong.";
+    const errTrace = e instanceof ChatError ? e.trace : undefined;
     if (errMsg === "Chat run was cancelled") {
       runPhase = "cancelled";
       messages.push({
@@ -306,6 +317,7 @@ export async function send(text: string, onSent?: () => void): Promise<void> {
         role: "error",
         text: errMsg,
         createdAt: new Date().toISOString(),
+        trace: errTrace,
       });
     }
   } finally {

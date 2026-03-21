@@ -15,8 +15,9 @@ const OP_ID_RE = /^[a-zA-Z0-9._:-]{2,120}$/;
 const ALLOWED_TOPICS = new Set(["chat_run", "runner_job"]);
 const POLL_MS = 1000;
 const KEEPALIVE_MS = 15000;
-/** Server-side hard limit on SSE stream lifetime (#231) */
-const SSE_MAX_LIFETIME_MS = 3 * 60 * 1000;
+/** Server-side hard limit on SSE stream lifetime — exceeds RUN_TIMEOUT_MS (5min) to
+ *  ensure the stream outlives the longest possible chat run (ADR-049 §3a). */
+const SSE_MAX_LIFETIME_MS = 6 * 60 * 1000;
 const SSE_EVENT_RE = /^[a-zA-Z0-9_.:-]{1,80}$/;
 
 function parseTopic(value: unknown): string | null {

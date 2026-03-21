@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { getTrustLevel, isMutationTool, getDefaultTrustMap } from "../src/server/services/fleet-tools/trust.js";
+import { getTrustLevel, isMutationTool, getDefaultTrustMap, getMutationKey } from "../src/server/services/fleet-tools/trust.js";
 import type { UserSettingsStore } from "../src/server/stores/user-settings-store.js";
 
 // ─── isMutationTool ─────────────────────────────────────────
@@ -168,5 +168,44 @@ describe("getTrustLevel", () => {
 
     const result = await getTrustLevel("activate_preset", userId, mockStore);
     expect(result).toBe("block"); // falls through to system default
+  });
+});
+
+// ─── getMutationKey ─────────────────────────────────────────
+
+describe("getMutationKey", () => {
+  it("maps overlay tools to their cache keys", () => {
+    expect(getMutationKey("set_officer_overlay")).toBe("officer-overlay");
+    expect(getMutationKey("set_ship_overlay")).toBe("ship-overlay");
+  });
+
+  it("maps crew tools to their cache keys", () => {
+    expect(getMutationKey("create_bridge_core")).toBe("bridge-core");
+    expect(getMutationKey("create_loadout")).toBe("crew-loadout");
+    expect(getMutationKey("create_variant")).toBe("crew-variant");
+    expect(getMutationKey("assign_dock")).toBe("crew-dock");
+    expect(getMutationKey("update_dock")).toBe("crew-dock");
+    expect(getMutationKey("remove_dock_assignment")).toBe("crew-dock");
+    expect(getMutationKey("set_reservation")).toBe("officer-reservation");
+  });
+
+  it("maps sync tools to import-commit for broad flush", () => {
+    expect(getMutationKey("sync_overlay")).toBe("import-commit");
+    expect(getMutationKey("sync_research")).toBe("import-commit");
+  });
+
+  it("maps activate_preset to fleet-preset", () => {
+    expect(getMutationKey("activate_preset")).toBe("fleet-preset");
+  });
+
+  it("returns null for tools without client-side cache", () => {
+    expect(getMutationKey("update_inventory")).toBeNull();
+    expect(getMutationKey("create_target")).toBeNull();
+    expect(getMutationKey("record_target_delta")).toBeNull();
+  });
+
+  it("returns null for read-only tools", () => {
+    expect(getMutationKey("get_ship_info")).toBeNull();
+    expect(getMutationKey("list_officers")).toBeNull();
   });
 });

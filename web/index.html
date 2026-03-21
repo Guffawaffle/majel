@@ -10,33 +10,20 @@
   <body>
     <div id="app">
       <!-- Inline pre-boot splash — replaced when Svelte mounts -->
-      <div id="preboot" style="
-        display:flex; flex-direction:column; align-items:center; justify-content:center;
-        height:100vh; background:#0a0e1a; font-family:system-ui,sans-serif;
-        user-select:none; -webkit-font-smoothing:antialiased; overflow:hidden;
-      ">
-        <div style="
-          font-size:36px; font-weight:700; color:#f0a030;
-          letter-spacing:12px; text-indent:12px; margin-bottom:6px;
-        ">ARIADNE</div>
-        <div style="
-          font-size:11px; font-weight:600; color:#8494a7;
-          letter-spacing:6px; text-indent:6px; text-transform:uppercase; margin-bottom:32px;
-        ">FLEET INTELLIGENCE SYSTEM</div>
-        <div style="
-          width:320px; max-width:80vw; height:3px;
-          background:rgba(96,160,255,0.1); border-radius:2px;
-          overflow:hidden; position:relative;
-        ">
-          <div style="
-            position:absolute; width:40%; height:100%; border-radius:2px;
-            background:linear-gradient(90deg,transparent 0%,#60a0ff 50%,transparent 100%);
-            animation:prescan 1.8s ease-in-out infinite;
-          "></div>
+      <div id="preboot">
+        <div class="preboot-title">ARIADNE</div>
+        <div class="preboot-subtitle">FLEET INTELLIGENCE SYSTEM</div>
+        <div class="preboot-track">
+          <div class="preboot-scanner"></div>
         </div>
         <style>
           @keyframes prescan { 0%{left:-40%} 100%{left:100%} }
           body{margin:0;background:#0a0e1a}
+          #preboot{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0a0e1a;font-family:system-ui,sans-serif;user-select:none;-webkit-font-smoothing:antialiased;overflow:hidden}
+          .preboot-title{font-size:36px;font-weight:700;color:#f0a030;letter-spacing:12px;text-indent:12px;margin-bottom:6px}
+          .preboot-subtitle{font-size:11px;font-weight:600;color:#8494a7;letter-spacing:6px;text-indent:6px;text-transform:uppercase;margin-bottom:32px}
+          .preboot-track{width:320px;max-width:80vw;height:3px;background:rgba(96,160,255,0.1);border-radius:2px;overflow:hidden;position:relative}
+          .preboot-scanner{position:absolute;width:40%;height:100%;border-radius:2px;background:linear-gradient(90deg,transparent 0%,#60a0ff 50%,transparent 100%);animation:prescan 1.8s ease-in-out infinite}
         </style>
       </div>
     </div>

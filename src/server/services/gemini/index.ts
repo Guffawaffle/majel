@@ -119,6 +119,8 @@ export interface ProposalSummary {
 export interface ChatResult {
   text: string;
   proposals: ProposalSummary[];
+  /** Names of tools that were auto-executed (not staged as proposals). */
+  executedTools?: string[];
 }
 
 /**
@@ -239,6 +241,70 @@ export function createGeminiEngine(
       log.gemini.debug({ cacheName: name }, "context_cache:deleted");
     } catch {
       // Best-effort cleanup — cache will expire via TTL anyway
+    }
+  }
+
+  /** Detect a stale/expired context cache error from the Gemini API (403). */
+  function isCacheExpiredError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return msg.includes("CachedContent not found");
+  }
+
+  /**
+   * Invalidate the stale context cache and fall back to inline systemInstruction.
+   * Rebuilds chatConfig and recreates a session's Chat to use the new config.
+   */
+  function handleCacheExpiry(session: SessionState): void {
+    log.gemini.warn({ cacheName: cachedContentName }, "context_cache:expired — falling back to inline systemInstruction");
+    cachedContentName = null;
+    chatConfig = buildChatConfig();
+    session.chat = createChat(toSdkHistory(session.history, session.summary));
+  }
+
+  /**
+   * Send a message with retry + cache-expiry recovery (ADR-049).
+   * Wraps withRetry and catches stale context cache errors, falling back
+   * to inline systemInstruction and retrying once.
+   */
+  async function sendWithCacheRetry(
+    session: SessionState,
+    messageParts: string | Part[],
+    label: string,
+    timeoutMs?: number,
+  ): Promise<ReturnType<Chat["sendMessage"]>> {
+    const doSend = () => {
+      const sendPromise = session.chat.sendMessage({ message: messageParts });
+      if (!timeoutMs) return sendPromise;
+      return Promise.race([
+        sendPromise,
+        new Promise<never>((_, reject) => {
+          const t = setTimeout(() => reject(new Error(`sendMessage timeout (${label})`)), timeoutMs);
+          // Let the process exit even if timer is pending
+          t.unref?.();
+        }),
+      ]);
+    };
+    try {
+      return await withRetry(doSend, label);
+    } catch (err) {
+      if (isCacheExpiredError(err)) {
+        handleCacheExpiry(session);
+        return withRetry(
+          () => {
+            const p = session.chat.sendMessage({ message: messageParts });
+            if (!timeoutMs) return p;
+            return Promise.race([
+              p,
+              new Promise<never>((_, reject) => {
+                const t = setTimeout(() => reject(new Error(`sendMessage timeout (${label}-cache-retry)`)), timeoutMs);
+                t.unref?.();
+              }),
+            ]);
+          },
+          `${label}-cache-retry`,
+        );
+      }
+      throw err;
     }
   }
 
@@ -523,7 +589,7 @@ export function createGeminiEngine(
   }
 
   async function handleFunctionCalls(
-    chat: Chat,
+    session: SessionState,
     initialFunctionCalls: FunctionCall[],
     sessionId: string,
     scopedContext: ToolEnv,
@@ -536,6 +602,7 @@ export function createGeminiEngine(
     let mutationCount = 0;
     const pendingBatch: BatchItem[] = [];
     const proposals: ProposalSummary[] = [];
+    const executedTools: string[] = [];
 
     while (functionCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
       // Check cancellation at the top of each round (#232)
@@ -544,7 +611,7 @@ export function createGeminiEngine(
         if (pendingBatch.length > 0) {
           await createBatchProposal(pendingBatch, userId, proposals);
         }
-        return { text: "I was interrupted before finishing. Here's what I had so far.", proposals };
+        return { text: "I was interrupted before finishing. Here's what I had so far.", proposals, executedTools };
       }
 
       round++;
@@ -620,6 +687,7 @@ export function createGeminiEngine(
           }
 
           // Execute tool (read-only tools and auto-trust mutations)
+          if (isMutationTool(toolName)) executedTools.push(toolName);
           const result = await executeFleetTool(toolName, args, scopedContext);
           // Diagnostic: log tool call args + outcome for tracing (#diag)
           const resultObj = result as Record<string, unknown>;
@@ -638,12 +706,8 @@ export function createGeminiEngine(
       );
 
       // Send function responses back to the model (with per-call timeout #233)
-      const result = await Promise.race([
-        chat.sendMessage({ message: responses }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("sendMessage timeout in tool loop")), TOOL_CALL_TIMEOUT_MS),
-        ),
-      ]);
+      // Uses sendWithCacheRetry for cache-expiry resilience (ADR-049 §1a)
+      const result = await sendWithCacheRetry(session, responses, "tool-loop", TOOL_CALL_TIMEOUT_MS);
       const usageMeta = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
       if (usageMeta) {
         log.gemini.info({ requestId, sessionId, round, ...usageMeta }, "token:usage");
@@ -667,7 +731,7 @@ export function createGeminiEngine(
           log.gemini.debug({ proposalId: proposal.id, items: pendingBatch.length }, "proposal:created");
         }
       }
-      return { text, proposals };
+      return { text, proposals, executedTools };
     }
 
     // Safety: max rounds exceeded — force a text response
@@ -678,14 +742,13 @@ export function createGeminiEngine(
     // If we get here with no text, ask the model to summarize (with timeout #233)
     let text = "";
     try {
-      const summaryResult = await Promise.race([
-        chat.sendMessage({
-          message: "Please provide a text response summarizing the tool results.",
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("sendMessage timeout on fallback summary")), TOOL_CALL_TIMEOUT_MS),
-        ),
-      ]);
+      // Uses sendWithCacheRetry for cache-expiry resilience (ADR-049 §1a)
+      const summaryResult = await sendWithCacheRetry(
+        session,
+        "Please provide a text response summarizing the tool results.",
+        "tool-fallback-summary",
+        TOOL_CALL_TIMEOUT_MS,
+      );
       const usageMeta = (summaryResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
       if (usageMeta) {
         log.gemini.info({ requestId, sessionId, round, ...usageMeta }, "token:usage:fallback");
@@ -711,7 +774,7 @@ export function createGeminiEngine(
     if (pendingBatch.length > 0) {
       await createBatchProposal(pendingBatch, userId, proposals);
     }
-    return { text, proposals };
+    return { text, proposals, executedTools };
   }
 
   /**
@@ -786,10 +849,8 @@ export function createGeminiEngine(
 
         // Send augmented message (with gated context prepended)
         // Image attached on first message only (augmentedMessage includes gated context)
-        const result = await withRetry(
-          () => session.chat.sendMessage({ message: buildMessageParts(augmentedMessage) }),
-          "micro-runner",
-        );
+        // Uses sendWithCacheRetry for retry + cache-expiry resilience (ADR-049 §1a)
+        const result = await sendWithCacheRetry(session, buildMessageParts(augmentedMessage), "micro-runner");
         const initUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
         if (initUsage) {
           log.gemini.info({ requestId, sessionId: sessionKey, ...initUsage }, "token:usage:initial");
@@ -803,7 +864,7 @@ export function createGeminiEngine(
 
         if (functionCalls && functionCalls.length > 0) {
           // Handle function call loop — tool results feed back to model
-          const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
+          const chatResult = await handleFunctionCalls(session, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
           responseText = chatResult.text;
           chatProposals = chatResult.proposals;
         } else {
@@ -819,7 +880,8 @@ export function createGeminiEngine(
         // Single repair pass if validation failed
         if (validation.needsRepair && validation.repairPrompt) {
           log.gemini.debug({ sessionId: sessionKey, violations: receipt.validationDetails }, "microrunner:repair");
-          const repairResult = await session.chat.sendMessage({ message: validation.repairPrompt });
+          // Uses sendWithCacheRetry for retry + cache-expiry resilience (ADR-049 §1b)
+          const repairResult = await sendWithCacheRetry(session, validation.repairPrompt, "micro-runner-repair");
           const repairUsage = (repairResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
           if (repairUsage) {
             log.gemini.info({ requestId, sessionId: sessionKey, ...repairUsage }, "token:usage:repair");
@@ -850,10 +912,8 @@ export function createGeminiEngine(
       }
 
       // ── Standard path (no MicroRunner) ────────────────────
-      const result = await withRetry(
-        () => session.chat.sendMessage({ message: buildMessageParts(message) }),
-        "standard",
-      );
+      // Uses sendWithCacheRetry for retry + cache-expiry resilience (ADR-049 §1a)
+      const result = await sendWithCacheRetry(session, buildMessageParts(message), "standard");
       const stdUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
       if (stdUsage) {
         log.gemini.info({ requestId, sessionId: sessionKey, ...stdUsage }, "token:usage:initial");
@@ -866,7 +926,7 @@ export function createGeminiEngine(
       const functionCalls = hasToolContext ? result.functionCalls : undefined;
 
       if (functionCalls && functionCalls.length > 0) {
-        const chatResult = await handleFunctionCalls(session.chat, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
+        const chatResult = await handleFunctionCalls(session, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
         responseText = chatResult.text;
         chatProposals = chatResult.proposals;
       } else {
