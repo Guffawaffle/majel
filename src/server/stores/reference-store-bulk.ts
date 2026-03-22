@@ -289,10 +289,20 @@ export function createBulkMixin(pool: Pool) {
     },
 
     async purgeLegacyEntries(): Promise<{ ships: number; officers: number }> {
-      // Cascade-clean related tables that lack FK constraints first
-      await pool.query(`DELETE FROM ship_overlay WHERE ref_id LIKE 'raw:ship:%' OR ref_id LIKE 'wiki:ship:%'`);
-      await pool.query(`DELETE FROM officer_overlay WHERE ref_id LIKE 'raw:officer:%' OR ref_id LIKE 'wiki:officer:%'`);
-      await pool.query(`DELETE FROM targets WHERE ref_id LIKE 'raw:ship:%' OR ref_id LIKE 'wiki:ship:%' OR ref_id LIKE 'raw:officer:%' OR ref_id LIKE 'wiki:officer:%'`);
+      // Cascade-clean related tables that lack FK constraints first.
+      // Tolerates missing tables (42P01) — on a fresh DB, overlay/target tables
+      // may not exist yet (created in Stage 2, purge runs in Stage 1).
+      const safeDelete = async (sql: string): Promise<void> => {
+        try {
+          await pool.query(sql);
+        } catch (err: unknown) {
+          if (err && typeof err === "object" && "code" in err && err.code === "42P01") return;
+          throw err;
+        }
+      };
+      await safeDelete(`DELETE FROM ship_overlay WHERE ref_id LIKE 'raw:ship:%' OR ref_id LIKE 'wiki:ship:%'`);
+      await safeDelete(`DELETE FROM officer_overlay WHERE ref_id LIKE 'raw:officer:%' OR ref_id LIKE 'wiki:officer:%'`);
+      await safeDelete(`DELETE FROM targets WHERE ref_id LIKE 'raw:ship:%' OR ref_id LIKE 'wiki:ship:%' OR ref_id LIKE 'raw:officer:%' OR ref_id LIKE 'wiki:officer:%'`);
       // bridge_core_members and loadouts have ON DELETE CASCADE — auto-cleaned
       const shipResult = await pool.query(
         `DELETE FROM reference_ships WHERE id LIKE 'raw:ship:%' OR id LIKE 'wiki:ship:%'`,

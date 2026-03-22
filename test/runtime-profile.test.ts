@@ -295,6 +295,30 @@ describe("printBootBanner", () => {
   });
 });
 
+// ─── Fresh DB Boot Tolerance (#253) ─────────────────────────────
+
+describe("purgeLegacyEntries tolerates missing overlay tables", () => {
+  let pool: import("./helpers/pg-test.js").Pool;
+
+  beforeEach(async () => {
+    const { createTestPool, cleanDatabase } = await import("./helpers/pg-test.js");
+    pool = createTestPool();
+    await cleanDatabase(pool); // Drop everything — truly fresh
+  });
+
+  afterEach(async () => {
+    await pool.end();
+  });
+
+  it("returns { ships: 0, officers: 0 } on fresh DB without overlay tables", async () => {
+    const { createReferenceStore } = await import("../src/server/stores/reference-store.js");
+    // Creates reference tables only — no overlay/target tables
+    const refStore = await createReferenceStore(pool);
+    const result = await refStore.purgeLegacyEntries();
+    expect(result).toEqual({ ships: 0, officers: 0 });
+  });
+});
+
 // ─── Config Integration ─────────────────────────────────────────
 
 describe("config integration", () => {

@@ -57,6 +57,9 @@ import dataIngestion from "./ax/data-ingestion.js";
 import effectsPromoteDb from "./ax/effects-promote-db.js";
 import triageBundle from "./ax/triage-bundle.js";
 import tmp from "./ax/tmp.js";
+import devBoot from "./ax/dev-boot.js";
+import devSeed from "./ax/dev-seed.js";
+import devReset from "./ax/dev-reset.js";
 import { runCapture } from "./ax/runner.js";
 
 const feedValidate: AxCommand = {
@@ -137,6 +140,9 @@ const COMMANDS: Record<string, AxCommand> = {
   "canonical:preflight": canonicalPreflight,
   "canonical:postcheck": canonicalPostcheck,
   "canonical:migrate": canonicalMigrate,
+  "dev:boot": devBoot,
+  "dev:seed": devSeed,
+  "dev:reset": devReset,
   "tmp": tmp,
 };
 
