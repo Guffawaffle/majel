@@ -736,6 +736,10 @@ export function createGeminiEngine(
         return args.reserved_for
           ? `Reserve officer ${s(args.officer_id)} for ${s(args.reserved_for)}`
           : `Clear reservation for officer ${s(args.officer_id)}`;
+      case "set_officer_overlay":
+        return `Add officer ${s(args.officer_id)} to your fleet`;
+      case "set_ship_overlay":
+        return `Add ship ${s(args.ship_id)} to your fleet`;
       case "sync_overlay":
         return "Sync overlay data from game export";
       case "sync_research":
@@ -787,10 +791,27 @@ export function createGeminiEngine(
 
           // ── Trust tier gate for mutation tools ──────────────
           if (isMutationTool(toolName)) {
+            // Detect overlay creation vs update (ADR-049 Slice 2)
+            let isCreate: boolean | undefined;
+            if (toolName === "set_officer_overlay" && scopedContext.deps.overlayStore) {
+              const refId = typeof args.officer_id === "string" ? args.officer_id : undefined;
+              if (refId) {
+                const existing = await scopedContext.deps.overlayStore.getOfficerOverlay(refId);
+                isCreate = existing === null;
+              }
+            } else if (toolName === "set_ship_overlay" && scopedContext.deps.overlayStore) {
+              const refId = typeof args.ship_id === "string" ? args.ship_id : undefined;
+              if (refId) {
+                const existing = await scopedContext.deps.overlayStore.getShipOverlay(refId);
+                isCreate = existing === null;
+              }
+            }
+
             const trustLevel = await getTrustLevel(
               toolName,
               userId,
               scopedContext.deps.userSettingsStore,
+              isCreate,
             );
 
             if (trustLevel === "block") {

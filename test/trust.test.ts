@@ -169,6 +169,48 @@ describe("getTrustLevel", () => {
     const result = await getTrustLevel("activate_preset", userId, mockStore);
     expect(result).toBe("block"); // falls through to system default
   });
+
+  // ─── Ownership Creation Gate (ADR-049 Slice 2) ─────────────
+
+  it("returns 'approve' for set_ship_overlay when isCreate is true", async () => {
+    expect(await getTrustLevel("set_ship_overlay", userId, undefined, true)).toBe("approve");
+  });
+
+  it("returns 'approve' for set_officer_overlay when isCreate is true", async () => {
+    expect(await getTrustLevel("set_officer_overlay", userId, undefined, true)).toBe("approve");
+  });
+
+  it("returns 'auto' for set_ship_overlay when isCreate is false (update)", async () => {
+    expect(await getTrustLevel("set_ship_overlay", userId, undefined, false)).toBe("auto");
+  });
+
+  it("returns 'auto' for set_officer_overlay when isCreate is undefined (update)", async () => {
+    expect(await getTrustLevel("set_officer_overlay", userId)).toBe("auto");
+  });
+
+  it("does not apply isCreate gate to other mutation tools", async () => {
+    expect(await getTrustLevel("create_bridge_core", userId, undefined, true)).toBe("approve");
+    // create_bridge_core is already "approve" by default — isCreate shouldn't change it
+  });
+
+  it("does not apply isCreate gate to auto-trust tools like update_inventory", async () => {
+    expect(await getTrustLevel("update_inventory", userId, undefined, true)).toBe("auto");
+  });
+
+  it("user override takes precedence over isCreate gate", async () => {
+    const mockStore = {
+      getForUser: vi.fn().mockResolvedValue({
+        key: "fleet.trust",
+        value: JSON.stringify({ set_ship_overlay: "auto" }),
+        source: "user",
+      }),
+    } as unknown as UserSettingsStore;
+
+    // Even though isCreate=true would normally return "approve",
+    // the user override to "auto" should take precedence
+    const result = await getTrustLevel("set_ship_overlay", userId, mockStore, true);
+    expect(result).toBe("auto");
+  });
 });
 
 // ─── getMutationKey ─────────────────────────────────────────

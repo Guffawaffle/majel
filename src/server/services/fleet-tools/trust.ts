@@ -56,17 +56,25 @@ const DEFAULT_TRUST: Record<string, TrustLevel> = {
 // ─── Resolution ─────────────────────────────────────────────────
 
 /**
+ * Tools where creating new owned-state (no existing overlay) requires
+ * Admiral approval, but updating existing overlays is auto-trust (ADR-049 §Slice 2).
+ */
+const OWNERSHIP_CREATION_TOOLS = new Set(["set_officer_overlay", "set_ship_overlay"]);
+
+/**
  * Resolve the trust level for a tool, checking user overrides first.
  *
  * Resolution chain:
  *   1. User's fleet.trust JSON → tool-specific override
- *   2. DEFAULT_TRUST map
- *   3. "approve" fallback (safe default for unknown tools)
+ *   2. Ownership creation gate: overlay tools creating new state → "approve" (ADR-049)
+ *   3. DEFAULT_TRUST map
+ *   4. "approve" fallback (safe default for unknown tools)
  */
 export async function getTrustLevel(
   toolName: string,
   userId: string,
   userSettingsStore?: UserSettingsStore | null,
+  isCreate?: boolean,
 ): Promise<TrustLevel> {
   // Check user override
   if (userSettingsStore) {
@@ -82,6 +90,11 @@ export async function getTrustLevel(
     } catch {
       // Non-fatal: fall through to system default
     }
+  }
+
+  // Ownership creation gate (ADR-049 Slice 2)
+  if (isCreate && OWNERSHIP_CREATION_TOOLS.has(toolName)) {
+    return "approve";
   }
 
   // System default
