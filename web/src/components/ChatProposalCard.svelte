@@ -5,6 +5,7 @@
 <script lang="ts">
   import type { ChatProposal } from "../lib/types.js";
   import { applyProposal, declineProposal } from "../lib/api/proposals.js";
+  import { hasRole } from "../lib/auth.svelte.js";
   import { onDestroy } from "svelte";
 
   interface Props {
@@ -17,6 +18,7 @@
   type CardState = "pending" | "applying" | "applied" | "declined" | "error" | "expired";
   let cardState = $state<CardState>("pending");
   let errorMsg = $state("");
+  let applyTrace = $state<Record<string, unknown> | null>(null);
 
   // Seed from persisted resolvedStatus on mount (one-time).
   // Done in $effect.pre so Svelte doesn't warn about one-time prop capture.
@@ -72,14 +74,18 @@
   async function handleApply() {
     cardState = "applying";
     try {
-      await applyProposal(proposal.id);
+      const result = await applyProposal(proposal.id);
       cardState = "applied";
       proposal.resolvedStatus = "applied";
+      if (result.trace) applyTrace = result.trace;
     } catch (e) {
       errorMsg = e instanceof Error ? e.message : "Failed to apply";
       cardState = "error";
       proposal.resolvedStatus = "error";
       proposal.resolvedError = errorMsg;
+      // Extract trace from ApiError detail if available
+      const detail = (e as { detail?: { detail?: { trace?: Record<string, unknown> } } })?.detail;
+      if (detail?.detail?.trace) applyTrace = detail.detail.trace;
     }
   }
 
@@ -135,6 +141,12 @@
     <div class="proposal-status expired">Proposal expired</div>
   {:else if cardState === "error"}
     <div class="proposal-status error">{errorMsg}</div>
+  {/if}
+  {#if applyTrace && hasRole("admiral")}
+    <details class="proposal-trace">
+      <summary class="proposal-trace-summary">Apply Trace (Admiral)</summary>
+      <pre class="proposal-trace-pre">{JSON.stringify(applyTrace, null, 2)}</pre>
+    </details>
   {/if}
 </div>
 
@@ -263,5 +275,28 @@
   }
   .proposal-status.error {
     color: var(--accent-red);
+  }
+
+  /* ── Trace ── */
+  .proposal-trace {
+    margin-top: 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 6px;
+  }
+  .proposal-trace-summary {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .proposal-trace-pre {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    background: var(--bg-primary);
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    margin-top: 4px;
+    max-height: 200px;
+    overflow-y: auto;
   }
 </style>

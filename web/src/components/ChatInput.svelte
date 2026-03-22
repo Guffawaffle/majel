@@ -67,7 +67,13 @@
 
   const budgetLabel = $derived.by(() => {
     const s = budgetStatus;
-    if (!s || s.dailyLimit === -1) return null;
+    if (!s) return null;
+    // Unlimited users: show consumed today (informational, no warning)
+    if (s.dailyLimit === -1) {
+      if (s.consumed <= 0) return null;
+      const used = s.consumed >= 1000 ? `${(s.consumed / 1000).toFixed(0)}K` : String(s.consumed);
+      return { text: `${used} tokens today`, color: "muted" };
+    }
     if (s.remaining <= 0) return { text: "Budget exceeded", color: "red" };
     const pct = s.dailyLimit > 0 ? (s.consumed / s.dailyLimit) * 100 : 0;
     const rem = s.remaining >= 1000 ? `${(s.remaining / 1000).toFixed(0)}K` : String(s.remaining);

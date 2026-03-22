@@ -143,6 +143,7 @@ export function createProposalRoutes(appState: AppState): Router {
 
   router.post("/api/mutations/proposals/:id/apply", async (req, res) => {
     const userId = res.locals.ctx?.identity.userId ?? (res.locals.userId as string);
+    const isAdmiral = res.locals.isAdmiral === true;
     const proposalStore = appState.proposalStoreFactory?.forUser(userId);
     if (!proposalStore) {
       return sendFail(res, ErrorCode.PROPOSAL_STORE_NOT_AVAILABLE, "Proposal store not available", 503);
@@ -193,6 +194,7 @@ export function createProposalRoutes(appState: AppState): Router {
           }
         }
 
+        const batchStartTime = Date.now();
         const results: Array<{ tool: string; success: boolean; result?: object; error?: string }> = [];
 
         for (const item of proposal.batchItems) {
@@ -203,18 +205,47 @@ export function createProposalRoutes(appState: AppState): Router {
             results.push({ tool: item.tool, success: false, error: String(result.error) });
             // Continue with remaining items — partial application is acceptable
             // since each mutation is independent (bridge core, loadout, dock)
+          } else if (result.dryRun === true) {
+            // Tool ran in dry-run mode despite dry_run: false — treat as failure
+            results.push({ tool: item.tool, success: false, error: "Tool executed in dry-run mode; data was not persisted." });
           } else {
             results.push({ tool: item.tool, success: true, result });
           }
         }
 
         const successCount = results.filter((r) => r.success).length;
+
+        const batchTrace = isAdmiral ? {
+          timestamp: new Date().toISOString(),
+          proposalId: id,
+          userId,
+          type: "batch" as const,
+          tools: proposal.batchItems.map((b) => b.tool),
+          durationMs: Date.now() - batchStartTime,
+          results: results.map(({ tool, success, error }) => ({ tool, success, ...(error ? { error } : {}) })),
+          successCount,
+          totalCount: proposal.batchItems.length,
+        } : undefined;
+
+        // If nothing succeeded, decline the proposal and report the failure
+        if (successCount === 0) {
+          const errors = results.map((r) => `${r.tool}: ${r.error}`).join("; ");
+          try {
+            await proposalStore.decline(id, `apply_failed:${errors}`);
+          } catch {
+            // Best-effort; preserve primary error response
+          }
+          log.fleet.warn({ proposalId: id, results }, "proposal batch apply: all items failed");
+          return sendFail(res, ErrorCode.CONFLICT, `All mutations failed: ${errors}`, 409, { detail: { trace: batchTrace } });
+        }
+
         const applied = await proposalStore.apply(id, 0);
         sendOk(res, {
           applied: true,
           proposal_id: applied.id,
           batch_results: results,
           summary: `${successCount}/${proposal.batchItems.length} mutations applied successfully.`,
+          trace: batchTrace,
         });
         return;
       }
@@ -236,19 +267,38 @@ export function createProposalRoutes(appState: AppState): Router {
       }
 
       // Single-tool proposal: re-execute with dry_run: false
+      const singleStartTime = Date.now();
       const result = await executeFleetTool(
         proposal.tool,
         { ...proposal.argsJson, dry_run: false },
         toolContext,
       ) as Record<string, unknown>;
 
-      if (result.error) {
+      const applyError = result.error
+        ? String(result.error)
+        : result.dryRun === true
+          ? "Tool executed in dry-run mode; data was not persisted."
+          : null;
+
+      const singleTrace = isAdmiral ? {
+        timestamp: new Date().toISOString(),
+        proposalId: id,
+        userId,
+        type: "single" as const,
+        tool: proposal.tool,
+        durationMs: Date.now() - singleStartTime,
+        success: !applyError,
+        ...(applyError ? { error: applyError } : {}),
+        ...(result.dryRun != null ? { dryRun: result.dryRun } : {}),
+      } : undefined;
+
+      if (applyError) {
         try {
-          await proposalStore.decline(id, `apply_failed:${String(result.error)}`);
+          await proposalStore.decline(id, `apply_failed:${applyError}`);
         } catch {
           // Best-effort lock; preserve primary error response
         }
-        return sendFail(res, ErrorCode.CONFLICT, String(result.error), 409);
+        return sendFail(res, ErrorCode.CONFLICT, applyError, 409, { detail: { trace: singleTrace } });
       }
 
       // Extract receipt ID from tool result
@@ -261,6 +311,7 @@ export function createProposalRoutes(appState: AppState): Router {
         applied: true,
         proposal_id: applied.id,
         receipt_id: receiptId,
+        trace: singleTrace,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

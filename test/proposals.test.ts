@@ -313,6 +313,13 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     expect(res.body.data.applied).toBe(true);
     expect(res.body.data.proposal_id).toBe(proposal.id);
     expect(res.body.data.receipt_id).toBe(99);
+    // Admiral trace is included in the response
+    expect(res.body.data.trace).toBeDefined();
+    expect(res.body.data.trace.proposalId).toBe(proposal.id);
+    expect(res.body.data.trace.type).toBe("single");
+    expect(res.body.data.trace.tool).toBe("sync_overlay");
+    expect(res.body.data.trace.success).toBe(true);
+    expect(typeof res.body.data.trace.durationMs).toBe("number");
   });
 
   it("applies proposal after JSONB key reordering (canonical hash survives round-trip)", async () => {
@@ -724,6 +731,11 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     expect(res.body.data.applied).toBe(true);
     expect(res.body.data.batch_results).toHaveLength(2);
     expect(res.body.data.summary).toContain("2/2");
+    // Admiral trace on batch success
+    expect(res.body.data.trace).toBeDefined();
+    expect(res.body.data.trace.type).toBe("batch");
+    expect(res.body.data.trace.successCount).toBe(2);
+    expect(res.body.data.trace.totalCount).toBe(2);
 
     // Verify dry_run: false was injected for EACH batch item
     const recentCalls = mockedExecute.mock.calls.slice(-2);
@@ -786,6 +798,124 @@ describe("POST /api/mutations/proposals/:id/apply", () => {
     for (const call of recentCalls) {
       expect((call[1] as Record<string, unknown>).dry_run).toBe(false);
     }
+  });
+
+  it("batch apply declines proposal and returns 409 when all items fail", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchItems = [
+      { tool: "assign_dock", args: { dock_number: 1, loadout_id: 10 }, preview: "Assign dock 1" },
+      { tool: "sync_overlay", args: { export: { version: "1.0" } }, preview: "Sync overlay" },
+    ];
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      tool: "_batch",
+      argsJson: { batchItems },
+      argsHash: createHash("sha256").update(canonicalStringify(batchItems)).digest("hex"),
+      batchItems,
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      decline: vi.fn().mockResolvedValue({ ...proposal, status: "declined" }),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    mockedExecute
+      .mockResolvedValueOnce({ error: "Dock assignment failed" })
+      .mockResolvedValueOnce({ error: "Overlay store unavailable" });
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CONFLICT");
+    expect(res.body.error.message).toContain("All mutations failed");
+    expect(store.decline).toHaveBeenCalledWith(proposal.id, expect.stringContaining("apply_failed"));
+    expect(store.apply).not.toHaveBeenCalled();
+    // Admiral trace is included in error detail
+    expect(res.body.error.detail.trace).toBeDefined();
+    expect(res.body.error.detail.trace.type).toBe("batch");
+    expect(res.body.error.detail.trace.successCount).toBe(0);
+    expect(res.body.error.detail.trace.results).toHaveLength(2);
+  });
+
+  it("batch apply treats dryRun: true result as failure", async () => {
+    const { createHash } = await import("node:crypto");
+    const batchItems = [
+      { tool: "sync_overlay", args: { export: { version: "1.0" } }, preview: "Sync overlay" },
+    ];
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      tool: "_batch",
+      argsJson: { batchItems },
+      argsHash: createHash("sha256").update(canonicalStringify(batchItems)).digest("hex"),
+      batchItems,
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      decline: vi.fn().mockResolvedValue({ ...proposal, status: "declined" }),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    // Tool returns dryRun: true despite being asked for dry_run: false
+    mockedExecute.mockResolvedValueOnce({ tool: "sync_overlay", dryRun: true, summary: {} });
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toContain("All mutations failed");
+    expect(store.decline).toHaveBeenCalled();
+    expect(store.apply).not.toHaveBeenCalled();
+  });
+
+  it("single-tool apply treats dryRun: true result as failure", async () => {
+    const { createHash } = await import("node:crypto");
+    const args = { export: { version: "1.0", officers: [] } };
+    const proposal: MutationProposal = {
+      ...FIXTURE_PROPOSAL,
+      argsJson: args,
+      argsHash: createHash("sha256").update(canonicalStringify(args)).digest("hex"),
+      status: "proposed",
+    };
+
+    const store = createMockProposalStore({
+      get: vi.fn().mockResolvedValue(proposal),
+      decline: vi.fn().mockResolvedValue({ ...proposal, status: "declined" }),
+    });
+    const state = makeState({
+      startupComplete: true,
+      proposalStoreFactory: createMockProposalStoreFactory(store),
+      toolContextFactory: createMockToolContextFactory(),
+    });
+    const app = createApp(state);
+
+    // Tool returns dryRun: true despite being asked for dry_run: false
+    mockedExecute.mockResolvedValueOnce({ tool: "sync_overlay", dryRun: true, summary: {} });
+
+    const res = await testRequest(app)
+      .post(`/api/mutations/proposals/${proposal.id}/apply`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CONFLICT");
+    expect(res.body.error.message).toContain("dry-run mode");
+    expect(store.decline).toHaveBeenCalledWith(proposal.id, expect.stringContaining("apply_failed"));
   });
 });
 

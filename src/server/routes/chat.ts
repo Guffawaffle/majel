@@ -21,7 +21,7 @@ import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { createContextMiddleware } from "../context-middleware.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
-import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL } from "../services/gemini/index.js";
+import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL, classifyToolMode } from "../services/gemini/index.js";
 import { resolveAllModelAvailability, resolveModelAvailability, parseModelOverrides } from "../services/model-availability.js";
 import type { ProviderCapabilities } from "../services/model-availability.js";
 import type { ImagePart } from "../services/gemini/index.js";
@@ -165,12 +165,16 @@ async function executeChatRun(
       }
     }
 
+    const toolMode = classifyToolMode(message, !!imagePart);
     const chatMessage = await buildChatMessage(appState, userId, message);
-    const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled);
+    const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled, toolMode);
     const answer = typeof result === "string" ? result : result.text;
     const proposals = typeof result === "string" ? undefined : result.proposals;
     const proposalIds = proposals?.map((p) => p.id) ?? [];
     const executedTools = typeof result === "string" ? undefined : result.executedTools;
+    const diagnostics = typeof result === "string" ? undefined : result.diagnostics;
+    const resultToolMode = typeof result === "string" ? undefined : result.toolMode;
+    const resultAttempts = typeof result === "string" ? undefined : result.attempts;
 
     // Derive cache mutation keys from auto-executed tools
     const mutations = executedTools?.length
@@ -188,6 +192,9 @@ async function executeChatRun(
           proposalCount: proposalIds.length,
           proposalIds,
           toolCalls: executedTools?.length ? executedTools : undefined,
+          ...(diagnostics ? { diagnostics } : {}),
+          ...(resultToolMode ? { toolMode: resultToolMode } : {}),
+          ...(resultAttempts?.length ? { attempts: resultAttempts } : {}),
         }
       : undefined;
 

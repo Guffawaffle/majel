@@ -170,9 +170,10 @@ export async function createTokenBudgetStore(
         source = dailyLimit === -1 ? "unlimited" : "rank";
       }
 
-      // 2. Unlimited — skip usage query
+      // 2. Unlimited — still query usage for informational display
       if (dailyLimit === -1) {
-        return { dailyLimit: -1, consumed: 0, remaining: -1, resetsAt: nextUtcMidnight(), source: "unlimited", warning: false };
+        const usage: DailyUsage = await tokenLedgerStore.dailyUsage(userId);
+        return { dailyLimit: -1, consumed: usage.totalTokens, remaining: -1, resetsAt: nextUtcMidnight(), source: "unlimited", warning: false };
       }
 
       // 3. Zero budget — reject without querying

@@ -37,12 +37,52 @@ import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
 import { sanitizeForModel } from "./sanitize.js";
 import { canonicalStringify } from "../../util/canonical-json.js";
 import type { ChatEngine } from "../engine.js";
+import { type ToolMode, classifyToolMode } from "./tool-mode.js";
 
 // ─── Retry helper for transient Gemini API errors ─────────────
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1000;
+
+/** Extract diagnostic info from a Gemini response for logging when the response is empty. */
+function extractResponseDiagnostics(result: unknown): Record<string, unknown> | null {
+  const r = result as {
+    candidates?: Array<{ finishReason?: string; safetyRatings?: unknown[] }>;
+    promptFeedback?: { blockReason?: string; blockReasonMessage?: string };
+  };
+  const candidate = r?.candidates?.[0];
+  const diag: Record<string, unknown> = {};
+  if (candidate?.finishReason) diag.finishReason = candidate.finishReason;
+  if (candidate?.safetyRatings) diag.safetyRatings = candidate.safetyRatings;
+  if (r?.promptFeedback?.blockReason) {
+    diag.blockReason = r.promptFeedback.blockReason;
+    if (r.promptFeedback.blockReasonMessage) diag.blockReasonMessage = r.promptFeedback.blockReasonMessage;
+  }
+  if (!r?.candidates?.length) diag.noCandidates = true;
+  return Object.keys(diag).length > 0 ? diag : null;
+}
+
+/** Build an AttemptInfo record from a Gemini response for telemetry. */
+function buildAttemptInfo(
+  attempt: number,
+  mode: ToolMode,
+  result: unknown,
+  retryReason?: string,
+): AttemptInfo {
+  const diag = extractResponseDiagnostics(result);
+  const usage = (result as { usageMetadata?: Record<string, number> }).usageMetadata;
+  return {
+    attempt,
+    toolMode: mode,
+    ...(retryReason ? { retryReason } : {}),
+    ...(typeof diag?.finishReason === "string" ? { finishReason: diag.finishReason as string } : {}),
+    ...(usage?.promptTokenCount != null ? { promptTokenCount: usage.promptTokenCount } : {}),
+    ...(usage?.candidatesTokenCount != null ? { candidatesTokenCount: usage.candidatesTokenCount } : {}),
+    ...(usage?.totalTokenCount != null ? { totalTokenCount: usage.totalTokenCount } : {}),
+    ...(usage?.thoughtsTokenCount != null ? { thoughtsTokenCount: usage.thoughtsTokenCount } : {}),
+  };
+}
 
 async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
   let lastErr: unknown;
@@ -76,6 +116,7 @@ export {
   resolveIntentConfig,
 } from "./system-prompt.js";
 export type { IntentMode, IntentConfig } from "./system-prompt.js";
+export { type ToolMode, classifyToolMode } from "./tool-mode.js";
 
 // ─── Engine Types ─────────────────────────────────────────────
 
@@ -112,6 +153,22 @@ export interface ProposalSummary {
 }
 
 /**
+ * Per-attempt execution metadata for observability.
+ * Emitted as part of ChatResult so the chat route can include it in
+ * operation events and traces.
+ */
+export interface AttemptInfo {
+  attempt: number;
+  toolMode: ToolMode;
+  finishReason?: string;
+  retryReason?: string;
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+  thoughtsTokenCount?: number;
+}
+
+/**
  * Structured return from GeminiEngine.chat().
  * `text` is the model's response; `proposals` contains any staged
  * mutations that need Admiral approval before being applied.
@@ -121,6 +178,12 @@ export interface ChatResult {
   proposals: ProposalSummary[];
   /** Names of tools that were auto-executed (not staged as proposals). */
   executedTools?: string[];
+  /** Diagnostic info from the Gemini response (only set on empty/blocked responses). */
+  diagnostics?: Record<string, unknown>;
+  /** Tool mode used for this call. */
+  toolMode?: ToolMode;
+  /** Per-attempt execution metadata for observability. */
+  attempts?: AttemptInfo[];
 }
 
 /**
@@ -306,6 +369,34 @@ export function createGeminiEngine(
       }
       throw err;
     }
+  }
+
+  /**
+   * Send a message without tool declarations (toolless mode).
+   * Creates a temporary Chat with inline systemInstruction (no cache, no tools)
+   * seeded with the current session history.
+   *
+   * Used for:
+   * 1. Requests classified as toolless by classifyToolMode()
+   * 2. Malformed-function fallback retries after MALFORMED_FUNCTION_CALL
+   */
+  async function sendToolless(
+    session: SessionState,
+    messageParts: string | Part[],
+    label: string,
+  ): Promise<ReturnType<Chat["sendMessage"]>> {
+    const toollessConfig: GenerateContentConfig = {
+      systemInstruction,
+      safetySettings: SAFETY_SETTINGS,
+      automaticFunctionCalling: { disable: true },
+      maxOutputTokens: 4096,
+    };
+    const tempChat = ai.chats.create({
+      model: currentModelId,
+      config: toollessConfig,
+      history: toSdkHistory(session.history, session.summary),
+    });
+    return withRetry(() => tempChat.sendMessage({ message: messageParts }), label);
   }
 
   /** Build a GenerateContentConfig shared by all chat sessions for this engine. */
@@ -723,7 +814,8 @@ export function createGeminiEngine(
       // Model produced a text response — create proposal if needed, then return
       const text = result.text ?? "";
       if (!text) {
-        log.gemini.warn({ requestId, sessionId, round }, "tool:empty-text");
+        const diag = extractResponseDiagnostics(result);
+        log.gemini.warn({ requestId, sessionId, round, diagnostics: diag }, "tool:empty-text");
       }
       if (pendingBatch.length > 0) {
         const proposal = await createBatchProposal(pendingBatch, userId, proposals);
@@ -820,12 +912,21 @@ export function createGeminiEngine(
   }
 
   return {
-    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean): Promise<ChatResult> {
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean, toolMode?: ToolMode): Promise<ChatResult> {
       // #85: Namespace session keys by userId to prevent cross-user session leakage
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       return withSessionLock(sessionKey, async () => {
       const session = getSession(sessionKey);
-      log.gemini.debug({ requestId, sessionId: sessionKey, messageLen: message.length, hasImage: !!image, historyLen: session.history.length, userId }, "chat:send");
+
+      // Determine effective tool mode for this call:
+      // - If the engine has no tool context, tools are never available.
+      // - If the caller specified a toolMode, use it.
+      // - Otherwise default to "fleet" (preserves existing behavior).
+      const effectiveToolMode: ToolMode = !hasToolContext ? "none" : (toolMode ?? "fleet");
+      let needsSessionRebuild = false;
+      const attempts: AttemptInfo[] = [];
+
+      log.gemini.debug({ requestId, sessionId: sessionKey, messageLen: message.length, hasImage: !!image, historyLen: session.history.length, userId, toolMode: effectiveToolMode }, "chat:send");
 
       // #85: Create user-scoped tool context for this chat call
       const scopedContext = hasToolContext ? toolContextFactory!.forUser(userId ?? "local") : null;
@@ -847,20 +948,23 @@ export function createGeminiEngine(
         const startTime = Date.now();
         const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message);
 
-        // Send augmented message (with gated context prepended)
-        // Image attached on first message only (augmentedMessage includes gated context)
-        // Uses sendWithCacheRetry for retry + cache-expiry resilience (ADR-049 §1a)
-        const result = await sendWithCacheRetry(session, buildMessageParts(augmentedMessage), "micro-runner");
+        // Send augmented message — toolless mode uses a temporary chat without tool declarations
+        const result = effectiveToolMode === "none"
+          ? await sendToolless(session, buildMessageParts(augmentedMessage), "micro-runner-toolless")
+          : await sendWithCacheRetry(session, buildMessageParts(augmentedMessage), "micro-runner");
+        if (effectiveToolMode === "none") needsSessionRebuild = true;
+
         const initUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
         if (initUsage) {
-          log.gemini.info({ requestId, sessionId: sessionKey, ...initUsage }, "token:usage:initial");
+          log.gemini.info({ requestId, sessionId: sessionKey, ...initUsage, toolMode: effectiveToolMode }, "token:usage:initial");
           onTokenUsage?.(effectiveUserId, currentModelId, "chat", initUsage.promptTokenCount ?? 0, initUsage.candidatesTokenCount ?? 0);
         }
+        attempts.push(buildAttemptInfo(1, effectiveToolMode, result));
 
-        // Check for function calls before text extraction
+        // Only check for function calls when tools are enabled
         let responseText: string;
         let chatProposals: ProposalSummary[] = [];
-        const functionCalls = hasToolContext ? result.functionCalls : undefined;
+        const functionCalls = effectiveToolMode === "fleet" && hasToolContext ? result.functionCalls : undefined;
 
         if (functionCalls && functionCalls.length > 0) {
           // Handle function call loop — tool results feed back to model
@@ -869,6 +973,44 @@ export function createGeminiEngine(
           chatProposals = chatResult.proposals;
         } else {
           responseText = result.text ?? "";
+          // Retry on empty response with adaptive fallback for malformed function calls
+          if (!responseText) {
+            const diag = extractResponseDiagnostics(result);
+            const finishReason = typeof diag?.finishReason === "string" ? diag.finishReason : undefined;
+
+            // Cancel check before retry (#cancel-gate)
+            if (isCancelled?.()) {
+              log.gemini.info({ requestId, sessionId: sessionKey, toolMode: effectiveToolMode }, "chat:retry-skipped:cancelled");
+              if (needsSessionRebuild) session.chat = createChat(toSdkHistory(session.history, session.summary));
+              return { text: "", proposals: [], toolMode: effectiveToolMode, attempts };
+            }
+
+            // Adaptive fallback: MALFORMED_FUNCTION_CALL → retry without tools
+            const isMalformed = finishReason === "MALFORMED_FUNCTION_CALL";
+            const retryToolMode: ToolMode = isMalformed ? "none" : effectiveToolMode;
+            const retryReason = isMalformed ? "MALFORMED_FUNCTION_CALL" : "empty_response";
+            const retryLabel = isMalformed ? "micro-runner-malformed-fallback" : "micro-runner-empty-retry";
+
+            log.gemini.warn({ requestId, sessionId: sessionKey, diagnostics: diag, retryToolMode, retryReason }, "chat:empty-response:retrying");
+
+            const retryResult = retryToolMode === "none"
+              ? await sendToolless(session, buildMessageParts(augmentedMessage), retryLabel)
+              : await sendWithCacheRetry(session, buildMessageParts(augmentedMessage), retryLabel);
+            if (retryToolMode === "none") needsSessionRebuild = true;
+
+            const retryUsage = (retryResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+            if (retryUsage) {
+              log.gemini.info({ requestId, sessionId: sessionKey, ...retryUsage, toolMode: retryToolMode }, "token:usage:empty-retry");
+              onTokenUsage?.(effectiveUserId, currentModelId, "empty_retry", retryUsage.promptTokenCount ?? 0, retryUsage.candidatesTokenCount ?? 0);
+            }
+            attempts.push(buildAttemptInfo(2, retryToolMode, retryResult, retryReason));
+
+            responseText = retryResult.text ?? "";
+            if (!responseText) {
+              const retryDiag = extractResponseDiagnostics(retryResult);
+              log.gemini.warn({ requestId, sessionId: sessionKey, diagnostics: retryDiag }, "chat:empty-response:retry-failed");
+            }
+          }
         }
 
         // Validate response against contract
@@ -906,37 +1048,94 @@ export function createGeminiEngine(
 
         microRunner.finalize(receipt);
 
-        await recordTurnAndTrim(session, message, responseText, effectiveUserId);
-        log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
-        return { text: responseText, proposals: chatProposals };
+        // Only record non-empty responses into session history to avoid poisoning the context
+        if (responseText) {
+          await recordTurnAndTrim(session, message, responseText, effectiveUserId);
+        }
+        // Rebuild session chat after toolless calls to sync SDK history
+        if (needsSessionRebuild) {
+          session.chat = createChat(toSdkHistory(session.history, session.summary));
+        }
+        log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length, toolMode: effectiveToolMode }, "chat:recv");
+        return { text: responseText, proposals: chatProposals, toolMode: effectiveToolMode, attempts };
       }
 
       // ── Standard path (no MicroRunner) ────────────────────
-      // Uses sendWithCacheRetry for retry + cache-expiry resilience (ADR-049 §1a)
-      const result = await sendWithCacheRetry(session, buildMessageParts(message), "standard");
+      const result = effectiveToolMode === "none"
+        ? await sendToolless(session, buildMessageParts(message), "standard-toolless")
+        : await sendWithCacheRetry(session, buildMessageParts(message), "standard");
+      if (effectiveToolMode === "none") needsSessionRebuild = true;
+
       const stdUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
       if (stdUsage) {
-        log.gemini.info({ requestId, sessionId: sessionKey, ...stdUsage }, "token:usage:initial");
+        log.gemini.info({ requestId, sessionId: sessionKey, ...stdUsage, toolMode: effectiveToolMode }, "token:usage:initial");
         onTokenUsage?.(effectiveUserId, currentModelId, "chat", stdUsage.promptTokenCount ?? 0, stdUsage.candidatesTokenCount ?? 0);
       }
+      attempts.push(buildAttemptInfo(1, effectiveToolMode, result));
 
-      // Check for function calls before text extraction
+      // Only check for function calls when tools are enabled
       let responseText: string;
       let chatProposals: ProposalSummary[] = [];
-      const functionCalls = hasToolContext ? result.functionCalls : undefined;
+      const functionCalls = effectiveToolMode === "fleet" && hasToolContext ? result.functionCalls : undefined;
 
+      let responseDiagnostics: Record<string, unknown> | undefined;
       if (functionCalls && functionCalls.length > 0) {
         const chatResult = await handleFunctionCalls(session, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
         responseText = chatResult.text;
         chatProposals = chatResult.proposals;
       } else {
         responseText = result.text ?? "";
+        if (!responseText) {
+          const diag = extractResponseDiagnostics(result);
+          const finishReason = typeof diag?.finishReason === "string" ? diag.finishReason : undefined;
+
+          // Cancel check before retry (#cancel-gate)
+          if (isCancelled?.()) {
+            log.gemini.info({ requestId, sessionId: sessionKey, toolMode: effectiveToolMode }, "chat:retry-skipped:cancelled");
+            if (needsSessionRebuild) session.chat = createChat(toSdkHistory(session.history, session.summary));
+            return { text: "", proposals: [], toolMode: effectiveToolMode, attempts };
+          }
+
+          // Adaptive fallback: MALFORMED_FUNCTION_CALL → retry without tools
+          const isMalformed = finishReason === "MALFORMED_FUNCTION_CALL";
+          const retryToolMode: ToolMode = isMalformed ? "none" : effectiveToolMode;
+          const retryReason = isMalformed ? "MALFORMED_FUNCTION_CALL" : "empty_response";
+          const retryLabel = isMalformed ? "standard-malformed-fallback" : "standard-empty-retry";
+
+          log.gemini.warn({ requestId, sessionId: sessionKey, diagnostics: diag, retryToolMode, retryReason }, "chat:empty-response:retrying");
+
+          const retryResult = retryToolMode === "none"
+            ? await sendToolless(session, buildMessageParts(message), retryLabel)
+            : await sendWithCacheRetry(session, buildMessageParts(message), retryLabel);
+          if (retryToolMode === "none") needsSessionRebuild = true;
+
+          const retryUsage = (retryResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+          if (retryUsage) {
+            log.gemini.info({ requestId, sessionId: sessionKey, ...retryUsage, toolMode: retryToolMode }, "token:usage:empty-retry");
+            onTokenUsage?.(effectiveUserId, currentModelId, "empty_retry", retryUsage.promptTokenCount ?? 0, retryUsage.candidatesTokenCount ?? 0);
+          }
+          attempts.push(buildAttemptInfo(2, retryToolMode, retryResult, retryReason));
+
+          responseText = retryResult.text ?? "";
+          if (!responseText) {
+            const retryDiag = extractResponseDiagnostics(retryResult);
+            log.gemini.warn({ requestId, sessionId: sessionKey, diagnostics: retryDiag }, "chat:empty-response:retry-failed");
+            responseDiagnostics = retryDiag ?? diag ?? undefined;
+          }
+        }
       }
 
-      await recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText, effectiveUserId);
+      // Only record non-empty responses into session history to avoid poisoning the context
+      if (responseText) {
+        await recordTurnAndTrim(session, image ? `[image: ${image.inlineData.mimeType}] ${message}` : message, responseText, effectiveUserId);
+      }
+      // Rebuild session chat after toolless calls to sync SDK history
+      if (needsSessionRebuild) {
+        session.chat = createChat(toSdkHistory(session.history, session.summary));
+      }
 
-      log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length }, "chat:recv");
-      return { text: responseText, proposals: chatProposals };
+      log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length, toolMode: effectiveToolMode }, "chat:recv");
+      return { text: responseText, proposals: chatProposals, diagnostics: responseDiagnostics, toolMode: effectiveToolMode, attempts };
       }); // end withSessionLock
     },
 

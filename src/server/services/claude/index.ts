@@ -519,7 +519,7 @@ export function createClaudeEngine(
   // ─── ChatEngine implementation ──────────────────────────────
 
   return {
-    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, _isCancelled?: () => boolean): Promise<ChatResult> {
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, _isCancelled?: () => boolean, _toolMode?: import("../gemini/tool-mode.js").ToolMode): Promise<ChatResult> {
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       return withSessionLock(sessionKey, async () => {
         const session = getSession(sessionKey);

@@ -40,15 +40,25 @@ export async function createProposal(
   return apiPost<ProposalSummary>("/api/mutations/proposals", { tool, args });
 }
 
+/** Result from applying a proposal, including admiral trace when available. */
+export interface ApplyResult {
+  applied: boolean;
+  proposal_id: string;
+  receipt_id?: number;
+  batch_results?: Array<{ tool: string; success: boolean; error?: string }>;
+  summary?: string;
+  trace?: Record<string, unknown>;
+}
+
 /** Apply (confirm) a pending proposal. */
 export async function applyProposal(
   id: string,
-): Promise<{ applied: boolean; proposal_id: string; receipt_id: number }> {
+): Promise<ApplyResult> {
   return runLockedMutation({
     label: `Apply proposal ${id}`,
     lockKey: `proposal:${id}`,
     mutationKey: "import-commit",
-    mutate: () => apiPost<{ applied: boolean; proposal_id: string; receipt_id: number }>(
+    mutate: () => apiPost<ApplyResult>(
       `/api/mutations/proposals/${encodeURIComponent(id)}/apply`,
       {},
     ),

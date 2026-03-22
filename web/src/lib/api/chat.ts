@@ -75,6 +75,10 @@ async function readRunSnapshot(runId: string): Promise<ChatResponse> {
   if (status.status === "timed_out") {
     throw new ChatError("Chat run timed out", snapshotTrace);
   }
+  const pending = ["queued", "running", "processing", "claimed"];
+  if (pending.includes(status.status)) {
+    throw new ChatError("Chat run is still processing — please wait", snapshotTrace);
+  }
   if (!status.answer) {
     throw new ChatError("Chat run did not return an answer", snapshotTrace);
   }
@@ -100,7 +104,9 @@ function waitForRunCompletion(
   }
 
   const streamUrl = `/api/events/stream${qs({ topic: "chat_run", id: runId })}`;
-  const timeoutMs = 120_000;
+  // Must exceed server-side RUN_TIMEOUT_MS (5 min) so the SSE stream
+  // delivers terminal events before the client gives up.
+  const timeoutMs = 5 * 60_000;
 
   return new Promise((resolve, reject) => {
     const source = new EventSource(streamUrl);

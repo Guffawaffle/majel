@@ -7,10 +7,11 @@
  */
 
 import type { ImagePart, ChatResult } from "./gemini/index.js";
+import type { ToolMode } from "./gemini/tool-mode.js";
 
 export interface ChatEngine {
   /** Send a message and get the structured response. */
-  chat(message: string, sessionId?: string, image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean): Promise<ChatResult>;
+  chat(message: string, sessionId?: string, image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean, toolMode?: ToolMode): Promise<ChatResult>;
   /** Get the full conversation history for a session. */
   getHistory(sessionId?: string): Array<{ role: string; text: string }>;
   /** Get the number of active sessions. */

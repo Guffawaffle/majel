@@ -226,7 +226,7 @@ describe("POST /api/chat", () => {
     expect(res.body.data.runId).toMatch(/^crun_/);
     expect(res.body.data.sessionId).toBe("default");
     expect(res.body.data.tabId).toBe("default_tab");
-    expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local", expect.any(String), undefined);
+    expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local", expect.any(String), undefined, "fleet");
   });
 
   it("supports async submit-and-return flow with run status", async () => {
@@ -484,7 +484,7 @@ describe("POST /api/chat", () => {
       .set("X-Session-Id", "tab-abc")
       .send({ message: "Hello from tab A" });
 
-    expect(engine.chat).toHaveBeenCalledWith("Hello from tab A", "tab-abc", undefined, "local", expect.any(String), undefined);
+    expect(engine.chat).toHaveBeenCalledWith("Hello from tab A", "tab-abc", undefined, "local", expect.any(String), undefined, "fleet");
   });
 
   it("uses 'default' session when no X-Session-Id header", async () => {
@@ -496,7 +496,7 @@ describe("POST /api/chat", () => {
       .post("/api/chat")
       .send({ message: "Hello" });
 
-    expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local", expect.any(String), undefined);
+    expect(engine.chat).toHaveBeenCalledWith("Hello", "default", undefined, "local", expect.any(String), undefined, "fleet");
   });
 
   it("isolates history between different session IDs", async () => {
@@ -1427,6 +1427,7 @@ describe("image validation", () => {
       "local",
       expect.any(String),
       undefined,
+      "fleet",
     );
   });
 });

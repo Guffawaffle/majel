@@ -59,7 +59,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.answer).toBe("Image received, Admiral.");
-    expect(mockChat).toHaveBeenCalledWith("Hello Aria", "default", undefined, expect.any(String), expect.any(String), undefined);
+    expect(mockChat).toHaveBeenCalledWith("Hello Aria", "default", undefined, expect.any(String), expect.any(String), undefined, "fleet");
   });
 
   it("accepts a message with a valid image attachment", async () => {
@@ -79,6 +79,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
       expect.any(String),
       expect.any(String),
       undefined,
+      "fleet",
     );
   });
 
@@ -200,6 +201,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
       expect.any(String),
       expect.any(String),
       undefined,
+      "fleet",
     );
   });
 });
@@ -258,7 +260,7 @@ describe("GeminiEngine.chat() — multimodal (ADR-008)", () => {
 
   it("sends text-only message as string when no image (backward compat)", async () => {
     const response = await engine.chat("Hello");
-    expect(response).toEqual({ text: "Aye, Admiral.", proposals: [] });
+    expect(response).toEqual(expect.objectContaining({ text: "Aye, Admiral.", proposals: [] }));
     expect(_mockSendMessage).toHaveBeenCalledWith({ message: "Hello" });
   });
 
@@ -268,7 +270,7 @@ describe("GeminiEngine.chat() — multimodal (ADR-008)", () => {
     };
 
     const response = await engine.chat("What officer is this?", "default", image);
-    expect(response).toEqual({ text: "Aye, Admiral.", proposals: [] });
+    expect(response).toEqual(expect.objectContaining({ text: "Aye, Admiral.", proposals: [] }));
 
     // Should send Part[] with image first, then text
     const callArg = _mockSendMessage.mock.calls[0][0];
