@@ -37,7 +37,8 @@ import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
 import { sanitizeForModel } from "./sanitize.js";
 import { canonicalStringify } from "../../util/canonical-json.js";
 import type { ChatEngine } from "../engine.js";
-import { type ToolMode, classifyToolMode } from "./tool-mode.js";
+import type { ToolMode } from "./tool-mode.js";
+import { countStructuredLines } from "./tool-mode.js";
 
 // ─── Retry helper for transient Gemini API errors ─────────────
 
@@ -116,7 +117,7 @@ export {
   resolveIntentConfig,
 } from "./system-prompt.js";
 export type { IntentMode, IntentConfig } from "./system-prompt.js";
-export { type ToolMode, type ClassifierSignals, classifyToolMode, classifyToolModeVerbose } from "./tool-mode.js";
+export { type ToolMode, type ClassifierSignals, classifyToolMode, classifyToolModeVerbose, countStructuredLines } from "./tool-mode.js";
 
 // ─── Engine Types ─────────────────────────────────────────────
 
@@ -169,6 +170,19 @@ export interface AttemptInfo {
 }
 
 /**
+ * Structured handoff card for bulk-detected requests (ADR-049 §6).
+ * Appended server-side when the bulk-commit gate fires — the model's prose
+ * provides analysis; the handoff card provides the action.
+ */
+export interface HandoffCard {
+  type: "sync_handoff";
+  target: "start_sync";
+  route: "/start/import";
+  summary: string;
+  detectedEntityCount?: number;
+}
+
+/**
  * Structured return from GeminiEngine.chat().
  * `text` is the model's response; `proposals` contains any staged
  * mutations that need Admiral approval before being applied.
@@ -184,6 +198,8 @@ export interface ChatResult {
   toolMode?: ToolMode;
   /** Per-attempt execution metadata for observability. */
   attempts?: AttemptInfo[];
+  /** Structured handoff when bulk-commit gate fires (ADR-049). */
+  handoff?: HandoffCard;
 }
 
 /**
@@ -397,6 +413,56 @@ export function createGeminiEngine(
       history: toSdkHistory(session.history, session.summary),
     });
     return withRetry(() => tempChat.sendMessage({ message: messageParts }), label);
+  }
+
+  // ── Bulk-gated path (ADR-049 §3) ─────────────────────────────
+  // When bulkDetected, mutation tools are stripped from the tool list.
+  // Read-only tools remain so the model can still do advisory lookups.
+
+  const BULK_ADDENDUM = "\n\n[SYSTEM NOTE] The user has pasted structured fleet data. " +
+    "Analyze and discuss it freely. Mutation tools are not available for this request. " +
+    "If the user wants to save this data to their fleet, direct them to the Import feature in Start/Sync.";
+
+  const readOnlyTools = hasToolContext
+    ? FLEET_TOOL_DECLARATIONS.filter((d) => d.name != null && !isMutationTool(d.name))
+    : [];
+
+  /**
+   * Send a message with mutation tools stripped (bulk-commit gate).
+   * Creates a temporary Chat with read-only tools only + system prompt addendum.
+   */
+  async function sendBulkGated(
+    session: SessionState,
+    messageParts: string | Part[],
+    label: string,
+  ): Promise<ReturnType<Chat["sendMessage"]>> {
+    const bulkConfig: GenerateContentConfig = {
+      systemInstruction: systemInstruction + BULK_ADDENDUM,
+      safetySettings: SAFETY_SETTINGS,
+      ...(readOnlyTools.length > 0 ? { tools: [{ functionDeclarations: readOnlyTools }] } : {}),
+      automaticFunctionCalling: { disable: true },
+      maxOutputTokens: 4096,
+    };
+    const tempChat = ai.chats.create({
+      model: currentModelId,
+      config: bulkConfig,
+      history: toSdkHistory(session.history, session.summary),
+    });
+    return withRetry(() => tempChat.sendMessage({ message: messageParts }), label);
+  }
+
+  /** Build a HandoffCard from the original message (ADR-049 §6). */
+  function buildHandoffCard(message: string): HandoffCard {
+    const entityCount = countStructuredLines(message);
+    return {
+      type: "sync_handoff",
+      target: "start_sync",
+      route: "/start/import",
+      summary: entityCount > 0
+        ? `${entityCount} structured data rows detected in pasted data`
+        : "Structured data detected in pasted data",
+      ...(entityCount > 0 ? { detectedEntityCount: entityCount } : {}),
+    };
   }
 
   /** Build a GenerateContentConfig shared by all chat sessions for this engine. */
@@ -912,7 +978,7 @@ export function createGeminiEngine(
   }
 
   return {
-    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean, toolMode?: ToolMode): Promise<ChatResult> {
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean, toolMode?: ToolMode, bulkDetected?: boolean): Promise<ChatResult> {
       // #85: Namespace session keys by userId to prevent cross-user session leakage
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       return withSessionLock(sessionKey, async () => {
@@ -923,6 +989,7 @@ export function createGeminiEngine(
       // - If the caller specified a toolMode, use it.
       // - Otherwise default to "fleet" (preserves existing behavior).
       const effectiveToolMode: ToolMode = !hasToolContext ? "none" : (toolMode ?? "fleet");
+      const isBulkGated = bulkDetected === true && hasToolContext;
       let needsSessionRebuild = false;
       const attempts: AttemptInfo[] = [];
 
@@ -948,11 +1015,14 @@ export function createGeminiEngine(
         const startTime = Date.now();
         const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message);
 
-        // Send augmented message — toolless mode uses a temporary chat without tool declarations
-        const result = effectiveToolMode === "none"
-          ? await sendToolless(session, buildMessageParts(augmentedMessage), "micro-runner-toolless")
-          : await sendWithCacheRetry(session, buildMessageParts(augmentedMessage), "micro-runner");
-        if (effectiveToolMode === "none") needsSessionRebuild = true;
+        // Send augmented message — bulk-gated mode strips mutation tools (ADR-049),
+        // toolless mode uses a temporary chat without tool declarations
+        const result = isBulkGated
+          ? await sendBulkGated(session, buildMessageParts(augmentedMessage), "micro-runner-bulk-gated")
+          : effectiveToolMode === "none"
+            ? await sendToolless(session, buildMessageParts(augmentedMessage), "micro-runner-toolless")
+            : await sendWithCacheRetry(session, buildMessageParts(augmentedMessage), "micro-runner");
+        if (effectiveToolMode === "none" || isBulkGated) needsSessionRebuild = true;
 
         const initUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
         if (initUsage) {
@@ -1057,14 +1127,17 @@ export function createGeminiEngine(
           session.chat = createChat(toSdkHistory(session.history, session.summary));
         }
         log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length, toolMode: effectiveToolMode }, "chat:recv");
-        return { text: responseText, proposals: chatProposals, toolMode: effectiveToolMode, attempts };
+        const handoff = isBulkGated ? buildHandoffCard(message) : undefined;
+        return { text: responseText, proposals: chatProposals, toolMode: effectiveToolMode, attempts, ...(handoff ? { handoff } : {}) };
       }
 
       // ── Standard path (no MicroRunner) ────────────────────
-      const result = effectiveToolMode === "none"
-        ? await sendToolless(session, buildMessageParts(message), "standard-toolless")
-        : await sendWithCacheRetry(session, buildMessageParts(message), "standard");
-      if (effectiveToolMode === "none") needsSessionRebuild = true;
+      const result = isBulkGated
+        ? await sendBulkGated(session, buildMessageParts(message), "standard-bulk-gated")
+        : effectiveToolMode === "none"
+          ? await sendToolless(session, buildMessageParts(message), "standard-toolless")
+          : await sendWithCacheRetry(session, buildMessageParts(message), "standard");
+      if (effectiveToolMode === "none" || isBulkGated) needsSessionRebuild = true;
 
       const stdUsage = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
       if (stdUsage) {
@@ -1135,7 +1208,8 @@ export function createGeminiEngine(
       }
 
       log.gemini.debug({ requestId, sessionId: sessionKey, responseLen: responseText.length, historyLen: session.history.length, toolMode: effectiveToolMode }, "chat:recv");
-      return { text: responseText, proposals: chatProposals, diagnostics: responseDiagnostics, toolMode: effectiveToolMode, attempts };
+      const handoff = isBulkGated ? buildHandoffCard(message) : undefined;
+      return { text: responseText, proposals: chatProposals, diagnostics: responseDiagnostics, toolMode: effectiveToolMode, attempts, ...(handoff ? { handoff } : {}) };
       }); // end withSessionLock
     },
 

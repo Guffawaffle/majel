@@ -30,6 +30,7 @@ export function createStubEngine(): ChatEngine {
     _requestId?: string,
     _isCancelled?: () => boolean,
     toolMode?: ToolMode,
+    _bulkDetected?: boolean,
   ): Promise<ChatResult> {
     const key = sessionId ?? "__default__";
     if (!sessions.has(key)) sessions.set(key, []);

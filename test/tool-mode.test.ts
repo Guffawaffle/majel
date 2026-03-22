@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { classifyToolMode, classifyToolModeVerbose } from "../src/server/services/gemini/tool-mode.js";
+import { classifyToolMode, classifyToolModeVerbose, countStructuredLines } from "../src/server/services/gemini/tool-mode.js";
 import { createGeminiEngine } from "../src/server/services/gemini/index.js";
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -175,6 +175,7 @@ describe("classifyToolModeVerbose", () => {
   it("returns mode plus all classifier signals", () => {
     const result = classifyToolModeVerbose("Recommend the best mining crew", false);
     expect(result.mode).toBe("fleet");
+    expect(result.bulkDetected).toBe(false);
     expect(result.hasFleetIntent).toBe(true);
     expect(result.hasStructuredData).toBe(false);
     expect(result.hasTransformIntent).toBe(false);
@@ -202,6 +203,67 @@ describe("classifyToolModeVerbose", () => {
     expect(result.mode).toBe("none");
     expect(result.hasStructuredData).toBe(true);
     expect(result.hasTransformIntent).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// bulkDetected — ADR-049 §3 bulk-commit gate flag
+// ═══════════════════════════════════════════════════════════════
+
+describe("bulkDetected (ADR-049)", () => {
+  it("sets bulkDetected for structured data + transform intent", () => {
+    const csv = generateOfficerCsv(10);
+    const result = classifyToolModeVerbose(`parse this roster:\n${csv}`, false);
+    expect(result.bulkDetected).toBe(true);
+    expect(result.mode).toBe("none");
+  });
+
+  it("sets bulkDetected for large structured data without transform keywords", () => {
+    const csv = padToLength(`Here are my officers:\n${generateOfficerCsv(20)}`, 2100);
+    const result = classifyToolModeVerbose(csv, false);
+    expect(result.bulkDetected).toBe(true);
+    expect(result.mode).toBe("none");
+  });
+
+  it("does NOT set bulkDetected for normal fleet queries", () => {
+    const result = classifyToolModeVerbose("Who should I crew the Botany Bay with?", false);
+    expect(result.bulkDetected).toBe(false);
+    expect(result.mode).toBe("fleet");
+  });
+
+  it("does NOT set bulkDetected for image + transform (multimodal extraction)", () => {
+    const result = classifyToolModeVerbose("extract these officers into csv", true);
+    expect(result.bulkDetected).toBe(false);
+    expect(result.mode).toBe("none");
+  });
+
+  it("does NOT set bulkDetected for small structured data without transform", () => {
+    const csv = generateOfficerCsv(6);
+    const result = classifyToolModeVerbose(`Here are some officers:\n${csv}`, false);
+    // Small structured data (<2000 chars) without transform keywords → fleet, not bulk
+    expect(result.bulkDetected).toBe(false);
+    expect(result.mode).toBe("fleet");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// countStructuredLines — entity count for HandoffCard
+// ═══════════════════════════════════════════════════════════════
+
+describe("countStructuredLines", () => {
+  it("counts CSV-like lines", () => {
+    const csv = generateOfficerCsv(10);
+    // 10 data rows + 1 header = 11 CSV-like lines
+    expect(countStructuredLines(csv)).toBe(11);
+  });
+
+  it("returns 0 for plain text", () => {
+    expect(countStructuredLines("Who should I crew the Enterprise with?")).toBe(0);
+  });
+
+  it("ignores lines with fewer than 3 comma-separated fields", () => {
+    const msg = "Name,Class\nFoo,Bar\nBaz,Qux";
+    expect(countStructuredLines(msg)).toBe(0);
   });
 });
 
@@ -464,6 +526,78 @@ describe("createGeminiEngine — tool mode integration", () => {
       expect(history.length).toBe(4); // 2 turns × 2 (user + model)
       expect(history[0].text).toBe("Format this data into a table");
       expect(history[2].text).toBe("Now recommend upgrades");
+    });
+  });
+
+  // ─── G. Bulk-commit gate (ADR-049 §3) ────────────────────────
+
+  describe("bulk-commit gate", () => {
+    it("strips mutation tools and returns handoff card when bulkDetected", async () => {
+      const mockToolCtx = { forUser: () => ({ userId: "test", deps: {} }) } as never;
+      const engine = createGeminiEngine("fake-key", null, null, null, null, mockToolCtx);
+
+      const csv = generateOfficerCsv(10);
+      const result = await engine.chat(`parse this:\n${csv}`, "bulk-test", undefined, undefined, undefined, undefined, "none", true);
+
+      // Should return handoff card
+      expect(result.handoff).toBeDefined();
+      expect(result.handoff!.type).toBe("sync_handoff");
+      expect(result.handoff!.target).toBe("start_sync");
+      expect(result.handoff!.route).toBe("/start/import");
+      expect(result.handoff!.detectedEntityCount).toBeGreaterThan(0);
+      expect(result.handoff!.summary).toContain("structured data rows");
+
+      // Verify bulk-gated Chat was created with filtered tools (no mutation tools)
+      const createCalls = mockChatsCreate.mock.calls;
+      const bulkCreates = createCalls.filter((call: unknown[]) => {
+        const args = call[0] as { config?: { systemInstruction?: string; tools?: Array<{ functionDeclarations?: Array<{ name?: string }> }> } };
+        return args.config?.systemInstruction?.includes("Mutation tools are not available");
+      });
+      expect(bulkCreates.length).toBeGreaterThanOrEqual(1);
+
+      // Mutation tools should NOT be in the filtered tool declarations
+      const bulkConfig = (bulkCreates[0][0] as { config: { tools?: Array<{ functionDeclarations?: Array<{ name?: string }> }> } }).config;
+      const toolNames = bulkConfig.tools?.[0]?.functionDeclarations?.map((d: { name?: string }) => d.name) ?? [];
+      for (const name of toolNames) {
+        expect(name).not.toMatch(/^(create|update|set|sync|assign|remove|complete|activate|delete)_/);
+      }
+      // Read-only tools should still be present
+      expect(toolNames.length).toBeGreaterThan(0);
+    });
+
+    it("does not return handoff card for non-bulk requests", async () => {
+      const mockToolCtx = { forUser: () => ({ userId: "test", deps: {} }) } as never;
+      const engine = createGeminiEngine("fake-key", null, null, null, null, mockToolCtx);
+
+      const result = await engine.chat("Who should I crew the Enterprise with?", "normal-test", undefined, undefined, undefined, undefined, "fleet", false);
+
+      expect(result.handoff).toBeUndefined();
+      expect(result.toolMode).toBe("fleet");
+    });
+
+    it("omitting bulkDetected safely defaults to no handoff", async () => {
+      const mockToolCtx = { forUser: () => ({ userId: "test", deps: {} }) } as never;
+      const engine = createGeminiEngine("fake-key", null, null, null, null, mockToolCtx);
+
+      // Call without bulkDetected — 7 explicit args, no 8th
+      const result = await engine.chat("Who should I crew the Enterprise with?", "default-test", undefined, undefined, undefined, undefined, "fleet");
+
+      expect(result.handoff).toBeUndefined();
+    });
+
+    it("keeps read-only tools when bulk-gated", async () => {
+      const mockToolCtx = { forUser: () => ({ userId: "test", deps: {} }) } as never;
+      const engine = createGeminiEngine("fake-key", null, null, null, null, mockToolCtx);
+
+      await engine.chat("parse this data", "readonly-test", undefined, undefined, undefined, undefined, "none", true);
+
+      // Verify at least one bulk-gated create was made
+      const createCalls = mockChatsCreate.mock.calls;
+      const bulkCreates = createCalls.filter((call: unknown[]) => {
+        const args = call[0] as { config?: { systemInstruction?: string; tools?: unknown } };
+        return args.config?.systemInstruction?.includes("Mutation tools are not available") && args.config?.tools;
+      });
+      expect(bulkCreates.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

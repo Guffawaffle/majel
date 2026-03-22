@@ -21,10 +21,10 @@ import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { createContextMiddleware } from "../context-middleware.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
-import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL, classifyToolMode, classifyToolModeVerbose } from "../services/gemini/index.js";
+import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL, classifyToolModeVerbose } from "../services/gemini/index.js";
 import { resolveAllModelAvailability, resolveModelAvailability, parseModelOverrides } from "../services/model-availability.js";
 import type { ProviderCapabilities } from "../services/model-availability.js";
-import type { ImagePart } from "../services/gemini/index.js";
+import type { ImagePart, HandoffCard } from "../services/gemini/index.js";
 import type { Role } from "../stores/user-store.js";
 import { TokenBudgetExceededError } from "../stores/token-budget-store.js";
 import { getMutationKey } from "../services/fleet-tools/trust.js";
@@ -82,6 +82,8 @@ interface ExecuteChatResult {
   mutations?: string[];
   /** Present when user is in the budget grace zone — UI should show \"wrapping up\" indicator. */
   budgetWarning?: { remaining: number; dailyLimit: number; resetsAt: string };
+  /** Structured handoff card when bulk-commit gate fires (ADR-049). */
+  handoff?: HandoffCard;
 }
 
 async function buildChatMessage(appState: AppState, userId: string | undefined, message: string): Promise<string> {
@@ -152,10 +154,9 @@ async function executeChatRun(
 
   let failureEventEmitted = false;
   const verboseTraces = appState.config.contract.capabilities.verboseTraces;
-  const classifierSignals = verboseTraces
-    ? classifyToolModeVerbose(message, !!imagePart)
-    : null;
-  const toolMode = classifierSignals?.mode ?? classifyToolMode(message, !!imagePart);
+  // Always run verbose classifier to get bulkDetected (ADR-049 §3)
+  const classifierSignals = classifyToolModeVerbose(message, !!imagePart);
+  const toolMode = classifierSignals.mode;
 
   try {
     let budgetWarning: ExecuteChatResult["budgetWarning"];
@@ -172,7 +173,8 @@ async function executeChatRun(
     }
 
     const chatMessage = await buildChatMessage(appState, userId, message);
-    const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled, toolMode);
+    const bulkDetected = classifierSignals.bulkDetected;
+    const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled, toolMode, bulkDetected);
     const answer = typeof result === "string" ? result : result.text;
     const proposals = typeof result === "string" ? undefined : result.proposals;
     const proposalIds = proposals?.map((p) => p.id) ?? [];
@@ -180,6 +182,7 @@ async function executeChatRun(
     const diagnostics = typeof result === "string" ? undefined : result.diagnostics;
     const resultToolMode = typeof result === "string" ? undefined : result.toolMode;
     const resultAttempts = typeof result === "string" ? undefined : result.attempts;
+    const handoff = typeof result === "string" ? undefined : result.handoff;
 
     // Derive cache mutation keys from auto-executed tools
     const mutations = executedTools?.length
@@ -270,6 +273,7 @@ async function executeChatRun(
               attempts: resultAttempts ?? [],
             },
           } : {}),
+          ...(handoff ? { handoff } : {}),
         },
       });
     }
@@ -294,6 +298,7 @@ async function executeChatRun(
       trace,
       mutations,
       budgetWarning,
+      ...(handoff ? { handoff } : {}),
     };
   } catch (err: unknown) {
     const errMessage = err instanceof Error ? err.message : String(err);

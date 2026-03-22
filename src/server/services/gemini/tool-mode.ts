@@ -31,16 +31,23 @@ const CSV_FIELD_THRESHOLD = 3;
  * Counts lines with 3+ comma-separated values.
  */
 function hasStructuredData(message: string): boolean {
+  return countStructuredLines(message) >= STRUCTURED_DATA_LINE_THRESHOLD;
+}
+
+/**
+ * Count CSV-like lines in a message (lines with 3+ comma-separated values).
+ * Used by the bulk-commit gate to estimate entity count for HandoffCard.
+ */
+export function countStructuredLines(message: string): number {
   const lines = message.split("\n");
   let csvLineCount = 0;
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed && trimmed.includes(",") && trimmed.split(",").length >= CSV_FIELD_THRESHOLD) {
       csvLineCount++;
-      if (csvLineCount >= STRUCTURED_DATA_LINE_THRESHOLD) return true;
     }
   }
-  return false;
+  return csvLineCount;
 }
 
 // ─── Intent keyword patterns ─────────────────────────────────
@@ -89,10 +96,12 @@ export function classifyToolMode(message: string, hasImage: boolean): ToolMode {
 }
 
 /**
- * Classifier signals for verbose traces (ADR-050 §6).
+ * Classifier signals for verbose traces (ADR-050 §6) and bulk detection (ADR-049 §3).
  */
 export interface ClassifierSignals {
   mode: ToolMode;
+  /** True when structured data triggers the bulk-commit gate (ADR-049 §3). */
+  bulkDetected: boolean;
   hasStructuredData: boolean;
   hasTransformIntent: boolean;
   hasFleetIntent: boolean;
@@ -111,7 +120,7 @@ export function classifyToolModeVerbose(message: string, hasImage: boolean): Cla
   const fleet = FLEET_INTENT.test(message);
   const isLargePayload = message.length > LARGE_PAYLOAD_THRESHOLD;
 
-  const base: Omit<ClassifierSignals, "mode"> = {
+  const base: Omit<ClassifierSignals, "mode" | "bulkDetected"> = {
     hasStructuredData: structured,
     hasTransformIntent: transform,
     hasFleetIntent: fleet,
@@ -120,18 +129,18 @@ export function classifyToolModeVerbose(message: string, hasImage: boolean): Cla
     messageLength: message.length,
   };
 
-  // Multimodal extraction: image + transform intent → toolless
-  if (hasImage && transform) return { ...base, mode: "none" };
+  // Multimodal extraction: image + transform intent → toolless (not bulk)
+  if (hasImage && transform) return { ...base, mode: "none", bulkDetected: false };
 
   // Strong fleet intent without structured data → fleet
-  if (fleet && !structured) return { ...base, mode: "fleet" };
+  if (fleet && !structured) return { ...base, mode: "fleet", bulkDetected: false };
 
-  // Structured data + transform intent → toolless
-  if (structured && transform) return { ...base, mode: "none" };
+  // Structured data + transform intent → toolless + bulk (ADR-049 §3)
+  if (structured && transform) return { ...base, mode: "none", bulkDetected: true };
 
-  // Large payload with structured data → toolless
-  if (structured && isLargePayload) return { ...base, mode: "none" };
+  // Large payload with structured data → toolless + bulk (ADR-049 §3)
+  if (structured && isLargePayload) return { ...base, mode: "none", bulkDetected: true };
 
   // Default: fleet
-  return { ...base, mode: "fleet" };
+  return { ...base, mode: "fleet", bulkDetected: false };
 }
