@@ -21,7 +21,7 @@ import { requireAdmiral, requireVisitor } from "../services/auth.js";
 import { createContextMiddleware } from "../context-middleware.js";
 import { chatRateLimiter } from "../rate-limit.js";
 import { attachScopedMemory } from "../services/memory-middleware.js";
-import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL, classifyToolMode } from "../services/gemini/index.js";
+import { MODEL_REGISTRY, getModelDef, DEFAULT_MODEL, classifyToolMode, classifyToolModeVerbose } from "../services/gemini/index.js";
 import { resolveAllModelAvailability, resolveModelAvailability, parseModelOverrides } from "../services/model-availability.js";
 import type { ProviderCapabilities } from "../services/model-availability.js";
 import type { ImagePart } from "../services/gemini/index.js";
@@ -151,6 +151,12 @@ async function executeChatRun(
   }
 
   let failureEventEmitted = false;
+  const verboseTraces = appState.config.contract.capabilities.verboseTraces;
+  const classifierSignals = verboseTraces
+    ? classifyToolModeVerbose(message, !!imagePart)
+    : null;
+  const toolMode = classifierSignals?.mode ?? classifyToolMode(message, !!imagePart);
+
   try {
     let budgetWarning: ExecuteChatResult["budgetWarning"];
     if (appState.tokenBudgetStore && userId) {
@@ -165,7 +171,6 @@ async function executeChatRun(
       }
     }
 
-    const toolMode = classifyToolMode(message, !!imagePart);
     const chatMessage = await buildChatMessage(appState, userId, message);
     const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled, toolMode);
     const answer = typeof result === "string" ? result : result.text;
@@ -259,6 +264,12 @@ async function executeChatRun(
           answerChars: answer.length,
           proposalCount: proposalIds.length,
           traceId,
+          ...(verboseTraces ? {
+            verbose: {
+              classifier: classifierSignals,
+              attempts: resultAttempts ?? [],
+            },
+          } : {}),
         },
       });
     }
@@ -310,6 +321,11 @@ async function executeChatRun(
           trace: errorTrace,
           requestId: requestId ?? null,
           traceId,
+          ...(verboseTraces ? {
+            verbose: {
+              classifier: classifierSignals,
+            },
+          } : {}),
         },
       });
     }

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { classifyToolMode } from "../src/server/services/gemini/tool-mode.js";
+import { classifyToolMode, classifyToolModeVerbose } from "../src/server/services/gemini/tool-mode.js";
 import { createGeminiEngine } from "../src/server/services/gemini/index.js";
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -163,6 +163,45 @@ describe("classifyToolMode — multimodal extraction", () => {
 
   it("keeps image + ambiguous question as fleet (default)", () => {
     expect(classifyToolMode("What do you see in this image?", true)).toBe("fleet");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// classifyToolModeVerbose — signal exposure for verbose traces
+// ═══════════════════════════════════════════════════════════════
+
+describe("classifyToolModeVerbose", () => {
+  it("returns mode plus all classifier signals", () => {
+    const result = classifyToolModeVerbose("Recommend the best mining crew", false);
+    expect(result.mode).toBe("fleet");
+    expect(result.hasFleetIntent).toBe(true);
+    expect(result.hasStructuredData).toBe(false);
+    expect(result.hasTransformIntent).toBe(false);
+    expect(result.isLargePayload).toBe(false);
+    expect(result.hasImage).toBe(false);
+    expect(result.messageLength).toBe("Recommend the best mining crew".length);
+  });
+
+  it("matches classifyToolMode result in all cases", () => {
+    const messages = [
+      "What crew should I use?",
+      `parse this:\n${generateOfficerCsv(10)}`,
+      "Show me my fleet",
+    ];
+    for (const msg of messages) {
+      const simple = classifyToolMode(msg, false);
+      const verbose = classifyToolModeVerbose(msg, false);
+      expect(verbose.mode).toBe(simple);
+    }
+  });
+
+  it("reports structured data signal for CSV input", () => {
+    const csv = generateOfficerCsv(10);
+    const result = classifyToolModeVerbose(`parse this:\n${csv}`, false);
+    expect(result.mode).toBe("none");
+    expect(result.hasStructuredData).toBe(true);
+    expect(result.hasTransformIntent).toBe(true);
   });
 });
 

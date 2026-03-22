@@ -85,28 +85,53 @@ const LARGE_PAYLOAD_THRESHOLD = 2000;
  * When in doubt, defaults to "fleet" to preserve existing behavior.
  */
 export function classifyToolMode(message: string, hasImage: boolean): ToolMode {
+  return classifyToolModeVerbose(message, hasImage).mode;
+}
+
+/**
+ * Classifier signals for verbose traces (ADR-050 §6).
+ */
+export interface ClassifierSignals {
+  mode: ToolMode;
+  hasStructuredData: boolean;
+  hasTransformIntent: boolean;
+  hasFleetIntent: boolean;
+  isLargePayload: boolean;
+  hasImage: boolean;
+  messageLength: number;
+}
+
+/**
+ * Verbose classifier that returns both the mode decision and the raw signals.
+ * Used by the verbose traces system to expose classifier reasoning.
+ */
+export function classifyToolModeVerbose(message: string, hasImage: boolean): ClassifierSignals {
   const structured = hasStructuredData(message);
-  const hasTransformIntent = TRANSFORM_INTENT.test(message);
-  const hasFleetIntent = FLEET_INTENT.test(message);
+  const transform = TRANSFORM_INTENT.test(message);
+  const fleet = FLEET_INTENT.test(message);
   const isLargePayload = message.length > LARGE_PAYLOAD_THRESHOLD;
 
+  const base: Omit<ClassifierSignals, "mode"> = {
+    hasStructuredData: structured,
+    hasTransformIntent: transform,
+    hasFleetIntent: fleet,
+    isLargePayload,
+    hasImage,
+    messageLength: message.length,
+  };
+
   // Multimodal extraction: image + transform intent → toolless
-  // (structured data is in the image, not the text, so structured check won't help)
-  if (hasImage && hasTransformIntent) return "none";
+  if (hasImage && transform) return { ...base, mode: "none" };
 
-  // Strong fleet intent without structured data → fleet (user wants lookups)
-  if (hasFleetIntent && !structured) return "fleet";
+  // Strong fleet intent without structured data → fleet
+  if (fleet && !structured) return { ...base, mode: "fleet" };
 
-  // Structured data + transform intent → toolless (clearest signal)
-  if (structured && hasTransformIntent) return "none";
+  // Structured data + transform intent → toolless
+  if (structured && transform) return { ...base, mode: "none" };
 
-  // Large payload with structured data → toolless even if fleet keywords present.
-  // Giant pasted rosters cause MALFORMED_FUNCTION_CALL when tools are enabled.
-  // The malformed fallback is a second defense, but we prefer not to need it.
-  // This intentionally overrides fleet intent for large payloads — the model
-  // can reason over pasted data directly without needing tool calls.
-  if (structured && isLargePayload) return "none";
+  // Large payload with structured data → toolless
+  if (structured && isLargePayload) return { ...base, mode: "none" };
 
-  // Default: preserve existing fleet-tools behavior
-  return "fleet";
+  // Default: fleet
+  return { ...base, mode: "fleet" };
 }

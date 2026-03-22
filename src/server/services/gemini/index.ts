@@ -116,7 +116,7 @@ export {
   resolveIntentConfig,
 } from "./system-prompt.js";
 export type { IntentMode, IntentConfig } from "./system-prompt.js";
-export { type ToolMode, classifyToolMode } from "./tool-mode.js";
+export { type ToolMode, type ClassifierSignals, classifyToolMode, classifyToolModeVerbose } from "./tool-mode.js";
 
 // ─── Engine Types ─────────────────────────────────────────────
 
