@@ -32,7 +32,7 @@ interface HealthStoreStatus extends Record<string, unknown> {
 export interface HealthResponse {
   status: "online" | "initializing";
   retryAfterMs?: number;
-  gemini: "connected" | "not configured";
+  gemini: "connected" | "stub" | "not configured";
   memory: "active" | "not configured";
   sessions: "active" | "not configured";
   crewStore: HealthStoreStatus;
@@ -92,7 +92,9 @@ export function createCoreRoutes(appState: AppState): Router {
     const health: HealthResponse = {
       status,
       ...(!appState.startupComplete ? { retryAfterMs: 2000 } : {}),
-      gemini: appState.geminiEngine ? "connected" : "not configured",
+      gemini: appState.geminiEngine
+        ? (appState.config.contract.capabilities.providerMode === "stub" ? "stub" : "connected")
+        : "not configured",
       memory: appState.memoryService ? "active" : "not configured",
       sessions: appState.sessionStore ? "active" : "not configured",
       crewStore: await safeCounts(appState.crewStore, "crewStore"),

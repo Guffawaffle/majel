@@ -15,7 +15,7 @@ import { createSettingsStore, type SettingsStore } from "../src/server/stores/se
 import { createOperationEventStoreFactory } from "../src/server/stores/operation-event-store.js";
 import { createChatRunStore } from "../src/server/stores/chat-run-store.js";
 import { TokenBudgetExceededError, type BudgetStatus, type TokenBudgetStore } from "../src/server/stores/token-budget-store.js";
-import { makeState } from "./helpers/make-state.js";
+import { makeState, makeConfig } from "./helpers/make-state.js";
 import { createTestPool, cleanDatabase, type Pool } from "./helpers/pg-test.js";
 import { collectApiRoutes } from "../src/server/route-introspection.js";
 
@@ -156,6 +156,24 @@ describe("GET /api/health", () => {
     expect(res.body.data.referenceStore).toBeDefined();
     expect(res.body.data.overlayStore).toBeDefined();
   });
+
+  it("reports gemini as stub when providerMode is stub", async () => {
+    const config = makeConfig();
+    const contract = {
+      ...config.contract,
+      capabilities: { ...config.contract.capabilities, providerMode: "stub" as const },
+    };
+    const state = makeState({
+      startupComplete: true,
+      geminiEngine: makeMockEngine(),
+      config: { ...config, contract },
+    });
+    const app = createApp(state);
+
+    const res = await testRequest(app).get("/api/health");
+    expect(res.status).toBe(200);
+    expect(res.body.data.gemini).toBe("stub");
+  });
 });
 
 // ─── POST /api/chat ─────────────────────────────────────────────
@@ -211,6 +229,23 @@ describe("POST /api/chat", () => {
       .send({ message: "Hello" });
     expect(res.status).toBe(503);
     expect(res.body.error.message).toContain("Gemini not ready");
+  });
+
+  it("returns 503 with provider-disabled reason when providerMode is off", async () => {
+    const config = makeConfig();
+    const contract = {
+      ...config.contract,
+      capabilities: { ...config.contract.capabilities, providerMode: "off" as const },
+    };
+    const state = makeState({ config: { ...config, contract } });
+    const app = createApp(state);
+
+    const res = await testRequest(app)
+      .post("/api/chat")
+      .send({ message: "Hello" });
+    expect(res.status).toBe(503);
+    expect(res.body.error.detail.reason).toBe("provider disabled in this profile");
+    expect(res.body.error.hints).toContain("Provider mode is 'off' for this profile");
   });
 
   it("returns model response on success", async () => {

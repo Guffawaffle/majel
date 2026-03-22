@@ -550,9 +550,14 @@ export function createChatRoutes(appState: AppState): Router {
     }
 
     if (!appState.geminiEngine) {
+      const reason = appState.config.contract.capabilities.providerMode === "off"
+        ? "provider disabled in this profile"
+        : appState.startupComplete ? "no API key configured" : "initializing";
       return sendFail(res, ErrorCode.GEMINI_NOT_READY, "Gemini not ready", 503, {
-        detail: { reason: appState.startupComplete ? "no API key configured" : "initializing" },
-        hints: ["Check /api/health for status", "If initializing, retry in 2-3 seconds"],
+        detail: { reason },
+        hints: appState.config.contract.capabilities.providerMode === "off"
+          ? ["Provider mode is 'off' for this profile", "Set MAJEL_DEV_PROVIDER=stub or MAJEL_DEV_PROVIDER=real to enable"]
+          : ["Check /api/health for status", "If initializing, retry in 2-3 seconds"],
       });
     }
 

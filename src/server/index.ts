@@ -32,6 +32,7 @@ import { log, rootLogger } from "./logger.js";
 import { createGeminiEngine, DEFAULT_MODEL } from "./services/gemini/index.js";
 import { createClaudeEngine } from "./services/claude/index.js";
 import { createEngineManager } from "./services/engine-manager.js";
+import { createStubEngine } from "./services/stub-engine.js";
 import { createMemoryService } from "./services/memory.js";
 import { createFrameStoreFactory } from "./stores/postgres-frame-store.js";
 import { createSettingsStore } from "./stores/settings.js";
@@ -653,11 +654,25 @@ async function boot(): Promise<void> {
   // ─── Stage 3: Engines (serial) ────────────────────────────
   // Engine construction references multiple stores via tool context factory.
   const { geminiApiKey, vertexProjectId, vertexRegion } = state.config;
+  const providerMode = contract.capabilities.providerMode;
 
   await runStage("engines", [
     {
       name: "engine-setup",
       fn: async () => {
+        // Provider mode gate (ADR-050)
+        if (providerMode === "off") {
+          log.boot.info("provider mode: off — engine skipped");
+          return;
+        }
+
+        if (providerMode === "stub") {
+          state.geminiEngine = createStubEngine();
+          log.boot.info({ model: state.geminiEngine.getModel() }, "stub engine online (no API key required)");
+          return;
+        }
+
+        // providerMode === "real"
         if (!geminiApiKey) {
           log.boot.warn("GEMINI_API_KEY not set — chat disabled");
           return;
