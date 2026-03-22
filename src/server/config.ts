@@ -16,6 +16,8 @@
  */
 
 import type { SettingsStore } from "./stores/settings.js";
+import type { RuntimeProfile, ProfileContract } from "./runtime-profile.js";
+import { resolveProfile, getProfileContract } from "./runtime-profile.js";
 
 // ─── Configuration Interface ────────────────────────────────────
 
@@ -24,6 +26,12 @@ import type { SettingsStore } from "./stores/settings.js";
  * All config values are typed and resolved through a single function.
  */
 export interface AppConfig {
+  // ── Runtime Profile (ADR-050) ────────────────────────────────
+  /** Active runtime profile */
+  profile: RuntimeProfile;
+  /** Profile contract (invariants + capabilities) */
+  contract: ProfileContract;
+
   // ── System ──────────────────────────────────────────────────
   /** Server port (default: 3000) */
   port: number;
@@ -121,10 +129,14 @@ function resolveLogPretty(isTest: boolean, isDev: boolean): boolean {
  * @returns Fully resolved configuration object
  */
 export async function resolveConfig(settingsStore: SettingsStore | null): Promise<AppConfig> {
-  // Environment detection (always from process.env — not configurable)
+  // Runtime profile (ADR-050) — resolved once, immutable
+  const profile = resolveProfile();
+  const contract = getProfileContract(profile);
+
+  // Environment detection — derived from profile for consistency
   const nodeEnv = process.env.NODE_ENV || "development";
-  const isTest = nodeEnv === "test" || process.env.VITEST === "true";
-  const isDev = nodeEnv !== "production" && !isTest;
+  const isTest = profile === "test";
+  const isDev = profile === "dev_local";
 
   // Resolve all settings
   const port = settingsStore
@@ -181,10 +193,12 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
     databaseAdminUrl,
     adminToken,
     inviteSecret,
-    authEnabled: nodeEnv === "production" || adminToken.length > 0,
+    authEnabled: contract.capabilities.authEnforced || (nodeEnv === "production" || adminToken.length > 0),
     allowedIps,
     logLevel,
     logPretty,
+    profile,
+    contract,
   };
 }
 
@@ -201,9 +215,11 @@ export async function bootstrapConfig(): Promise<AppConfig> {
  * Uses only env vars and defaults — no async needed.
  */
 export function bootstrapConfigSync(): AppConfig {
+  const profile = resolveProfile();
+  const contract = getProfileContract(profile);
   const nodeEnv = process.env.NODE_ENV || "development";
-  const isTest = nodeEnv === "test" || process.env.VITEST === "true";
-  const isDev = nodeEnv !== "production" && !isTest;
+  const isTest = profile === "test";
+  const isDev = profile === "dev_local";
   const logLevel = resolveLogLevel(isTest, isDev);
   const logPretty = resolveLogPretty(isTest, isDev);
   const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
@@ -222,10 +238,12 @@ export function bootstrapConfigSync(): AppConfig {
     databaseAdminUrl: process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL || "postgres://majel:majel@localhost:5432/majel",
     adminToken,
     inviteSecret,
-    authEnabled: nodeEnv === "production" || adminToken.length > 0,
+    authEnabled: contract.capabilities.authEnforced || (nodeEnv === "production" || adminToken.length > 0),
     allowedIps,
     logLevel,
     logPretty,
+    profile,
+    contract,
   };
 }
 

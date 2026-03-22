@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-03-12 | Branch: `main`
+> Updated: 2026-03-22 | Branch: `main`
 
 ---
 
@@ -18,14 +18,16 @@
 
 ## Current PM Focus
 
-- **Active programs:** ADR-048 — Token Budgets (#235), 4 phases planned.
-- **Recently completed:** ADR-046 — LCARS Design System (#219). All 6 phases shipped. ADR-047 — Staged Boot Architecture (#226). All 3 phases shipped (`55832f2`). ADR-045 — Timer UX Redesign (#215, `328e584`). All 3 phases shipped. Cost & Runaway Safety Audit (#234). All 18 items shipped across 6 commits.
+- **Sprint priority:** ADR-050 — Runtime Profiles (#251), 5 slices. Must land before ADR-049 work.
+- **Next up:** ADR-049 — Chat/Sync Boundary (#257), 3 slices (Slice 0 done). Blocked on ADR-050.
+- **Paused programs:** ADR-048 — Token Budgets (#235), Phase A done, Phases B–D paused.
+- **Open bugs:** #250 — Chat architecture hardening (7 sub-items).
+- **Recently completed:** ADR-046 — LCARS Design System (#219). ADR-047 — Staged Boot (#226). ADR-045 — Timer UX (#215). Cost & Runaway Safety Audit (#234).
 - **Previously completed:** ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing.
-- **Tech debt batch:** #189–#193 — all 5 closed.
-- **Test count:** 2261 tests across 102 files.
-- **Open issues:** 6 (ADR-048: #235–#239).
+- **Test count:** 2375+ tests.
+- **Open issues:** 12 (#250, #251–#256, #257–#260).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -101,7 +103,92 @@ Catalog page — all within documented production scope boundaries.
 
 ---
 
-## Planned Program — Per-Rank & Per-User Token Budgets (ADR-048, #235)
+## Active Program — Runtime Profiles & Cloud-Parity Local Dev (ADR-050, #251)
+
+**Program umbrella:** #251
+**Linked ADR:** [docs/ADR-050-runtime-profiles.md](docs/ADR-050-runtime-profiles.md)
+**Design date:** 2026-03-22
+**Revised:** 2026-03-22 (6 review pushbacks addressed)
+
+### Program Objective
+
+Replace scattered `NODE_ENV` checks with a formal runtime profile model
+(`dev_local` | `cloud_prod` | `test`). Three-layer contract: boot invariants,
+runtime capabilities, adapters/config. Default `dev_local` to stub provider
+(full chat UX without token spend). Loosen `test` profile so unit tests run
+without Postgres. Add dev inspection endpoints and AX dev commands.
+
+### Sequenced Implementation Plan
+
+| Slice | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 1 | #252 | Runtime profile + startup validation | [ ] |
+| 2 | #253 | Fix fresh DB boot + dev seed/reset | [ ] |
+| 3 | #254 | Dev endpoints + inspection (`/api/dev/*`) | [ ] |
+| 4 | #255 | Provider mode gate + stub adapter | [ ] |
+| 5 | #256 | Verbose traces + AX smoke | [ ] |
+
+### Key Design Decisions
+
+1. **Three-layer contract**: boot invariants (must-exist-at-start), runtime capabilities (security-gated permissions), adapters/config (connection params)
+2. **Provider modes**: `real` | `stub` | `off` — `dev_local` defaults to `stub`, not `off`
+3. **Test profile**: `requireDatabase: false` — unit tests don't need Postgres
+4. **Safety model**: profile validation is the real boundary; dynamic import is belt-and-suspenders
+5. **Infra honesty**: five app-level adapters differ; cloud runtime characteristics (cold starts, concurrency, VPC) have no local analog
+
+### Definition of Done
+
+- [ ] Profile resolves correctly for all env combinations
+- [ ] Boot banner prints; contradictory config is fatal
+- [ ] Stub provider gives working chat UX without tokens
+- [ ] Unit tests run without Postgres
+- [ ] Dev endpoints available in `dev_local` only
+- [ ] AX dev commands: boot, seed, reset, smoke, inspect
+- [ ] `npm run ax -- ci` passes at every slice boundary
+
+---
+
+## Planned Program — Chat vs Start/Sync Product Boundary (ADR-049, #257)
+
+**Program umbrella:** #257
+**Linked ADR:** [docs/ADR-049-chat-vs-sync-boundary.md](docs/ADR-049-chat-vs-sync-boundary.md)
+**Design date:** 2026-03-22
+**Depends on:** ADR-050 (#251) — runtime profiles must be in place first
+
+### Program Objective
+
+Define and enforce the product boundary between Chat (atomic mutations +
+advisory) and Start/Sync (bulk imports). Server-side tool stripping when
+bulk data is detected. Two-tier trust model for chat mutations. Structured
+handoff card from Chat to Start/Sync.
+
+### Sequenced Implementation Plan
+
+| Slice | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 0 | — | Cleanup (debug logs removed) | [x] Done |
+| 1 | #258 | Server-side bulk-commit gate + handoff card | [ ] |
+| 2 | #259 | Ownership confirmation split | [ ] |
+| 3 | #260 | Instance modeling — ADR-051 design | [ ] |
+
+### Key Design Decisions
+
+1. **Server-side enforcement**: mutation tools physically absent from tool list when `bulkDetected`
+2. **Two-tier chat atomics**: Tier 1 auto-apply (property updates), Tier 2 confirm (ownership creation)
+3. **Structured handoff**: `HandoffCard` in `ChatResult`, not model-generated prose
+4. **Governing principle**: "Enforcement is server-side, not model-side"
+
+### Definition of Done
+
+- [ ] Bulk requests have mutation tools stripped
+- [ ] HandoffCard in ChatResult for bulk redirects
+- [ ] Ownership creation is approve-trust; updates remain auto-trust
+- [ ] Instance modeling scoped (ADR-051)
+- [ ] `npm run ax -- ci` passes at every slice boundary
+
+---
+
+## Paused Program — Per-Rank & Per-User Token Budgets (ADR-048, #235)
 
 **Program umbrella:** #235
 **Linked ADR:** [docs/ADR-048-token-budgets.md](docs/ADR-048-token-budgets.md)

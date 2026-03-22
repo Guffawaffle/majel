@@ -77,6 +77,9 @@ import {
 // Boot runner (ADR-047)
 import { runStage } from "./boot-runner.js";
 
+// Runtime profiles (ADR-050)
+import { resolveProfile, getProfileContract, validateProfile, printBootBanner } from "./runtime-profile.js";
+
 // Configuration (ADR-005 Phase 3)
 import { bootstrapConfigSync, resolveConfig } from "./config.js";
 
@@ -337,7 +340,14 @@ export function createApp(appState: AppState): express.Express {
 // ─── Startup ────────────────────────────────────────────────────
 async function boot(): Promise<void> {
   const bootStart = Date.now();
-  log.boot.info("Majel initializing");
+
+  // ─── Profile Resolution (ADR-050) ─────────────────────────
+  const profile = resolveProfile();
+  const contract = getProfileContract(profile);
+  validateProfile(profile, contract);
+  printBootBanner(profile, contract, state.config.databaseUrl);
+
+  log.boot.info({ profile, providerMode: contract.capabilities.providerMode }, "Majel initializing");
 
   // ─── Stage 0: Foundation (serial) ─────────────────────────
   // Must be serial — each step requires the previous result.
@@ -730,6 +740,7 @@ async function boot(): Promise<void> {
 
   if (!state.config.authEnabled) {
     log.boot.warn(
+      { profile: state.config.profile },
       "⚠️  AUTH DISABLED — all requests run as admiral. Set MAJEL_ADMIN_TOKEN to enable authentication.",
     );
   }
