@@ -752,6 +752,14 @@ async function boot(): Promise<void> {
   }
 
   const app = createApp(state);
+
+  // Dev endpoints (ADR-050) — dynamically imported, only in dev_local
+  if (contract.capabilities.devEndpoints) {
+    const { createDevRoutes } = await import("./routes/dev.js");
+    app.use(createDevRoutes(state));
+    log.boot.info("dev endpoints registered (/api/dev/*)");
+  }
+
   httpServer = app.listen(state.config.port, () => {
     log.boot.info({ port: state.config.port, url: `http://localhost:${state.config.port}` }, "Majel online");
   });
