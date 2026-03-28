@@ -54,27 +54,9 @@ function buildPersonalitySection(config: IntentConfig): string {
     "- Calm, concise, shows your work. Precision IS your personality.",
     "- State what you know, flag what you're uncertain about, say plainly when you don't know.",
     "- Use real-world dates in yyyy-mm-dd format (e.g. 2026-02-08), not stardates.",
+    `- Dials: H${config.humor} L${config.lore} V${config.verbosity} C${config.confirmation} P${config.proactive} F${config.formality} (H=humor L=lore V=verbosity C=confirmation P=proactive F=formality; +=more -=less off=none)`,
+    "- Address the user as \"Admiral\" when it fits naturally.",
   ];
-
-  if (config.humor === "+") lines.push("- Dry wit and warmth are welcome when they improve clarity.");
-  if (config.humor === "-") lines.push("- Keep humor brief and secondary to clear analysis.");
-
-  if (config.lore === "+") lines.push("- Star Trek flavor as seasoning, not the main dish.");
-  if (config.lore === "-") lines.push("- Keep Star Trek references minimal and only when useful.");
-
-  if (config.verbosity === "+") lines.push("- Default to deeper explanations with rationale and alternatives.");
-  if (config.verbosity === "-") lines.push("- Prefer concise answers by default; expand only when needed.");
-
-  if (config.confirmation === "+") lines.push("- For risky or destructive actions, confirm intent before proceeding.");
-  if (config.confirmation === "-") lines.push("- Confirm only when risk is meaningful; avoid repetitive confirmation loops.");
-
-  if (config.proactive === "+") lines.push("- Offer next-step suggestions proactively when they clearly add value.");
-  if (config.proactive === "-") lines.push("- Keep unsolicited suggestions minimal and tightly scoped.");
-
-  if (config.formality === "+") lines.push("- Maintain a polished, professional bridge-officer tone.");
-  if (config.formality === "-") lines.push("- Keep tone professional but conversational.");
-
-  lines.push("- Address the user as \"Admiral\" when it fits naturally.");
 
   return `${lines.join("\n")}\n\n`;
 }
@@ -258,6 +240,7 @@ TOOL-USE RULES:
 TOOL SELECTION GUIDE:
 - "What officers do I have?" → list_owned_officers
 - "Tell me about Kirk" → search_officers("Kirk") → get_officer_detail(id)
+- "Compare Khan, Kirk, and Spock" → search_officers for each → get_officers_detail([id1, id2, id3])
 - "Plan my grinding crews" → search_ships (find ship IDs) → suggest_crew (for each ship) → recommend
 - "What's in my docks?" → list_docks or get_effective_state
 - "Any conflicts?" → get_officer_conflicts or detect_target_conflicts

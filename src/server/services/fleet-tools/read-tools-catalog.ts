@@ -217,3 +217,29 @@ export async function getShipDetail(shipId: string, ctx: ToolEnv): Promise<objec
 
   return result;
 }
+
+const BATCH_LIMIT = 10;
+
+export async function getOfficersDetail(officerIds: string[], ctx: ToolEnv): Promise<object> {
+  if (!Array.isArray(officerIds) || officerIds.length === 0) {
+    return { error: "officer_ids must be a non-empty array." };
+  }
+  const ids = officerIds.slice(0, BATCH_LIMIT);
+  const results: Record<string, object> = {};
+  for (const id of ids) {
+    results[id] = await getOfficerDetail(id, ctx);
+  }
+  return { officers: results, count: Object.keys(results).length };
+}
+
+export async function getShipsDetail(shipIds: string[], ctx: ToolEnv): Promise<object> {
+  if (!Array.isArray(shipIds) || shipIds.length === 0) {
+    return { error: "ship_ids must be a non-empty array." };
+  }
+  const ids = shipIds.slice(0, BATCH_LIMIT);
+  const results: Record<string, object> = {};
+  for (const id of ids) {
+    results[id] = await getShipDetail(id, ctx);
+  }
+  return { ships: results, count: Object.keys(results).length };
+}

@@ -33,7 +33,7 @@ describe("buildSystemPrompt", () => {
     it("establishes personality traits", () => {
       const prompt = buildSystemPrompt();
       expect(prompt).toContain("PERSONALITY:");
-      expect(prompt).toContain("Dry wit");
+      expect(prompt).toContain("Dials: H+ L+ V- C- P- F-");
       expect(prompt).toContain("Admiral");
     });
 
@@ -47,11 +47,7 @@ describe("buildSystemPrompt", () => {
         formality: "+",
       });
 
-      expect(prompt).not.toContain("Dry wit and warmth");
-      expect(prompt).not.toContain("Star Trek flavor as seasoning");
-      expect(prompt).toContain("Default to deeper explanations");
-      expect(prompt).toContain("confirm intent before proceeding");
-      expect(prompt).toContain("professional bridge-officer tone");
+      expect(prompt).toContain("Dials: Hoff Loff V+ C+ P- F+");
     });
   });
 

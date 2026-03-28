@@ -183,59 +183,26 @@ describe("ContextGate (gateContext)", () => {
     expect(gated.keysInjected).toHaveLength(0);
   });
 
-  it("injects T2 reference block with provenance when officer found", () => {
+  it("returns null contextBlock even when officer data is available (model uses tools instead)", () => {
     const lookup = makeOfficerLookup([KHAN]);
     const ctx = makeContextSources({ hasRoster: true, lookupOfficer: lookup });
     const contract = compileTask("Tell me about Khan", ctx, ["Khan"]);
     const gated = gateContext(contract, ctx);
 
-    expect(gated.contextBlock).toContain("REFERENCE: Officer \"Khan\"");
-    expect(gated.contextBlock).toContain("source: STFC wiki");
-    expect(gated.contextBlock).toContain("imported 2026-02-09");
-    expect(gated.contextBlock).toContain("Rarity: epic");
-    expect(gated.contextBlock).toContain("Group: augments");
-    expect(gated.contextBlock).toContain("[CONTEXT FOR THIS QUERY");
-    expect(gated.contextBlock).toContain("[END CONTEXT]");
-    expect(gated.keysInjected).toContain("t2:officer:khan");
-    expect(gated.t2Provenance).toHaveLength(1);
-    expect(gated.t2Provenance[0].id).toBe("khan");
+    expect(gated.contextBlock).toBeNull();
+    expect(gated.keysInjected).toHaveLength(0);
+    expect(gated.t2Provenance).toHaveLength(0);
   });
 
-  it("injects multiple T2 references when multiple officers mentioned", () => {
+  it("returns null contextBlock for multiple officers (model uses tools instead)", () => {
     const lookup = makeOfficerLookup([KHAN, KIRK]);
     const ctx = makeContextSources({ hasRoster: true, lookupOfficer: lookup });
     const contract = compileTask("Compare Khan and Kirk", ctx, ["Khan", "Kirk"]);
     const gated = gateContext(contract, ctx);
 
-    expect(gated.contextBlock).toContain("Officer \"Khan\"");
-    expect(gated.contextBlock).toContain("Officer \"Kirk\"");
-    expect(gated.keysInjected).toHaveLength(2);
-    expect(gated.t2Provenance).toHaveLength(2);
-  });
-
-  it("skips T2 entries when officer not found in lookup", () => {
-    const lookup = makeOfficerLookup([KHAN]);
-    const ctx = makeContextSources({ hasRoster: true, lookupOfficer: lookup });
-    // Contract asks for "Spock" but lookup only has Khan
-    const contract: TaskContract = {
-      taskType: "reference_lookup",
-      requiredTiers: { t1_fleetConfig: false, t1_roster: true, t1_dockBriefing: false, t2_referencePack: ["Spock"] },
-      contextManifest: "Available: T2 reference(Spock), T3 training",
-      rules: ["cite source tier for all factual claims"],
-      outputSchema: { answer: true, factsUsed: true, assumptions: false, unknowns: true, confidence: false },
-    };
-    const gated = gateContext(contract, ctx);
     expect(gated.contextBlock).toBeNull();
     expect(gated.keysInjected).toHaveLength(0);
-  });
-
-  it("includes AVAILABLE CONTEXT manifest line", () => {
-    const lookup = makeOfficerLookup([KHAN]);
-    const ctx = makeContextSources({ hasRoster: true, lookupOfficer: lookup });
-    const contract = compileTask("Tell me about Khan", ctx, ["Khan"]);
-    const gated = gateContext(contract, ctx);
-
-    expect(gated.contextBlock).toContain("AVAILABLE CONTEXT:");
+    expect(gated.t2Provenance).toHaveLength(0);
   });
 });
 
@@ -478,9 +445,8 @@ describe("createMicroRunner", () => {
       const { contract, gatedContext, augmentedMessage } = await runner.prepare("Tell me about Khan");
 
       expect(contract.taskType).toBe("reference_lookup");
-      expect(gatedContext.contextBlock).toContain("Officer \"Khan\"");
-      expect(augmentedMessage).toContain("[CONTEXT FOR THIS QUERY");
-      expect(augmentedMessage).toContain("Tell me about Khan");
+      expect(gatedContext.contextBlock).toBeNull();
+      expect(augmentedMessage).toBe("Tell me about Khan");
     });
 
     it("passes through strategy_general without context block", async () => {
@@ -549,9 +515,8 @@ describe("createMicroRunner", () => {
       expect(result.receipt.sessionId).toBe("session-123");
       expect(result.receipt.taskType).toBe("reference_lookup");
       expect(result.receipt.contextManifest).toContain("T2 reference(Khan)");
-      expect(result.receipt.contextKeysInjected).toContain("t2:officer:khan");
-      expect(result.receipt.t2Provenance).toHaveLength(1);
-      expect(result.receipt.t2Provenance[0].source).toBe("STFC wiki");
+      expect(result.receipt.contextKeysInjected).toHaveLength(0);
+      expect(result.receipt.t2Provenance).toHaveLength(0);
       expect(result.receipt.durationMs).toBeGreaterThanOrEqual(0);
       expect(result.receipt.timestamp).toBeTruthy();
     });

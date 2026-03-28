@@ -18,7 +18,9 @@ import {
   searchOfficers,
   searchShips,
   getOfficerDetail,
+  getOfficersDetail,
   getShipDetail,
+  getShipsDetail,
   listDocks,
   getOfficerConflicts,
   validatePlan,
@@ -106,9 +108,27 @@ toolRegistry.register(defineTool({
 }));
 
 toolRegistry.register(defineTool({
+  name: "get_officers_detail",
+  deps: ["referenceStore", "overlayStore"],
+  run: (args, env) => getOfficersDetail(
+    Array.isArray(args.officer_ids) ? (args.officer_ids as string[]).map(String) : [],
+    env,
+  ),
+}));
+
+toolRegistry.register(defineTool({
   name: "get_ship_detail",
   deps: ["referenceStore", "overlayStore"],
   run: (args, env) => getShipDetail(String(args.ship_id ?? ""), env),
+}));
+
+toolRegistry.register(defineTool({
+  name: "get_ships_detail",
+  deps: ["referenceStore", "overlayStore"],
+  run: (args, env) => getShipsDetail(
+    Array.isArray(args.ship_ids) ? (args.ship_ids as string[]).map(String) : [],
+    env,
+  ),
 }));
 
 // ── Read tools: crew & dock ─────────────────────────────────

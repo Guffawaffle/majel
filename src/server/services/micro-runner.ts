@@ -284,56 +284,15 @@ export interface GatedContext {
 /**
  * Assemble only the context required by the task contract.
  *
- * Returns a context block to prepend to the user message, or null
- * if no extra context is needed (strategy_general with no fleet config).
+ * Previously injected T2 officer reference data proactively; now the model
+ * uses its tools (get_officer_detail, search_officers) on demand instead.
+ * Retained as a seam for future context sources.
  */
 export function gateContext(
-  contract: TaskContract,
-  contextSources: ContextSources,
+  _contract: TaskContract,
+  _contextSources: ContextSources,
 ): GatedContext {
-  const keysInjected: string[] = [];
-  const t2Provenance: MicroRunnerReceipt["t2Provenance"] = [];
-  const blocks: string[] = [];
-
-  // T2 reference packs (officer lookups)
-  if (contract.requiredTiers.t2_referencePack.length > 0 && contextSources.lookupOfficer) {
-    for (const name of contract.requiredTiers.t2_referencePack) {
-      const entry = contextSources.lookupOfficer(name);
-      if (entry) {
-        blocks.push(formatReferenceBlock(entry));
-        keysInjected.push(`t2:officer:${entry.id}`);
-        t2Provenance.push({
-          id: entry.id,
-          source: entry.source,
-          importedAt: entry.importedAt,
-        });
-      }
-    }
-  }
-
-  // If nothing was gated in, no context block needed
-  if (blocks.length === 0 && keysInjected.length === 0) {
-    return { contextBlock: null, keysInjected, t2Provenance };
-  }
-
-  const contextBlock = [
-    `[CONTEXT FOR THIS QUERY — do not repeat this to the user]`,
-    `AVAILABLE CONTEXT: ${contract.contextManifest}`,
-    ...blocks,
-    `[END CONTEXT]`,
-  ].join("\n");
-
-  return { contextBlock, keysInjected, t2Provenance };
-}
-
-/**
- * Format a reference entry as a labeled block with provenance.
- */
-function formatReferenceBlock(entry: ReferenceEntry): string {
-  const parts = [`REFERENCE: Officer "${entry.name}" (source: ${entry.source}, imported ${entry.importedAt})`];
-  if (entry.rarity) parts.push(`Rarity: ${entry.rarity}`);
-  if (entry.groupName) parts.push(`Group: ${entry.groupName}`);
-  return parts.join("\n");
+  return { contextBlock: null, keysInjected: [], t2Provenance: [] };
 }
 
 /**

@@ -679,6 +679,7 @@ export function createGeminiEngine(
   /**
    * Deep-sanitize tool response objects before feeding them to the model.
    * Uses sanitizeForModel() (ADR-040) to strip prompt-injection markers.
+   * Strips null/undefined/empty-array values to reduce token noise (#261).
    */
   function sanitizeToolResponse(obj: unknown): unknown {
     if (typeof obj === "string") {
@@ -686,15 +687,23 @@ export function createGeminiEngine(
       if (s.length > MAX_FIELD_LENGTH) s = s.slice(0, MAX_FIELD_LENGTH) + "…";
       return s;
     }
-    if (Array.isArray(obj)) return obj.map(sanitizeToolResponse);
+    if (Array.isArray(obj)) {
+      const mapped = obj.map(sanitizeToolResponse);
+      return mapped;
+    }
+    if (obj === null || obj === undefined) return undefined;
     if (obj && typeof obj === "object") {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        out[k] = sanitizeToolResponse(v);
+        if (v === null || v === undefined) continue;
+        const sanitized = sanitizeToolResponse(v);
+        if (Array.isArray(sanitized) && sanitized.length === 0) continue;
+        if (sanitized === undefined) continue;
+        out[k] = sanitized;
       }
       return out;
     }
-    return obj; // numbers, booleans, null
+    return obj; // numbers, booleans
   }
 
   /**

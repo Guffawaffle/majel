@@ -175,29 +175,10 @@ describe("formatProgressionBriefBlock", () => {
     expect(block).not.toContain("Gaps:");
   });
 
-  it("renders gaps line for opsLevelIsDefault", () => {
-    const block = formatProgressionBriefBlock(fullCtx({
-      dataQuality: { hasBuildingData: true, hasResearchData: true, hasInventoryData: true, hasFactionData: true, opsLevelIsDefault: true },
-    }));
-    expect(block).toContain("Gaps: ops level is default");
-  });
-
-  it("renders multiple gaps separated by comma", () => {
-    const block = formatProgressionBriefBlock(fullCtx({
-      dataQuality: { hasBuildingData: false, hasResearchData: false, hasInventoryData: true, hasFactionData: true, opsLevelIsDefault: false },
-    }));
-    expect(block).toContain("Gaps: no building data, no research synced");
-  });
-
-  it("renders all five gap phrases when everything is missing", () => {
+  it("omits gaps line (removed in #261 — model discovers data availability via tools)", () => {
     const block = formatProgressionBriefBlock(fullCtx({
       dataQuality: { hasBuildingData: false, hasResearchData: false, hasInventoryData: false, hasFactionData: false, opsLevelIsDefault: true },
     }));
-    expect(block).toContain("Gaps:");
-    expect(block).toContain("ops level is default");
-    expect(block).toContain("no building data");
-    expect(block).toContain("no research synced");
-    expect(block).toContain("no inventory synced");
-    expect(block).toContain("no faction data");
+    expect(block).not.toContain("Gaps:");
   });
 });

@@ -169,17 +169,6 @@ export function formatProgressionBriefBlock(ctx: ProgressionContextV1): string {
     lines.push(`Next unlock: Ops ${ctx.nextOpsBoundary.level} \u2014 ${ctx.nextOpsBoundary.buildingCount} buildings`);
   }
 
-  // Gaps line — only rendered when at least one data quality flag indicates missing data
-  const gaps: string[] = [];
-  if (ctx.dataQuality.opsLevelIsDefault) gaps.push("ops level is default");
-  if (!ctx.dataQuality.hasBuildingData) gaps.push("no building data");
-  if (!ctx.dataQuality.hasResearchData) gaps.push("no research synced");
-  if (!ctx.dataQuality.hasInventoryData) gaps.push("no inventory synced");
-  if (!ctx.dataQuality.hasFactionData) gaps.push("no faction data");
-  if (gaps.length > 0) {
-    lines.push(`Gaps: ${gaps.join(", ")}`);
-  }
-
   return `[PROGRESSION BRIEF]\n${lines.join("\n")}\n[END PROGRESSION BRIEF]`;
 }
 
@@ -208,16 +197,9 @@ export async function readIntentConfigForUser(
   };
 }
 
-/** Format an IntentConfig as a labeled context block for per-message injection (#90). */
+/** Format an IntentConfig as a compact single-line block for per-message injection (#90, #261). */
 export function formatIntentConfigBlock(config: IntentConfig): string {
-  return `[INTENT CONFIG]
-humor: ${config.humor}
-lore: ${config.lore}
-verbosity: ${config.verbosity}
-confirmation: ${config.confirmation}
-proactive: ${config.proactive}
-formality: ${config.formality}
-[END INTENT CONFIG]`;
+  return `Intent: [H${config.humor} L${config.lore} V${config.verbosity} C${config.confirmation} P${config.proactive} F${config.formality}]`;
 }
 
 /**

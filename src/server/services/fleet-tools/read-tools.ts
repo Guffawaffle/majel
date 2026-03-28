@@ -21,7 +21,7 @@ export { analyzeBattleLog, suggestCounter } from "./read-tools-battle-tools.js";
 export { suggestTargets } from "./read-tools-target-suggestions.js";
 
 // ── Catalog ─────────────────────────────────────────────────
-export { getFleetOverview, searchOfficers, searchShips, getOfficerDetail, getShipDetail } from "./read-tools-catalog.js";
+export { getFleetOverview, searchOfficers, searchShips, getOfficerDetail, getOfficersDetail, getShipDetail, getShipsDetail } from "./read-tools-catalog.js";
 
 // ── Dock / Fleet ────────────────────────────────────────────
 export { listDocks, getOfficerConflicts, analyzeFleet } from "./read-tools-dock.js";

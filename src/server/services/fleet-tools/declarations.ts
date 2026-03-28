@@ -134,6 +134,24 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "get_officers_detail",
+    description:
+      "Get full details for multiple officers in a single call. Returns an object keyed by officer_id, " +
+      "each with reference data + overlay. Use this instead of multiple get_officer_detail calls " +
+      "when comparing bridge crews, evaluating synergies, or analyzing multiple officers at once.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        officer_ids: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Array of officer reference IDs to look up (max 10)",
+        },
+      },
+      required: ["officer_ids"],
+    },
+  },
+  {
     name: "get_ship_detail",
     description:
       "Get full details for a specific ship: reference data (hull type, class, grade, faction, rarity, " +
@@ -149,6 +167,24 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ["ship_id"],
+    },
+  },
+  {
+    name: "get_ships_detail",
+    description:
+      "Get full details for multiple ships in a single call. Returns an object keyed by ship_id, " +
+      "each with reference data + overlay. Use this instead of multiple get_ship_detail calls " +
+      "when comparing ships, evaluating fleet composition, or analyzing multiple builds.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ship_ids: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Array of ship reference IDs to look up (max 10)",
+        },
+      },
+      required: ["ship_ids"],
     },
   },
   {
