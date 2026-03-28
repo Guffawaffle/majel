@@ -5,9 +5,6 @@ FROM node:22-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ && rm -rf /var/lib/apt/lists/*
 
-# Use latest npm to avoid deprecation warnings
-RUN npm install -g npm@11
-
 WORKDIR /app
 
 # Install deps first (layer cache)
@@ -29,9 +26,6 @@ FROM node:22-slim AS deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ && rm -rf /var/lib/apt/lists/*
-
-# Use latest npm to avoid deprecation warnings
-RUN npm install -g npm@11
 
 WORKDIR /app
 COPY package.json package-lock.json ./
