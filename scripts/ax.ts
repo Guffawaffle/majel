@@ -61,6 +61,7 @@ import devBoot from "./ax/dev-boot.js";
 import devSeed from "./ax/dev-seed.js";
 import devReset from "./ax/dev-reset.js";
 import devSmoke from "./ax/dev-smoke.js";
+import pmSweep from "./ax/pm-sweep.js";
 import { runCapture } from "./ax/runner.js";
 
 const feedValidate: AxCommand = {
@@ -145,6 +146,7 @@ const COMMANDS: Record<string, AxCommand> = {
   "dev:seed": devSeed,
   "dev:reset": devReset,
   "dev:smoke": devSmoke,
+  "pm:sweep": pmSweep,
   "tmp": tmp,
 };
 
