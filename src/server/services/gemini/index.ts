@@ -21,7 +21,7 @@ import {
   type Content,
 } from "@google/genai";
 import { log } from "../../logger.js";
-import { type MicroRunner, VALIDATION_DISCLAIMER } from "../micro-runner.js";
+import { type MicroRunner, VALIDATION_DISCLAIMER, extractConversationalAnswer } from "../micro-runner.js";
 import {
   type ToolEnv,
   type ToolContextFactory,
@@ -1148,6 +1148,9 @@ export function createGeminiEngine(
 
         microRunner.finalize(receipt);
 
+        // Unwrap accidental JSON output (model sometimes wraps answer in outputSchema structure)
+        responseText = extractConversationalAnswer(responseText);
+
         // Only record non-empty responses into session history to avoid poisoning the context
         if (responseText) {
           await recordTurnAndTrim(session, message, responseText, effectiveUserId);
@@ -1227,6 +1230,9 @@ export function createGeminiEngine(
           }
         }
       }
+
+      // Unwrap accidental JSON output (model sometimes wraps answer in outputSchema structure)
+      responseText = extractConversationalAnswer(responseText);
 
       // Only record non-empty responses into session history to avoid poisoning the context
       if (responseText) {

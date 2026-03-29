@@ -42,6 +42,7 @@ import { createReceiptStoreFactory } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
 import { createReferenceStore } from "./stores/reference-store.js";
 import {
+  getCdnVersion,
   syncCdnShips,
   syncCdnOfficers,
   syncCdnResearch,
@@ -436,27 +437,36 @@ async function boot(): Promise<void> {
           purgedShips: purged.ships, purgedOfficers: purged.officers,
         }, "reference store online");
 
-        // CDN sync (chained — depends on referenceStore being ready)
-        const needsSync = refCounts.officers === 0 || refCounts.ships === 0 ||
-          refCounts.research === 0 || refCounts.buildings === 0 ||
-          refCounts.hostiles === 0 || refCounts.consumables === 0 ||
-          refCounts.systems === 0;
-        if (!needsSync) return;
-        log.boot.info("empty reference tables detected — running CDN snapshot sync");
+        // CDN sync — version-gated idempotent upserts (#283)
+        const cdnVersion = await getCdnVersion();
+        if (!cdnVersion) {
+          log.boot.info("no CDN snapshot found — skipping reference sync");
+          return;
+        }
+        const lastSynced = await state.settingsStore!.get("system.cdnSyncVersion");
+        if (lastSynced === cdnVersion) {
+          log.boot.info({ version: cdnVersion }, "CDN snapshot unchanged — skipping sync");
+          return;
+        }
+        log.boot.info({ cdnVersion, lastSynced: lastSynced || null }, "CDN snapshot changed — running sync");
         const syncResults = await Promise.allSettled([
-          refCounts.officers === 0 ? syncCdnOfficers(state.referenceStore) : null,
-          refCounts.ships === 0 ? syncCdnShips(state.referenceStore) : null,
-          refCounts.research === 0 ? syncCdnResearch(state.referenceStore) : null,
-          refCounts.buildings === 0 ? syncCdnBuildings(state.referenceStore) : null,
-          refCounts.hostiles === 0 ? syncCdnHostiles(state.referenceStore) : null,
-          refCounts.consumables === 0 ? syncCdnConsumables(state.referenceStore) : null,
-          refCounts.systems === 0 ? syncCdnSystems(state.referenceStore) : null,
-        ].filter(Boolean) as Promise<unknown>[]);
+          syncCdnOfficers(state.referenceStore),
+          syncCdnShips(state.referenceStore),
+          syncCdnResearch(state.referenceStore),
+          syncCdnBuildings(state.referenceStore),
+          syncCdnHostiles(state.referenceStore),
+          syncCdnConsumables(state.referenceStore),
+          syncCdnSystems(state.referenceStore),
+        ]);
         const failed = syncResults.filter((r) => r.status === "rejected");
         if (failed.length > 0) {
           for (const f of failed) {
             log.boot.error({ err: (f as PromiseRejectedResult).reason }, "CDN sync failed for one entity type");
           }
+          log.boot.warn("CDN sync had failures — version NOT recorded (will retry next boot)");
+        } else {
+          await state.settingsStore!.set("system.cdnSyncVersion", cdnVersion);
+          log.boot.info({ version: cdnVersion }, "CDN sync version recorded");
         }
         const postSyncCounts = await state.referenceStore.counts();
         log.boot.info(postSyncCounts, "CDN snapshot sync complete");

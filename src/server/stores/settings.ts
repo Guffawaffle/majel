@@ -261,6 +261,16 @@ export const SETTINGS_SCHEMA: SettingDef[] = [
     type: "json",
     default: "{}",
   },
+  // ── Sync ────────────────────────────────────────────────────
+  {
+    key: "system.cdnSyncVersion",
+    category: "system",
+    label: "CDN Sync Version",
+    description: "Last-synced CDN snapshot version UUID. Managed automatically by boot — do not edit.",
+    type: "string",
+    default: "",
+  },
+
   // ── Budget (ADR-048 Phase B) ────────────────────────────────
   {
     key: "budget.ensign",

@@ -90,6 +90,8 @@ describe("getCdnVersion", () => {
     if (version != null) {
       expect(typeof version).toBe("string");
       expect(version.length).toBeGreaterThan(0);
+      // Must be a valid UUID (validation added for untrusted content safety)
+      expect(version).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     } else {
       expect(version).toBeNull();
     }

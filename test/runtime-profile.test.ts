@@ -251,6 +251,18 @@ describe("validateProfile", () => {
     })).toThrow("devEndpoints capability is true in cloud_prod");
   });
 
+  it("fails when cloud_prod has bootstrapAdmiral enabled (auth bypass in prod)", () => {
+    const tampered: ProfileContract = {
+      invariants: { ...PROFILE_CONTRACTS.cloud_prod.invariants },
+      capabilities: { ...PROFILE_CONTRACTS.cloud_prod.capabilities, bootstrapAdmiral: true },
+    };
+    expect(() => validateProfile("cloud_prod", tampered, {
+      DATABASE_URL: "postgres://x@localhost/x",
+      GEMINI_API_KEY: "key",
+      MAJEL_ADMIN_TOKEN: "tok",
+    })).toThrow("bootstrapAdmiral capability is true in cloud_prod");
+  });
+
   it("passes when cloud_prod auth uses MAJEL_INVITE_SECRET instead of token", () => {
     const contract = PROFILE_CONTRACTS.cloud_prod;
     expect(() => validateProfile("cloud_prod", contract, {

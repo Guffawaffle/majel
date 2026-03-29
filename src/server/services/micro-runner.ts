@@ -404,6 +404,10 @@ export function validateResponse(
 
 /**
  * Build the repair prompt when validation fails.
+ *
+ * IMPORTANT: This prompt must NOT name fields that look like JSON keys (e.g.
+ * "answer", "factsUsed"). Gemini will memorize them in session history and
+ * may start outputting raw JSON on subsequent turns.
  */
 export function buildRepairPrompt(
   originalMessage: string,
@@ -411,20 +415,50 @@ export function buildRepairPrompt(
   contract: TaskContract,
 ): string {
   const violationList = violations.map((v) => `- ${v}`).join("\n");
-  const requiredFields = Object.entries(contract.outputSchema)
-    .filter(([, required]) => required)
-    .map(([field]) => field)
-    .join(", ");
+
+  // Translate outputSchema flags into natural-language guidance
+  const considerations: string[] = [];
+  if (contract.outputSchema.factsUsed) considerations.push("cite which data sources you used");
+  if (contract.outputSchema.assumptions) considerations.push("note any assumptions you made");
+  if (contract.outputSchema.unknowns) considerations.push("acknowledge what you don't know");
+  if (contract.outputSchema.confidence) considerations.push("indicate your confidence level");
+  const considerationBlock = considerations.length > 0
+    ? `\nAlso remember to: ${considerations.join("; ")}.`
+    : "";
 
   return `Your previous response had some issues:
 ${violationList}
 
-Please re-answer the original question, following these rules:
-${contract.rules.map((r) => `- ${r}`).join("\n")}
+Please re-answer the original question conversationally, following these rules:
+${contract.rules.map((r) => `- ${r}`).join("\n")}${considerationBlock}
 
-Required output considerations: ${requiredFields}
+Do NOT output JSON. Respond in natural language.
 
 Original question: ${originalMessage}`;
+}
+
+/**
+ * Defensive extraction for when the model accidentally wraps its response
+ * in the JSON outputSchema structure (e.g. `{"answer": "...", "factsUsed": [...]}`).
+ *
+ * Called AFTER tool calls are resolved and the model has returned its final text.
+ * Only extracts when the response is valid JSON with a string `answer` field.
+ * Non-string answer values (number, array, null) are left unchanged — the full
+ * response is returned as-is for those cases.
+ *
+ * The repair prompt explicitly forbids JSON output, so this function is a
+ * safety net for LLM non-compliance, not a regular extraction path.
+ */
+export function extractConversationalAnswer(response: string): string {
+  const trimmed = response.trim();
+  if (!trimmed.startsWith("{")) return response;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed === "object" && parsed !== null && typeof parsed.answer === "string") {
+      return parsed.answer;
+    }
+  } catch { /* not JSON — return as-is */ }
+  return response;
 }
 
 /**

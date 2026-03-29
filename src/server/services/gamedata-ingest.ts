@@ -48,7 +48,14 @@ export async function getCdnVersion(): Promise<string | null> {
   try {
     await access(versionPath);
     const raw = await readFile(versionPath, "utf-8");
-    return raw.trim() || null;
+    const version = raw.trim();
+    if (!version) return null;
+    // Validate UUID format — reject untrusted/malformed content
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(version)) {
+      log.fleet.warn({ version: version.slice(0, 80) }, "CDN version.txt is not a valid UUID — ignoring");
+      return null;
+    }
+    return version;
   } catch {
     return null;
   }

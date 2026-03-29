@@ -15,6 +15,7 @@ import {
   validateResponse,
   buildRepairPrompt,
   createMicroRunner,
+  extractConversationalAnswer,
   VALIDATION_DISCLAIMER,
   type ContextSources,
   type TaskContract,
@@ -418,7 +419,63 @@ describe("buildRepairPrompt", () => {
     expect(prompt).toContain("Numeric claims detected");
     expect(prompt).toContain("cite source tier for all factual claims");
     expect(prompt).toContain("no numeric claims unless cited from T1/T2");
-    expect(prompt).toContain("answer, factsUsed, unknowns");
+    expect(prompt).toContain("cite which data sources you used");
+    expect(prompt).toContain("acknowledge what you don\u0027t know");
+    expect(prompt).toContain("Do NOT output JSON");
+    // Must NOT contain raw field names that look like JSON keys
+    expect(prompt).not.toContain("answer, factsUsed");
+  });
+});
+
+// ─── extractConversationalAnswer ────────────────────────────
+
+describe("extractConversationalAnswer", () => {
+  it("returns plain text unchanged", () => {
+    expect(extractConversationalAnswer("Hello Admiral!")).toBe("Hello Admiral!");
+  });
+
+  it("extracts answer from accidental JSON output", () => {
+    const json = JSON.stringify({
+      answer: "Here is your fleet analysis.",
+      factsUsed: ["T1 roster"],
+      unknowns: ["exact costs"],
+    });
+    expect(extractConversationalAnswer(json)).toBe("Here is your fleet analysis.");
+  });
+
+  it("returns non-answer JSON objects unchanged", () => {
+    const json = JSON.stringify({ status: "ok", count: 5 });
+    expect(extractConversationalAnswer(json)).toBe(json);
+  });
+
+  it("returns malformed JSON unchanged", () => {
+    const broken = "{answer: broken}";
+    expect(extractConversationalAnswer(broken)).toBe(broken);
+  });
+
+  it("handles whitespace around JSON", () => {
+    const json = `  {"answer": "Trimmed result."}  `;
+    expect(extractConversationalAnswer(json)).toBe("Trimmed result.");
+  });
+
+  it("returns unchanged when answer is a number", () => {
+    const json = JSON.stringify({ answer: 42 });
+    expect(extractConversationalAnswer(json)).toBe(json);
+  });
+
+  it("returns unchanged when answer is null", () => {
+    const json = JSON.stringify({ answer: null });
+    expect(extractConversationalAnswer(json)).toBe(json);
+  });
+
+  it("returns unchanged when answer is an array", () => {
+    const json = JSON.stringify({ answer: ["a", "b"] });
+    expect(extractConversationalAnswer(json)).toBe(json);
+  });
+
+  it("extracts empty string answer (type-safe)", () => {
+    const json = JSON.stringify({ answer: "" });
+    expect(extractConversationalAnswer(json)).toBe("");
   });
 });
 

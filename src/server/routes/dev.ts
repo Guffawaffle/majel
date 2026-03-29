@@ -15,6 +15,16 @@ import type { AppState } from "../app-context.js";
 import { sendOk, sendFail, ErrorCode } from "../envelope.js";
 import { createSafeRouter } from "../safe-router.js";
 import { log } from "../logger.js";
+import {
+  getCdnVersion,
+  syncCdnShips,
+  syncCdnOfficers,
+  syncCdnResearch,
+  syncCdnBuildings,
+  syncCdnHostiles,
+  syncCdnConsumables,
+  syncCdnSystems,
+} from "../services/gamedata-ingest.js";
 
 export function createDevRoutes(appState: AppState): Router {
   const router = createSafeRouter();
@@ -91,31 +101,56 @@ export function createDevRoutes(appState: AppState): Router {
   /**
    * POST /api/dev/seed — Seed reference catalog (idempotent)
    *
-   * This triggers CDN sync for empty reference tables.
-   * Safe to call multiple times — only syncs what's missing.
+   * Version-gated CDN sync. Uses ?force=true to bypass version check.
+   * Safe to call multiple times — all syncs use ON CONFLICT upserts.
    */
-  router.post("/api/dev/seed", async (_req: Request, res: Response) => {
+  router.post("/api/dev/seed", async (req: Request, res: Response) => {
     if (!appState.config.contract.capabilities.devSeed) {
       return sendFail(res, ErrorCode.FORBIDDEN, "Dev seed not available in this profile", 403);
     }
     if (!appState.referenceStore) {
       return sendFail(res, ErrorCode.REFERENCE_STORE_NOT_AVAILABLE, "Reference store not available", 503);
     }
+    if (!appState.settingsStore) {
+      return sendFail(res, ErrorCode.INTERNAL_ERROR, "Settings store not available", 503);
+    }
 
-    const counts = await appState.referenceStore.counts();
-    const empty: string[] = [];
-    for (const [key, value] of Object.entries(counts)) {
-      if (typeof value === "number" && value === 0) {
-        empty.push(key);
+    const force = req.query.force === "true";
+    const cdnVersion = await getCdnVersion();
+    if (!cdnVersion) {
+      return sendOk(res, { seeded: false, message: "No CDN snapshot found" });
+    }
+
+    const lastSynced = await appState.settingsStore.get("system.cdnSyncVersion");
+    if (!force && lastSynced === cdnVersion) {
+      return sendOk(res, { seeded: false, message: "CDN version unchanged", version: cdnVersion });
+    }
+
+    log.boot.info({ cdnVersion, lastSynced: lastSynced || null, force }, "dev:seed — running CDN sync");
+    const syncResults = await Promise.allSettled([
+      syncCdnOfficers(appState.referenceStore),
+      syncCdnShips(appState.referenceStore),
+      syncCdnResearch(appState.referenceStore),
+      syncCdnBuildings(appState.referenceStore),
+      syncCdnHostiles(appState.referenceStore),
+      syncCdnConsumables(appState.referenceStore),
+      syncCdnSystems(appState.referenceStore),
+    ]);
+    const failed = syncResults.filter((r) => r.status === "rejected");
+    if (failed.length > 0) {
+      for (const f of failed) {
+        log.boot.error({ err: (f as PromiseRejectedResult).reason }, "dev:seed CDN sync failed");
       }
+    } else {
+      await appState.settingsStore.set("system.cdnSyncVersion", cdnVersion);
     }
-
-    if (empty.length === 0) {
-      return sendOk(res, { seeded: false, message: "All reference tables already populated", counts });
-    }
-
-    log.boot.info({ emptyTables: empty }, "dev:seed — triggering CDN sync for empty tables");
-    sendOk(res, { seeded: true, emptyTables: empty, message: "CDN sync triggered for empty reference tables" });
+    const counts = await appState.referenceStore.counts();
+    sendOk(res, {
+      seeded: true,
+      version: cdnVersion,
+      failures: failed.length,
+      counts,
+    });
   });
 
   /**

@@ -179,6 +179,10 @@ export function validateProfile(
     errors.push("FATAL: devEndpoints capability is true in cloud_prod — this is a configuration error");
   }
 
+  if (profile === "cloud_prod" && contract.capabilities.bootstrapAdmiral) {
+    errors.push("FATAL: bootstrapAdmiral capability is true in cloud_prod — auth bypass must not be enabled in production");
+  }
+
   if (env.MAJEL_PROFILE === "dev_local" && env.NODE_ENV === "production") {
     errors.push("MAJEL_PROFILE=dev_local conflicts with NODE_ENV=production");
   }

@@ -18,17 +18,61 @@
 
 ## Current PM Focus
 
-- **Recently shipped:** ADR-050 — Runtime Profiles (#251, 5 slices). ADR-049 — Chat/Sync Boundary (#257, 3 slices). All closed.
+- **Active sprint:** Codebase Health + Research Path (#282, 5 slices, 8 issues). Error logging sweep, CI lint cleanup, type safety, N+1 query fix, `get_research_path` tool.
+- **Recently shipped:** Aria Refit (#261, 3 slices). ADR-050 — Runtime Profiles (#251, 5 slices). ADR-049 — Chat/Sync Boundary (#257, 3 slices). All closed.
 - **Paused programs:** ADR-048 — Token Budgets (#235), Phase A done, Phases B–D paused.
-- **Open bugs:** #250 — Chat architecture hardening (7 sub-items).
-- **Design ready:** ADR-051 — Instance Modeling (designed in #260, not yet implemented).
+- **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
+- **Design ready:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
+- **Aria capability tools filed:** #278 (research path, 85%), #276 (scrap yields, 70%), #280 (armada fleet, 40%), #279 (officer sources, 10%), #277 (capability_gaps schema).
 - **Previously completed:** ADR-046 (LCARS Design System). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234). ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
-- **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing. Revision `majel-00118-ghp`.
-- **Test count:** 2454 tests.
-- **Open issues:** 1 (#250).
+- **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing. Revision `majel-00119-8tg`.
+- **Test count:** 2450 tests.
+- **Open issues:** 18 (#250, #265–#282).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
+
+---
+
+## Active Sprint — Codebase Health + Research Path (#282)
+
+**Program umbrella:** #282
+**Design date:** 2026-03-28
+
+### Sprint Objective
+
+Address accumulated tech debt from the quality sweep, then ship one high-value Aria capability tool. Focus: observability, type safety, query performance, and research pathing.
+
+### Sequenced Implementation Plan
+
+| Slice | Issues | Title | Status |
+|-------|--------|-------|--------|
+| 1 | #270, #266, #265, #281 | Error logging sweep | [ ] |
+| 2 | #272 | CI lint cleanup | [ ] |
+| 3 | #275, #267 | Type safety quick fixes | [ ] |
+| 4 | #274 | N+1 query fix — crew-store-helpers | [ ] |
+| 5 | #278 | `get_research_path` tool | [ ] |
+
+### Definition of Done
+
+- [ ] All bare catch blocks in `gamedata-ingest.ts` have structured logging
+- [ ] Zero CI lint warnings
+- [ ] No `as unknown as` double-casts in server teardown
+- [ ] Receipt store changeset has typed interface
+- [ ] `resolveLoadouts()` batch function replaces N+1 pattern
+- [ ] `get_research_path` tool returns prerequisite chain + costs
+- [ ] `npm run ax -- ci` passes at every slice boundary
+
+---
+
+## Completed — Aria Refit (#261)
+
+**Shipped:** 2026-03-28
+
+Quick refit from production feedback. Three slices:
+- [x] #263 — Context gating: no proactive T2 injection, `[do not repeat]` tag removed
+- [x] #264 — Token efficiency: intent config compacted, `sanitizeToolResponse()` strips empty fields
+- [x] #262 — Bulk tools: `get_officers_detail`, `get_ships_detail` (max 10 IDs)
 
 ---
 
