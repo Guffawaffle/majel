@@ -61,6 +61,7 @@ import devBoot from "./ax/dev-boot.js";
 import devSeed from "./ax/dev-seed.js";
 import devReset from "./ax/dev-reset.js";
 import devSmoke from "./ax/dev-smoke.js";
+import devLive from "./ax/dev-live.js";
 import pmSweep from "./ax/pm-sweep.js";
 import { runCapture } from "./ax/runner.js";
 
@@ -146,6 +147,7 @@ const COMMANDS: Record<string, AxCommand> = {
   "dev:seed": devSeed,
   "dev:reset": devReset,
   "dev:smoke": devSmoke,
+  "dev:live": devLive,
   "pm:sweep": pmSweep,
   "tmp": tmp,
 };
