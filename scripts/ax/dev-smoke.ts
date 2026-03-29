@@ -44,11 +44,14 @@ const command: AxCommand = {
     const port = process.env.MAJEL_PORT ?? "3000";
     const base = `http://localhost:${port}`;
     const checks: SmokeCheck[] = [];
+    let geminiStatus = "unknown";
+    let devStateData: Record<string, unknown> | null = null;
 
     // ─── 1. Health check ──────────────────────────────────
     try {
       const { ok, status, body } = await httpGet(`${base}/api/health`);
       const data = (body as { data?: Record<string, unknown> }).data ?? body;
+      geminiStatus = typeof data.gemini === "string" ? data.gemini : "unknown";
       checks.push({
         name: "health",
         passed: ok,
@@ -68,6 +71,7 @@ const command: AxCommand = {
     {
       const { ok, status, body } = await httpGet(`${base}/api/dev/state`);
       const data = (body as { data?: Record<string, unknown> }).data ?? body;
+      devStateData = ok ? data : null;
       checks.push({
         name: "dev:state",
         passed: ok,
@@ -123,6 +127,42 @@ const command: AxCommand = {
         detail: { status, hasAnswer: !!data.answer, providerOff: status === 503 },
         ...(!passed ? { error: `Chat returned ${status}` } : {}),
       });
+
+      // ─── 5b. Chat shape validation (real provider only) ──
+      if (geminiStatus === "connected" && status === 200) {
+        const answerIsString = typeof data.answer === "string" && data.answer.length > 0;
+        const runIdIsString = typeof data.runId === "string" && data.runId.length > 0;
+        const shapePassed = answerIsString && runIdIsString;
+        checks.push({
+          name: "chat:shape",
+          passed: shapePassed,
+          detail: { answerType: typeof data.answer, answerLength: answerIsString ? (data.answer as string).length : 0, runIdType: typeof data.runId },
+          ...(!shapePassed ? { error: `Response shape invalid: answer=${typeof data.answer}, runId=${typeof data.runId}` } : {}),
+        });
+      }
+    }
+
+    // ─── 6. Effect seed data ──────────────────────────────
+    {
+      if (devStateData) {
+        const stores = devStateData.stores as Record<string, unknown> | undefined;
+        if (stores) {
+          const effectCounts = stores.effect as Record<string, number> | undefined;
+          const hasEffects = effectCounts && Object.values(effectCounts).some((v) => typeof v === "number" && v > 0);
+          checks.push({
+            name: "effect:seed",
+            passed: !!hasEffects,
+            detail: { effectCounts },
+            ...(!hasEffects ? { error: "No effect data loaded — run dev:seed or check CDN sync" } : {}),
+          });
+        }
+      } else {
+        checks.push({
+          name: "effect:seed",
+          passed: false,
+          error: "Dev state endpoint failed — cannot verify effect data",
+        });
+      }
     }
 
     // ─── Summary ──────────────────────────────────────────
