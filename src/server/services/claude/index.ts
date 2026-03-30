@@ -533,7 +533,7 @@ export function createClaudeEngine(
         // ── MicroRunner pipeline (optional) ──────────────────
         if (microRunner) {
           const startTime = Date.now();
-          const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message);
+          const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message, effectiveUserId);
 
           const augmentedContent = buildUserContent(augmentedMessage, image);
           session.messages.push({ role: "user", content: augmentedContent });
@@ -556,7 +556,7 @@ export function createClaudeEngine(
           // Validate response against contract
           let finalText = responseText;
           const validation = await microRunner.validate(
-            finalText, contract, gatedContext, sessionKey, startTime, message,
+            finalText, contract, gatedContext, sessionKey, startTime, message, effectiveUserId,
           );
           const receipt = validation.receipt;
 
@@ -580,7 +580,7 @@ export function createClaudeEngine(
             receipt.repairAttempted = true;
 
             const revalidation = await microRunner.validate(
-              finalText, contract, gatedContext, sessionKey, startTime, message,
+              finalText, contract, gatedContext, sessionKey, startTime, message, effectiveUserId,
             );
             receipt.validationResult = revalidation.receipt.validationResult === "pass" ? "repaired" : "fail";
             receipt.validationDetails = revalidation.receipt.validationDetails;

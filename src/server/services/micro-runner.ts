@@ -483,8 +483,9 @@ export interface MicroRunner {
    *
    * Returns the compiled contract, gated context, and an augmented message
    * ready to send to the model.
+   * When userId is provided, behavioral rules are scoped to that user.
    */
-  prepare(message: string): Promise<{
+  prepare(message: string, userId?: string): Promise<{
     contract: TaskContract;
     gatedContext: GatedContext;
     augmentedMessage: string;
@@ -501,6 +502,7 @@ export interface MicroRunner {
     sessionId: string,
     startTime: number,
     originalMessage?: string,
+    userId?: string,
   ): Promise<{
     validatedResponse: string;
     needsRepair: boolean;
@@ -521,18 +523,53 @@ export interface MicroRunner {
  * The runner doesn't own the model — it prepares context and validates output.
  * The caller (gemini.ts engine) is responsible for the actual Gemini API call.
  */
+/** Maximum length for behavioral rule text injected into prompts */
+const MAX_RULE_TEXT_LENGTH = 200;
+
+/** Patterns that indicate prompt-injection attempts in rule text */
+const RULE_INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?(previous\s+)?instructions/gi,
+  /you are now/gi,
+  /system\s+(prompt|message)/gi,
+  /disregard\s+(all\s+)?(prior\s+|previous\s+)?/gi,
+];
+
+/** Valid severity values for behavioral rules */
+const VALID_SEVERITIES = new Set(["must", "should", "style"]);
+
+/**
+ * Sanitize behavioral rule text before injecting into the prompt.
+ * Filters prompt-injection patterns and enforces length limits.
+ */
+function sanitizeRuleText(text: string): string {
+  let sanitized = text;
+  for (const pattern of RULE_INJECTION_PATTERNS) {
+    // Reset lastIndex for global regexes reused across calls
+    pattern.lastIndex = 0;
+    sanitized = sanitized.replace(pattern, "[filtered]");
+  }
+  if (sanitized.length > MAX_RULE_TEXT_LENGTH) {
+    sanitized = sanitized.slice(0, MAX_RULE_TEXT_LENGTH);
+  }
+  return sanitized;
+}
+
 export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
   return {
-    async prepare(message: string) {
+    async prepare(message: string, userId?: string) {
       const contract = compileTask(message, config.contextSources, config.knownOfficerNames);
 
       // Phase 2: Inject active behavioral rules into the contract
       if (config.behaviorStore) {
-        const activeRules = await config.behaviorStore.getRules(contract.taskType);
+        const activeRules = await config.behaviorStore.getRules(contract.taskType, userId);
         for (const rule of activeRules) {
+          // Validate severity — reject unknown values
+          if (!VALID_SEVERITIES.has(rule.severity)) continue;
+          // Sanitize rule text to prevent prompt injection via DB-stored rules
+          const sanitizedText = sanitizeRuleText(rule.text);
           // Prepend severity prefix for the model
           const prefix = rule.severity === "must" ? "MUST:" : rule.severity === "should" ? "SHOULD:" : "STYLE:";
-          contract.rules.push(`${prefix} ${rule.text}`);
+          contract.rules.push(`${prefix} ${sanitizedText}`);
         }
       }
 
@@ -549,13 +586,14 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       sessionId: string,
       startTime: number,
       originalMessage?: string,
+      userId?: string,
     ) {
       const result = validateResponse(response, contract, gatedContext);
       const durationMs = Date.now() - startTime;
 
       // Collect which behavioral rules contributed
       const behavioralRulesApplied = config.behaviorStore
-        ? (await config.behaviorStore.getRules(contract.taskType)).map((r) => r.id)
+        ? (await config.behaviorStore.getRules(contract.taskType, userId)).map((r) => r.id)
         : [];
 
       const receipt: MicroRunnerReceipt = {

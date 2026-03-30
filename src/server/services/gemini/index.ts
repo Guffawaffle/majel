@@ -1043,7 +1043,7 @@ export function createGeminiEngine(
       // ── MicroRunner pipeline (optional) ──────────────────
       if (microRunner) {
         const startTime = Date.now();
-        const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message);
+        const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message, effectiveUserId);
 
         // Send augmented message — bulk-gated mode strips mutation tools (ADR-049),
         // toolless mode uses a temporary chat without tool declarations
@@ -1115,7 +1115,7 @@ export function createGeminiEngine(
 
         // Validate response against contract
         const validation = await microRunner.validate(
-          responseText, contract, gatedContext, sessionKey, startTime, message,
+          responseText, contract, gatedContext, sessionKey, startTime, message, effectiveUserId,
         );
         const receipt = validation.receipt;
 
@@ -1134,7 +1134,7 @@ export function createGeminiEngine(
 
           // Re-validate the repaired response
           const revalidation = await microRunner.validate(
-            responseText, contract, gatedContext, sessionKey, startTime, message,
+            responseText, contract, gatedContext, sessionKey, startTime, message, effectiveUserId,
           );
           receipt.validationResult = revalidation.receipt.validationResult === "pass" ? "repaired" : "fail";
           receipt.validationDetails = revalidation.receipt.validationDetails;

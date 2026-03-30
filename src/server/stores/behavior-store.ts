@@ -29,7 +29,7 @@ export interface BehaviorRule {
   /** Human-readable directive */
   text: string;
   /** When this rule applies (null taskType = all tasks) */
-  scope: { taskType?: TaskType };
+  scope: { taskType?: TaskType; userId?: string };
   /** Success count (Beta-Binomial α). Starts at 2 (skeptical prior). */
   alpha: number;
   /** Failure count (Beta-Binomial β). Starts at 5 (skeptical prior). */
@@ -55,12 +55,16 @@ export const MIN_CONFIDENCE = 0.5;
 export const PRIOR_ALPHA = 2;
 export const PRIOR_BETA = 5;
 
+/** Maximum rules per user to prevent volume-based pollution attacks */
+export const MAX_RULES_PER_USER = 50;
+
 export interface BehaviorStore {
   /**
    * Retrieve active rules matching a task type, sorted by confidence descending.
    * Only returns rules that meet the activation threshold.
+   * When userId is provided, returns user-scoped rules + global (null userId) fallback.
    */
-  getRules(taskType: TaskType): Promise<BehaviorRule[]>;
+  getRules(taskType: TaskType, userId?: string): Promise<BehaviorRule[]>;
 
   /**
    * Record feedback: the Admiral corrected Aria → adjust rule confidence.
@@ -70,12 +74,14 @@ export interface BehaviorStore {
 
   /**
    * Create a new behavioral rule with the skeptical prior.
+   * When userId is provided, the rule is scoped to that user.
    */
   createRule(
     id: string,
     text: string,
     severity: RuleSeverity,
     taskType?: TaskType,
+    userId?: string,
   ): Promise<BehaviorRule>;
 
   /**
@@ -117,6 +123,7 @@ const SCHEMA_STATEMENTS = [
     id            TEXT PRIMARY KEY,
     text          TEXT NOT NULL,
     task_type     TEXT,
+    user_id       TEXT,
     alpha         DOUBLE PRECISION NOT NULL DEFAULT ${PRIOR_ALPHA},
     beta          DOUBLE PRECISION NOT NULL DEFAULT ${PRIOR_BETA},
     observation_count INTEGER NOT NULL DEFAULT 0,
@@ -126,22 +133,30 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_behavior_rules_task_type
     ON behavior_rules(task_type)`,
+  // Migration: add user_id column to existing tables
+  `DO $$ BEGIN
+    ALTER TABLE behavior_rules ADD COLUMN IF NOT EXISTS user_id TEXT;
+  EXCEPTION WHEN duplicate_column THEN NULL;
+  END $$`,
+  `CREATE INDEX IF NOT EXISTS idx_behavior_rules_user_id
+    ON behavior_rules(user_id)`,
 ];
 
 // ─── SQL Queries ────────────────────────────────────────────
 
 const SQL = {
   insert: `
-    INSERT INTO behavior_rules (id, text, task_type, alpha, beta, observation_count, severity, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    INSERT INTO behavior_rules (id, text, task_type, user_id, alpha, beta, observation_count, severity, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
   `,
   getById: `SELECT * FROM behavior_rules WHERE id = $1`,
   listAll: `SELECT * FROM behavior_rules ORDER BY (alpha / (alpha + beta)) DESC`,
   getByTaskType: `
     SELECT * FROM behavior_rules
     WHERE (task_type IS NULL OR task_type = $1)
-      AND observation_count >= $2
-      AND (alpha / (alpha + beta)) >= $3
+      AND (user_id IS NULL OR user_id = $2)
+      AND observation_count >= $3
+      AND (alpha / (alpha + beta)) >= $4
     ORDER BY (alpha / (alpha + beta)) DESC
   `,
   update: `
@@ -165,6 +180,10 @@ const SQL = {
     WHERE observation_count >= $1
       AND (alpha / (alpha + beta)) >= $2
   `,
+  countByUser: `
+    SELECT COUNT(*) as count FROM behavior_rules
+    WHERE user_id = $1
+  `,
 };
 
 // ─── Implementation ─────────────────────────────────────────
@@ -182,7 +201,10 @@ export async function createBehaviorStore(adminPool: Pool, runtimePool?: Pool): 
     return {
       id: row.id as string,
       text: row.text as string,
-      scope: { taskType: (row.task_type as TaskType) || undefined },
+      scope: {
+        taskType: (row.task_type as TaskType) || undefined,
+        userId: (row.user_id as string) || undefined,
+      },
       alpha: row.alpha as number,
       beta: row.beta as number,
       observationCount: row.observation_count as number,
@@ -204,8 +226,9 @@ export async function createBehaviorStore(adminPool: Pool, runtimePool?: Pool): 
   // ── Store Implementation ────────────────────────────────
 
   return {
-    async getRules(taskType: TaskType): Promise<BehaviorRule[]> {
-      const result = await pool.query(SQL.getByTaskType, [taskType, MIN_OBSERVATIONS, MIN_CONFIDENCE]);
+    async getRules(taskType: TaskType, userId?: string): Promise<BehaviorRule[]> {
+      const uid = userId || null; // coerce empty string to null (global)
+      const result = await pool.query(SQL.getByTaskType, [taskType, uid, MIN_OBSERVATIONS, MIN_CONFIDENCE]);
       return result.rows.map((row) => rowToRule(row as Record<string, unknown>));
     },
 
@@ -238,12 +261,24 @@ export async function createBehaviorStore(adminPool: Pool, runtimePool?: Pool): 
       text: string,
       severity: RuleSeverity = "should",
       taskType?: TaskType,
+      userId?: string,
     ): Promise<BehaviorRule> {
+      const uid = userId || null; // coerce empty string to null (global)
+
+      // Enforce per-user rule cap to prevent volume-based pollution
+      if (uid) {
+        const countResult = await pool.query(SQL.countByUser, [uid]);
+        const count = Number((countResult.rows[0] as { count: string | number }).count);
+        if (count >= MAX_RULES_PER_USER) {
+          throw new Error(`User ${uid} has reached the maximum of ${MAX_RULES_PER_USER} behavioral rules`);
+        }
+      }
+
       const now = new Date().toISOString();
       const rule: BehaviorRule = {
         id,
         text,
-        scope: { taskType },
+        scope: { taskType, userId: uid || undefined },
         alpha: PRIOR_ALPHA,
         beta: PRIOR_BETA,
         observationCount: 0,
@@ -256,6 +291,7 @@ export async function createBehaviorStore(adminPool: Pool, runtimePool?: Pool): 
           rule.id,
           rule.text,
           rule.scope.taskType ?? null,
+          rule.scope.userId ?? null,
           rule.alpha,
           rule.beta,
           rule.observationCount,
