@@ -302,11 +302,11 @@ export function buildAugmentedMessage(
   userMessage: string,
   gatedContext: GatedContext,
 ): string {
-  if (!gatedContext.contextBlock) return userMessage;
-
-  // Strip prompt-injection markers from user input (ADR-040).
-  // An attacker could inject fake context/config blocks to manipulate the model.
+  // Always sanitize user input to strip injected directive brackets (ADR-040).
+  // Even when no context block is prepended, the user message may contain
+  // fake [REFERENCE], [OVERLAY], [FLEET CONFIG] etc. markers.
   const sanitized = sanitizeForModel(userMessage);
+  if (!gatedContext.contextBlock) return sanitized;
 
   return `${gatedContext.contextBlock}\n\n${sanitized}`;
 }
