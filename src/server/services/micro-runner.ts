@@ -330,6 +330,14 @@ const DIAGNOSTIC_PATTERN = /(?:memory frames?|frame count|connection status|sett
 const PATCH_PATTERN = /(?:patch|update|version)\s+\d+(?:\.\d+)*|updated?\s+(?:on|in|as of)\s+\d{4}/gi;
 
 /**
+ * Roster entity claim pattern: catches "your roster shows Kirk", "your fleet has Enterprise".
+ * Used for entity-existence validation (H5).
+ * Prefix is case-insensitive via [Yy], entity name capture requires initial capital
+ * (proper nouns). Uses matchAll to extract capture group 1 (the entity name).
+ */
+const ROSTER_ENTITY_PREFIX = /(?:[Yy]our roster shows|[Yy]our fleet has|[Yy]our data shows)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)/g;
+
+/**
  * Validate a model response against the task contract.
  *
  * Returns pass/fail with specific violations.
@@ -396,6 +404,17 @@ export function validateResponse(
     }
   }
 
+  // Rule: no entity claims that cite injected data for entities not in context
+  if (contract.requiredTiers.t2_referencePack.length > 0) {
+    const knownLower = new Set(contract.requiredTiers.t2_referencePack.map(n => n.toLowerCase()));
+    for (const match of response.matchAll(ROSTER_ENTITY_PREFIX)) {
+      const entityName = match[1];
+      if (entityName && !knownLower.has(entityName.toLowerCase())) {
+        violations.push(`Entity "${entityName}" cited as injected data but not in context`);
+      }
+    }
+  }
+
   return {
     passed: violations.length === 0,
     violations,
@@ -454,8 +473,19 @@ export function extractConversationalAnswer(response: string): string {
   if (!trimmed.startsWith("{")) return response;
   try {
     const parsed = JSON.parse(trimmed);
-    if (typeof parsed === "object" && parsed !== null && typeof parsed.answer === "string") {
-      return parsed.answer;
+    if (typeof parsed === "object" && parsed !== null) {
+      // Extract wrapped answers: {"answer": "..."}
+      if (typeof parsed.answer === "string") {
+        return parsed.answer;
+      }
+      // Catch tool call JSON leaks: {"toolName": ..., "args": ...}
+      if ("toolName" in parsed || "name" in parsed && "args" in parsed) {
+        return response;
+      }
+      // Catch bare JSON objects > 200 chars (likely data dumps)
+      if (trimmed.length > 200) {
+        return response;
+      }
     }
   } catch { /* not JSON — return as-is */ }
   return response;
@@ -574,6 +604,17 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       }
 
       const gated = gateContext(contract, config.contextSources);
+
+      // Phase 4d: Surface behavioral rules in the augmented message so the
+      // model can follow them during generation, not just post-validation.
+      const behavioralRules = contract.rules.filter(r => /^(?:MUST|SHOULD|STYLE):/.test(r));
+      if (behavioralRules.length > 0) {
+        const rulesBlock = `[BEHAVIORAL RULES]\n${behavioralRules.join("\n")}\n[END BEHAVIORAL RULES]`;
+        gated.contextBlock = gated.contextBlock
+          ? `${gated.contextBlock}\n\n${rulesBlock}`
+          : rulesBlock;
+      }
+
       const augmentedMessage = buildAugmentedMessage(message, gated);
 
       return { contract, gatedContext: gated, augmentedMessage };

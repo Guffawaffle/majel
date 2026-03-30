@@ -411,6 +411,37 @@ describe("OutputValidator (validateResponse)", () => {
       expect(result.violations.filter((v) => v.includes("no source attribution")).length).toBe(0);
     });
   });
+
+  describe("entity existence check (H5)", () => {
+    it("flags entity cited as injected data but not in context", () => {
+      const result = validateResponse(
+        "Your roster shows Spock at level 45 with strong science abilities.",
+        refLookupContract, // t2_referencePack: ["Khan"] — Spock is NOT in context
+        emptyGated,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.violations.some((v) => v.includes("Spock") && v.includes("not in context"))).toBe(true);
+    });
+
+    it("passes entity cited as injected data when it IS in context", () => {
+      const result = validateResponse(
+        "Your roster shows Khan at level 50 with augment synergies.",
+        refLookupContract, // t2_referencePack: ["Khan"]
+        emptyGated,
+      );
+      // Should not have entity-existence violations (may still have numeric ones)
+      expect(result.violations.filter((v) => v.includes("not in context")).length).toBe(0);
+    });
+
+    it("skips entity check when t2_referencePack is empty", () => {
+      const result = validateResponse(
+        "Your roster shows Kirk at level 40.",
+        strategyContract, // t2_referencePack: []
+        emptyGated,
+      );
+      expect(result.violations.filter((v) => v.includes("not in context")).length).toBe(0);
+    });
+  });
 });
 
 // ─── buildRepairPrompt ──────────────────────────────────────
@@ -492,6 +523,24 @@ describe("extractConversationalAnswer", () => {
     const json = JSON.stringify({ answer: "" });
     expect(extractConversationalAnswer(json)).toBe("");
   });
+
+  it("returns tool call JSON unchanged (toolName pattern)", () => {
+    const json = JSON.stringify({ toolName: "search_officers", args: { query: "Kirk" } });
+    expect(extractConversationalAnswer(json)).toBe(json);
+  });
+
+  it("returns tool call JSON unchanged (name+args pattern)", () => {
+    const json = JSON.stringify({ name: "get_officer_detail", args: { id: "officer-kirk" } });
+    expect(extractConversationalAnswer(json)).toBe(json);
+  });
+
+  it("returns large bare JSON objects unchanged (>200 chars)", () => {
+    const largeObj: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) largeObj[`field${i}`] = `value${i}_padding_data`;
+    const json = JSON.stringify(largeObj);
+    expect(json.length).toBeGreaterThan(200);
+    expect(extractConversationalAnswer(json)).toBe(json);
+  });
 });
 
 // ─── VALIDATION_DISCLAIMER ──────────────────────────────────
@@ -530,6 +579,53 @@ describe("createMicroRunner", () => {
       expect(contract.taskType).toBe("strategy_general");
       expect(gatedContext.contextBlock).toBeNull();
       expect(augmentedMessage).toBe("How do armadas work?");
+    });
+
+    it("injects behavioral rules into augmented message for model visibility (4d)", async () => {
+      const ctx = makeContextSources({ hasRoster: true });
+      const mockBehaviorStore = {
+        getRules: async () => [
+          { id: "rule-1", severity: "must", text: "Always use metric units", confidence: 0.8, taskType: "reference_lookup" },
+          { id: "rule-2", severity: "should", text: "Cite officer groups", confidence: 0.6, taskType: "reference_lookup" },
+        ],
+        createRule: async () => "rule-new",
+      } as unknown as import("../src/server/stores/behavior-store.js").BehaviorStore;
+
+      const runner = createMicroRunner({
+        contextSources: ctx,
+        knownOfficerNames: ["Khan"],
+        behaviorStore: mockBehaviorStore,
+      });
+
+      const { gatedContext, augmentedMessage } = await runner.prepare("Tell me about Khan");
+
+      // Rules should appear in the context block
+      expect(gatedContext.contextBlock).toContain("[BEHAVIORAL RULES]");
+      expect(gatedContext.contextBlock).toContain("MUST: Always use metric units");
+      expect(gatedContext.contextBlock).toContain("SHOULD: Cite officer groups");
+      expect(gatedContext.contextBlock).toContain("[END BEHAVIORAL RULES]");
+      // And the augmented message should include both the rules and the user message
+      expect(augmentedMessage).toContain("[BEHAVIORAL RULES]");
+      expect(augmentedMessage).toContain("Tell me about Khan");
+    });
+
+    it("omits behavioral rules block when no rules are active", async () => {
+      const ctx = makeContextSources({ hasRoster: true });
+      const mockBehaviorStore = {
+        getRules: async () => [],
+        createRule: async () => "rule-new",
+      } as unknown as import("../src/server/stores/behavior-store.js").BehaviorStore;
+
+      const runner = createMicroRunner({
+        contextSources: ctx,
+        knownOfficerNames: ["Khan"],
+        behaviorStore: mockBehaviorStore,
+      });
+
+      const { gatedContext, augmentedMessage } = await runner.prepare("Tell me about Khan");
+
+      expect(gatedContext.contextBlock).toBeNull();
+      expect(augmentedMessage).toBe("Tell me about Khan");
     });
   });
 
