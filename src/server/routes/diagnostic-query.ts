@@ -30,14 +30,6 @@ function normalizeOwnershipBreakdown(rows: OwnershipBreakdownRow[]): { ownership
   }));
 }
 
-function buildOwnershipBreakdownFromCounts(counts: { owned: number; unowned: number; unknown: number }): { ownership_state: string; count: number }[] {
-  return [
-    { ownership_state: "owned", count: counts.owned },
-    { ownership_state: "unowned", count: counts.unowned },
-    { ownership_state: "unknown", count: counts.unknown },
-  ].filter((row) => row.count > 0);
-}
-
 // ─── Safety ─────────────────────────────────────────────────
 
 const MAX_ROWS = 1000;

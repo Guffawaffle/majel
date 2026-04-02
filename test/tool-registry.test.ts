@@ -15,7 +15,6 @@ import {
   toolRegistry,
   toClaudeTools,
 } from "../src/server/services/fleet-tools/index.js";
-import type { ToolDef } from "../src/server/services/fleet-tools/define-tool.js";
 import { ToolRegistry, defineTool } from "../src/server/services/fleet-tools/define-tool.js";
 
 describe("ToolRegistry (ADR-039 Phase 10)", () => {

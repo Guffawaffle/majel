@@ -9,7 +9,7 @@
  *   - Admin routes: invite CRUD, session management
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { testRequest } from "./helpers/test-request.js";
