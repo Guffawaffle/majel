@@ -56,44 +56,78 @@ export async function attachSlots(client: QueryExecutor, presets: FleetPreset[])
   return presets.map((p) => ({ ...p, slots: slotsByPreset.get(p.id) ?? [] }));
 }
 
-/** Resolve a loadout into a ResolvedLoadout (bridge + BDP + metadata). */
-export async function resolveLoadout(client: QueryExecutor, loadoutId: number): Promise<ResolvedLoadout | null> {
-  const loadoutResult = await client.query(
-    `SELECT ${LOADOUT_COLS} FROM loadouts WHERE id = $1`, [loadoutId],
-  );
-  const loadout = loadoutResult.rows[0] as Loadout | undefined;
-  if (!loadout) return null;
+/** Batch-resolve multiple loadouts into ResolvedLoadouts (3 queries total). */
+export async function resolveLoadouts(
+  client: QueryExecutor,
+  loadoutIds: number[],
+): Promise<Map<number, ResolvedLoadout>> {
+  if (loadoutIds.length === 0) return new Map();
 
-  const bridge = { captain: null as string | null, bridge_1: null as string | null, bridge_2: null as string | null };
-  if (loadout.bridgeCoreId) {
+  const loadoutResult = await client.query(
+    `SELECT ${LOADOUT_COLS} FROM loadouts WHERE id = ANY($1)`, [loadoutIds],
+  );
+  const loadouts = loadoutResult.rows as Loadout[];
+  if (loadouts.length === 0) return new Map();
+
+  // Batch-fetch bridge members
+  const bridgeCoreIds = loadouts.map((l) => l.bridgeCoreId).filter((id): id is number => id != null);
+  const membersByCore = new Map<number, BridgeCoreMember[]>();
+  if (bridgeCoreIds.length > 0) {
     const membersResult = await client.query(
-      `SELECT ${BCM_COLS} FROM bridge_core_members WHERE bridge_core_id = $1`,
-      [loadout.bridgeCoreId],
+      `SELECT ${BCM_COLS} FROM bridge_core_members WHERE bridge_core_id = ANY($1)`,
+      [bridgeCoreIds],
     );
     for (const m of membersResult.rows as BridgeCoreMember[]) {
-      bridge[m.slot] = m.officerId;
+      const arr = membersByCore.get(m.bridgeCoreId) ?? [];
+      arr.push(m);
+      membersByCore.set(m.bridgeCoreId, arr);
     }
   }
 
-  let belowDeckPolicy: BelowDeckPolicy | null = null;
-  if (loadout.belowDeckPolicyId) {
+  // Batch-fetch below-deck policies
+  const bdpIds = loadouts.map((l) => l.belowDeckPolicyId).filter((id): id is number => id != null);
+  const policiesById = new Map<number, BelowDeckPolicy>();
+  if (bdpIds.length > 0) {
     const bdpResult = await client.query(
-      `SELECT ${BDP_COLS} FROM below_deck_policies WHERE id = $1`,
-      [loadout.belowDeckPolicyId],
+      `SELECT ${BDP_COLS} FROM below_deck_policies WHERE id = ANY($1)`,
+      [bdpIds],
     );
-    belowDeckPolicy = (bdpResult.rows[0] as BelowDeckPolicy) ?? null;
+    for (const p of bdpResult.rows as BelowDeckPolicy[]) {
+      policiesById.set(p.id, p);
+    }
   }
 
-  return {
-    loadoutId: loadout.id,
-    shipId: loadout.shipId,
-    name: loadout.name,
-    bridge,
-    belowDeckPolicy,
-    intentKeys: loadout.intentKeys ?? [],
-    tags: loadout.tags ?? [],
-    notes: loadout.notes,
-  };
+  // Assemble results
+  const result = new Map<number, ResolvedLoadout>();
+  for (const loadout of loadouts) {
+    const bridge = { captain: null as string | null, bridge_1: null as string | null, bridge_2: null as string | null };
+    if (loadout.bridgeCoreId) {
+      for (const m of membersByCore.get(loadout.bridgeCoreId) ?? []) {
+        bridge[m.slot] = m.officerId;
+      }
+    }
+
+    result.set(loadout.id, {
+      loadoutId: loadout.id,
+      shipId: loadout.shipId,
+      name: loadout.name,
+      bridge,
+      belowDeckPolicy: loadout.belowDeckPolicyId
+        ? (policiesById.get(loadout.belowDeckPolicyId) ?? null)
+        : null,
+      intentKeys: loadout.intentKeys ?? [],
+      tags: loadout.tags ?? [],
+      notes: loadout.notes,
+    });
+  }
+
+  return result;
+}
+
+/** Resolve a single loadout — delegates to batch resolveLoadouts(). */
+export async function resolveLoadout(client: QueryExecutor, loadoutId: number): Promise<ResolvedLoadout | null> {
+  const results = await resolveLoadouts(client, [loadoutId]);
+  return results.get(loadoutId) ?? null;
 }
 
 /** Validate a VariantPatch against ADR-025 § Patch Merge Semantics. */

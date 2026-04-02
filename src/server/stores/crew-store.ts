@@ -59,7 +59,7 @@ import type {
 } from "../types/crew-types.js";
 
 import { SCHEMA_STATEMENTS, BDP_COLS, VARIANT_COLS } from "./crew-store-schema.js";
-import { resolveLoadout, validatePatch } from "./crew-store-helpers.js";
+import { resolveLoadout, resolveLoadouts, validatePatch } from "./crew-store-helpers.js";
 import { createBridgeMixin } from "./crew-store-bridge.js";
 import { createLoadoutMixin } from "./crew-store-loadout.js";
 import { createFleetMixin } from "./crew-store-fleet.js";
@@ -169,9 +169,8 @@ interface CrewStore {
 // ═══════════════════════════════════════════════════════════
 
 function createScopedCrewStore(scope: ScopeProvider, userId: string): CrewStore {
-  // Self-scoping wrapper for resolveLoadout (used by getEffectiveDockState)
-  function resolveLoadoutScoped(loadoutId: number): Promise<ResolvedLoadout | null> {
-    return scope.read(async (client) => resolveLoadout(client, loadoutId));
+  function resolveLoadoutsBatch(loadoutIds: number[]): Promise<Map<number, ResolvedLoadout>> {
+    return scope.read(async (client) => resolveLoadouts(client, loadoutIds));
   }
 
   const store: CrewStore = {
@@ -251,7 +250,16 @@ function createScopedCrewStore(scope: ScopeProvider, userId: string): CrewStore 
       // 1. Get all active plan items, ordered by priority
       const planItems = await store.listPlanItems({ active: true });
 
-      // 2. Build dock entries and away teams
+      // 2. Batch-resolve all direct loadout IDs (avoids N+1 per-item queries)
+      const directLoadoutIds: number[] = [];
+      for (const item of planItems) {
+        if (!item.awayOfficers && item.dockNumber !== null && !item.variantId && item.loadoutId) {
+          directLoadoutIds.push(item.loadoutId);
+        }
+      }
+      const resolvedMap = await resolveLoadoutsBatch(directLoadoutIds);
+
+      // 3. Build dock entries and away teams
       const dockEntries: EffectiveDockEntry[] = [];
       const awayTeams: EffectiveAwayTeam[] = [];
 
@@ -279,7 +287,7 @@ function createScopedCrewStore(scope: ScopeProvider, userId: string): CrewStore 
             variantPatch = variant.patch;
           }
         } else if (item.loadoutId) {
-          loadout = await resolveLoadoutScoped(item.loadoutId);
+          loadout = resolvedMap.get(item.loadoutId) ?? null;
         }
 
         dockEntries.push({
