@@ -435,6 +435,24 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "get_research_path",
+    description:
+      "Trace the prerequisite chain from the Admiral's current research state to unlock a target node. " +
+      "Uses reference catalog dependency data and the Admiral's completed research to show only " +
+      "remaining (incomplete) prerequisites in dependency order. " +
+      "Call this when the Admiral asks what they need to unlock or complete a specific research.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        target_node_id: {
+          type: Type.STRING,
+          description: "The research node ID to trace prerequisites for (e.g. 'cdn:research:12345').",
+        },
+      },
+      required: ["target_node_id"],
+    },
+  },
+  {
     name: "find_loadouts_for_intent",
     description:
       "Find all loadouts tagged for a specific activity intent (e.g. 'pvp', 'mining-lat', 'grinding'). " +

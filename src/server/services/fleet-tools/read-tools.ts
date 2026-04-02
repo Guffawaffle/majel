@@ -33,7 +33,7 @@ export { validatePlan, listPlanItems, listIntents } from "./read-tools-planning.
 export { listOwnedOfficers, getLoadoutDetail, findLoadoutsForIntent, suggestCrew, resolveConflict, whatIfRemoveOfficer } from "./read-tools-crew.js";
 
 // ── Progression ─────────────────────────────────────────────
-export { listResearch, listInventory, calculateUpgradePath, estimateAcquisitionTime, calculateTruePower } from "./read-tools-progression.js";
+export { listResearch, listInventory, calculateUpgradePath, estimateAcquisitionTime, calculateTruePower, getResearchPath } from "./read-tools-progression.js";
 
 // ── Context ─────────────────────────────────────────────────
 export { listActiveEvents, listAwayTeams, getFactionStanding } from "./read-tools-context.js";

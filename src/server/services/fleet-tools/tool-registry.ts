@@ -37,6 +37,7 @@ import {
   calculateUpgradePath,
   estimateAcquisitionTime,
   calculateTruePower,
+  getResearchPath,
   findLoadoutsForIntent,
   suggestCrew,
   analyzeBattleLog,
@@ -250,6 +251,12 @@ toolRegistry.register(defineTool({
   name: "calculate_true_power",
   deps: ["referenceStore", "overlayStore", "researchStore"],
   run: (args, env) => calculateTruePower(String(args.ship_id ?? ""), args.intent_key as string | undefined, env),
+}));
+
+toolRegistry.register(defineTool({
+  name: "get_research_path",
+  deps: ["researchStore", "referenceStore"],
+  run: (args, env) => getResearchPath(String(args.target_node_id ?? ""), env),
 }));
 
 // ── Read tools: crew recommendation ─────────────────────────

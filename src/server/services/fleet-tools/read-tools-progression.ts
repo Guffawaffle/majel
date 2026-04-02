@@ -343,3 +343,123 @@ export async function calculateTruePower(
     assumptions,
   };
 }
+
+export async function getResearchPath(
+  targetNodeId: string,
+  ctx: ToolEnv,
+): Promise<object> {
+  if (!ctx.deps.researchStore) {
+    return { error: "Research store not available. Sync research data first." };
+  }
+  if (!ctx.deps.referenceStore) {
+    return { error: "Reference catalog not available." };
+  }
+  if (!targetNodeId.trim()) {
+    return { error: "target_node_id is required." };
+  }
+
+  const allUserNodes = await ctx.deps.researchStore.listNodes();
+  const userNodeMap = new Map(allUserNodes.map((n) => [n.nodeId, n]));
+
+  const targetRef = await ctx.deps.referenceStore.getResearch(targetNodeId);
+  if (!targetRef) {
+    return { error: `Research node not found: ${targetNodeId}` };
+  }
+
+  const targetUser = userNodeMap.get(targetNodeId);
+  if (targetUser?.completed) {
+    return {
+      target: { id: targetRef.id, name: targetRef.name, tree: targetRef.researchTree },
+      path: [],
+      summary: { pathLength: 0, alreadyCompleted: true },
+    };
+  }
+
+  // BFS backward through prerequisite chain
+  const visited = new Set<string>();
+  const queue = [targetNodeId];
+  const pathNodes: Array<{
+    id: string;
+    name: string;
+    tree: string | null;
+    currentLevel: number;
+    maxLevel: number;
+    completed: boolean;
+    requirementType: string;
+    depth: number;
+  }> = [];
+
+  // Track depth for ordering
+  const depthMap = new Map<string, number>();
+  depthMap.set(targetNodeId, 0);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    const depth = depthMap.get(current) ?? 0;
+    const userNode = userNodeMap.get(current);
+    const refNode = await ctx.deps.referenceStore.getResearch(current);
+
+    // Add to path if not completed (or no user data means not started)
+    const isCompleted = userNode?.completed ?? false;
+    if (!isCompleted) {
+      pathNodes.push({
+        id: current,
+        name: refNode?.name ?? userNode?.name ?? current,
+        tree: refNode?.researchTree ?? userNode?.tree ?? null,
+        currentLevel: userNode?.level ?? 0,
+        maxLevel: refNode?.maxLevel ?? userNode?.maxLevel ?? 0,
+        completed: false,
+        requirementType: current === targetNodeId ? "target" : "prerequisite",
+        depth,
+      });
+    }
+
+    // Traverse dependencies — prefer user node's dependencies, fall back to reference requirements
+    const deps = userNode?.dependencies ?? [];
+    if (deps.length > 0) {
+      for (const depId of deps) {
+        if (!visited.has(depId)) {
+          depthMap.set(depId, depth + 1);
+          queue.push(depId);
+        }
+      }
+    } else if (refNode?.requirements) {
+      // Parse reference requirements for ResearchLevel type prereqs
+      for (const req of refNode.requirements) {
+        if (req.requirement_type === "ResearchLevel" && req.requirement_id != null) {
+          const depId = `cdn:research:${req.requirement_id}`;
+          if (!visited.has(depId)) {
+            depthMap.set(depId, depth + 1);
+            queue.push(depId);
+          }
+        }
+      }
+    }
+  }
+
+  // Sort path: deepest prerequisites first (so the user works bottom-up)
+  pathNodes.sort((a, b) => b.depth - a.depth);
+
+  return {
+    target: {
+      id: targetRef.id,
+      name: targetRef.name,
+      tree: targetRef.researchTree,
+      maxLevel: targetRef.maxLevel,
+      currentLevel: targetUser?.level ?? 0,
+    },
+    path: pathNodes,
+    summary: {
+      pathLength: pathNodes.length,
+      alreadyCompleted: false,
+      prereqCount: pathNodes.filter((n) => n.requirementType === "prerequisite").length,
+    },
+    assumptions: [
+      "Prerequisite chain uses user-synced dependency data where available, with reference catalog as fallback.",
+      "Only ResearchLevel requirements are traced; BuildingLevel prerequisites are not included.",
+    ],
+  };
+}
