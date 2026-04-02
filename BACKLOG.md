@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-03-28 | Branch: `main`
+> Updated: 2026-04-02 | Branch: `main`
 
 ---
 
@@ -19,7 +19,7 @@
 ## Current PM Focus
 
 - **Active sprint:** Codebase Health + Research Path (#282, 5 slices, 8 issues). Error logging sweep, CI lint cleanup, type safety, N+1 query fix, `get_research_path` tool.
-- **Recently shipped:** Aria Refit (#261, 3 slices). ADR-050 — Runtime Profiles (#251, 5 slices). ADR-049 — Chat/Sync Boundary (#257, 3 slices). All closed.
+- **Recently shipped:** Aria Prompt Hardening (5 phases, 6 commits, 30 stress-test findings addressed). Aria Refit (#261, 3 slices). ADR-050 — Runtime Profiles (#251, 5 slices). ADR-049 — Chat/Sync Boundary (#257, 3 slices). All closed.
 - **Paused programs:** ADR-048 — Token Budgets (#235), Phase A done, Phases B–D paused.
 - **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
 - **Design ready:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
@@ -27,8 +27,8 @@
 - **Previously completed:** ADR-046 (LCARS Design System). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234). ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing. Revision `majel-00119-8tg`.
-- **Test count:** 2450 tests.
-- **Open issues:** 18 (#250, #265–#282).
+- **Test count:** 2500 tests.
+- **Open issues:** 21 (#250, #265–#282, #284, #285).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
@@ -62,6 +62,29 @@ Address accumulated tech debt from the quality sweep, then ship one high-value A
 - [ ] `resolveLoadouts()` batch function replaces N+1 pattern
 - [ ] `get_research_path` tool returns prerequisite chain + costs
 - [ ] `npm run ax -- ci` passes at every slice boundary
+
+---
+
+## Completed — Aria Prompt Hardening (Stress Test Response)
+
+**Shipped:** 2026-04-02 (5 phases, 6 commits: `9ba4bd0`→`f9b31f7`)
+**Trigger:** 30-scenario stress test by 5 independent agents (2026-03-29)
+**Findings:** 4 Critical, 6 High, 7 Medium, 3 Low — all addressed
+
+| Phase | Commit | Scope | Findings Closed |
+|-------|--------|-------|-----------------|
+| 1 | `9ba4bd0` | Sanitizer hardening, confidentiality rule, authority ladder language | C1, C2, H4 |
+| 2 | `2b76c8c` | Multi-tenant userId isolation, DB rule text sanitization | C3, C4 |
+| — | `baa919a` | Fix: unconditional user message sanitization (gap found in audit) | — |
+| 3 | `07ea8ba` | Authority ladder coherence: numbers policy, attribution density, gray areas | H1, H2, H3, M7 |
+| 4 | `1c75fb3` | Entity existence validation, JSON leak detection, behavioral rules injection | H5, H6, M2 |
+| 5 | `f9b31f7` | Receipt keysInjected population, personality dial "off" semantics | M5, M6 |
+
+Key architectural changes:
+- Three-layer sanitizer: `DIRECTIVE_BRACKET` + `DIRECTIVE_KEYWORD` + `DIRECTIVE_XML`
+- `behavior_rules` table now userId-scoped with `MAX_RULES_PER_USER=50`
+- `gateContext()` populates `keysInjected` for forensic receipts
+- Behavioral rules (`MUST:/SHOULD:/STYLE:`) injected into generation context, not just post-validation
 
 ---
 

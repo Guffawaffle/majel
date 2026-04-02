@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updated `devalue` (prototype pollution in `parse`/`unflatten`, GHSA-cfw5-2vxh-hr84, GHSA-mwv9-gp5h-frr4) and `flatted` (unbounded recursion DoS in `parse()`, GHSA-25h7-pfq9-p65f). `npm audit`: 0 vulnerabilities.
 
+#### Aria Prompt Hardening (stress-test response, 5 phases)
+- Three-layer prompt-injection sanitizer (`DIRECTIVE_BRACKET`, `DIRECTIVE_KEYWORD`, `DIRECTIVE_XML`) applied unconditionally to all user messages. Blocks `[REFERENCE]`, `[OVERLAY]`, `[INJECTED DATA]` forgery in any case. (`src/server/services/gemini/sanitize.ts`)
+- System prompt confidentiality rule added (Layer 2). Authority ladder language changed from "INJECTED DATA...Treat it as fact" to "SERVER-PROVIDED DATA...Treat it as authoritative" with freshness signal. (`src/server/services/gemini/system-prompt.ts`)
+- Multi-tenant behavioral rule isolation: `behavior_rules` table scoped by `user_id` column, `MAX_RULES_PER_USER=50` cap, `sanitizeRuleText()` strips directive patterns from DB-stored rules. (`src/server/services/behavior-store.ts`, `src/server/services/micro-runner.ts`)
+- Entity existence validation: flags when model claims about roster entities not present in `t2_referencePack`. JSON leak detection in `extractConversationalAnswer()`. Behavioral rules injected into generation context. (`src/server/services/micro-runner.ts`)
+- Authority ladder coherence: 3-tier NUMBERS POLICY, attribution density control, GRAY AREAS guidance, personality dial "off" semantics. (`src/server/services/gemini/system-prompt.ts`)
+- Receipt forensics: `gateContext()` populates `keysInjected` with available context sources. (`src/server/services/micro-runner.ts`)
+
 #### ADR-008 Phase C — Smart import pipeline (`POST /api/fleet/scan/batch`, `POST /api/fleet/scan/commit`)
 - Batch scan endpoint: `POST /api/fleet/scan/batch` accepts up to 10 images in a single request, returns array of scan results with per-image error reporting. Sequential Gemini calls to avoid rate limits. (`src/server/routes/scan.ts`)
 - Scan commit endpoint: `POST /api/fleet/scan/commit` applies reviewed scan results to overlay tables. Entities matched by refId get UPSERT'd as "owned" with scanned level/rank/tier/power. Preserves existing target/notes. Creates receipt with source_type `image_scan` and full undo inverse. (`src/server/routes/scan.ts`)
