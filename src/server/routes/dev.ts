@@ -46,7 +46,7 @@ export function createDevRoutes(appState: AppState): Router {
     const safeCounts = async (store: { counts(): Promise<unknown> } | null): Promise<unknown> => {
       if (!store) return null;
       try { return await store.counts(); }
-      catch { return "error"; }
+      catch (err) { log.http.warn({ err }, "store.counts() failed"); return "error"; }
     };
 
     sendOk(res, {

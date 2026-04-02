@@ -428,7 +428,7 @@ export async function createSettingsStore(adminPool: Pool, runtimePool?: Pool): 
       case "boolean":
         return value === "true" || value === "1";
       case "json":
-        try { return JSON.parse(value); } catch { return value; }
+        try { return JSON.parse(value); } catch (err) { log.settings.warn({ err, key: "json" }, "Failed to parse setting as JSON — returning raw string"); return value; }
       default:
         return value;
     }

@@ -692,7 +692,7 @@ export async function createUserStore(adminPool: Pool, runtimePool?: Pool): Prom
         const tryDelete = async (sql: string) => {
           const sp = `sp_del_${spIdx++}`;
           await client.query(`SAVEPOINT ${sp}`);
-          try { await client.query(sql, [uid]); } catch { await client.query(`ROLLBACK TO ${sp}`); }
+          try { await client.query(sql, [uid]); } catch (err) { log.auth.warn({ err, sql }, "tryDelete failed — rolling back to savepoint"); await client.query(`ROLLBACK TO ${sp}`); }
         };
         // Crew tables (parents cascade to children)
         await tryDelete("DELETE FROM officer_reservations WHERE user_id = $1");

@@ -21,7 +21,7 @@ const APP_VERSION = (() => {
   try {
     const pkg = JSON.parse(readFileSync(resolve(__dirname, "../../../package.json"), "utf-8"));
     return pkg.version ?? "unknown";
-  } catch { return "unknown"; }
+  } catch (err) { log.boot.warn({ err }, "Failed to read package.json version"); return "unknown"; }
 })();
 
 interface HealthStoreStatus extends Record<string, unknown> {

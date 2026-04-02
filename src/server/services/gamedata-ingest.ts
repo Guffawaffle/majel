@@ -56,7 +56,8 @@ export async function getCdnVersion(): Promise<string | null> {
       return null;
     }
     return version;
-  } catch {
+  } catch (err) {
+    log.fleet.warn({ err }, "Failed to read CDN version.txt");
     return null;
   }
 }
@@ -247,8 +248,8 @@ export async function syncCdnShips(
     try {
       const detailRaw = await readFile(join(snapshotDir, "ship", `${ship.id}.json`), "utf-8");
       detail = JSON.parse(detailRaw) as CdnShipDetail;
-    } catch {
-      // Detail not downloaded — use summary-only
+    } catch (err) {
+      log.fleet.debug({ err, shipId: ship.id }, "Ship detail not available — using summary only");
     }
 
     inputs.push(mapCdnShipToReferenceInput({
@@ -326,8 +327,8 @@ export async function syncCdnOfficers(
     try {
       const detailRaw = await readFile(join(snapshotDir, "officer", `${officer.id}.json`), "utf-8");
       detail = JSON.parse(detailRaw) as CdnOfficerDetail;
-    } catch {
-      // Detail not downloaded — use summary-only
+    } catch (err) {
+      log.fleet.debug({ err, officerId: officer.id }, "Officer detail not available — using summary only");
     }
 
     inputs.push(mapCdnOfficerToReferenceInput({
