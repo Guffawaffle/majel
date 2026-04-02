@@ -191,7 +191,8 @@ describe("ContextGate (gateContext)", () => {
     const gated = gateContext(contract, ctx);
 
     expect(gated.contextBlock).toBeNull();
-    expect(gated.keysInjected).toHaveLength(0);
+    expect(gated.keysInjected).toContain("t1:roster");
+    expect(gated.keysInjected).toContain("t2:officerLookup");
     expect(gated.t2Provenance).toHaveLength(0);
   });
 
@@ -202,8 +203,28 @@ describe("ContextGate (gateContext)", () => {
     const gated = gateContext(contract, ctx);
 
     expect(gated.contextBlock).toBeNull();
-    expect(gated.keysInjected).toHaveLength(0);
+    expect(gated.keysInjected).toContain("t1:roster");
+    expect(gated.keysInjected).toContain("t2:officerLookup");
     expect(gated.t2Provenance).toHaveLength(0);
+  });
+
+  it("populates keysInjected with all available context sources", () => {
+    const lookup = makeOfficerLookup([KHAN]);
+    const ctx = makeContextSources({
+      hasRoster: true,
+      hasFleetConfig: true,
+      hasDockBriefing: true,
+      lookupOfficer: lookup,
+    });
+    const contract = compileTask("How do armadas work?", ctx);
+    const gated = gateContext(contract, ctx);
+
+    expect(gated.keysInjected).toEqual([
+      "t1:roster",
+      "t1:fleetConfig",
+      "t1:dockBriefing",
+      "t2:officerLookup",
+    ]);
   });
 });
 
@@ -683,7 +704,8 @@ describe("createMicroRunner", () => {
       expect(result.receipt.sessionId).toBe("session-123");
       expect(result.receipt.taskType).toBe("reference_lookup");
       expect(result.receipt.contextManifest).toContain("T2 reference(Khan)");
-      expect(result.receipt.contextKeysInjected).toHaveLength(0);
+      expect(result.receipt.contextKeysInjected).toContain("t1:roster");
+      expect(result.receipt.contextKeysInjected).toContain("t2:officerLookup");
       expect(result.receipt.t2Provenance).toHaveLength(0);
       expect(result.receipt.durationMs).toBeGreaterThanOrEqual(0);
       expect(result.receipt.timestamp).toBeTruthy();

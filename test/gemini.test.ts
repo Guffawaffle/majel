@@ -37,6 +37,11 @@ describe("buildSystemPrompt", () => {
       expect(prompt).toContain("Admiral");
     });
 
+    it("explains off semantics in dial legend", () => {
+      const prompt = buildSystemPrompt();
+      expect(prompt).toContain("off=not managed, use your judgment");
+    });
+
     it("supports intent mode overrides in prompt assembly", () => {
       const prompt = buildSystemPrompt(null, null, false, {
         humor: "off",

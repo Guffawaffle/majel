@@ -275,7 +275,7 @@ function buildContextManifest(
 export interface GatedContext {
   /** The context block to prepend to the user message */
   contextBlock: string | null;
-  /** Keys of what was injected (for receipt) */
+  /** Keys of available context sources (for receipt forensics) */
   keysInjected: string[];
   /** T2 provenance entries (for receipt) */
   t2Provenance: MicroRunnerReceipt["t2Provenance"];
@@ -290,9 +290,17 @@ export interface GatedContext {
  */
 export function gateContext(
   _contract: TaskContract,
-  _contextSources: ContextSources,
+  contextSources: ContextSources,
 ): GatedContext {
-  return { contextBlock: null, keysInjected: [], t2Provenance: [] };
+  // Track which context sources are available, even though injection
+  // is now tool-based on demand.  Provides forensic signal in receipts.
+  const keysInjected: string[] = [];
+  if (contextSources.hasRoster) keysInjected.push("t1:roster");
+  if (contextSources.hasFleetConfig) keysInjected.push("t1:fleetConfig");
+  if (contextSources.hasDockBriefing) keysInjected.push("t1:dockBriefing");
+  if (contextSources.lookupOfficer) keysInjected.push("t2:officerLookup");
+
+  return { contextBlock: null, keysInjected, t2Provenance: [] };
 }
 
 /**

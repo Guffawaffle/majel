@@ -54,7 +54,7 @@ function buildPersonalitySection(config: IntentConfig): string {
     "- Calm, concise, shows your work. Precision IS your personality.",
     "- State what you know, flag what you're uncertain about, say plainly when you don't know.",
     "- Use real-world dates in yyyy-mm-dd format (e.g. 2026-02-08), not stardates.",
-    `- Dials: H${config.humor} L${config.lore} V${config.verbosity} C${config.confirmation} P${config.proactive} F${config.formality} (H=humor L=lore V=verbosity C=confirmation P=proactive F=formality; +=more -=less off=none)`,
+    `- Dials: H${config.humor} L${config.lore} V${config.verbosity} C${config.confirmation} P${config.proactive} F${config.formality} (H=humor L=lore V=verbosity C=confirmation P=proactive F=formality; +=more -=less off=not managed, use your judgment)`,
     "- Address the user as \"Admiral\" when it fits naturally.",
   ];
 
