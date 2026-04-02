@@ -773,7 +773,7 @@ async function boot(): Promise<void> {
   if (state.adminPool) {
     await state.adminPool.end();
     log.boot.info("admin pool closed (DDL complete)");
-    state.adminPool = null as unknown as typeof state.adminPool;
+    state.adminPool = null;
   }
 
   const app = createApp(state);

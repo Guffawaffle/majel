@@ -33,15 +33,27 @@ export type ReceiptSourceType =
 
 export type ReceiptLayer = "reference" | "ownership" | "composition";
 
+export interface ChangesetItem {
+  id?: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+export interface Changeset {
+  added?: ChangesetItem[];
+  updated?: ChangesetItem[];
+  removed?: ChangesetItem[];
+}
+
 export interface ImportReceipt {
   id: number;
   sourceType: ReceiptSourceType;
   sourceMeta: Record<string, unknown>;
   mapping: Record<string, unknown> | null;
   layer: ReceiptLayer;
-  changeset: { added?: unknown[]; updated?: unknown[]; removed?: unknown[] };
-  inverse: { added?: unknown[]; updated?: unknown[]; removed?: unknown[] };
-  unresolved: unknown[] | null;
+  changeset: Changeset;
+  inverse: Changeset;
+  unresolved: ChangesetItem[] | null;
   createdAt: string;
 }
 
@@ -50,9 +62,9 @@ export interface CreateReceiptInput {
   sourceMeta?: Record<string, unknown>;
   mapping?: Record<string, unknown> | null;
   layer: ReceiptLayer;
-  changeset?: { added?: unknown[]; updated?: unknown[]; removed?: unknown[] };
-  inverse?: { added?: unknown[]; updated?: unknown[]; removed?: unknown[] };
-  unresolved?: unknown[] | null;
+  changeset?: Changeset;
+  inverse?: Changeset;
+  unresolved?: ChangesetItem[] | null;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -64,7 +76,7 @@ export interface ReceiptStore {
   listReceipts(limit?: number, layer?: ReceiptLayer): Promise<ImportReceipt[]>;
   getReceipt(id: number): Promise<ImportReceipt | null>;
   undoReceipt(id: number): Promise<{ success: boolean; message: string; inverse?: ImportReceipt["inverse"] }>;
-  resolveReceiptItems(id: number, resolvedItems: unknown[]): Promise<ImportReceipt>;
+  resolveReceiptItems(id: number, resolvedItems: ChangesetItem[]): Promise<ImportReceipt>;
   counts(): Promise<{ total: number }>;
   close(): void;
 }
