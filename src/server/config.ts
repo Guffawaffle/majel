@@ -63,7 +63,7 @@ export interface AppConfig {
   databaseAdminUrl: string;
 
   // ── Auth (ADR-018 Phase 2) ──────────────────────────────────
-  /** Admin bearer token — bootstrap-only (#91 Phase B) */
+  /** Admin bearer token — permanent personal API key, mapped via derived UUID */
   adminToken: string;
   /** Secret used for invite code HMAC generation */
   inviteSecret: string;
@@ -76,6 +76,14 @@ export interface AppConfig {
   // ── Network Security ────────────────────────────────────────
   /** Comma-separated IP allowlist. Empty = no restriction (local dev). */
   allowedIps: string[];
+
+  // ── Signup Control ─────────────────────────────────────────
+  /**
+   * Whether new account signups are accepted.
+   * Defaults to true when no adminToken is set (local dev), false otherwise.
+   * Override with MAJEL_SIGNUP_OPEN=true|false.
+   */
+  signupOpen: boolean;
 
   // ── Logging ─────────────────────────────────────────────────
   /** Log level (silent, debug, info, warn, error) */
@@ -165,6 +173,12 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
   // IP allowlist (env-only — comma-separated, empty = no restriction)
   const allowedIps = parseAllowedIps(process.env.MAJEL_ALLOWED_IPS);
 
+  // Signup control: open by default when no admin token (local dev), closed otherwise
+  const signupOpenEnv = process.env.MAJEL_SIGNUP_OPEN?.toLowerCase();
+  const signupOpen = signupOpenEnv === "true" ? true
+    : signupOpenEnv === "false" ? false
+    : adminToken.length === 0; // default: open when no token
+
   // Warn if auth is enabled but invite secret is empty (codes would be forgeable)
   if (adminToken && !inviteSecret) {
     console.warn("WARNING: MAJEL_INVITE_SECRET not set while auth is enabled — invite codes are insecure");
@@ -195,6 +209,7 @@ export async function resolveConfig(settingsStore: SettingsStore | null): Promis
     inviteSecret,
     authEnabled: contract.capabilities.authEnforced || (nodeEnv === "production" || adminToken.length > 0),
     allowedIps,
+    signupOpen,
     logLevel,
     logPretty,
     profile,
@@ -225,6 +240,10 @@ export function bootstrapConfigSync(): AppConfig {
   const adminToken = process.env.MAJEL_ADMIN_TOKEN || "";
   const inviteSecret = process.env.MAJEL_INVITE_SECRET || "";
   const allowedIps = parseAllowedIps(process.env.MAJEL_ALLOWED_IPS);
+  const signupOpenEnvSync = process.env.MAJEL_SIGNUP_OPEN?.toLowerCase();
+  const signupOpen = signupOpenEnvSync === "true" ? true
+    : signupOpenEnvSync === "false" ? false
+    : adminToken.length === 0;
   return {
     port: parseInt(process.env.MAJEL_PORT || process.env.PORT || "3000", 10),
     nodeEnv,
@@ -240,6 +259,7 @@ export function bootstrapConfigSync(): AppConfig {
     inviteSecret,
     authEnabled: contract.capabilities.authEnforced || (nodeEnv === "production" || adminToken.length > 0),
     allowedIps,
+    signupOpen,
     logLevel,
     logPretty,
     profile,

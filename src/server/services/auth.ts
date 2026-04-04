@@ -9,10 +9,11 @@
  *   Captain    — Full fleet management, unlimited chat (with token cap)
  *   Admiral    — Full system access, user management
  *
- * MAJEL_ADMIN_TOKEN is bootstrap-only (#91 Phase B):
- *   - Only recognized as virtual Admiral when NO Admiral exists in the DB
- *   - Once a real Admiral is created, the token is permanently ignored
- *   - This prevents a non-expiring, non-revocable backdoor
+ * MAJEL_ADMIN_TOKEN acts as a permanent personal API key:
+ *   - Maps to a deterministic UUID via HMAC-SHA256(token, "majel-admin")
+ *   - If that UUID exists as a user in the DB, authenticates as that user
+ *   - If not yet created, returns a virtual bootstrap Admiral
+ *   - Rotating the token changes the derived UUID (revocation mechanism)
  *
  * When MAJEL_ADMIN_TOKEN is not set, auth is disabled (local dev mode).
  */
@@ -53,26 +54,43 @@ async function resolveIdentity(
   lockedAt: string | null;
   source: "admin-token" | "session" | "legacy-tenant";
 } | null> {
-  // 1. Bearer token → bootstrap-only virtual Admiral (#91 Phase B)
-  //    Once a real Admiral exists, the token is permanently ignored.
+  // 1. Bearer token → personal API key for the derived admin user
+  //    The token ALWAYS maps to the derived UUID — either as a real account (if the
+  //    user has been created via `npm run promote` or similar) or as a virtual
+  //    bootstrap Admiral. Rotating MAJEL_ADMIN_TOKEN changes the derived UUID,
+  //    which is the revocation mechanism.
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ") && appState.config.adminToken) {
     const token = authHeader.slice(7);
     if (timingSafeCompare(token, appState.config.adminToken)) {
-      // Check if bootstrap mode: no user store OR no Admiral in DB
-      const isBootstrap = !appState.userStore || !(await appState.userStore.hasAdmiral());
-      if (isBootstrap) {
-        return {
-          userId: deriveAdminUserId(appState.config.adminToken),
-          role: "admiral",
-          email: "admin@majel.local",
-          displayName: "Admiral (Bootstrap)",
-          emailVerified: true,
-          lockedAt: null,
-          source: "admin-token",
-        };
+      const derivedId = deriveAdminUserId(appState.config.adminToken);
+
+      // If a real user account exists for this token's derived UUID, use it.
+      if (appState.userStore) {
+        const user = await appState.userStore.getUser(derivedId);
+        if (user) {
+          return {
+            userId: user.id,
+            role: user.role,
+            email: user.email,
+            displayName: user.displayName,
+            emailVerified: user.emailVerified,
+            lockedAt: user.lockedAt,
+            source: "admin-token",
+          };
+        }
       }
-      // Admiral exists → token is dead. Fall through to session auth.
+
+      // No matching user yet → bootstrap virtual Admiral (pre-account-creation)
+      return {
+        userId: derivedId,
+        role: "admiral",
+        email: "admin@majel.local",
+        displayName: "Admiral (Bootstrap)",
+        emailVerified: true,
+        lockedAt: null,
+        source: "admin-token",
+      };
     }
   }
 

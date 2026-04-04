@@ -98,6 +98,9 @@ export function createAuthRoutes(appState: AppState): Router {
 
   // ── POST /api/auth/signup ─────────────────────────────────
   router.post("/api/auth/signup", async (req, res) => {
+    if (!appState.config.signupOpen) {
+      return sendFail(res, ErrorCode.FORBIDDEN, "Signups are not open on this instance", 403);
+    }
     if (!appState.userStore) {
       return sendFail(res, ErrorCode.INTERNAL_ERROR, "User system not available", 503);
     }
@@ -516,28 +519,20 @@ export function createAuthRoutes(appState: AppState): Router {
   });
 
 
-  // ── Admiral Console Routes (#91 Phase B) ───────────────────
-  // Bearer token is bootstrap-only: only works when no real Admiral exists.
-  // After the first Admiral is promoted, all admin routes require session-cookie auth.
+  // ── Admiral Console Routes ─────────────────────────────────
+  // Bearer token always works for the derived admin UUID (permanent personal API key).
+  // Falls through to session-based admiral check if not present or token doesn't match.
   router.use("/api/auth/admiral", async (req, res, next) => {
-    // Try Bearer token — but ONLY if no Admiral exists yet (bootstrap mode)
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
       if (appState.config.adminToken && timingSafeCompare(token, appState.config.adminToken)) {
-        // Check if we're still in bootstrap mode
-        const hasAdmiral = appState.userStore ? await appState.userStore.hasAdmiral() : false;
-        if (!hasAdmiral) {
-          // W8 fix: use dedicated bootstrap event (was admin.role_change)
-          // W9 fix: use auditMeta(req) for consistency
-          appState.auditStore?.logEvent({
-            event: "admin.bootstrap",
-            detail: { note: "Bearer token used in bootstrap mode" },
-            ...auditMeta(req),
-          });
-          return next();
-        }
-        // Admiral exists → Bearer is dead for admin routes
+        appState.auditStore?.logEvent({
+          event: "admin.bootstrap",
+          detail: { note: "Bearer token used for admin route" },
+          ...auditMeta(req),
+        });
+        return next();
       }
     }
     // Fall back to session-based admiral check
