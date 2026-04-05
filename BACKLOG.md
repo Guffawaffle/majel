@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-04-02 | Branch: `main`
+> Updated: 2026-04-05 | Branch: `main`
 
 ---
 
@@ -18,26 +18,25 @@
 
 ## Current PM Focus
 
-- **Active sprint:** Codebase Health + Research Path (#282, 5 slices, 8 issues). Error logging sweep, CI lint cleanup, type safety, N+1 query fix, `get_research_path` tool.
-- **Recently shipped:** Aria Prompt Hardening (5 phases, 6 commits, 30 stress-test findings addressed). Aria Refit (#261, 3 slices). ADR-050 — Runtime Profiles (#251, 5 slices). ADR-049 — Chat/Sync Boundary (#257, 3 slices). All closed.
+- **Active work:** Phase B start — E2.1 feed contract + gap analysis is next. E1.3 (scrap yields) unblocked if `reference_ships` has `scrap_rewards`; audit first.
+- **Recently shipped:** Sprint #282 fully closed (`7f4b7c8`→`6eac048`). M1 Phase A shipped (`ffc8099`): E1.1 hostile/system filters, E1.6 regression baseline (Layer A + B), hostile farming prompt fixes, interceptor alias hardening.
+- **Live at:** `ffc8099` → Cloud Run revision `majel-00126-sl8`. 2525 tests, 0 failures.
 - **Paused programs:** ADR-048 — Token Budgets (#235), Phase A done, Phases B–D paused.
 - **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
 - **Design ready:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
-- **Aria capability tools filed:** #278 (research path, 85%), #276 (scrap yields, 70%), #280 (armada fleet, 40%), #279 (officer sources, 10%), #277 (capability_gaps schema).
-- **Previously completed:** ADR-046 (LCARS Design System). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234). ADR-044 (Progression-Aware Context). ADR-043 (Chat Run Control). ADR-042 (Model Availability). ADR-041 (Multi-Provider LLM).
+- **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) — blocked on E2.1 data audit. #280 (armada fleet, 40%). #279 (officer sources) — blocked on E2.2 feed integration. #277 (capability_gaps schema) — parked.
+- **Previously completed:** Sprint #282. Aria Prompt Hardening. Aria Refit (#261). ADR-050 — Runtime Profiles. ADR-049 — Chat/Sync Boundary. ADR-046 (LCARS). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
-- **Cloud deploy:** Live. Gemini-only. `min-instances=1`, CPU boost enabled, request-based billing. Revision `majel-00119-8tg`.
-- **Test count:** 2500 tests.
-- **Open issues:** 21 (#250, #265–#282, #284, #285).
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
 
 ---
 
-## Active Sprint — Codebase Health + Research Path (#282)
+## Completed Sprint — Codebase Health + Research Path (#282)
 
 **Program umbrella:** #282
 **Design date:** 2026-03-28
+**Shipped:** 2026-04-02 to 2026-04-04 (`7f4b7c8`→`6eac048`)
 
 ### Sprint Objective
 
@@ -47,21 +46,47 @@ Address accumulated tech debt from the quality sweep, then ship one high-value A
 
 | Slice | Issues | Title | Status |
 |-------|--------|-------|--------|
-| 1 | #270, #266, #265, #281 | Error logging sweep | [ ] |
-| 2 | #272 | CI lint cleanup | [ ] |
-| 3 | #275, #267 | Type safety quick fixes | [ ] |
-| 4 | #274 | N+1 query fix — crew-store-helpers | [ ] |
-| 5 | #278 | `get_research_path` tool | [ ] |
+| 1 | #270, #266, #265, #281 | Error logging sweep | [x] `7f4b7c8` |
+| 2 | #272 | CI lint cleanup | [x] `f1fabb1` |
+| 3 | #275, #267 | Type safety quick fixes | [x] `07695b5` |
+| 4 | #274 | N+1 query fix — crew-store-helpers | [x] `2e7a391` |
+| 5 | #278 | `get_research_path` tool | [x] `6eac048` |
 
 ### Definition of Done
 
-- [ ] All bare catch blocks in `gamedata-ingest.ts` have structured logging
-- [ ] Zero CI lint warnings
-- [ ] No `as unknown as` double-casts in server teardown
-- [ ] Receipt store changeset has typed interface
-- [ ] `resolveLoadouts()` batch function replaces N+1 pattern
-- [ ] `get_research_path` tool returns prerequisite chain + costs
-- [ ] `npm run ax -- ci` passes at every slice boundary
+- [x] All bare catch blocks in `gamedata-ingest.ts` have structured logging
+- [x] Zero CI lint warnings
+- [x] No `as unknown as` double-casts in server teardown
+- [x] Receipt store changeset has typed interface
+- [x] `resolveLoadouts()` batch function replaces N+1 pattern
+- [x] `get_research_path` tool returns prerequisite chain + costs
+- [x] `npm run ax -- ci` passes at every slice boundary
+
+---
+
+## Completed — M1 Phase A: Reference-Grounded Retrieval (E1.1, E1.6, prompt fixes)
+
+**Shipped:** 2026-04-05 (`ffc8099`)
+
+### What Shipped
+
+**E1.1 — `search_game_reference` hostile/system filters:**
+- `filterHostiles(minLevel, maxLevel, faction, hullType)` — parameterized SQL, no interpolation
+- `filterSystems(minLevel, maxLevel, faction, isDeepSpace)` — same pattern
+- Tool falls through to ILIKE search when only `query` provided; uses filters when any filter param present
+- `interceptor` accepted as hull_type alias for `destroyer` (CDN stores combat triangle class as hull_type=0/Destroyer)
+- `spawnSystemCount` included in search results (prevents round exhaustion from calling `get_game_reference` per result)
+
+**E1.6 — Prompt regression baseline:**
+- Layer A: deterministic harness (6 scenarios, mock dispatch, checks expectedToolCalls + forbiddenPatterns)
+- Layer B: real-model smoke tests against Gemini SDK with mock tool dispatch (skipped in CI without `GEMINI_API_KEY`)
+- 6 scenarios: hostile-level-filter, hostile-faction-filter, system-lookup, research-path, anti-hallucination, tool-enforced
+
+**Live hallucination fixes** (diagnosed from real Aria failures, 2026-04-04):
+- Root cause 1: TOOL SELECTION GUIDE had no hostile farming examples → model routed to wrong tool
+- Root cause 2: STFC EXPERTISE "LEAD with what you know" actively undercutting tool use for factual queries
+- Root cause 3: search results didn't include `spawnSystemCount` → model exhausted MAX_TOOL_ROUNDS=5
+- Fixes: hostile farming guide + EXCEPTION block in system prompt + `spawnSystemCount` + interceptor alias
 
 ---
 
