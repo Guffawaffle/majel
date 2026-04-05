@@ -50,6 +50,7 @@ import {
   detectConflicts,
   searchGameReference,
   getGameReference,
+  getScrapYields,
   checkOpsUnlocks,
 } from "./read-tools.js";
 
@@ -380,6 +381,18 @@ toolRegistry.register(defineTool({
   deps: ["referenceStore", "userSettingsStore"],
   run: (args, env) => checkOpsUnlocks(
     args.ops_level == null ? undefined : Number(args.ops_level),
+    env,
+  ),
+}));
+
+// ── Read tools: scrap yields (#276) ─────────────────────────
+
+toolRegistry.register(defineTool({
+  name: "get_scrap_yields",
+  deps: ["referenceStore", "resourceDefs"],
+  run: (args, env) => getScrapYields(
+    String(args.ship_id ?? ""),
+    args.level == null ? undefined : Number(args.level),
     env,
   ),
 }));

@@ -104,6 +104,12 @@ export interface ReferenceShip {
   buildRequirements: Record<string, unknown>[] | null;
   /** Number of blueprints required to unlock */
   blueprintsRequired: number | null;
+  /** Scrap yield by build level (JSONB array) */
+  scrap: Record<string, unknown>[] | null;
+  /** Base resource return on scrap (JSONB array) */
+  baseScrap: Record<string, unknown>[] | null;
+  /** Scrap difficulty level */
+  scrapLevel: number | null;
   source: string;
   sourceUrl: string | null;
   sourcePageId: string | null;
@@ -146,6 +152,9 @@ export type CreateReferenceShipInput = Omit<ReferenceShip, "createdAt" | "update
   tiers?: Record<string, unknown>[] | null;
   buildRequirements?: Record<string, unknown>[] | null;
   blueprintsRequired?: number | null;
+  scrap?: Record<string, unknown>[] | null;
+  baseScrap?: Record<string, unknown>[] | null;
+  scrapLevel?: number | null;
 };
 
 export interface ReferenceResearch {

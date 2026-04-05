@@ -39,6 +39,9 @@ export interface CdnShipDetailForMapping {
   tiers?: Record<string, unknown>[] | null;
   build_requirements?: Record<string, unknown>[] | null;
   blueprints_required?: number | null;
+  scrap?: Record<string, unknown>[] | null;
+  base_scrap?: Record<string, unknown>[] | null;
+  scrap_level?: number | null;
 }
 
 export interface CdnOfficerAbilityRefForMapping {
@@ -190,6 +193,9 @@ export function mapCdnShipToReferenceInput(options: ShipMapperOptions): CreateRe
       ?? (ship.build_requirements as Record<string, unknown>[] | null | undefined)
       ?? null,
     blueprintsRequired: detail?.blueprints_required ?? ship.blueprints_required ?? null,
+    scrap: detail?.scrap ?? null,
+    baseScrap: detail?.base_scrap ?? null,
+    scrapLevel: detail?.scrap_level ?? null,
     gameId: ship.id,
     source: "cdn:game-data",
     sourceUrl: null,

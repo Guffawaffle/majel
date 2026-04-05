@@ -18,13 +18,13 @@
 
 ## Current PM Focus
 
-- **Active work:** Phase B start — E2.1 feed contract + gap analysis is next. E1.3 (scrap yields) unblocked if `reference_ships` has `scrap_rewards`; audit first.
-- **Recently shipped:** Sprint #282 fully closed (`7f4b7c8`→`6eac048`). M1 Phase A shipped (`ffc8099`): E1.1 hostile/system filters, E1.6 regression baseline (Layer A + B), hostile farming prompt fixes, interceptor alias hardening.
+- **Active work:** E1.3 — `get_scrap_yields` tool. E2.1 feed audit complete (`docs/DATA_PIPELINE_CONTRACT.md`). `scrap[]` confirmed in CDN for 45/113 ships — unblocked.
+- **Recently shipped:** M1 Phase A (`ffc8099`): E1.1 hostile/system filters, E1.6 regression baseline, interceptor alias hardening. E2.1 feed contract written.
 - **Live at:** `ffc8099` → Cloud Run revision `majel-00126-sl8`. 2525 tests, 0 failures.
 - **Paused programs:** ADR-048 — Token Budgets (#235), Phase A done, Phases B–D paused.
 - **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
 - **Design ready:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
-- **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) — blocked on E2.1 data audit. #280 (armada fleet, 40%). #279 (officer sources) — blocked on E2.2 feed integration. #277 (capability_gaps schema) — parked.
+- **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) — **UNBLOCKED** — `scrap[]` confirmed in feed; needs column + ingest + tool. #280 (armada fleet, 40%). #279 (officer sources) — blocked: `sources` not in CDN at all (see DATA_PIPELINE_CONTRACT.md §6). #277 (capability_gaps schema) — parked.
 - **Previously completed:** Sprint #282. Aria Prompt Hardening. Aria Refit (#261). ADR-050 — Runtime Profiles. ADR-049 — Chat/Sync Boundary. ADR-046 (LCARS). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.

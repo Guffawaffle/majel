@@ -111,3 +111,109 @@ describe("search_game_reference — hostile/system filters", () => {
   });
 });
 
+describe("get_scrap_yields", () => {
+  const SCRAP_SHIP = {
+    id: "cdn:ship:34867572",
+    name: "Mayflower",
+    shipClass: "Explorer",
+    grade: 3,
+    rarity: "Rare",
+    faction: "Federation",
+    tier: null,
+    ability: null,
+    warpRange: null,
+    link: null,
+    gameId: 34867572,
+    maxTier: 4,
+    maxLevel: 60,
+    scrapLevel: 55,
+    scrap: [
+      { hull_id: 34867572, scrap_time_seconds: 8100, level: 1, resources: [{ resource_id: 908921776, amount: 0 }] },
+      { hull_id: 34867572, scrap_time_seconds: 8100, level: 2, resources: [{ resource_id: 908921776, amount: 100 }] },
+    ],
+    baseScrap: [{ resource_id: 743985951, amount: 5487 }],
+    source: "cdn:game-data",
+    license: "CC-BY-NC 4.0",
+    attribution: "STFC community data",
+    createdAt: "2024-01-01T00:00:00Z",
+    updatedAt: "2024-01-01T00:00:00Z",
+    hullType: null,
+    buildTimeInSeconds: null,
+    officerBonus: null,
+    crewSlots: null,
+    buildCost: null,
+    levels: null,
+    tiers: null,
+    buildRequirements: null,
+    blueprintsRequired: null,
+    sourceUrl: null,
+    sourcePageId: null,
+    sourceRevisionId: null,
+    sourceRevisionTimestamp: null,
+  };
+
+  it("returns full scrap table when no level specified", async () => {
+    const referenceStore = createMockReferenceStore();
+    (referenceStore.getShip as ReturnType<typeof vi.fn>).mockResolvedValue(SCRAP_SHIP);
+    const ctx = toolEnv({ userId: "local", referenceStore });
+
+    const result = await executeFleetTool(
+      "get_scrap_yields",
+      { ship_id: "cdn:ship:34867572" },
+      ctx,
+    ) as Record<string, unknown>;
+
+    expect(result.shipId).toBe("cdn:ship:34867572");
+    expect(result.shipName).toBe("Mayflower");
+    expect(result.scrapLevel).toBe(55);
+    expect(result.totalLevels).toBe(2);
+    expect(Array.isArray(result.scrapByLevel)).toBe(true);
+    expect(Array.isArray(result.baseScrap)).toBe(true);
+  });
+
+  it("returns specific level entry when level is provided", async () => {
+    const referenceStore = createMockReferenceStore();
+    (referenceStore.getShip as ReturnType<typeof vi.fn>).mockResolvedValue(SCRAP_SHIP);
+    const ctx = toolEnv({ userId: "local", referenceStore });
+
+    const result = await executeFleetTool(
+      "get_scrap_yields",
+      { ship_id: "cdn:ship:34867572", level: 2 },
+      ctx,
+    ) as Record<string, unknown>;
+
+    expect(result.requestedLevel).toBe(2);
+    expect(result.scrapEntry).toBeDefined();
+    const entry = result.scrapEntry as Record<string, unknown>;
+    expect(entry.level).toBe(2);
+  });
+
+  it("returns error when level not found", async () => {
+    const referenceStore = createMockReferenceStore();
+    (referenceStore.getShip as ReturnType<typeof vi.fn>).mockResolvedValue(SCRAP_SHIP);
+    const ctx = toolEnv({ userId: "local", referenceStore });
+
+    const result = await executeFleetTool(
+      "get_scrap_yields",
+      { ship_id: "cdn:ship:34867572", level: 99 },
+      ctx,
+    ) as Record<string, unknown>;
+
+    expect(result.error).toMatch(/No scrap entry at level 99/);
+  });
+
+  it("reports scrapAvailable:false for ship with no scrap data", async () => {
+    const referenceStore = createMockReferenceStore();
+    // FIXTURE_SHIP has scrap: null
+    const ctx = toolEnv({ userId: "local", referenceStore });
+
+    const result = await executeFleetTool(
+      "get_scrap_yields",
+      { ship_id: "ship-enterprise" },
+      ctx,
+    ) as Record<string, unknown>;
+
+    expect(result.scrapAvailable).toBe(false);
+  });
+});
+

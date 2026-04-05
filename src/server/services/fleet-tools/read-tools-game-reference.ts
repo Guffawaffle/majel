@@ -3,7 +3,7 @@
  */
 
 import type { ToolEnv } from "./declarations.js";
-import { resolveSystemMineResources, resolveHostileSystems } from "./read-tools-formatting.js";
+import { resolveSystemMineResources, resolveHostileSystems, annotateBuildCostResources } from "./read-tools-formatting.js";
 
 type ReferenceCategory = "research" | "building" | "hostile" | "consumable" | "system";
 
@@ -165,4 +165,68 @@ export async function getGameReference(
     default:
       return { error: `Unknown category: ${category}` };
   }
+}
+
+export async function getScrapYields(
+  shipId: string,
+  level: number | undefined,
+  ctx: ToolEnv,
+): Promise<object> {
+  if (!ctx.deps.referenceStore) {
+    return { error: "Reference catalog not available." };
+  }
+  if (!shipId.trim()) {
+    return { error: "ship_id is required." };
+  }
+
+  const ship = await ctx.deps.referenceStore.getShip(shipId);
+  if (!ship) {
+    return { error: `Ship not found: ${shipId}` };
+  }
+
+  if (!ship.scrap || ship.scrap.length === 0) {
+    return {
+      shipId: ship.id,
+      shipName: ship.name,
+      scrapAvailable: false,
+      message: "No scrap yield data available for this ship.",
+    };
+  }
+
+  const baseScrap = ship.baseScrap
+    ? annotateBuildCostResources(ship.baseScrap, ctx)
+    : null;
+
+  if (level != null) {
+    const entry = ship.scrap.find((e) => {
+      const rec = e as Record<string, unknown>;
+      return rec.level === level;
+    });
+    if (!entry) {
+      const maxLevel = ship.scrap.length;
+      return {
+        error: `No scrap entry at level ${level}. Ship has scrap data for levels 1–${maxLevel}.`,
+      };
+    }
+    const annotated = annotateBuildCostResources([entry], ctx);
+    return {
+      shipId: ship.id,
+      shipName: ship.name,
+      scrapLevel: ship.scrapLevel,
+      requestedLevel: level,
+      scrapEntry: Array.isArray(annotated) ? annotated[0] : annotated,
+      baseScrap,
+    };
+  }
+
+  // Return full scrap array
+  const annotatedScrap = annotateBuildCostResources(ship.scrap, ctx);
+  return {
+    shipId: ship.id,
+    shipName: ship.name,
+    scrapLevel: ship.scrapLevel,
+    totalLevels: ship.scrap.length,
+    scrapByLevel: annotatedScrap,
+    baseScrap,
+  };
 }

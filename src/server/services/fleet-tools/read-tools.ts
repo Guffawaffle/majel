@@ -42,7 +42,7 @@ export { listActiveEvents, listAwayTeams, getFactionStanding } from "./read-tool
 export { listTargets, getAgentExperienceMetrics, detectConflicts } from "./read-tools-targets.js";
 
 // ── Game Reference ──────────────────────────────────────────
-export { searchGameReference, getGameReference } from "./read-tools-game-reference.js";
+export { searchGameReference, getGameReference, getScrapYields } from "./read-tools-game-reference.js";
 
 // ADR-044 Phase 3: Ops unlock tool (#214)
 export { checkOpsUnlocks } from "./read-tools-ops-unlocks.js";

@@ -184,6 +184,9 @@ interface CdnShipDetail {
   blueprints_required: number;
   build_requirements: Array<{ requirement_type: string; requirement_id: number; requirement_level: number }>;
   ability: Array<{ id: number; value_is_percentage: boolean; values: Array<{ value: number; chance: number }> }>;
+  scrap?: Array<{ hull_id: number; scrap_time_seconds: number; level: number; resources: Array<{ resource_id: number; amount: number }> }>;
+  base_scrap?: Array<{ resource_id: number; amount: number }>;
+  scrap_level?: number;
 }
 
 interface CdnOfficerSummary {

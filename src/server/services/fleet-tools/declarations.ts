@@ -1462,4 +1462,26 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       },
     },
   },
+  {
+    name: "get_scrap_yields",
+    description:
+      "Get scrap yield resources for a specific ship — the resources returned when you dismantle the ship. " +
+      "Returns per-level scrap data (resources recovered at each build level) and the base scrap (always returned). " +
+      "Use this when the Admiral asks 'what do I get for scrapping X?' or wants to know scrap resources at a specific level. " +
+      "Provide a ship_id from search_ships or get_ship_detail results.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ship_id: {
+          type: Type.STRING,
+          description: "The ship's reference ID (e.g. from search_ships results)",
+        },
+        level: {
+          type: Type.INTEGER,
+          description: "Specific build level to get scrap yield for. Omit to get the full scrap table for all levels.",
+        },
+      },
+      required: ["ship_id"],
+    },
+  },
 ];

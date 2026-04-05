@@ -85,6 +85,9 @@ export const SCHEMA_STATEMENTS = [
     tiers JSONB,
     build_requirements JSONB,
     blueprints_required INTEGER,
+    scrap JSONB,
+    base_scrap JSONB,
+    scrap_level INTEGER,
     source TEXT NOT NULL,
     source_url TEXT,
     source_page_id TEXT,
@@ -140,6 +143,15 @@ export const SCHEMA_STATEMENTS = [
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'blueprints_required') THEN
       ALTER TABLE reference_ships ADD COLUMN blueprints_required INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'scrap') THEN
+      ALTER TABLE reference_ships ADD COLUMN scrap JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'base_scrap') THEN
+      ALTER TABLE reference_ships ADD COLUMN base_scrap JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_ships' AND column_name = 'scrap_level') THEN
+      ALTER TABLE reference_ships ADD COLUMN scrap_level INTEGER;
     END IF;
   END $$`,
   `CREATE INDEX IF NOT EXISTS idx_ref_ships_name ON reference_ships(name)`,
@@ -271,6 +283,7 @@ export const SHIP_COLS = `id, name, ship_class AS "shipClass", grade, rarity, fa
   officer_bonus AS "officerBonus", crew_slots AS "crewSlots",
   build_cost AS "buildCost", levels, game_id AS "gameId",
   tiers, build_requirements AS "buildRequirements", blueprints_required AS "blueprintsRequired",
+  scrap, base_scrap AS "baseScrap", scrap_level AS "scrapLevel",
   source, source_url AS "sourceUrl", source_page_id AS "sourcePageId",
   source_revision_id AS "sourceRevisionId", source_revision_timestamp AS "sourceRevisionTimestamp",
   license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -323,16 +336,17 @@ export const SQL = {
   insertShip: `INSERT INTO reference_ships (id, name, ship_class, grade, rarity, faction, tier,
     ability, warp_range, link,
     hull_type, build_time_in_seconds, max_tier, max_level, officer_bonus, crew_slots, build_cost, levels, game_id,
-    tiers, build_requirements, blueprints_required,
+    tiers, build_requirements, blueprints_required, scrap, base_scrap, scrap_level,
     source, source_url, source_page_id, source_revision_id, source_revision_timestamp, license, attribution, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)`,
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)`,
   updateShip: `UPDATE reference_ships SET name = $1, ship_class = $2, grade = $3, rarity = $4, faction = $5, tier = $6,
     ability = $7, warp_range = $8, link = $9,
     hull_type = $10, build_time_in_seconds = $11, max_tier = $12, max_level = $13,
     officer_bonus = $14, crew_slots = $15, build_cost = $16, levels = $17, game_id = $18,
     tiers = $19, build_requirements = $20, blueprints_required = $21,
-    source = $22, source_url = $23, source_page_id = $24, source_revision_id = $25,
-    source_revision_timestamp = $26, license = $27, attribution = $28, updated_at = $29 WHERE id = $30`,
+    scrap = $22, base_scrap = $23, scrap_level = $24,
+    source = $25, source_url = $26, source_page_id = $27, source_revision_id = $28,
+    source_revision_timestamp = $29, license = $30, attribution = $31, updated_at = $32 WHERE id = $33`,
   getShip: `SELECT ${SHIP_COLS} FROM reference_ships WHERE id = $1`,
   findShipByName: `SELECT ${SHIP_COLS} FROM reference_ships WHERE LOWER(name) = LOWER($1)`,
   listShips: `SELECT ${SHIP_COLS} FROM reference_ships ORDER BY name`,
