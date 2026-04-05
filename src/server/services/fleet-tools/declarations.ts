@@ -435,24 +435,6 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
-    name: "get_research_path",
-    description:
-      "Trace the prerequisite chain from the Admiral's current research state to unlock a target node. " +
-      "Uses reference catalog dependency data and the Admiral's completed research to show only " +
-      "remaining (incomplete) prerequisites in dependency order. " +
-      "Call this when the Admiral asks what they need to unlock or complete a specific research.",
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        target_node_id: {
-          type: Type.STRING,
-          description: "The research node ID to trace prerequisites for (e.g. 'cdn:research:12345').",
-        },
-      },
-      required: ["target_node_id"],
-    },
-  },
-  {
     name: "find_loadouts_for_intent",
     description:
       "Find all loadouts tagged for a specific activity intent (e.g. 'pvp', 'mining-lat', 'grinding'). " +
@@ -1382,7 +1364,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "Search game reference data by category: research projects, starbase buildings, hostiles (NPCs), " +
       "consumables (buffs/items), or star systems. Returns matching entries with key attributes. " +
       "Use this when the Admiral asks about game content like 'what research boosts mining?' or " +
-      "'find hostiles in Vulcan system' or 'what consumables increase damage?'.",
+      "'find hostiles in Vulcan system' or 'what consumables increase damage?'. " +
+      "For hostile/system categories, you can also filter by min_level, max_level, faction, hull_type (hostile only), or is_deep_space (system only).",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -1399,8 +1382,28 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
           type: Type.INTEGER,
           description: "Max results to return (default 20)",
         },
+        min_level: {
+          type: Type.INTEGER,
+          description: "Minimum level filter (applies to hostile and system categories)",
+        },
+        max_level: {
+          type: Type.INTEGER,
+          description: "Maximum level filter (applies to hostile and system categories)",
+        },
+        faction: {
+          type: Type.STRING,
+          description: "Filter by faction name, e.g. 'Federation', 'Klingon', 'Romulan', 'Gorn' (applies to hostile and system categories)",
+        },
+        hull_type: {
+          type: Type.STRING,
+          description: "Filter hostiles by hull type: 'Explorer', 'Battleship', 'Survey', 'Destroyer', 'Defense', 'Armada'. Note: 'Interceptor' is also accepted and maps to 'Destroyer' (the game's CDN label for the combat triangle class).",
+        },
+        is_deep_space: {
+          type: Type.BOOLEAN,
+          description: "Filter systems by deep space flag (applies to system category only)",
+        },
       },
-      required: ["category", "query"],
+      required: ["category"],
     },
   },
   {
@@ -1423,6 +1426,25 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ["category", "id"],
+    },
+  },
+  {
+    name: "get_research_path",
+    description:
+      "Trace the incomplete prerequisite chain for a target research node. " +
+      "Given a research node ID, returns the research nodes that must be completed first, " +
+      "in dependency order (root prerequisites first). Only incomplete nodes are returned. " +
+      "Use this when the Admiral asks 'what do I need to research before X?' or " +
+      "'show me the path to unlock Y research'.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        target_node_id: {
+          type: Type.STRING,
+          description: "The research node ID to find the prerequisite path for (e.g. from a search_game_reference result)",
+        },
+      },
+      required: ["target_node_id"],
     },
   },
   {

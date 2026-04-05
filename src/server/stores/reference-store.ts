@@ -294,6 +294,22 @@ export interface ReferenceStore {
   }): Promise<ReferenceSystem[]>;
   /** List buildings at a specific ops unlock level, or above a given level (ADR-044). */
   listBuildingsAtOps(opts: { exactLevel?: number; aboveLevel?: number; limit?: number }): Promise<ReferenceBuilding[]>;
+  /** Filter hostiles by level range, faction, or hull type. */
+  filterHostiles(opts: {
+    name?: string;
+    minLevel?: number;
+    maxLevel?: number;
+    faction?: string;
+    hullType?: number;
+  }): Promise<ReferenceHostile[]>;
+  /** Filter systems by level range, faction, or deep space flag. */
+  filterSystems(opts: {
+    name?: string;
+    minLevel?: number;
+    maxLevel?: number;
+    faction?: string;
+    isDeepSpace?: boolean;
+  }): Promise<ReferenceSystem[]>;
 
   counts(): Promise<ReferenceCounts>;
   close(): void;

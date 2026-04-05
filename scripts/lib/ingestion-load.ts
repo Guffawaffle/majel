@@ -169,6 +169,164 @@ export async function cmdLoad(args: string[]): Promise<void> {
       return;
     }
 
+    const existingRuntimeByHash = await pool.query<{
+      run_id: string;
+      dataset_kind: string;
+      status: string;
+    }>(
+      `SELECT run_id, dataset_kind, status
+       FROM effect_dataset_run
+       WHERE content_hash = $1
+       LIMIT 1`,
+      [validated.manifest.contentHash]
+    );
+
+    const runtimeByHash = existingRuntimeByHash.rows[0] ?? null;
+    if (runtimeByHash && runtimeByHash.run_id !== validated.manifest.runId) {
+      if (runtimeByHash.dataset_kind !== datasetKind) {
+        throw new Error(
+          `content hash already exists under dataset kind '${runtimeByHash.dataset_kind}' (expected '${datasetKind}')`
+        );
+      }
+
+      const aliasClient = await pool.connect();
+      try {
+        await aliasClient.query("BEGIN");
+
+        await aliasClient.query(
+          `INSERT INTO canonical_ingestion_runs (
+            feed_id, run_id, feed_path, content_hash, source_label,
+            source_version, snapshot_id, status, validation_errors, entity_counts,
+            inserted_count, updated_count, duplicate_count, orphan_count,
+            started_at, completed_at
+          )
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            'success', '[]'::jsonb, $8::jsonb,
+            0, 0, 0, 0,
+            NOW(), NOW()
+          )
+          ON CONFLICT (feed_id, run_id) DO UPDATE SET
+            feed_path = EXCLUDED.feed_path,
+            content_hash = EXCLUDED.content_hash,
+            source_label = EXCLUDED.source_label,
+            source_version = EXCLUDED.source_version,
+            snapshot_id = EXCLUDED.snapshot_id,
+            status = 'success',
+            validation_errors = '[]'::jsonb,
+            entity_counts = EXCLUDED.entity_counts,
+            inserted_count = 0,
+            updated_count = 0,
+            duplicate_count = 0,
+            orphan_count = 0,
+            started_at = NOW(),
+            completed_at = NOW()`,
+          [
+            validated.manifest.feedId,
+            validated.manifest.runId,
+            validated.feedPath,
+            validated.manifest.contentHash,
+            validated.manifest.sourceLabel,
+            validated.manifest.sourceVersion,
+            validated.manifest.snapshotId,
+            JSON.stringify(stableSortObject(validated.manifest.entityCounts)),
+          ]
+        );
+
+        if (activateRuntimeDataset) {
+          await aliasClient.query(
+            `UPDATE effect_dataset_run
+             SET status = 'retired'
+             WHERE status = 'active'
+               AND dataset_kind = $2
+               AND run_id <> $1`,
+            [runtimeByHash.run_id, CANONICAL_DATASET_KIND]
+          );
+
+          await aliasClient.query(
+            `UPDATE effect_dataset_run
+             SET status = 'active', activated_at = COALESCE(activated_at, NOW())
+             WHERE run_id = $1`,
+            [runtimeByHash.run_id]
+          );
+
+          await aliasClient.query(
+            `INSERT INTO effect_dataset_active (scope, run_id, updated_at)
+             VALUES ($2, $1, NOW())
+             ON CONFLICT (scope) DO UPDATE SET
+               run_id = EXCLUDED.run_id,
+               updated_at = NOW()`,
+            [runtimeByHash.run_id, CANONICAL_RUNTIME_SCOPE]
+          );
+        }
+
+        if (retentionKeepRuns != null) {
+          const retentionResult = await aliasClient.query<{ run_id: string }>(
+            `WITH ranked AS (
+               SELECT run_id, ROW_NUMBER() OVER (ORDER BY created_at DESC) AS rn
+               FROM effect_dataset_run
+               WHERE dataset_kind = $2
+             ),
+             active_run AS (
+               SELECT run_id
+               FROM effect_dataset_active
+               WHERE scope = $3
+             ),
+             removable AS (
+               SELECT ranked.run_id
+               FROM ranked
+               LEFT JOIN active_run ON active_run.run_id = ranked.run_id
+               WHERE ranked.rn > $1 AND active_run.run_id IS NULL
+             )
+             DELETE FROM effect_dataset_run
+             WHERE run_id IN (SELECT run_id FROM removable)
+             RETURNING run_id`,
+            [retentionKeepRuns, CANONICAL_DATASET_KIND, CANONICAL_RUNTIME_SCOPE]
+          );
+          retentionRemovedRunIds = retentionResult.rows.map((row) => row.run_id).sort();
+        }
+
+        await aliasClient.query("COMMIT");
+      } catch (error) {
+        await aliasClient.query("ROLLBACK");
+        throw error;
+      } finally {
+        aliasClient.release();
+      }
+
+      const completedAt = Date.now();
+      const noOpByHashReceipt: JsonValue = {
+        schemaVersion: "1.0.0",
+        feedId: validated.manifest.feedId,
+        runId: validated.manifest.runId,
+        status: "noop",
+        reason: "idempotent_content_hash_reuse",
+        feedPath: validated.feedPath,
+        startedAt: new Date(startedAt).toISOString(),
+        completedAt: new Date(completedAt).toISOString(),
+        durationMs: completedAt - startedAt,
+        sourceLabel: validated.manifest.sourceLabel,
+        sourceVersion: validated.manifest.sourceVersion,
+        snapshotId: validated.manifest.snapshotId,
+        contentHash: validated.manifest.contentHash,
+        entityCounts: stableSortObject(validated.manifest.entityCounts),
+        runtimeDataset: {
+          runId: runtimeByHash.run_id,
+          contentHash: validated.manifest.contentHash,
+          datasetKind,
+          status: activateRuntimeDataset ? "active" : runtimeByHash.status,
+          retentionKeepRuns: retentionKeepRuns ?? null,
+          retentionRemovedRunIds,
+        },
+      };
+
+      await writeLoadReceipt(loadReceiptPath, noOpByHashReceipt);
+      console.log(`✅ load no-op by content hash for ${validated.feedPath}`);
+      console.log(`reason=idempotent_content_hash_reuse existingRunId=${runtimeByHash.run_id}`);
+      console.log(`loadReceipt=${loadReceiptPath}`);
+      return;
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");

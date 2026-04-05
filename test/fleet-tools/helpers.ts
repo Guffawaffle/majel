@@ -194,6 +194,8 @@ export function createMockReferenceStore(overrides: Partial<ReferenceStore> = {}
       return null;
     }),
     searchSystems: vi.fn().mockResolvedValue([FIXTURE_SYSTEM]),
+    filterHostiles: vi.fn().mockResolvedValue([FIXTURE_HOSTILE]),
+    filterSystems: vi.fn().mockResolvedValue([FIXTURE_SYSTEM]),
     listBuildingsAtOps: vi.fn().mockResolvedValue([]),
     upsertShip: vi.fn(),
     deleteShip: vi.fn(),

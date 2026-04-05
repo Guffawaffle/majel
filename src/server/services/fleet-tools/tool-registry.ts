@@ -37,7 +37,6 @@ import {
   calculateUpgradePath,
   estimateAcquisitionTime,
   calculateTruePower,
-  getResearchPath,
   findLoadoutsForIntent,
   suggestCrew,
   analyzeBattleLog,
@@ -255,8 +254,17 @@ toolRegistry.register(defineTool({
 
 toolRegistry.register(defineTool({
   name: "get_research_path",
-  deps: ["researchStore", "referenceStore"],
-  run: (args, env) => getResearchPath(String(args.target_node_id ?? ""), env),
+  deps: ["researchStore"],
+  run: async (args, env) => {
+    const targetNodeId = String(args.target_node_id ?? "").trim();
+    if (!targetNodeId) {
+      return { error: "target_node_id is required" };
+    }
+    if (!env.deps.researchStore) {
+      return { error: "Research store not available" };
+    }
+    return env.deps.researchStore.getResearchPath(targetNodeId);
+  },
 }));
 
 // ── Read tools: crew recommendation ─────────────────────────
@@ -334,12 +342,25 @@ toolRegistry.register(defineTool({
 toolRegistry.register(defineTool({
   name: "search_game_reference",
   deps: ["referenceStore", "resourceDefs"],
-  run: (args, env) => searchGameReference(
-    String(args.category ?? "") as "research" | "building" | "hostile" | "consumable" | "system",
-    String(args.query ?? ""),
-    args.limit == null ? 20 : Number(args.limit),
-    env,
-  ),
+  run: (args, env) => {
+    const hullTypeStr = args.hull_type != null ? String(args.hull_type).toLowerCase() : undefined;
+    const hullTypeNum = hullTypeStr != null
+      ? { destroyer: 0, interceptor: 0, survey: 1, explorer: 2, battleship: 3, defense: 4, armada: 5 }[hullTypeStr]
+      : undefined;
+    return searchGameReference(
+      String(args.category ?? "") as "research" | "building" | "hostile" | "consumable" | "system",
+      String(args.query ?? ""),
+      args.limit == null ? 20 : Number(args.limit),
+      env,
+      {
+        minLevel: args.min_level != null ? Number(args.min_level) : undefined,
+        maxLevel: args.max_level != null ? Number(args.max_level) : undefined,
+        faction: args.faction != null ? String(args.faction) : undefined,
+        hullType: hullTypeNum,
+        isDeepSpace: args.is_deep_space != null ? Boolean(args.is_deep_space) : undefined,
+      },
+    );
+  },
 }));
 
 toolRegistry.register(defineTool({

@@ -10,7 +10,7 @@ import type {
   ReferenceConsumable,
   ReferenceSystem,
 } from "./reference-store.js";
-import { SQL, SYSTEM_COLS } from "./reference-store-schema.js";
+import { SQL, SYSTEM_COLS, HOSTILE_COLS } from "./reference-store-schema.js";
 
 export function createEntitiesMixin(pool: Pool) {
   return {
@@ -111,6 +111,86 @@ export function createEntitiesMixin(pool: Pool) {
 
       const where = clauses.join(" AND ");
       const sql = `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE ${where} ORDER BY est_warp ASC NULLS LAST, name`;
+      const result = await pool.query(sql, params);
+      return result.rows as ReferenceSystem[];
+    },
+
+    async filterHostiles(opts: {
+      name?: string;
+      minLevel?: number;
+      maxLevel?: number;
+      faction?: string;
+      hullType?: number;
+    }): Promise<ReferenceHostile[]> {
+      const clauses: string[] = [];
+      const params: (string | number)[] = [];
+      let paramIdx = 1;
+
+      if (opts.name) {
+        clauses.push(`name ILIKE $${paramIdx++}`);
+        params.push(`%${opts.name}%`);
+      }
+      if (opts.minLevel != null) {
+        clauses.push(`level >= $${paramIdx++}`);
+        params.push(opts.minLevel);
+      }
+      if (opts.maxLevel != null) {
+        clauses.push(`level <= $${paramIdx++}`);
+        params.push(opts.maxLevel);
+      }
+      if (opts.faction) {
+        clauses.push(`faction ILIKE $${paramIdx++}`);
+        params.push(`%${opts.faction}%`);
+      }
+      if (opts.hullType != null) {
+        clauses.push(`hull_type = $${paramIdx++}`);
+        params.push(opts.hullType);
+      }
+
+      if (clauses.length === 0) return [];
+
+      const where = clauses.join(" AND ");
+      const sql = `SELECT ${HOSTILE_COLS} FROM reference_hostiles WHERE ${where} ORDER BY level ASC NULLS LAST, name`;
+      const result = await pool.query(sql, params);
+      return result.rows as ReferenceHostile[];
+    },
+
+    async filterSystems(opts: {
+      name?: string;
+      minLevel?: number;
+      maxLevel?: number;
+      faction?: string;
+      isDeepSpace?: boolean;
+    }): Promise<ReferenceSystem[]> {
+      const clauses: string[] = [];
+      const params: (string | number | boolean)[] = [];
+      let paramIdx = 1;
+
+      if (opts.name) {
+        clauses.push(`name ILIKE $${paramIdx++}`);
+        params.push(`%${opts.name}%`);
+      }
+      if (opts.minLevel != null) {
+        clauses.push(`level >= $${paramIdx++}`);
+        params.push(opts.minLevel);
+      }
+      if (opts.maxLevel != null) {
+        clauses.push(`level <= $${paramIdx++}`);
+        params.push(opts.maxLevel);
+      }
+      if (opts.faction != null) {
+        clauses.push(`$${paramIdx++} = ANY(factions)`);
+        params.push(opts.faction);
+      }
+      if (opts.isDeepSpace != null) {
+        clauses.push(`is_deep_space = $${paramIdx++}`);
+        params.push(opts.isDeepSpace);
+      }
+
+      if (clauses.length === 0) return [];
+
+      const where = clauses.join(" AND ");
+      const sql = `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE ${where} ORDER BY level ASC NULLS LAST, est_warp ASC NULLS LAST, name`;
       const result = await pool.query(sql, params);
       return result.rows as ReferenceSystem[];
     },

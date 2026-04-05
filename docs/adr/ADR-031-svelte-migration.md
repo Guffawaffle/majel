@@ -251,7 +251,7 @@ This enables incremental validation. Each migrated view can be tested in `/v2` w
 
 ## References
 
-- [ADR-002](ADR-002-framework.md) — Original SvelteKit recommendation (superseded)
+- [ADR-002](superseded/ADR-002-framework.md) — Original SvelteKit recommendation (superseded)
 - [ADR-023](ADR-023-architecture-restructure.md) — MVC restructure (completed, patterns carried forward)
 - [ADR-030](ADR-030-view-consolidation.md) — View consolidation (7 views, executed during migration)
 - [Svelte 5 Runes](https://svelte.dev/docs/svelte/what-are-runes)

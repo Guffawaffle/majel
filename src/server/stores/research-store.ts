@@ -68,11 +68,30 @@ export interface ResearchTreeView {
   };
 }
 
+export interface ResearchPathStep {
+  nodeId: string;
+  name: string;
+  tree: string;
+  currentLevel: number;
+  maxLevel: number;
+  completed: boolean;
+  buffs: ResearchBuff[];
+}
+
+export interface ResearchPathResult {
+  targetNodeId: string;
+  targetName: string | null;
+  chain: ResearchPathStep[]; // incomplete prerequisites in order (root first)
+  targetCompleted: boolean;
+}
+
 export interface ResearchStore {
   replaceSnapshot(input: ReplaceResearchSnapshotInput): Promise<{ nodes: number; trees: number }>;
   listNodes(): Promise<ResearchNodeRecord[]>;
   listByTree(filters?: { tree?: string; includeCompleted?: boolean }): Promise<ResearchTreeView[]>;
   counts(): Promise<{ nodes: number; trees: number; completed: number }>;
+  /** Trace incomplete prerequisite chain for a target research node. */
+  getResearchPath(targetNodeId: string): Promise<ResearchPathResult>;
   close(): void;
 }
 
@@ -242,6 +261,46 @@ function createScopedResearchStore(scope: ScopeProvider, userId: string): Resear
           completed: Number(row.completed),
         };
       });
+    },
+
+    async getResearchPath(targetNodeId: string): Promise<ResearchPathResult> {
+      const allNodes = await this.listNodes();
+      const nodeMap = new Map<string, ResearchNodeRecord>(allNodes.map((n) => [n.nodeId, n]));
+
+      const target = nodeMap.get(targetNodeId);
+      const targetName = target?.name ?? null;
+      const targetCompleted = target?.completed ?? false;
+
+      // Walk dependency graph breadth-first, collect incomplete nodes
+      const visited = new Set<string>();
+      const incompleteChain: ResearchPathStep[] = [];
+
+      function walk(nodeId: string): void {
+        if (visited.has(nodeId)) return;
+        visited.add(nodeId);
+        const node = nodeMap.get(nodeId);
+        if (!node) return;
+        // Walk dependencies first (root prereqs before this node)
+        for (const depId of node.dependencies) {
+          walk(depId);
+        }
+        // Only include incomplete nodes (not including the target itself — it's the goal)
+        if (!node.completed && nodeId !== targetNodeId) {
+          incompleteChain.push({
+            nodeId: node.nodeId,
+            name: node.name,
+            tree: node.tree,
+            currentLevel: node.level,
+            maxLevel: node.maxLevel,
+            completed: node.completed,
+            buffs: node.buffs,
+          });
+        }
+      }
+
+      walk(targetNodeId);
+
+      return { targetNodeId, targetName, chain: incompleteChain, targetCompleted };
     },
 
     close() {

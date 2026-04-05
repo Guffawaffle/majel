@@ -1,6 +1,6 @@
 # ADR-037: Realtime Event Streaming (SSE-First) for Long-Running Operations
 
-**Status:** Proposed  
+**Status:** Accepted (implemented 2026-03)  
 **Date:** 2026-03-02  
 **Authors:** Guff, GitHub Copilot (GPT-5.3-Codex)  
 **References:** ADR-004 (AX envelope), ADR-009 (logging), ADR-014 (MicroRunner), ADR-018 (cloud), ADR-019 (user/privacy), ADR-036 (async chat runs)

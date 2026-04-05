@@ -215,7 +215,7 @@ majel/
 ├── migrations/canonical/        # 27-table canonical schema (officers, ships, research, buildings, systems)
 ├── test/                        # 75+ test files, 1,930 tests (Vitest)
 ├── docs/
-│   ├── ADR-001 through ADR-038  # Architecture Decision Records
+│   ├── adr/  # Architecture Decision Records (ADR-001 through ADR-051)
 │   ├── SETUP.md                 # Developer setup guide
 │   ├── RUNBOOK.md               # Operations runbook
 │   ├── PROMPT_GUIDE.md          # Prompt engineering reference

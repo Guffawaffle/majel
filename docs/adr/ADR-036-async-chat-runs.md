@@ -1,6 +1,6 @@
 # ADR-036: Async Chat Runs for Long-Running AI Workflows
 
-**Status:** Proposed  
+**Status:** Accepted (implemented 2026-03)  
 **Date:** 2026-03-02  
 **Authors:** Guff, GitHub Copilot (GPT-5.3-Codex)  
 **References:** ADR-004 (AX envelope), ADR-009 (logging), ADR-019 (user/privacy), ADR-026b (proposal/apply safety), ADR-027 (GenAI SDK), ADR-031 (Svelte migration), ADR-032 (cache), ADR-037 (realtime event streaming)

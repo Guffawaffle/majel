@@ -1,6 +1,6 @@
 # ADR-049: Chat vs Start/Sync Boundary
 
-**Status:** proposed  
+**Status:** Accepted (all slices shipped, #257 closed)  
 **Date:** 2025-07-19  
 **Supersedes:** none  
 **Related:** ADR-016 (catalog-overlay), ADR-026b (safe mutation proposal-apply), Launch-Contract v0.1  

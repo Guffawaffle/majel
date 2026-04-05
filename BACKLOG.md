@@ -102,7 +102,7 @@ Quick refit from production feedback. Three slices:
 ## Completed Program — LCARS Design System & Token Contract (ADR-046, #219)
 
 **Program umbrella:** #219
-**Linked ADR:** [docs/ADR-046-lcars-design-system-token-contract.md](docs/ADR-046-lcars-design-system-token-contract.md)
+**Linked ADR:** [docs/adr/ADR-046-lcars-design-system-token-contract.md](docs/adr/ADR-046-lcars-design-system-token-contract.md)
 **Design date:** 2026-03-15
 **Reviewed by:** Lex (Architecture Review)
 
@@ -172,7 +172,7 @@ Catalog page — all within documented production scope boundaries.
 ## Completed Program — Runtime Profiles & Cloud-Parity Local Dev (ADR-050, #251)
 
 **Program umbrella:** #251
-**Linked ADR:** [docs/ADR-050-runtime-profiles.md](docs/ADR-050-runtime-profiles.md)
+**Linked ADR:** [docs/adr/ADR-050-runtime-profiles.md](docs/adr/ADR-050-runtime-profiles.md)
 **Design date:** 2026-03-22
 **Shipped:** 2026-03-28
 
@@ -217,7 +217,7 @@ without Postgres. Add dev inspection endpoints and AX dev commands.
 ## Completed Program — Chat vs Start/Sync Product Boundary (ADR-049, #257)
 
 **Program umbrella:** #257
-**Linked ADR:** [docs/ADR-049-chat-vs-sync-boundary.md](docs/ADR-049-chat-vs-sync-boundary.md)
+**Linked ADR:** [docs/adr/ADR-049-chat-vs-sync-boundary.md](docs/adr/ADR-049-chat-vs-sync-boundary.md)
 **Design date:** 2026-03-22
 **Shipped:** 2026-03-28
 **Depends on:** ADR-050 (#251) — runtime profiles must be in place first
@@ -258,7 +258,7 @@ handoff card from Chat to Start/Sync.
 ## Paused Program — Per-Rank & Per-User Token Budgets (ADR-048, #235)
 
 **Program umbrella:** #235
-**Linked ADR:** [docs/ADR-048-token-budgets.md](docs/ADR-048-token-budgets.md)
+**Linked ADR:** [docs/adr/ADR-048-token-budgets.md](docs/adr/ADR-048-token-budgets.md)
 **Design date:** 2026-03-17
 
 ### Program Objective
@@ -293,7 +293,7 @@ and user-facing chat UI.
 ## Completed Program — Staged Boot Architecture (ADR-047, #226)
 
 **Program umbrella:** #226
-**Linked ADR:** [docs/ADR-047-staged-boot-architecture.md](docs/ADR-047-staged-boot-architecture.md)
+**Linked ADR:** [docs/adr/ADR-047-staged-boot-architecture.md](docs/adr/ADR-047-staged-boot-architecture.md)
 **Design date:** 2026-03-16
 **Reviewed by:** Lex (Architecture Review)
 
@@ -325,7 +325,7 @@ with bounded concurrency, per-task timing, and aggregate failure reporting.
 ## Completed Program — Timer UX Redesign (ADR-045, #215)
 
 **Program umbrella:** #215
-**Linked ADR:** [docs/ADR-045-timer-ux-redesign.md](docs/ADR-045-timer-ux-redesign.md)
+**Linked ADR:** [docs/adr/ADR-045-timer-ux-redesign.md](docs/adr/ADR-045-timer-ux-redesign.md)
 **Design date:** 2026-03-15
 
 ### Program Objective
@@ -345,7 +345,7 @@ Redesign the timer feature from a form-based creation model to a preset launcher
 ## Completed Program — Progression-Aware Context (ADR-044, #212)
 
 **Program umbrella:** #212  
-**Linked ADR:** [docs/ADR-044-progression-aware-context.md](docs/ADR-044-progression-aware-context.md)  
+**Linked ADR:** [docs/adr/ADR-044-progression-aware-context.md](docs/adr/ADR-044-progression-aware-context.md)  
 **Design date:** 2026-03-12  
 **Reviewed by:** Lex (Architecture Review)
 
@@ -382,7 +382,7 @@ Make Aria progression-aware. Assemble a cross-store snapshot of fleet maturity (
 ## Planned Program — Model Availability Policy (ADR-042, #205)
 
 **Program umbrella:** #205  
-**Linked ADR:** [docs/ADR-042-model-availability-policy.md](docs/ADR-042-model-availability-policy.md)  
+**Linked ADR:** [docs/adr/ADR-042-model-availability-policy.md](docs/adr/ADR-042-model-availability-policy.md)  
 **Design date:** 2026-03-10  
 **Reviewed by:** Lex (Architecture Review)
 
@@ -420,7 +420,7 @@ Centralize model availability into a single resolver function. Registry gains `d
 ## Completed Program — Chat Run Control & Live Status UX (ADR-043, #209)
 
 **Program umbrella:** #209  
-**Linked ADR:** [docs/ADR-043-chat-run-control-live-status.md](docs/ADR-043-chat-run-control-live-status.md)  
+**Linked ADR:** [docs/adr/ADR-043-chat-run-control-live-status.md](docs/adr/ADR-043-chat-run-control-live-status.md)  
 **Design date:** 2026-03-10  
 **Completion date:** 2026-03-11  
 **Reviewed by:** Lex (Architecture Review)
@@ -459,7 +459,7 @@ Explicitly defers token-by-token streaming to a future ADR.
 ## Completed Program — Multi-Provider LLM Engine (ADR-041, #199)
 
 **Program umbrella:** #199  
-**Linked ADR:** [docs/ADR-041-multi-provider-llm.md](docs/ADR-041-multi-provider-llm.md)  
+**Linked ADR:** [docs/adr/ADR-041-multi-provider-llm.md](docs/adr/ADR-041-multi-provider-llm.md)  
 **Design date:** 2026-03-10  
 **Completion date:** 2026-03-10
 
@@ -509,7 +509,7 @@ Introduce Claude (Anthropic) as an alternative LLM engine alongside Gemini, acce
 ## Completed Program — Security Hardening Post-Audit (ADR-040, #194)
 
 **Program umbrella:** #194  
-**Linked ADR:** [docs/ADR-040-prompt-injection-hardening.md](docs/ADR-040-prompt-injection-hardening.md)  
+**Linked ADR:** [docs/adr/ADR-040-prompt-injection-hardening.md](docs/adr/ADR-040-prompt-injection-hardening.md)  
 **Audit date:** 2026-03-10  
 **Audit scope:** SQL injection, prompt injection, auth/session, XSS, SSRF/access control
 
@@ -536,7 +536,7 @@ Strong foundations across traditional web security (parameterized SQL, CSP, RLS,
 ## Completed Program — Request Context & Scoped DB Execution (ADR-039, #188)
 
 **Program umbrella:** #188  
-**Linked ADR:** [docs/ADR-039-request-context.md](docs/ADR-039-request-context.md)  
+**Linked ADR:** [docs/adr/ADR-039-request-context.md](docs/adr/ADR-039-request-context.md)  
 **External review:** Lex (ChatGPT) — architecture review completed 2026-03-09
 
 ### Program Objective
@@ -682,7 +682,7 @@ Ship a single, production-ready realtime operation stack where long-running chat
 ## Planned Next Sprint — Agent Experience Policy (ADR-038)
 
 **Sprint umbrella:** ADR-038 execution sprint  
-**Linked doc:** [docs/ADR-038-agent-experience-policy.md](docs/ADR-038-agent-experience-policy.md)
+**Linked doc:** [docs/adr/ADR-038-agent-experience-policy.md](docs/adr/ADR-038-agent-experience-policy.md)
 
 **Sprint status:** [x] Complete (2026-03-04)
 
@@ -906,7 +906,7 @@ Replace binary keyword matching (`hasKeyword()`) with a normalized effect taxono
 - [x] Post-review runtime cache hardening: stable manifest ETag basis, raw JSON cache representation, and chunk `If-None-Match` → `304` coverage
 - [ ] "Does it work?" validation matrix (Phase C)
 
-See [ADR-034](docs/ADR-034-effect-taxonomy.md) for full design.
+See [ADR-034](docs/adr/ADR-034-effect-taxonomy.md) for full design.
 
 ### Up Next — Effects Officer Data Source v2 (ADR-035)
 
@@ -1054,7 +1054,7 @@ Decomposed monolithic `scripts/ax.ts` (1,252 lines) into modular `scripts/ax/` d
 
 **Decision:** Migrate vanilla JS client (8,335 LOC, 28 files) to Svelte 5 + Vite. **No SvelteKit** — avoids meta-framework lock-in, SSR not needed (app behind auth). Express API stays 100% untouched.
 
-See [ADR-031](docs/ADR-031-svelte-migration.md) for full decision rationale.
+See [ADR-031](docs/adr/ADR-031-svelte-migration.md) for full decision rationale.
 
 | Issue | Phase | Title | Status |
 |---|---|---|---|
@@ -1088,7 +1088,7 @@ Key decisions:
 
 ## Shelved (v1.0+)
 
-See [ADR-006](docs/ADR-006-open-alpha.md) for the full list. Key items:
+See [ADR-006](docs/adr/ADR-006-open-alpha.md) for the full list. Key items:
 - ~~SvelteKit migration (ADR-002)~~ → Superseded by ADR-031 (Svelte 5 + Vite, no Kit)
 - Plugin/extension system
 - Alliance/guild multi-user features
