@@ -18,13 +18,13 @@
 
 ## Current PM Focus
 
-- **Active work:** E1.3 — `get_scrap_yields` tool. E2.1 feed audit complete (`docs/DATA_PIPELINE_CONTRACT.md`). `scrap[]` confirmed in CDN for 45/113 ships — unblocked.
-- **Recently shipped:** M1 Phase A (`ffc8099`): E1.1 hostile/system filters, E1.6 regression baseline, interceptor alias hardening. E2.1 feed contract written.
-- **Live at:** `ffc8099` → Cloud Run revision `majel-00126-sl8`. 2525 tests, 0 failures.
+- **Active work:** E1.3 shipped (`63646a4`). Next: system column enrichment (P2 from contract) or E1.4 armada fleet (#280, 40% done).
+- **Recently shipped:** E2.1 feed contract (`docs/DATA_PIPELINE_CONTRACT.md`). E1.3 `get_scrap_yields` tool — scrap column in reference_ships, CDN ingest plumbed, 4 tests.
+- **Live at:** `ffc8099` → Cloud Run revision `majel-00126-sl8`. 2529 tests, 0 failures.
 - **Paused programs:** ADR-048 — Token Budgets (#235), Phase A done, Phases B–D paused.
 - **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
 - **Design ready:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
-- **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) — **UNBLOCKED** — `scrap[]` confirmed in feed; needs column + ingest + tool. #280 (armada fleet, 40%). #279 (officer sources) — blocked: `sources` not in CDN at all (see DATA_PIPELINE_CONTRACT.md §6). #277 (capability_gaps schema) — parked.
+- **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) ✅ shipped `63646a4`. #280 (armada fleet, 40%). #279 (officer sources) — blocked: `sources` not in CDN at all (see DATA_PIPELINE_CONTRACT.md §6). #277 (capability_gaps schema) — parked.
 - **Previously completed:** Sprint #282. Aria Prompt Hardening. Aria Refit (#261). ADR-050 — Runtime Profiles. ADR-049 — Chat/Sync Boundary. ADR-046 (LCARS). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
