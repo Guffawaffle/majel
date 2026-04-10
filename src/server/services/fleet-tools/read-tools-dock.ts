@@ -4,6 +4,7 @@
 
 import type { ToolEnv } from "./declarations.js";
 import { buildOfficerNameMap, buildShipNameMap } from "./read-tools-formatting.js";
+import { getAwayTeamLocks } from "./read-tools-context-helpers.js";
 
 export async function listDocks(ctx: ToolEnv): Promise<object> {
   if (!ctx.deps.crewStore) {
@@ -135,5 +136,101 @@ export async function analyzeFleet(ctx: ToolEnv): Promise<object> {
       locked: r.locked,
     })),
     totalReservations: reservations.length,
+  };
+}
+
+export async function getArmadaContext(
+  loadoutIds: number[] | undefined,
+  ctx: ToolEnv,
+): Promise<object> {
+  if (!ctx.deps.crewStore) {
+    return { error: "Crew system not available." };
+  }
+
+  const [effectiveState, reservations, awayTeamLocks] = await Promise.all([
+    ctx.deps.crewStore.getEffectiveDockState(),
+    ctx.deps.crewStore.listReservations(),
+    getAwayTeamLocks(ctx),
+  ]);
+
+  // Build fast-lookup sets
+  const awayTeamByOfficerId = new Map(awayTeamLocks.map((lock) => [lock.officerId, lock]));
+  const hardReservationMap = new Map(
+    reservations.filter((r) => r.locked).map((r) => [r.officerId, r]),
+  );
+
+  // Resolve which docks to analyze
+  const assignedDocks = effectiveState.docks.filter((d) => d.loadout != null);
+  const docksToCheck = loadoutIds && loadoutIds.length > 0
+    ? assignedDocks.filter((d) => loadoutIds.includes(d.loadout!.loadoutId))
+    : assignedDocks;
+
+  // Batch name lookups
+  const allShipIds = docksToCheck.map((d) => d.loadout!.shipId);
+  const allOfficerIds = docksToCheck.flatMap((d) => {
+    const b = d.loadout!.bridge;
+    return [b.captain, b.bridge_1, b.bridge_2].filter((id): id is string => Boolean(id));
+  });
+  const [shipNames, officerNames] = await Promise.all([
+    buildShipNameMap(allShipIds, ctx),
+    buildOfficerNameMap(allOfficerIds, ctx),
+  ]);
+
+  const ships = docksToCheck.map((d) => {
+    const loadout = d.loadout!;
+    const bridgeOfficerIds = [loadout.bridge.captain, loadout.bridge.bridge_1, loadout.bridge.bridge_2]
+      .filter((id): id is string => Boolean(id));
+
+    const lockReasons: { type: string; officerId: string; officerName: string | null; detail: string }[] = [];
+
+    for (const officerId of bridgeOfficerIds) {
+      const awayLock = awayTeamByOfficerId.get(officerId);
+      if (awayLock) {
+        lockReasons.push({
+          type: "away_team",
+          officerId,
+          officerName: officerNames.get(officerId) ?? null,
+          detail: `On away mission: ${awayLock.missionName}${awayLock.returnTime ? ` (returns ${awayLock.returnTime})` : ""}`,
+        });
+      }
+      const reservation = hardReservationMap.get(officerId);
+      if (reservation) {
+        lockReasons.push({
+          type: "officer_reserved",
+          officerId,
+          officerName: officerNames.get(officerId) ?? null,
+          detail: `Reserved for: ${reservation.reservedFor}`,
+        });
+      }
+    }
+
+    return {
+      dockNumber: d.dockNumber,
+      loadoutId: loadout.loadoutId,
+      loadoutName: loadout.name,
+      shipId: loadout.shipId,
+      shipName: shipNames.get(loadout.shipId) ?? null,
+      intentKeys: d.intentKeys,
+      available: lockReasons.length === 0,
+      lockReasons,
+      bridge: Object.fromEntries(
+        Object.entries(loadout.bridge)
+          .filter(([, id]) => Boolean(id))
+          .map(([slot, id]) => [slot, { id, name: officerNames.get(id as string) ?? null }]),
+      ),
+    };
+  });
+
+  const availableCount = ships.filter((s) => s.available).length;
+  const lockedCount = ships.length - availableCount;
+
+  return {
+    totalAssignedShips: ships.length,
+    availableForArmada: availableCount,
+    lockedOrUnavailable: lockedCount,
+    ships,
+    note: ships.length === 0
+      ? "No assigned ships found. Use assign_dock to set up dock assignments first."
+      : undefined,
   };
 }

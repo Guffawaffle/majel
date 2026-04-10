@@ -42,6 +42,7 @@ import {
   analyzeBattleLog,
   suggestCounter,
   analyzeFleet,
+  getArmadaContext,
   resolveConflict,
   whatIfRemoveOfficer,
   listTargets,
@@ -298,6 +299,18 @@ toolRegistry.register(defineTool({
   name: "analyze_fleet",
   deps: ["crewStore"],
   run: (_args, env) => analyzeFleet(env),
+}));
+
+toolRegistry.register(defineTool({
+  name: "get_armada_context",
+  deps: ["crewStore", "referenceStore"],
+  run: (args, env) => {
+    const rawIds = args.loadout_ids;
+    const loadoutIds = Array.isArray(rawIds)
+      ? rawIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
+      : undefined;
+    return getArmadaContext(loadoutIds, env);
+  },
 }));
 
 toolRegistry.register(defineTool({

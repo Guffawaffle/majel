@@ -24,7 +24,7 @@ export { suggestTargets } from "./read-tools-target-suggestions.js";
 export { getFleetOverview, searchOfficers, searchShips, getOfficerDetail, getOfficersDetail, getShipDetail, getShipsDetail } from "./read-tools-catalog.js";
 
 // ── Dock / Fleet ────────────────────────────────────────────
-export { listDocks, getOfficerConflicts, analyzeFleet } from "./read-tools-dock.js";
+export { listDocks, getOfficerConflicts, analyzeFleet, getArmadaContext } from "./read-tools-dock.js";
 
 // ── Planning ────────────────────────────────────────────────
 export { validatePlan, listPlanItems, listIntents } from "./read-tools-planning.js";

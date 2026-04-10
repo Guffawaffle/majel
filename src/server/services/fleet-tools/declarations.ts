@@ -522,6 +522,25 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     // No parameters — gathers everything
   },
   {
+    name: "get_armada_context",
+    description:
+      "Check which docked ships and their crews are available for armada participation right now. " +
+      "Returns each assigned dock with availability status and lock reasons: officers locked in away teams, " +
+      "officers with hard reservations, etc. Use this when the Admiral asks which ships can join an armada, " +
+      "plans fleet composition for an upcoming armada, or wants to know if a specific ship/crew is free. " +
+      "If loadout_ids are provided, checks only those loadouts; otherwise checks all assigned docks.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        loadout_ids: {
+          type: Type.ARRAY,
+          description: "Optional list of loadout IDs to check (integers from list_docks results). If omitted, checks all assigned docks.",
+          items: { type: Type.INTEGER },
+        },
+      },
+    },
+  },
+  {
     name: "resolve_conflict",
     description:
       "Gather context to help resolve an officer conflict: the conflicting officer's full details, " +
