@@ -18,17 +18,33 @@
 
 ## Current PM Focus
 
-- **Active work:** E1.4 Slice 2 — `analyze_armada_fleet` debuff engine (deferred until debuff taxonomy exists). E2.2 stfc.space feed ingestor — Phase B major work.
-- **Recently shipped:** E1.4 Slice 1 — `get_armada_context` tool: per-ship availability with away team + officer reservation lock reasons. 2541 tests. P2 system column enrichment — 6 new columns on `reference_systems`.
+- **Active work:** Phase 1 runtime correctness recut — #250 chat hardening, #286 runtime governance hardening, and cleanup batch #269 / #271 / #273 / #284. Phase 2 contract unlock — ADR-051 instance modeling (#268).
+- **Recently shipped:** Sprint #282. ADR-048 token budgets (#235) fully shipped. E1.4 availability slice — `get_armada_context` tool: per-ship availability with away team + officer reservation lock reasons. P2 system column enrichment — 6 new columns on `reference_systems`.
 - **Live at:** E1.4/Slice1 commit pushed 2026-04-10; Cloud Run revision `majel-00126-sl8` — redeploy needed. 2541 tests, 0 failures.
-- **Paused programs:** ADR-048 — Token Budgets (#235), Phase A done, Phases B–D paused.
 - **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
-- **Design ready:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
-- **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) ✅ shipped `63646a4`. #280 (armada fleet, 40%). #279 (officer sources) — blocked: `sources` not in CDN at all (see DATA_PIPELINE_CONTRACT.md §6). #277 (capability_gaps schema) — parked.
-- **Previously completed:** Sprint #282. Aria Prompt Hardening. Aria Refit (#261). ADR-050 — Runtime Profiles. ADR-049 — Chat/Sync Boundary. ADR-046 (LCARS). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234).
+- **Contract unlock next:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
+- **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) ✅ shipped `63646a4`. #280 — full debuff/synergy engine deferred; availability slice already landed. #279 — blocked: `sources` not in CDN or `stfc.space` feed (see DATA_PIPELINE_CONTRACT.md §6). #277 — parked.
+- **Previously completed:** Aria Prompt Hardening. Aria Refit (#261). ADR-050 — Runtime Profiles. ADR-049 — Chat/Sync Boundary. ADR-046 (LCARS). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234).
 - **Claude quota status:** Denied (no billing history on $300 credit). Will re-request after billing established.
 - **Operational note:** deploys are live; use normal `ax ci` + push gate.
 
+
+---
+
+## Open Issue Ledger
+
+| Row | Issue | Title | Status |
+|-----|-------|-------|--------|
+| 1 | #250 | Chat architecture hardening — post-audit followups | [~] Active now |
+| 2 | #268 | ADR-051 instance modeling: schedule implementation | [~] Active next / contract unlock |
+| 3 | #269 | Frame store silently ignores offset pagination parameter | [ ] Cleanup batch |
+| 4 | #271 | Extract cohesive modules from gemini/index.ts (~1310 lines) | [ ] Cleanup batch |
+| 5 | #273 | Tighten any/unknown casts in safe-router and request-context | [ ] Cleanup batch |
+| 6 | #277 | Structured capability_gaps field in response schema | [—] Parked |
+| 7 | #279 | New tool: get_officer_sources — shard acquisition sourcing | [—] Blocked on source data |
+| 8 | #280 | New tool: analyze_armada_fleet — multi-ship synergy and debuff analysis | [—] Full debuff engine deferred; narrow availability slice shipped |
+| 9 | #284 | ax: emit stderr execution-mode banner for non-TTY consumers | [ ] Cleanup batch |
+| 10 | #286 | Runtime governance hardening | [~] Active now |
 
 ---
 
@@ -187,7 +203,7 @@ Catalog page — all within documented production scope boundaries.
 - [x] #246 — `runningRuns` Map max-size cap (10)
 
 ### Remaining (backlog)
-- [ ] Per-user token budgets — promoted to #235 (ADR-048)
+- [x] Per-user token budgets — promoted to #235 (ADR-048), now fully shipped
 - [x] #240 — Gemini context caching for system prompt (`f7a6afa`)
 - [x] #244 — Session history summarization (`f0784a4`)
 - [x] #247 — Unbounded overlay list operations
@@ -280,17 +296,18 @@ handoff card from Chat to Start/Sync.
 
 ---
 
-## Paused Program — Per-Rank & Per-User Token Budgets (ADR-048, #235)
+## Completed Program — Per-Rank & Per-User Token Budgets (ADR-048, #235)
 
 **Program umbrella:** #235
 **Linked ADR:** [docs/adr/ADR-048-token-budgets.md](docs/adr/ADR-048-token-budgets.md)
 **Design date:** 2026-03-17
+**Shipped:** 2026-04-10
 
 ### Program Objective
 
 Persist token usage in a ledger table, enforce per-rank daily budgets
-(ensign=0, lieutenant=50K oken, captain=200K, admiral=unlimited), allow
-admiral per-user overrides, and surface budget status, in both admin panel
+(ensign=0, lieutenant=50K token, captain=200K, admiral=unlimited), allow
+admiral per-user overrides, and surface budget status in both admin panel
 and user-facing chat UI.
 
 ### Sequenced Implementation Plan
@@ -298,20 +315,22 @@ and user-facing chat UI.
 | Phase | Issue | Title | Status |
 |---|---|---|---|
 | A | #236 | Token ledger table + recording | [x] |
-| B | #237 | Budget config + rank defaults + enforcement | [ ] |
-| C | #238 | Admin panel — budget management tab | [ ] |
-| D | #239 | Per-user overrides + user-facing indicator | [ ] |
+| B | #237 | Budget config + rank defaults + enforcement | [x] |
+| C | #238 | Admin panel — budget management tab | [x] |
+| D | #239 | Per-user overrides + user-facing indicator | [x] |
+
+**Ship commits:** `5c5dd1c`, `743f2d4`, `e99bbe8`
 
 ### Definition of Done
 
 - [x] Token ledger records every LLM call
-- [ ] Rank default budgets configurable by admiral
-- [ ] Per-user overrides with admin note field
-- [ ] Pre-flight check rejects over-budget with 429
-- [ ] AdmiralView "Budgets" tab with usage dashboard
-- [ ] User-facing  budget indicator in chat input
-- [ ] 90-day retention    on token_ledger
-- [ ] `npm run ax --        ci` passes at ray phase. boundary
+- [x] Rank default budgets configurable by admiral
+- [x] Per-user overrides with admin note field
+- [x] Pre-flight check rejects over-budget with 429
+- [x] AdmiralView "Budgets" tab with usage dashboard
+- [x] User-facing budget indicator in chat input
+- [x] 90-day retention on `token_ledger`
+- [x] `npm run ax -- ci` passes at every phase boundary
 
 ---
 

@@ -14,7 +14,7 @@ import {
   PRIOR_BETA,
   MAX_RULES_PER_USER,
 } from "../src/server/stores/behavior-store.js";
-import { createMicroRunner, type ContextSources } from "../src/server/services/micro-runner.js";
+import { createMicroRunner, UNIVERSAL_INVARIANTS, type ContextSources } from "../src/server/services/micro-runner.js";
 
 // ─── Test Helpers ───────────────────────────────────────────
 
@@ -448,9 +448,9 @@ describe("MicroRunner + BehaviorStore integration", () => {
 
     const { contract } = await runner.prepare("What's the best crew for the Enterprise?");
 
-    // Should work fine — no behavioral rules, just the existing contract rules
+    // Should work fine — no behavioral rules, just the universal invariant rules
     expect(contract.taskType).toBe("strategy_general");
-    expect(contract.rules).toEqual([]);
+    expect(contract.rules).toEqual([...UNIVERSAL_INVARIANTS]);
   });
 
   it("scoped rules only appear for matching task types", async () => {

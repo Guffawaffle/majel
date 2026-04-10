@@ -17,6 +17,7 @@ import {
   createMicroRunner,
   extractConversationalAnswer,
   VALIDATION_DISCLAIMER,
+  UNIVERSAL_INVARIANTS,
   type ContextSources,
   type TaskContract,
   type GatedContext,
@@ -111,11 +112,14 @@ describe("PromptCompiler (compileTask)", () => {
   });
 
   describe("contract structure", () => {
-    it("reference_lookup requests T1 roster and T2 reference pack", () => {
+    it("reference_lookup includes universal invariants plus task-specific rules", () => {
       const ctx = makeContextSources({ hasRoster: true });
       const contract = compileTask("What does Khan do?", ctx, ["Khan"]);
       expect(contract.requiredTiers.t1_roster).toBe(true);
       expect(contract.requiredTiers.t2_referencePack).toContain("Khan");
+      for (const inv of UNIVERSAL_INVARIANTS) {
+        expect(contract.rules).toContain(inv);
+      }
       expect(contract.rules).toContain("no numeric claims unless cited from T1/T2");
       expect(contract.outputSchema.factsUsed).toBe(true);
     });
@@ -129,10 +133,13 @@ describe("PromptCompiler (compileTask)", () => {
       expect(contract.rules).toContain("reference dock data when present");
     });
 
-    it("strategy_general has minimal constraints", () => {
+    it("strategy_general includes universal invariants", () => {
       const ctx = makeContextSources();
       const contract = compileTask("How do armadas work?", ctx);
-      expect(contract.rules).toHaveLength(0);
+      expect(contract.rules).toHaveLength(UNIVERSAL_INVARIANTS.length);
+      for (const inv of UNIVERSAL_INVARIANTS) {
+        expect(contract.rules).toContain(inv);
+      }
       expect(contract.outputSchema.confidence).toBe(true);
     });
 
@@ -304,7 +311,7 @@ describe("OutputValidator (validateResponse)", () => {
     taskType: "reference_lookup",
     requiredTiers: { t1_fleetConfig: false, t1_roster: true, t1_dockBriefing: false, t2_referencePack: ["Khan"] },
     contextManifest: "Available: T1 roster, T2 reference(Khan), T3 training",
-    rules: ["cite source tier for all factual claims", "no numeric claims unless cited from T1/T2"],
+    rules: [...UNIVERSAL_INVARIANTS, "cite source tier for all factual claims", "no numeric claims unless cited from T1/T2"],
     outputSchema: { answer: true, factsUsed: true, assumptions: false, unknowns: true, confidence: false },
   };
 
@@ -312,14 +319,14 @@ describe("OutputValidator (validateResponse)", () => {
     taskType: "strategy_general",
     requiredTiers: { t1_fleetConfig: false, t1_roster: false, t1_dockBriefing: false, t2_referencePack: [] },
     contextManifest: "Available: T3 training",
-    rules: [],
+    rules: [...UNIVERSAL_INVARIANTS],
     outputSchema: { answer: true, factsUsed: false, assumptions: false, unknowns: false, confidence: true },
   };
 
   const emptyGated: GatedContext = { contextBlock: null, keysInjected: [], t2Provenance: [] };
 
-  describe("strategy_general bypass", () => {
-    it("always passes for strategy_general (no validation)", () => {
+  describe("universal invariants on strategy_general", () => {
+    it("passes clean strategy_general responses through universal invariants", () => {
       const result = validateResponse(
         "The best PvP strategy at level 40 with tier 6 ships is to focus on interceptors.",
         strategyContract,
@@ -327,6 +334,35 @@ describe("OutputValidator (validateResponse)", () => {
       );
       expect(result.passed).toBe(true);
       expect(result.violations).toHaveLength(0);
+    });
+
+    it("flags fabricated system diagnostics in strategy_general", () => {
+      const result = validateResponse(
+        "Your system health status: memory frames is 42 and everything looks fine.",
+        strategyContract,
+        emptyGated,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.violations.some((v) => v.includes("System diagnostic"))).toBe(true);
+    });
+
+    it("flags unqualified patch claims in strategy_general", () => {
+      const result = validateResponse(
+        "In patch 64 they completely reworked the combat triangle. Version 3.2 changed everything.",
+        strategyContract,
+        emptyGated,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.violations.some((v) => v.includes("Patch/version"))).toBe(true);
+    });
+
+    it("passes patch claims in strategy_general when qualified with uncertainty", () => {
+      const result = validateResponse(
+        "I think they may have adjusted this in a recent patch, but I'm not certain of the details.",
+        strategyContract,
+        emptyGated,
+      );
+      expect(result.passed).toBe(true);
     });
   });
 
@@ -473,7 +509,7 @@ describe("buildRepairPrompt", () => {
       taskType: "reference_lookup",
       requiredTiers: { t1_fleetConfig: false, t1_roster: true, t1_dockBriefing: false, t2_referencePack: ["Khan"] },
       contextManifest: "Available: T1 roster, T2 reference(Khan), T3 training",
-      rules: ["cite source tier for all factual claims", "no numeric claims unless cited from T1/T2"],
+      rules: [...UNIVERSAL_INVARIANTS, "cite source tier for all factual claims", "no numeric claims unless cited from T1/T2"],
       outputSchema: { answer: true, factsUsed: true, assumptions: false, unknowns: true, confidence: false },
     };
 

@@ -97,6 +97,20 @@ export interface ContextSources {
   hasDockBriefing: boolean;
 }
 
+// ─── Universal Invariants ───────────────────────────────────
+
+/**
+ * Universal invariants enforced across ALL task types, including strategy_general.
+ * These are objective, testable constraints — not style or strategy guidance.
+ * The validator checks them unconditionally; they also appear in contract.rules
+ * so the model can follow them during generation.
+ */
+export const UNIVERSAL_INVARIANTS: readonly string[] = [
+  "no fabricated system diagnostics",
+  "no unqualified patch or version claims",
+  "no roster or data claims for entities not in context",
+];
+
 // ─── PromptCompiler ─────────────────────────────────────────
 
 /**
@@ -195,6 +209,7 @@ function buildContract(
       tiers.t1_roster = ctx.hasRoster;
       tiers.t2_referencePack = mentionedOfficers;
       rules = [
+        ...UNIVERSAL_INVARIANTS,
         "cite source tier for all factual claims",
         "no numeric claims unless cited from T1/T2",
       ];
@@ -207,6 +222,7 @@ function buildContract(
       tiers.t1_roster = ctx.hasRoster;
       tiers.t1_dockBriefing = ctx.hasDockBriefing;
       rules = [
+        ...UNIVERSAL_INVARIANTS,
         "reference dock data when present",
         "no invented dock configurations",
         "cite source tier for all factual claims",
@@ -220,6 +236,7 @@ function buildContract(
       tiers.t1_roster = ctx.hasRoster;
       tiers.t1_dockBriefing = ctx.hasDockBriefing;
       rules = [
+        ...UNIVERSAL_INVARIANTS,
         "cite source tier for all factual claims",
         "no numeric claims unless cited from T1/T2",
       ];
@@ -228,9 +245,8 @@ function buildContract(
       break;
 
     case "strategy_general":
-      // Minimal constraints — the authority ladder in system prompt handles this
       tiers.t1_fleetConfig = ctx.hasFleetConfig;
-      rules = [];
+      rules = [...UNIVERSAL_INVARIANTS];
       outputSchema.confidence = true;
       break;
   }
@@ -349,8 +365,10 @@ const ROSTER_ENTITY_PREFIX = /(?:[Yy]our roster shows|[Yy]our fleet has|[Yy]our 
  * Validate a model response against the task contract.
  *
  * Returns pass/fail with specific violations.
- * Only runs validation for task types that have rules — strategy_general
- * passes through without validation.
+ *
+ * Organized as two tiers:
+ *   Tier 1 — Universal invariants: always checked, all task types.
+ *   Tier 2 — Task-specific rules: checked only when the contract includes them.
  */
 export function validateResponse(
   response: string,
@@ -359,10 +377,39 @@ export function validateResponse(
 ): ValidationResult {
   const violations: string[] = [];
 
-  // strategy_general skips validation
-  if (contract.taskType === "strategy_general") {
-    return { passed: true, violations: [] };
+  // ── Tier 1: Universal invariants (all task types) ─────────
+
+  // Invariant: no hallucinated system diagnostics
+  const diagnosticMatches = response.match(DIAGNOSTIC_PATTERN);
+  if (diagnosticMatches && diagnosticMatches.length > 0) {
+    violations.push(
+      `System diagnostic claims detected (model cannot inspect runtime state): ${diagnosticMatches.join(", ")}`,
+    );
   }
+
+  // Invariant: no unqualified patch/version claims
+  const patchMatches = response.match(PATCH_PATTERN);
+  if (patchMatches && patchMatches.length > 0) {
+    const hasUncertainty = /(?:may have|might have|I believe|I think|last I knew|not certain)/i.test(response);
+    if (!hasUncertainty) {
+      violations.push(
+        `Patch/version claims without uncertainty signal: ${patchMatches.join(", ")}`,
+      );
+    }
+  }
+
+  // Invariant: no entity claims citing injected data for entities not in context
+  if (contract.requiredTiers.t2_referencePack.length > 0) {
+    const knownLower = new Set(contract.requiredTiers.t2_referencePack.map(n => n.toLowerCase()));
+    for (const match of response.matchAll(ROSTER_ENTITY_PREFIX)) {
+      const entityName = match[1];
+      if (entityName && !knownLower.has(entityName.toLowerCase())) {
+        violations.push(`Entity "${entityName}" cited as injected data but not in context`);
+      }
+    }
+  }
+
+  // ── Tier 2: Task-specific rules ───────────────────────────
 
   // Rule: no numeric claims without T1/T2 grounding
   if (contract.rules.includes("no numeric claims unless cited from T1/T2")) {
@@ -380,27 +427,6 @@ export function validateResponse(
     }
   }
 
-  // Rule: no hallucinated system diagnostics
-  const diagnosticMatches = response.match(DIAGNOSTIC_PATTERN);
-  if (diagnosticMatches && diagnosticMatches.length > 0) {
-    violations.push(
-      `System diagnostic claims detected (model cannot inspect runtime state): ${diagnosticMatches.join(", ")}`,
-    );
-  }
-
-  // Rule: no fabricated patch notes
-  if (contract.taskType === "reference_lookup" || contract.taskType === "fleet_query") {
-    const patchMatches = response.match(PATCH_PATTERN);
-    if (patchMatches && patchMatches.length > 0) {
-      const hasUncertainty = /(?:may have|might have|I believe|I think|last I knew|not certain)/i.test(response);
-      if (!hasUncertainty) {
-        violations.push(
-          `Patch/version claims without uncertainty signal: ${patchMatches.join(", ")}`,
-        );
-      }
-    }
-  }
-
   // Rule: cite source tier for factual claims
   if (contract.rules.includes("cite source tier for all factual claims")) {
     // Only flag if the response has substantial factual content but zero source signals
@@ -409,17 +435,6 @@ export function validateResponse(
 
     if (hasFactualContent && !hasAnySourceSignal) {
       violations.push("Factual claims present but no source attribution detected");
-    }
-  }
-
-  // Rule: no entity claims that cite injected data for entities not in context
-  if (contract.requiredTiers.t2_referencePack.length > 0) {
-    const knownLower = new Set(contract.requiredTiers.t2_referencePack.map(n => n.toLowerCase()));
-    for (const match of response.matchAll(ROSTER_ENTITY_PREFIX)) {
-      const entityName = match[1];
-      if (entityName && !knownLower.has(entityName.toLowerCase())) {
-        violations.push(`Entity "${entityName}" cited as injected data but not in context`);
-      }
     }
   }
 

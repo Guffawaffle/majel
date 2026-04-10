@@ -1,6 +1,6 @@
 # Majel 2026 Roadmap — From Here to There
 
-> **Written:** 2026-04-02 | **Author:** Opie
+> **Written:** 2026-04-02 | **Updated:** 2026-04-10 | **Author:** Opie
 >
 > This is the full "magic wand" plan. Single user, no political constraints.
 > Everything here is grounded in the actual codebase state as of commit `d99e36f`.
@@ -13,14 +13,14 @@
 |-----------|-----|
 | **Auth** | Bearer token = permanent personal API key. Signup locked (`MAJEL_SIGNUP_OPEN=false`). |
 | **Infrastructure** | Cloud Run `us-central1`, Cloud SQL Postgres, min-instances=1 |
-| **Tools** | 40+ fleet tools. `search_game_reference` is name ILIKE only — no level/faction/hull filters |
-| **Data** | CDN sync from `data.stfc.space`. stfc.space crawler exists at `/srv/crawlers/stfc.space` but is not integrated |
+| **Tools** | 40+ fleet tools. `search_game_reference` now supports hostile/system level, faction, and hull filters. `get_research_path` shipped. |
+| **Data** | CDN sync still active. `stfc.space` feed contract / gap analysis shipped; feed ingestor and cutover still pending. |
 | **UI** | 8 tabs (Chat, Catalog, Fleet, Workshop, Plan, StartSync, Diagnostics, Admiral) |
 | **Instance modeling** | Single instance per ship (ADR-051 designed but not implemented) |
 | **Lex** | Integrated for chat frame storage; not wired to mutation events |
-| **Token budgets** | `token_ledger` table exists; enforcement paused after Phase A |
-| **Test count** | 2500 tests |
-| **Active sprint** | Codebase Health + Research Path (#282, 5 slices, all unstarted) |
+| **Token budgets** | ADR-048 fully shipped: ledger, enforcement, admin panel, overrides, user indicator |
+| **Test count** | 2541 tests |
+| **Active work** | Runtime correctness recut: #250 chat hardening, #286 runtime governance hardening, cleanup batch, then #268 instance modeling |
 
 ---
 
@@ -36,6 +36,48 @@
 | **MCP** | Fleet data queryable from any MCP client (Cursor, Claude Desktop, VS Code Copilot) |
 | **Auth** | Google OAuth (no passwords); bearer token retained for API/MCP access |
 | **Quality gates** | Prompt regression suite in CI |
+
+---
+
+## Immediate Recut — 2026-04-10
+
+This section overrides the original next-action sequencing below until the two near-term phases are complete.
+
+The detailed epic text later in this document remains useful as long-range reference, but it is no longer the correct execution order for the next turn of work.
+
+### Phase 1 — Runtime Correctness
+
+Ship together:
+
+- `#250` chat architecture hardening
+- `#286` runtime governance hardening
+- cleanup batch: `#269`, `#271`, `#273`, `#284`
+- planning sync: `BACKLOG.md` + roadmap + issue comments
+
+Definition of done:
+
+- chat path is reliable under cache-expiry, repair-pass, timeout, and budget edge cases
+- `strategy_general` no longer bypasses all enforcement
+- runtime governance context is tenant-aware at the execution seam
+- shadow-mode receipts / metrics exist for later promotion decisions
+
+### Phase 2 — Contract Unlocks
+
+Ship next:
+
+- `#268` ADR-051 instance modeling
+- only the narrow in-scope `#280` availability work when still useful; not the full debuff engine
+
+Definition of done:
+
+- overlay contract is widened before E4/E5 surfaces calcify the wrong model
+- no downstream API or UI surface is built on the old 1:1 instance assumption
+
+### Explicit Cuts
+
+- no LexSona-style trust-gap auto-learning yet
+- no schema-first `capability_gaps` work yet
+- no serious time on blocked data tools until source data changes
 
 ---
 
@@ -292,10 +334,12 @@ This is ADR-028 materialized.
 ADR-051 is fully designed. Schema change:
 `PK (user_id, ref_id)` → `(user_id, ref_id, instance_id TEXT NOT NULL DEFAULT 'primary')`
 
-> **Trigger condition**: If Aria is already producing ambiguous or wrong answers because it cannot
-> distinguish "your T8 Enterprise" from "your T10 Enterprise," move E3 before E4. Identity corruption
-> in the domain model is not cosmetic — it poisons upstream reasoning. If multi-instance ships are
-> not yet a real ambiguity in actual play, keep E3 at P2 as sequenced.
+> **Sequencing**: E3 belongs before Phase D/E. E4.2 tool cards, E4.4 Lex frames, and E5.1 MCP
+> server all read or expose overlay data. Building any of them on the 1:1 `(user_id, ref_id)` model
+> means retrofitting the display schema, mutation frame schema, and external API contract after the
+> fact. The migration cost is ~half a day now vs. a breaking rework across three epics later.
+> E3 is independent of E2.2 (different store; reference data is orthogonal to overlay data) and
+> can run concurrently with the feed ingestor work.
 
 ### E3.1 — Schema migration
 
@@ -527,7 +571,25 @@ The E1.6 baseline pins behavior; this epic makes regression a hard deploy gate.
 ## Sequencing Map
 
 ```
-PHASE A — Truth floor (do this first)
+PHASE 0 — Runtime correctness (do this first now)
+ │
+ ├── #250   chat pipeline hardening
+ ├── #286   runtime governance hardening
+ ├── #269   frame-store offset bug
+ ├── #271   gemini module extraction
+ ├── #273   type-boundary cleanup
+ ├── #284   ax non-TTY banner
+ │
+ │   [M0: Runtime Correctness]
+ │
+PHASE 1 — Contract unlock
+ │
+ ├── E3     instance modeling
+ └── E1.4   narrow armada availability slice only when still needed
+ │
+ │   [M0.5: Contract Unlock]
+ │
+PHASE A — Truth floor (already materially advanced)
  │
  ├── E1.1  hostile/system filters          ← START HERE
  ├── E1.2  research path (#278)
@@ -535,11 +597,12 @@ PHASE A — Truth floor (do this first)
  │
  │   [M1: Reference-Grounded Retrieval — now a testable claim, not a belief]
  │
-PHASE B — Data legitimacy
+PHASE B — Data legitimacy + overlay foundation
  │
  ├── E1.3  scrap yields     ─── if data exists cleanly; else wait for E2.2
  ├── E2.1  feed contract + gap analysis
- ├── E2.2  ingestor         ─── after E2.1
+ ├── E3    instance modeling  ─── NOW: before E4/E5 lock the overlay model (orthogonal to E2)
+ ├── E2.2  ingestor         ─── after E2.1; can run concurrently with E3
  ├── E2.3  daily cron       ─── after E2.2
  ├── E1.5  officer sources  ─── after E2.2 (needs source fields from feed)
  ├── E2.4  retire CDN sync  ─── after parallel running confirms parity
@@ -548,7 +611,6 @@ PHASE B — Data legitimacy
  │
 PHASE C — Domain honesty
  │
- ├── E3    instance modeling  ─── move here if multi-instance ambiguity is real NOW
  ├── E1.4  armada context     ─── all-store reads, any time after E1
  │
  │   [M3: Fleet Depth — fleet model is honest about what you actually own]
@@ -590,11 +652,11 @@ PHASE E — Externalization + quality gates
 
 - **Multi-user support**: Deferred. Single user. When/if multi-user is needed, ADR-019 covers it.
 - **Mobile native app**: Chat is mobile-responsive. Native app not needed.
-- **ADR-048 Token Budgets enforcement (phases B-D)**: Paused. Single user with known budget = no urgency.
+- **New token-budget expansion work**: ADR-048 baseline is already shipped. Further budget work is not a current roadmap driver.
 - **Public alpha/beta launch**: Not a goal. This is a personal tool.
 - **Google OAuth**: Single user, signup locked, bearer token exists. Not a 2026 priority. Password
   cleanup is maintenance, not roadmap work. Revisit only if sharing Majel with others becomes real.
 
 ---
 
-*Next immediate action: E1.1 + E1.6 — add `filterHostiles()` and `filterSystems()` to the reference store, extend `search_game_reference`, and seed the minimal regression baseline simultaneously. M1 becomes testable, not a belief.*
+*Next immediate action: Phase 1 runtime correctness — close #250, open and scope the runtime governance program tightly, batch the cheap cleanup work, and only then move to #268 instance modeling.*
