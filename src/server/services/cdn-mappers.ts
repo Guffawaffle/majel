@@ -527,6 +527,12 @@ export interface CdnSystemSummary {
   hostiles: unknown[];
   node_sizes: unknown[];
   hazard_level?: number;
+  est_warp_with_superhighways?: number;
+  is_wave_defense?: boolean;
+  is_surge_system?: boolean;
+  is_regional_space?: boolean;
+  is_mirror_universe?: boolean;
+  has_outpost?: boolean;
 }
 
 interface SystemMapperOptions {
@@ -561,6 +567,12 @@ export function mapCdnSystemToReferenceInput(options: SystemMapperOptions): Crea
     hostileCount: system.hostiles?.length ?? 0,
     nodeSizes: system.node_sizes ?? null,
     hazardLevel: system.hazard_level ?? null,
+    estWarpWithSuperhighways: system.est_warp_with_superhighways ?? null,
+    isWaveDefense: system.is_wave_defense ?? false,
+    isSurgeSystem: system.is_surge_system ?? false,
+    isRegionalSpace: system.is_regional_space ?? false,
+    isMirrorUniverse: system.is_mirror_universe ?? false,
+    hasOutpost: system.has_outpost ?? false,
     gameId: system.id,
     source: "cdn:game-data",
     license: "CC-BY-NC 4.0",

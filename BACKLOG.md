@@ -1,7 +1,7 @@
 # Backlog
 
 > Tracked issues, tech debt, and planned work for Majel.
-> Updated: 2026-04-05 | Branch: `main`
+> Updated: 2026-04-10 | Branch: `main`
 
 ---
 
@@ -18,9 +18,9 @@
 
 ## Current PM Focus
 
-- **Active work:** E1.3 shipped (`63646a4`). Next: system column enrichment (P2 from contract) or E1.4 armada fleet (#280, 40% done).
-- **Recently shipped:** E2.1 feed contract (`docs/DATA_PIPELINE_CONTRACT.md`). E1.3 `get_scrap_yields` tool — scrap column in reference_ships, CDN ingest plumbed, 4 tests.
-- **Live at:** `ffc8099` → Cloud Run revision `majel-00126-sl8`. 2529 tests, 0 failures.
+- **Active work:** E1.4 armada fleet context tool (#280, 40% designed) — next work item. E2.2 stfc.space feed ingestor — Phase B major work.
+- **Recently shipped:** P2 system column enrichment — 6 new columns on `reference_systems` (`is_wave_defense`, `is_surge_system`, `is_regional_space`, `is_mirror_universe`, `has_outpost`, `est_warp_with_superhighways`). `filterSystems` + `search_game_reference` updated. E2.1 feed contract + E1.3 scrap yields.
+- **Live at:** `ad09f5e` → pushed 2026-04-10; Cloud Run revision `majel-00126-sl8` (built from `ffc8099`) — redeploy needed. 2532 tests, 0 failures.
 - **Paused programs:** ADR-048 — Token Budgets (#235), Phase A done, Phases B–D paused.
 - **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
 - **Design ready:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).

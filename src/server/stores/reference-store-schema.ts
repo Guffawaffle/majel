@@ -253,6 +253,12 @@ export const SCHEMA_STATEMENTS = [
     hostile_count INTEGER,
     node_sizes JSONB,
     hazard_level INTEGER,
+    est_warp_with_superhighways INTEGER,
+    is_wave_defense BOOLEAN NOT NULL DEFAULT FALSE,
+    is_surge_system BOOLEAN NOT NULL DEFAULT FALSE,
+    is_regional_space BOOLEAN NOT NULL DEFAULT FALSE,
+    is_mirror_universe BOOLEAN NOT NULL DEFAULT FALSE,
+    has_outpost BOOLEAN NOT NULL DEFAULT FALSE,
     game_id BIGINT,
     source TEXT NOT NULL DEFAULT 'cdn:game-data',
     license TEXT NOT NULL DEFAULT 'CC-BY-NC 4.0',
@@ -260,9 +266,31 @@ export const SCHEMA_STATEMENTS = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_systems' AND column_name = 'est_warp_with_superhighways') THEN
+      ALTER TABLE reference_systems ADD COLUMN est_warp_with_superhighways INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_systems' AND column_name = 'is_wave_defense') THEN
+      ALTER TABLE reference_systems ADD COLUMN is_wave_defense BOOLEAN NOT NULL DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_systems' AND column_name = 'is_surge_system') THEN
+      ALTER TABLE reference_systems ADD COLUMN is_surge_system BOOLEAN NOT NULL DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_systems' AND column_name = 'is_regional_space') THEN
+      ALTER TABLE reference_systems ADD COLUMN is_regional_space BOOLEAN NOT NULL DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_systems' AND column_name = 'is_mirror_universe') THEN
+      ALTER TABLE reference_systems ADD COLUMN is_mirror_universe BOOLEAN NOT NULL DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'reference_systems' AND column_name = 'has_outpost') THEN
+      ALTER TABLE reference_systems ADD COLUMN has_outpost BOOLEAN NOT NULL DEFAULT FALSE;
+    END IF;
+  END $$`,
   `CREATE INDEX IF NOT EXISTS idx_ref_systems_name ON reference_systems(name)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_systems_level ON reference_systems(level)`,
   `CREATE INDEX IF NOT EXISTS idx_ref_systems_mine_resources ON reference_systems USING GIN (mine_resources)`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_systems_wave_defense ON reference_systems(is_wave_defense) WHERE is_wave_defense = TRUE`,
+  `CREATE INDEX IF NOT EXISTS idx_ref_systems_surge ON reference_systems(is_surge_system) WHERE is_surge_system = TRUE`,
 ];
 
 // ─── SQL Column Fragments ───────────────────────────────────
@@ -308,7 +336,11 @@ export const SYSTEM_COLS = `id, name, est_warp AS "estWarp", is_deep_space AS "i
   factions, level, coords_x AS "coordsX", coords_y AS "coordsY",
   has_mines AS "hasMines", has_planets AS "hasPlanets", has_missions AS "hasMissions",
   mine_resources AS "mineResources", hostile_count AS "hostileCount",
-  node_sizes AS "nodeSizes", hazard_level AS "hazardLevel", game_id AS "gameId",
+  node_sizes AS "nodeSizes", hazard_level AS "hazardLevel",
+  est_warp_with_superhighways AS "estWarpWithSuperhighways",
+  is_wave_defense AS "isWaveDefense", is_surge_system AS "isSurgeSystem",
+  is_regional_space AS "isRegionalSpace", is_mirror_universe AS "isMirrorUniverse",
+  has_outpost AS "hasOutpost", game_id AS "gameId",
   source, license, attribution, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 // ─── SQL Prepared Statements ────────────────────────────────
@@ -394,9 +426,9 @@ export const SQL = {
   countConsumables: `SELECT COUNT(*) AS count FROM reference_consumables`,
 
   // Systems
-  insertSystem: `INSERT INTO reference_systems (id, name, est_warp, is_deep_space, factions, level, coords_x, coords_y, has_mines, has_planets, has_missions, mine_resources, hostile_count, node_sizes, hazard_level, game_id, source, license, attribution, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
-  updateSystem: `UPDATE reference_systems SET name = $1, est_warp = $2, is_deep_space = $3, factions = $4, level = $5, coords_x = $6, coords_y = $7, has_mines = $8, has_planets = $9, has_missions = $10, mine_resources = $11, hostile_count = $12, node_sizes = $13, hazard_level = $14, game_id = $15, source = $16, license = $17, attribution = $18, updated_at = $19 WHERE id = $20`,
+  insertSystem: `INSERT INTO reference_systems (id, name, est_warp, is_deep_space, factions, level, coords_x, coords_y, has_mines, has_planets, has_missions, mine_resources, hostile_count, node_sizes, hazard_level, est_warp_with_superhighways, is_wave_defense, is_surge_system, is_regional_space, is_mirror_universe, has_outpost, game_id, source, license, attribution, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
+  updateSystem: `UPDATE reference_systems SET name = $1, est_warp = $2, is_deep_space = $3, factions = $4, level = $5, coords_x = $6, coords_y = $7, has_mines = $8, has_planets = $9, has_missions = $10, mine_resources = $11, hostile_count = $12, node_sizes = $13, hazard_level = $14, est_warp_with_superhighways = $15, is_wave_defense = $16, is_surge_system = $17, is_regional_space = $18, is_mirror_universe = $19, has_outpost = $20, game_id = $21, source = $22, license = $23, attribution = $24, updated_at = $25 WHERE id = $26`,
   systemExists: `SELECT 1 FROM reference_systems WHERE id = $1`,
   getSystem: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE id = $1`,
   searchSystems: `SELECT ${SYSTEM_COLS} FROM reference_systems WHERE name ILIKE $1 ORDER BY name`,

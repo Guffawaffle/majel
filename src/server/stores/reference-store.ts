@@ -243,6 +243,12 @@ export interface ReferenceSystem {
   hostileCount: number | null;
   nodeSizes: unknown[] | null;
   hazardLevel: number | null;
+  estWarpWithSuperhighways: number | null;
+  isWaveDefense: boolean;
+  isSurgeSystem: boolean;
+  isRegionalSpace: boolean;
+  isMirrorUniverse: boolean;
+  hasOutpost: boolean;
   gameId: number | null;
   source: string;
   license: string;
@@ -311,13 +317,18 @@ export interface ReferenceStore {
     faction?: string;
     hullType?: number;
   }): Promise<ReferenceHostile[]>;
-  /** Filter systems by level range, faction, or deep space flag. */
+  /** Filter systems by level range, faction, deep space flag, or special system types. */
   filterSystems(opts: {
     name?: string;
     minLevel?: number;
     maxLevel?: number;
     faction?: string;
     isDeepSpace?: boolean;
+    isWaveDefense?: boolean;
+    isSurgeSystem?: boolean;
+    isRegionalSpace?: boolean;
+    isMirrorUniverse?: boolean;
+    hasOutpost?: boolean;
   }): Promise<ReferenceSystem[]>;
 
   counts(): Promise<ReferenceCounts>;

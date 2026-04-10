@@ -274,7 +274,14 @@ export function createBulkMixin(pool: Pool) {
               serializeNormalizedJson(s.mineResources, "reference_systems.mine_resources"),
               s.hostileCount,
               serializeNormalizedJson(s.nodeSizes, "reference_systems.node_sizes"),
-              s.hazardLevel, s.gameId, s.source, s.license, s.attribution, now, s.id,
+              s.hazardLevel,
+              s.estWarpWithSuperhighways ?? null,
+              s.isWaveDefense ?? false,
+              s.isSurgeSystem ?? false,
+              s.isRegionalSpace ?? false,
+              s.isMirrorUniverse ?? false,
+              s.hasOutpost ?? false,
+              s.gameId, s.source, s.license, s.attribution, now, s.id,
             ]);
             updated++;
           } else {
@@ -284,7 +291,14 @@ export function createBulkMixin(pool: Pool) {
               serializeNormalizedJson(s.mineResources, "reference_systems.mine_resources"),
               s.hostileCount,
               serializeNormalizedJson(s.nodeSizes, "reference_systems.node_sizes"),
-              s.hazardLevel, s.gameId, s.source, s.license, s.attribution, now, now,
+              s.hazardLevel,
+              s.estWarpWithSuperhighways ?? null,
+              s.isWaveDefense ?? false,
+              s.isSurgeSystem ?? false,
+              s.isRegionalSpace ?? false,
+              s.isMirrorUniverse ?? false,
+              s.hasOutpost ?? false,
+              s.gameId, s.source, s.license, s.attribution, now, now,
             ]);
             created++;
           }

@@ -1365,7 +1365,8 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       "consumables (buffs/items), or star systems. Returns matching entries with key attributes. " +
       "Use this when the Admiral asks about game content like 'what research boosts mining?' or " +
       "'find hostiles in Vulcan system' or 'what consumables increase damage?'. " +
-      "For hostile/system categories, you can also filter by min_level, max_level, faction, hull_type (hostile only), or is_deep_space (system only).",
+      "For hostile/system categories, you can also filter by min_level, max_level, faction, hull_type (hostile only), " +
+      "or is_deep_space, is_wave_defense, is_surge_system, is_regional_space, is_mirror_universe, has_outpost (system only).",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -1401,6 +1402,26 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         is_deep_space: {
           type: Type.BOOLEAN,
           description: "Filter systems by deep space flag (applies to system category only)",
+        },
+        is_wave_defense: {
+          type: Type.BOOLEAN,
+          description: "Filter systems that are wave defense systems (applies to system category only)",
+        },
+        is_surge_system: {
+          type: Type.BOOLEAN,
+          description: "Filter systems that are surge systems (applies to system category only)",
+        },
+        is_regional_space: {
+          type: Type.BOOLEAN,
+          description: "Filter systems that are in regional space (applies to system category only)",
+        },
+        is_mirror_universe: {
+          type: Type.BOOLEAN,
+          description: "Filter systems in the mirror universe (applies to system category only)",
+        },
+        has_outpost: {
+          type: Type.BOOLEAN,
+          description: "Filter systems that have an outpost (applies to system category only)",
         },
       },
       required: ["category"],

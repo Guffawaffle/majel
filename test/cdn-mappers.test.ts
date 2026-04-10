@@ -746,6 +746,35 @@ describe("mapCdnSystemToReferenceInput", () => {
     expect(result.hazardLevel).toBeNull();
   });
 
+  it("maps P2 flag fields when present in feed", () => {
+    const system = {
+      ...baseSystem,
+      est_warp_with_superhighways: 22,
+      is_wave_defense: true,
+      is_surge_system: false,
+      is_regional_space: true,
+      is_mirror_universe: false,
+      has_outpost: true,
+    };
+    const result = mapCdnSystemToReferenceInput({ ...baseOptions, system });
+    expect(result.estWarpWithSuperhighways).toBe(22);
+    expect(result.isWaveDefense).toBe(true);
+    expect(result.isSurgeSystem).toBe(false);
+    expect(result.isRegionalSpace).toBe(true);
+    expect(result.isMirrorUniverse).toBe(false);
+    expect(result.hasOutpost).toBe(true);
+  });
+
+  it("defaults P2 flag fields to false/null when absent", () => {
+    const result = mapCdnSystemToReferenceInput(baseOptions);
+    expect(result.estWarpWithSuperhighways).toBeNull();
+    expect(result.isWaveDefense).toBe(false);
+    expect(result.isSurgeSystem).toBe(false);
+    expect(result.isRegionalSpace).toBe(false);
+    expect(result.isMirrorUniverse).toBe(false);
+    expect(result.hasOutpost).toBe(false);
+  });
+
   it("uses raw faction id as string when labels are missing", () => {
     const opts = { ...baseOptions, factionLabels: {} as Record<number, string> };
     const result = mapCdnSystemToReferenceInput(opts);

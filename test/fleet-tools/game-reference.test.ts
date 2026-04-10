@@ -66,6 +66,21 @@ describe("search_game_reference — hostile/system filters", () => {
     expect(result.category).toBe("system");
   });
 
+  it("passes isWaveDefense filter when is_wave_defense is provided", async () => {
+    const referenceStore = createMockReferenceStore();
+    const ctx = toolEnv({ userId: "local", referenceStore });
+
+    await executeFleetTool(
+      "search_game_reference",
+      { category: "system", query: "", is_wave_defense: true },
+      ctx,
+    );
+
+    expect(referenceStore.filterSystems).toHaveBeenCalledWith(
+      expect.objectContaining({ isWaveDefense: true }),
+    );
+  });
+
   it("falls back to searchHostiles when no filter params (only query)", async () => {
     const referenceStore = createMockReferenceStore();
     const ctx = toolEnv({ userId: "local", referenceStore });

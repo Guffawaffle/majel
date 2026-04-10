@@ -359,6 +359,11 @@ toolRegistry.register(defineTool({
         faction: args.faction != null ? String(args.faction) : undefined,
         hullType: hullTypeNum,
         isDeepSpace: args.is_deep_space != null ? Boolean(args.is_deep_space) : undefined,
+        isWaveDefense: args.is_wave_defense != null ? Boolean(args.is_wave_defense) : undefined,
+        isSurgeSystem: args.is_surge_system != null ? Boolean(args.is_surge_system) : undefined,
+        isRegionalSpace: args.is_regional_space != null ? Boolean(args.is_regional_space) : undefined,
+        isMirrorUniverse: args.is_mirror_universe != null ? Boolean(args.is_mirror_universe) : undefined,
+        hasOutpost: args.has_outpost != null ? Boolean(args.has_outpost) : undefined,
       },
     );
   },

@@ -18,6 +18,11 @@ export async function searchGameReference(
     faction?: string;
     hullType?: number;
     isDeepSpace?: boolean;
+    isWaveDefense?: boolean;
+    isSurgeSystem?: boolean;
+    isRegionalSpace?: boolean;
+    isMirrorUniverse?: boolean;
+    hasOutpost?: boolean;
   },
 ): Promise<object> {
   if (!ctx.deps.referenceStore) {
@@ -29,7 +34,12 @@ export async function searchGameReference(
     filters.maxLevel != null ||
     filters.faction != null ||
     filters.hullType != null ||
-    filters.isDeepSpace != null
+    filters.isDeepSpace != null ||
+    filters.isWaveDefense != null ||
+    filters.isSurgeSystem != null ||
+    filters.isRegionalSpace != null ||
+    filters.isMirrorUniverse != null ||
+    filters.hasOutpost != null
   );
 
   if (!query.trim() && !hasFilters) {
@@ -89,7 +99,10 @@ export async function searchGameReference(
     case "system": {
       const useFilter = filters != null && (
         filters.minLevel != null || filters.maxLevel != null ||
-        filters.faction != null || filters.isDeepSpace != null
+        filters.faction != null || filters.isDeepSpace != null ||
+        filters.isWaveDefense != null || filters.isSurgeSystem != null ||
+        filters.isRegionalSpace != null || filters.isMirrorUniverse != null ||
+        filters.hasOutpost != null
       );
       const rows = useFilter
         ? await ctx.deps.referenceStore.filterSystems({
@@ -98,6 +111,11 @@ export async function searchGameReference(
             maxLevel: filters!.maxLevel,
             faction: filters!.faction,
             isDeepSpace: filters!.isDeepSpace,
+            isWaveDefense: filters!.isWaveDefense,
+            isSurgeSystem: filters!.isSurgeSystem,
+            isRegionalSpace: filters!.isRegionalSpace,
+            isMirrorUniverse: filters!.isMirrorUniverse,
+            hasOutpost: filters!.hasOutpost,
           })
         : await ctx.deps.referenceStore.searchSystems(query);
       const results = rows.slice(0, cap).map((s) => ({
@@ -105,6 +123,10 @@ export async function searchGameReference(
         isDeepSpace: s.isDeepSpace, factions: s.factions,
         hasMines: s.hasMines, hasPlanets: s.hasPlanets,
         mineResources: resolveSystemMineResources(s.mineResources, ctx),
+        isWaveDefense: s.isWaveDefense, isSurgeSystem: s.isSurgeSystem,
+        isRegionalSpace: s.isRegionalSpace, isMirrorUniverse: s.isMirrorUniverse,
+        hasOutpost: s.hasOutpost,
+        estWarpWithSuperhighways: s.estWarpWithSuperhighways,
       }));
       return { category, results, totalFound: rows.length, truncated: rows.length > cap };
     }

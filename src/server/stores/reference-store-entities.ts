@@ -161,6 +161,11 @@ export function createEntitiesMixin(pool: Pool) {
       maxLevel?: number;
       faction?: string;
       isDeepSpace?: boolean;
+      isWaveDefense?: boolean;
+      isSurgeSystem?: boolean;
+      isRegionalSpace?: boolean;
+      isMirrorUniverse?: boolean;
+      hasOutpost?: boolean;
     }): Promise<ReferenceSystem[]> {
       const clauses: string[] = [];
       const params: (string | number | boolean)[] = [];
@@ -185,6 +190,26 @@ export function createEntitiesMixin(pool: Pool) {
       if (opts.isDeepSpace != null) {
         clauses.push(`is_deep_space = $${paramIdx++}`);
         params.push(opts.isDeepSpace);
+      }
+      if (opts.isWaveDefense != null) {
+        clauses.push(`is_wave_defense = $${paramIdx++}`);
+        params.push(opts.isWaveDefense);
+      }
+      if (opts.isSurgeSystem != null) {
+        clauses.push(`is_surge_system = $${paramIdx++}`);
+        params.push(opts.isSurgeSystem);
+      }
+      if (opts.isRegionalSpace != null) {
+        clauses.push(`is_regional_space = $${paramIdx++}`);
+        params.push(opts.isRegionalSpace);
+      }
+      if (opts.isMirrorUniverse != null) {
+        clauses.push(`is_mirror_universe = $${paramIdx++}`);
+        params.push(opts.isMirrorUniverse);
+      }
+      if (opts.hasOutpost != null) {
+        clauses.push(`has_outpost = $${paramIdx++}`);
+        params.push(opts.hasOutpost);
       }
 
       if (clauses.length === 0) return [];
