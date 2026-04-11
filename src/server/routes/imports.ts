@@ -247,7 +247,7 @@ export function createImportRoutes(appState: AppState): Router {
         if (row.officerRefId) {
           const beforeResult = await db.query<OfficerOverlayRow>(
             `SELECT ref_id AS "refId", ownership_state AS "ownershipState", level, rank, power
-             FROM officer_overlay WHERE ref_id = $1`,
+             FROM officer_overlay WHERE ref_id = $1 AND instance_id = 'primary'`,
             [row.officerRefId],
           );
           const before = beforeResult.rows[0] ?? null;
@@ -271,7 +271,7 @@ export function createImportRoutes(appState: AppState): Router {
         if (row.shipRefId) {
           const beforeResult = await db.query<ShipOverlayRow>(
             `SELECT ref_id AS "refId", ownership_state AS "ownershipState", tier, level, power
-             FROM ship_overlay WHERE ref_id = $1`,
+             FROM ship_overlay WHERE ref_id = $1 AND instance_id = 'primary'`,
             [row.shipRefId],
           );
           const before = beforeResult.rows[0] ?? null;
@@ -307,11 +307,11 @@ export function createImportRoutes(appState: AppState): Router {
 
       for (const plan of plannedOfficerUpserts) {
         await db.query(
-          `INSERT INTO officer_overlay (user_id, ref_id, ownership_state, target, level, rank, power, target_note, target_priority, updated_at)
-           VALUES ($1, $2, $3, COALESCE((SELECT target FROM officer_overlay WHERE ref_id = $2), FALSE), $4, $5, $6,
-                   COALESCE((SELECT target_note FROM officer_overlay WHERE ref_id = $2), NULL),
-                   COALESCE((SELECT target_priority FROM officer_overlay WHERE ref_id = $2), NULL), $7)
-           ON CONFLICT(user_id, ref_id) DO UPDATE SET
+          `INSERT INTO officer_overlay (user_id, ref_id, instance_id, ownership_state, target, level, rank, power, target_note, target_priority, updated_at)
+           VALUES ($1, $2, 'primary', $3, COALESCE((SELECT target FROM officer_overlay WHERE ref_id = $2 AND instance_id = 'primary'), FALSE), $4, $5, $6,
+                   COALESCE((SELECT target_note FROM officer_overlay WHERE ref_id = $2 AND instance_id = 'primary'), NULL),
+                   COALESCE((SELECT target_priority FROM officer_overlay WHERE ref_id = $2 AND instance_id = 'primary'), NULL), $7)
+           ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET
              ownership_state = EXCLUDED.ownership_state,
              level = EXCLUDED.level,
              rank = EXCLUDED.rank,
@@ -330,7 +330,7 @@ export function createImportRoutes(appState: AppState): Router {
 
         const afterResult = await db.query<OfficerOverlayRow>(
           `SELECT ref_id AS "refId", ownership_state AS "ownershipState", level, rank, power
-           FROM officer_overlay WHERE ref_id = $1`,
+           FROM officer_overlay WHERE ref_id = $1 AND instance_id = 'primary'`,
           [plan.refId],
         );
         const after = afterResult.rows[0];
@@ -351,11 +351,11 @@ export function createImportRoutes(appState: AppState): Router {
 
       for (const plan of plannedShipUpserts) {
         await db.query(
-          `INSERT INTO ship_overlay (user_id, ref_id, ownership_state, target, tier, level, power, target_note, target_priority, updated_at)
-           VALUES ($1, $2, $3, COALESCE((SELECT target FROM ship_overlay WHERE ref_id = $2), FALSE), $4, $5, $6,
-                   COALESCE((SELECT target_note FROM ship_overlay WHERE ref_id = $2), NULL),
-                   COALESCE((SELECT target_priority FROM ship_overlay WHERE ref_id = $2), NULL), $7)
-           ON CONFLICT(user_id, ref_id) DO UPDATE SET
+          `INSERT INTO ship_overlay (user_id, ref_id, instance_id, ownership_state, target, tier, level, power, target_note, target_priority, updated_at)
+           VALUES ($1, $2, 'primary', $3, COALESCE((SELECT target FROM ship_overlay WHERE ref_id = $2 AND instance_id = 'primary'), FALSE), $4, $5, $6,
+                   COALESCE((SELECT target_note FROM ship_overlay WHERE ref_id = $2 AND instance_id = 'primary'), NULL),
+                   COALESCE((SELECT target_priority FROM ship_overlay WHERE ref_id = $2 AND instance_id = 'primary'), NULL), $7)
+           ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET
              ownership_state = EXCLUDED.ownership_state,
              tier = EXCLUDED.tier,
              level = EXCLUDED.level,
@@ -374,7 +374,7 @@ export function createImportRoutes(appState: AppState): Router {
 
         const afterResult = await db.query<ShipOverlayRow>(
           `SELECT ref_id AS "refId", ownership_state AS "ownershipState", tier, level, power
-           FROM ship_overlay WHERE ref_id = $1`,
+           FROM ship_overlay WHERE ref_id = $1 AND instance_id = 'primary'`,
           [plan.refId],
         );
         const after = afterResult.rows[0];

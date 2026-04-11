@@ -38,6 +38,7 @@ export const VALID_OWNERSHIP_STATES: OwnershipState[] = ["unknown", "owned", "un
 
 export interface OfficerOverlay {
   refId: string;
+  instanceId: string;
   ownershipState: OwnershipState;
   target: boolean;
   level: number | null;
@@ -50,6 +51,7 @@ export interface OfficerOverlay {
 
 export interface ShipOverlay {
   refId: string;
+  instanceId: string;
   ownershipState: OwnershipState;
   target: boolean;
   tier: number | null;
@@ -62,6 +64,7 @@ export interface ShipOverlay {
 
 export interface SetOfficerOverlayInput {
   refId: string;
+  instanceId?: string;
   ownershipState?: OwnershipState;
   target?: boolean;
   level?: number | null;
@@ -73,6 +76,7 @@ export interface SetOfficerOverlayInput {
 
 export interface SetShipOverlayInput {
   refId: string;
+  instanceId?: string;
   ownershipState?: OwnershipState;
   target?: boolean;
   tier?: number | null;
@@ -85,15 +89,17 @@ export interface SetShipOverlayInput {
 // ─── Store Interface ────────────────────────────────────────
 
 export interface OverlayStore {
-  getOfficerOverlay(refId: string): Promise<OfficerOverlay | null>;
+  getOfficerOverlay(refId: string, instanceId?: string): Promise<OfficerOverlay | null>;
   setOfficerOverlay(input: SetOfficerOverlayInput): Promise<OfficerOverlay>;
   listOfficerOverlays(filters?: { ownershipState?: OwnershipState; target?: boolean }): Promise<OfficerOverlay[]>;
-  deleteOfficerOverlay(refId: string): Promise<boolean>;
+  listOfficerInstances(refId: string): Promise<OfficerOverlay[]>;
+  deleteOfficerOverlay(refId: string, instanceId?: string): Promise<boolean>;
 
-  getShipOverlay(refId: string): Promise<ShipOverlay | null>;
+  getShipOverlay(refId: string, instanceId?: string): Promise<ShipOverlay | null>;
   setShipOverlay(input: SetShipOverlayInput): Promise<ShipOverlay>;
   listShipOverlays(filters?: { ownershipState?: OwnershipState; target?: boolean }): Promise<ShipOverlay[]>;
-  deleteShipOverlay(refId: string): Promise<boolean>;
+  listShipInstances(refId: string): Promise<ShipOverlay[]>;
+  deleteShipOverlay(refId: string, instanceId?: string): Promise<boolean>;
 
   bulkSetOfficerOwnership(refIds: string[], state: OwnershipState): Promise<number>;
   bulkSetShipOwnership(refIds: string[], state: OwnershipState): Promise<number>;
@@ -252,25 +258,54 @@ const SCHEMA_STATEMENTS = [
       ALTER TABLE ship_overlay ADD CONSTRAINT ship_overlay_priority_range CHECK (target_priority >= 1 AND target_priority <= 3);
     END IF;
   END $$`,
+
+  // ─── Migration ADR-051: instance_id column + 3-column PK ───
+  `DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'officer_overlay'
+    ) AND NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'officer_overlay' AND column_name = 'instance_id'
+    ) THEN
+      ALTER TABLE officer_overlay ADD COLUMN instance_id TEXT NOT NULL DEFAULT 'primary';
+      ALTER TABLE officer_overlay DROP CONSTRAINT officer_overlay_pkey;
+      ALTER TABLE officer_overlay ADD PRIMARY KEY (user_id, ref_id, instance_id);
+    END IF;
+  END $$`,
+
+  `DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'ship_overlay'
+    ) AND NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'ship_overlay' AND column_name = 'instance_id'
+    ) THEN
+      ALTER TABLE ship_overlay ADD COLUMN instance_id TEXT NOT NULL DEFAULT 'primary';
+      ALTER TABLE ship_overlay DROP CONSTRAINT ship_overlay_pkey;
+      ALTER TABLE ship_overlay ADD PRIMARY KEY (user_id, ref_id, instance_id);
+    END IF;
+  END $$`,
 ];
 
 // ─── SQL ────────────────────────────────────────────────────
 
-const OFFICER_SELECT = `SELECT ref_id AS "refId", ownership_state AS "ownershipState",
+const OFFICER_SELECT = `SELECT ref_id AS "refId", instance_id AS "instanceId",
+  ownership_state AS "ownershipState",
   target, level, rank, power, target_note AS "targetNote",
   target_priority AS "targetPriority", updated_at AS "updatedAt"
   FROM officer_overlay`;
 
-const SHIP_SELECT = `SELECT ref_id AS "refId", ownership_state AS "ownershipState",
+const SHIP_SELECT = `SELECT ref_id AS "refId", instance_id AS "instanceId",
+  ownership_state AS "ownershipState",
   target, tier, level, power, target_note AS "targetNote",
   target_priority AS "targetPriority", updated_at AS "updatedAt"
   FROM ship_overlay`;
 
 const SQL = {
-  getOfficerOverlay: `${OFFICER_SELECT} WHERE ref_id = $1`,
-  upsertOfficerOverlay: `INSERT INTO officer_overlay (user_id, ref_id, ownership_state, target, level, rank, power, target_note, target_priority, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    ON CONFLICT(user_id, ref_id) DO UPDATE SET
+  getOfficerOverlay: `${OFFICER_SELECT} WHERE ref_id = $1 AND instance_id = $2`,
+  upsertOfficerOverlay: `INSERT INTO officer_overlay (user_id, ref_id, instance_id, ownership_state, target, level, rank, power, target_note, target_priority, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET
       ownership_state = excluded.ownership_state,
       target = excluded.target,
       level = excluded.level,
@@ -279,13 +314,14 @@ const SQL = {
       target_note = excluded.target_note,
       target_priority = excluded.target_priority,
       updated_at = excluded.updated_at`,
-  listOfficerOverlays: `${OFFICER_SELECT} ORDER BY ref_id LIMIT 500`,
-  deleteOfficerOverlay: `DELETE FROM officer_overlay WHERE ref_id = $1`,
+  listOfficerOverlays: `${OFFICER_SELECT} ORDER BY ref_id, instance_id LIMIT 2000`,
+  listOfficerInstances: `${OFFICER_SELECT} WHERE ref_id = $1 ORDER BY instance_id`,
+  deleteOfficerOverlay: `DELETE FROM officer_overlay WHERE ref_id = $1 AND instance_id = $2`,
 
-  getShipOverlay: `${SHIP_SELECT} WHERE ref_id = $1`,
-  upsertShipOverlay: `INSERT INTO ship_overlay (user_id, ref_id, ownership_state, target, tier, level, power, target_note, target_priority, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    ON CONFLICT(user_id, ref_id) DO UPDATE SET
+  getShipOverlay: `${SHIP_SELECT} WHERE ref_id = $1 AND instance_id = $2`,
+  upsertShipOverlay: `INSERT INTO ship_overlay (user_id, ref_id, instance_id, ownership_state, target, tier, level, power, target_note, target_priority, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET
       ownership_state = excluded.ownership_state,
       target = excluded.target,
       tier = excluded.tier,
@@ -294,21 +330,22 @@ const SQL = {
       target_note = excluded.target_note,
       target_priority = excluded.target_priority,
       updated_at = excluded.updated_at`,
-  listShipOverlays: `${SHIP_SELECT} ORDER BY ref_id LIMIT 500`,
-  deleteShipOverlay: `DELETE FROM ship_overlay WHERE ref_id = $1`,
+  listShipOverlays: `${SHIP_SELECT} ORDER BY ref_id, instance_id LIMIT 2000`,
+  listShipInstances: `${SHIP_SELECT} WHERE ref_id = $1 ORDER BY instance_id`,
+  deleteShipOverlay: `DELETE FROM ship_overlay WHERE ref_id = $1 AND instance_id = $2`,
 
-  bulkUpsertOfficerOwnership: `INSERT INTO officer_overlay (user_id, ref_id, ownership_state, target, updated_at)
-    VALUES ($1, $2, $3, FALSE, $4)
-    ON CONFLICT(user_id, ref_id) DO UPDATE SET ownership_state = excluded.ownership_state, updated_at = excluded.updated_at`,
-  bulkUpsertShipOwnership: `INSERT INTO ship_overlay (user_id, ref_id, ownership_state, target, updated_at)
-    VALUES ($1, $2, $3, FALSE, $4)
-    ON CONFLICT(user_id, ref_id) DO UPDATE SET ownership_state = excluded.ownership_state, updated_at = excluded.updated_at`,
-  bulkUpsertOfficerTarget: `INSERT INTO officer_overlay (user_id, ref_id, ownership_state, target, updated_at)
-    VALUES ($1, $2, 'unknown', $3, $4)
-    ON CONFLICT(user_id, ref_id) DO UPDATE SET target = excluded.target, updated_at = excluded.updated_at`,
-  bulkUpsertShipTarget: `INSERT INTO ship_overlay (user_id, ref_id, ownership_state, target, updated_at)
-    VALUES ($1, $2, 'unknown', $3, $4)
-    ON CONFLICT(user_id, ref_id) DO UPDATE SET target = excluded.target, updated_at = excluded.updated_at`,
+  bulkUpsertOfficerOwnership: `INSERT INTO officer_overlay (user_id, ref_id, instance_id, ownership_state, target, updated_at)
+    VALUES ($1, $2, 'primary', $3, FALSE, $4)
+    ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET ownership_state = excluded.ownership_state, updated_at = excluded.updated_at`,
+  bulkUpsertShipOwnership: `INSERT INTO ship_overlay (user_id, ref_id, instance_id, ownership_state, target, updated_at)
+    VALUES ($1, $2, 'primary', $3, FALSE, $4)
+    ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET ownership_state = excluded.ownership_state, updated_at = excluded.updated_at`,
+  bulkUpsertOfficerTarget: `INSERT INTO officer_overlay (user_id, ref_id, instance_id, ownership_state, target, updated_at)
+    VALUES ($1, $2, 'primary', 'unknown', $3, $4)
+    ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET target = excluded.target, updated_at = excluded.updated_at`,
+  bulkUpsertShipTarget: `INSERT INTO ship_overlay (user_id, ref_id, instance_id, ownership_state, target, updated_at)
+    VALUES ($1, $2, 'primary', 'unknown', $3, $4)
+    ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET target = excluded.target, updated_at = excluded.updated_at`,
 
   countOfficers: `SELECT
     COUNT(*) AS total,
@@ -362,9 +399,9 @@ function createScopedOverlayStore(scope: ScopeProvider, userId: string): Overlay
   }
 
   return {
-    async getOfficerOverlay(refId) {
+    async getOfficerOverlay(refId, instanceId = "primary") {
       return scope.read(async (client) => {
-        const result = await client.query(SQL.getOfficerOverlay, [refId]);
+        const result = await client.query(SQL.getOfficerOverlay, [refId, instanceId]);
         const raw = result.rows[0] as RawOfficerOverlay | undefined;
         return raw ? normalizeOfficerOverlay(raw) : null;
       });
@@ -373,7 +410,8 @@ function createScopedOverlayStore(scope: ScopeProvider, userId: string): Overlay
     async setOfficerOverlay(input) {
       return scope.write(async (client) => {
         const now = new Date().toISOString();
-        const existingRes = await client.query(SQL.getOfficerOverlay, [input.refId]);
+        const instanceId = input.instanceId ?? "primary";
+        const existingRes = await client.query(SQL.getOfficerOverlay, [input.refId, instanceId]);
         const existing = existingRes.rows[0] as RawOfficerOverlay | undefined;
 
         const ownershipState = input.ownershipState ?? existing?.ownershipState ?? "unknown";
@@ -384,10 +422,10 @@ function createScopedOverlayStore(scope: ScopeProvider, userId: string): Overlay
         const targetNote = input.targetNote !== undefined ? input.targetNote : (existing?.targetNote ?? null);
         const targetPriority = input.targetPriority !== undefined ? input.targetPriority : (existing?.targetPriority ?? null);
 
-        await client.query(SQL.upsertOfficerOverlay, [userId, input.refId, ownershipState, target, level, rank, power, targetNote, targetPriority, now]);
-        const readResult = await client.query(SQL.getOfficerOverlay, [input.refId]);
+        await client.query(SQL.upsertOfficerOverlay, [userId, input.refId, instanceId, ownershipState, target, level, rank, power, targetNote, targetPriority, now]);
+        const readResult = await client.query(SQL.getOfficerOverlay, [input.refId, instanceId]);
 
-        log.fleet.debug({ refId: input.refId, ownershipState, target: Boolean(target), userId }, "officer overlay set");
+        log.fleet.debug({ refId: input.refId, instanceId, ownershipState, target: Boolean(target), userId }, "officer overlay set");
         return normalizeOfficerOverlay(readResult.rows[0] as RawOfficerOverlay);
       });
     },
@@ -404,16 +442,23 @@ function createScopedOverlayStore(scope: ScopeProvider, userId: string): Overlay
       });
     },
 
-    async deleteOfficerOverlay(refId) {
+    async deleteOfficerOverlay(refId, instanceId = "primary") {
       return scope.write(async (client) => {
-        const result = await client.query(SQL.deleteOfficerOverlay, [refId]);
+        const result = await client.query(SQL.deleteOfficerOverlay, [refId, instanceId]);
         return (result.rowCount ?? 0) > 0;
       });
     },
 
-    async getShipOverlay(refId) {
+    async listOfficerInstances(refId) {
       return scope.read(async (client) => {
-        const result = await client.query(SQL.getShipOverlay, [refId]);
+        const result = await client.query(SQL.listOfficerInstances, [refId]);
+        return (result.rows as RawOfficerOverlay[]).map(normalizeOfficerOverlay);
+      });
+    },
+
+    async getShipOverlay(refId, instanceId = "primary") {
+      return scope.read(async (client) => {
+        const result = await client.query(SQL.getShipOverlay, [refId, instanceId]);
         const raw = result.rows[0] as RawShipOverlay | undefined;
         return raw ? normalizeShipOverlay(raw) : null;
       });
@@ -422,7 +467,8 @@ function createScopedOverlayStore(scope: ScopeProvider, userId: string): Overlay
     async setShipOverlay(input) {
       return scope.write(async (client) => {
         const now = new Date().toISOString();
-        const existingRes = await client.query(SQL.getShipOverlay, [input.refId]);
+        const instanceId = input.instanceId ?? "primary";
+        const existingRes = await client.query(SQL.getShipOverlay, [input.refId, instanceId]);
         const existing = existingRes.rows[0] as RawShipOverlay | undefined;
 
         const ownershipState = input.ownershipState ?? existing?.ownershipState ?? "unknown";
@@ -433,10 +479,10 @@ function createScopedOverlayStore(scope: ScopeProvider, userId: string): Overlay
         const targetNote = input.targetNote !== undefined ? input.targetNote : (existing?.targetNote ?? null);
         const targetPriority = input.targetPriority !== undefined ? input.targetPriority : (existing?.targetPriority ?? null);
 
-        await client.query(SQL.upsertShipOverlay, [userId, input.refId, ownershipState, target, tier, level, power, targetNote, targetPriority, now]);
-        const readResult = await client.query(SQL.getShipOverlay, [input.refId]);
+        await client.query(SQL.upsertShipOverlay, [userId, input.refId, instanceId, ownershipState, target, tier, level, power, targetNote, targetPriority, now]);
+        const readResult = await client.query(SQL.getShipOverlay, [input.refId, instanceId]);
 
-        log.fleet.debug({ refId: input.refId, ownershipState, target: Boolean(target), userId }, "ship overlay set");
+        log.fleet.debug({ refId: input.refId, instanceId, ownershipState, target: Boolean(target), userId }, "ship overlay set");
         return normalizeShipOverlay(readResult.rows[0] as RawShipOverlay);
       });
     },
@@ -453,10 +499,17 @@ function createScopedOverlayStore(scope: ScopeProvider, userId: string): Overlay
       });
     },
 
-    async deleteShipOverlay(refId) {
+    async deleteShipOverlay(refId, instanceId = "primary") {
       return scope.write(async (client) => {
-        const result = await client.query(SQL.deleteShipOverlay, [refId]);
+        const result = await client.query(SQL.deleteShipOverlay, [refId, instanceId]);
         return (result.rowCount ?? 0) > 0;
+      });
+    },
+
+    async listShipInstances(refId) {
+      return scope.read(async (client) => {
+        const result = await client.query(SQL.listShipInstances, [refId]);
+        return (result.rows as RawShipOverlay[]).map(normalizeShipOverlay);
       });
     },
 

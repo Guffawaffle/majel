@@ -293,20 +293,20 @@ export function createScanRoutes(appState: AppState): Router {
               // Read before-state
               const beforeResult = await db.query(
                 `SELECT ref_id AS "refId", ownership_state AS "ownershipState", level, rank, power
-                 FROM officer_overlay WHERE ref_id = $1`,
+                 FROM officer_overlay WHERE ref_id = $1 AND instance_id = 'primary'`,
                 [entity.refId],
               );
               const before = beforeResult.rows[0] ?? null;
 
               await db.query(
-                `INSERT INTO officer_overlay (user_id, ref_id, ownership_state, target, level, rank, power, target_note, target_priority, updated_at)
-                 VALUES ($1, $2, 'owned',
-                   COALESCE((SELECT target FROM officer_overlay WHERE ref_id = $2 AND user_id = $1), FALSE),
+                `INSERT INTO officer_overlay (user_id, ref_id, instance_id, ownership_state, target, level, rank, power, target_note, target_priority, updated_at)
+                 VALUES ($1, $2, 'primary', 'owned',
+                   COALESCE((SELECT target FROM officer_overlay WHERE ref_id = $2 AND user_id = $1 AND instance_id = 'primary'), FALSE),
                    $3, $4, $5,
-                   COALESCE((SELECT target_note FROM officer_overlay WHERE ref_id = $2 AND user_id = $1), NULL),
-                   COALESCE((SELECT target_priority FROM officer_overlay WHERE ref_id = $2 AND user_id = $1), NULL),
+                   COALESCE((SELECT target_note FROM officer_overlay WHERE ref_id = $2 AND user_id = $1 AND instance_id = 'primary'), NULL),
+                   COALESCE((SELECT target_priority FROM officer_overlay WHERE ref_id = $2 AND user_id = $1 AND instance_id = 'primary'), NULL),
                    $6)
-                 ON CONFLICT(user_id, ref_id) DO UPDATE SET
+                 ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET
                    ownership_state = 'owned',
                    level = COALESCE(EXCLUDED.level, officer_overlay.level),
                    rank = COALESCE(EXCLUDED.rank, officer_overlay.rank),
@@ -324,7 +324,7 @@ export function createScanRoutes(appState: AppState): Router {
 
               const afterResult = await db.query(
                 `SELECT ref_id AS "refId", ownership_state AS "ownershipState", level, rank, power
-                 FROM officer_overlay WHERE ref_id = $1`,
+                 FROM officer_overlay WHERE ref_id = $1 AND instance_id = 'primary'`,
                 [entity.refId],
               );
 
@@ -337,20 +337,20 @@ export function createScanRoutes(appState: AppState): Router {
               // Ship
               const beforeResult = await db.query(
                 `SELECT ref_id AS "refId", ownership_state AS "ownershipState", tier, level, power
-                 FROM ship_overlay WHERE ref_id = $1`,
+                 FROM ship_overlay WHERE ref_id = $1 AND instance_id = 'primary'`,
                 [entity.refId],
               );
               const before = beforeResult.rows[0] ?? null;
 
               await db.query(
-                `INSERT INTO ship_overlay (user_id, ref_id, ownership_state, target, tier, level, power, target_note, target_priority, updated_at)
-                 VALUES ($1, $2, 'owned',
-                   COALESCE((SELECT target FROM ship_overlay WHERE ref_id = $2 AND user_id = $1), FALSE),
+                `INSERT INTO ship_overlay (user_id, ref_id, instance_id, ownership_state, target, tier, level, power, target_note, target_priority, updated_at)
+                 VALUES ($1, $2, 'primary', 'owned',
+                   COALESCE((SELECT target FROM ship_overlay WHERE ref_id = $2 AND user_id = $1 AND instance_id = 'primary'), FALSE),
                    $3, $4, $5,
-                   COALESCE((SELECT target_note FROM ship_overlay WHERE ref_id = $2 AND user_id = $1), NULL),
-                   COALESCE((SELECT target_priority FROM ship_overlay WHERE ref_id = $2 AND user_id = $1), NULL),
+                   COALESCE((SELECT target_note FROM ship_overlay WHERE ref_id = $2 AND user_id = $1 AND instance_id = 'primary'), NULL),
+                   COALESCE((SELECT target_priority FROM ship_overlay WHERE ref_id = $2 AND user_id = $1 AND instance_id = 'primary'), NULL),
                    $6)
-                 ON CONFLICT(user_id, ref_id) DO UPDATE SET
+                 ON CONFLICT(user_id, ref_id, instance_id) DO UPDATE SET
                    ownership_state = 'owned',
                    tier = COALESCE(EXCLUDED.tier, ship_overlay.tier),
                    level = COALESCE(EXCLUDED.level, ship_overlay.level),
@@ -368,7 +368,7 @@ export function createScanRoutes(appState: AppState): Router {
 
               const afterResult = await db.query(
                 `SELECT ref_id AS "refId", ownership_state AS "ownershipState", tier, level, power
-                 FROM ship_overlay WHERE ref_id = $1`,
+                 FROM ship_overlay WHERE ref_id = $1 AND instance_id = 'primary'`,
                 [entity.refId],
               );
 
