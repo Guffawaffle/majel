@@ -18,10 +18,10 @@
 
 ## Current PM Focus
 
-- **Active work:** Phase 1 runtime correctness — #250 chat hardening and cleanup batch #269 / #271 / #273 / #284. Phase 2 contract unlock — ADR-051 instance modeling (#268).
-- **Recently shipped:** #286 runtime governance hardening (5 tiers, `98bd8a2`). Sprint #282. ADR-048 token budgets (#235) fully shipped. E1.4 availability slice — `get_armada_context` tool.
+- **Active work:** Phase 1 cleanup batch #269 / #271 / #273 / #284. Phase 2 contract unlock — ADR-051 instance modeling (#268).
+- **Recently shipped:** #250 chat hardening (`07fa5db`). #286 runtime governance hardening (5 tiers, `98bd8a2`). Sprint #282. ADR-048 token budgets (#235) fully shipped. E1.4 availability slice — `get_armada_context` tool.
 - **Live at:** HEAD `98bd8a2`; Cloud Run revision `majel-00126-sl8` — redeploy needed. 2575 tests, 0 failures.
-- **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
+- **Open bugs:** #269 — Frame store offset pagination.
 - **Contract unlock next:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
 - **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) ✅ shipped `63646a4`. #280 — full debuff/synergy engine deferred; availability slice already landed. #279 — blocked: `sources` not in CDN or `stfc.space` feed (see DATA_PIPELINE_CONTRACT.md §6). #277 — parked.
 - **Previously completed:** Aria Prompt Hardening. Aria Refit (#261). ADR-050 — Runtime Profiles. ADR-049 — Chat/Sync Boundary. ADR-046 (LCARS). ADR-047 (Staged Boot). ADR-045 (Timer UX). Cost & Runaway Safety Audit (#234).
@@ -35,7 +35,7 @@
 
 | Row | Issue | Title | Status |
 |-----|-------|-------|--------|
-| 1 | #250 | Chat architecture hardening — post-audit followups | [~] Active now |
+| 1 | #250 | Chat architecture hardening — post-audit followups | [x] Done `07fa5db` |
 | 2 | #268 | ADR-051 instance modeling: schedule implementation | [~] Active next / contract unlock |
 | 3 | #269 | Frame store silently ignores offset pagination parameter | [ ] Cleanup batch |
 | 4 | #271 | Extract cohesive modules from gemini/index.ts (~1310 lines) | [ ] Cleanup batch |
