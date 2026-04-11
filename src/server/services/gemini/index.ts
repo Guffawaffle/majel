@@ -340,6 +340,18 @@ export function createGeminiEngine(
     session.chat = createChat(toSdkHistory(session.history, session.summary));
   }
 
+  /** Race a promise against a timeout, cleaning up the timer on settlement (#250/6). */
+  function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return Promise.race([
+      promise.finally(() => { if (timer !== undefined) clearTimeout(timer); }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`sendMessage timeout (${label})`)), ms);
+        timer.unref?.();
+      }),
+    ]);
+  }
+
   /**
    * Send a message with retry + cache-expiry recovery (ADR-049).
    * Wraps withRetry and catches stale context cache errors, falling back
@@ -354,14 +366,7 @@ export function createGeminiEngine(
     const doSend = () => {
       const sendPromise = session.chat.sendMessage({ message: messageParts });
       if (!timeoutMs) return sendPromise;
-      return Promise.race([
-        sendPromise,
-        new Promise<never>((_, reject) => {
-          const t = setTimeout(() => reject(new Error(`sendMessage timeout (${label})`)), timeoutMs);
-          // Let the process exit even if timer is pending
-          t.unref?.();
-        }),
-      ]);
+      return withTimeout(sendPromise, timeoutMs, label);
     };
     try {
       return await withRetry(doSend, label);
@@ -372,13 +377,7 @@ export function createGeminiEngine(
           () => {
             const p = session.chat.sendMessage({ message: messageParts });
             if (!timeoutMs) return p;
-            return Promise.race([
-              p,
-              new Promise<never>((_, reject) => {
-                const t = setTimeout(() => reject(new Error(`sendMessage timeout (${label}-cache-retry)`)), timeoutMs);
-                t.unref?.();
-              }),
-            ]);
+            return withTimeout(p, timeoutMs, `${label}-cache-retry`);
           },
           `${label}-cache-retry`,
         );

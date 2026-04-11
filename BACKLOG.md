@@ -18,9 +18,9 @@
 
 ## Current PM Focus
 
-- **Active work:** Phase 1 runtime correctness recut — #250 chat hardening, #286 runtime governance hardening, and cleanup batch #269 / #271 / #273 / #284. Phase 2 contract unlock — ADR-051 instance modeling (#268).
-- **Recently shipped:** Sprint #282. ADR-048 token budgets (#235) fully shipped. E1.4 availability slice — `get_armada_context` tool: per-ship availability with away team + officer reservation lock reasons. P2 system column enrichment — 6 new columns on `reference_systems`.
-- **Live at:** E1.4/Slice1 commit pushed 2026-04-10; Cloud Run revision `majel-00126-sl8` — redeploy needed. 2541 tests, 0 failures.
+- **Active work:** Phase 1 runtime correctness — #250 chat hardening and cleanup batch #269 / #271 / #273 / #284. Phase 2 contract unlock — ADR-051 instance modeling (#268).
+- **Recently shipped:** #286 runtime governance hardening (5 tiers, `98bd8a2`). Sprint #282. ADR-048 token budgets (#235) fully shipped. E1.4 availability slice — `get_armada_context` tool.
+- **Live at:** HEAD `98bd8a2`; Cloud Run revision `majel-00126-sl8` — redeploy needed. 2575 tests, 0 failures.
 - **Open bugs:** #250 — Chat architecture hardening (7 sub-items). #269 — Frame store offset pagination.
 - **Contract unlock next:** ADR-051 — Instance Modeling (#268, designed in #260, not yet implemented).
 - **Aria capability tools status:** #278 (research path) ✅ shipped `6eac048`. #276 (scrap yields) ✅ shipped `63646a4`. #280 — full debuff/synergy engine deferred; availability slice already landed. #279 — blocked: `sources` not in CDN or `stfc.space` feed (see DATA_PIPELINE_CONTRACT.md §6). #277 — parked.
@@ -44,7 +44,7 @@
 | 7 | #279 | New tool: get_officer_sources — shard acquisition sourcing | [—] Blocked on source data |
 | 8 | #280 | New tool: analyze_armada_fleet — multi-ship synergy and debuff analysis | [—] Full debuff engine deferred; narrow availability slice shipped |
 | 9 | #284 | ax: emit stderr execution-mode banner for non-TTY consumers | [ ] Cleanup batch |
-| 10 | #286 | Runtime governance hardening | [~] Active now |
+| 10 | #286 | Runtime governance hardening | [x] Done `98bd8a2` |
 
 ---
 

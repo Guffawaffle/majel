@@ -202,6 +202,15 @@ function waitForRunCompletion(
       finish(() => reject(new ChatError(msg, failTrace)));
     });
 
+    source.addEventListener("run.budget_exceeded", (event) => {
+      const parsed = parseStreamData((event as MessageEvent).data);
+      const payload = parsed?.payload;
+      const msg = payload && typeof payload.message === "string"
+        ? payload.message
+        : "Daily token budget exceeded — please try again tomorrow";
+      finish(() => reject(new ChatError(msg)));
+    });
+
     source.addEventListener("run.cancelled", (event) => {
       const parsed = parseStreamData((event as MessageEvent).data);
       const trace = (parsed?.payload?.trace ?? undefined) as ChatTrace | undefined;

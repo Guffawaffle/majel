@@ -302,6 +302,8 @@ async function executeChatRun(
     };
   } catch (err: unknown) {
     const errMessage = err instanceof Error ? err.message : String(err);
+    const isBudgetExceeded = err instanceof TokenBudgetExceededError;
+    const errorCode = isBudgetExceeded ? "TOKEN_BUDGET_EXCEEDED" : "GEMINI_ERROR";
     const errorTrace = isAdmiral
       ? {
           timestamp: new Date().toISOString(),
@@ -321,11 +323,12 @@ async function executeChatRun(
         status: "failed",
         payloadJson: {
           phase: "chat.failed",
-          errorCode: "GEMINI_ERROR",
+          errorCode,
           errorMessage: errMessage,
           trace: errorTrace,
           requestId: requestId ?? null,
           traceId,
+          ...(isBudgetExceeded ? { budget: (err as TokenBudgetExceededError).status } : {}),
           ...(verboseTraces ? {
             verbose: {
               classifier: classifierSignals,
