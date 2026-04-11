@@ -436,7 +436,7 @@ describe("MicroRunner + BehaviorStore integration", () => {
       Date.now(),
     );
 
-    expect(result.receipt.behavioralRulesApplied).toContain("receipt-rule");
+    expect(result.receipt.behavioralRulesApplied).toContainEqual(expect.objectContaining({ id: "receipt-rule" }));
   });
 
   it("works without a behavior store (Phase 1 compat)", async () => {
@@ -559,6 +559,103 @@ describe("MicroRunner + BehaviorStore integration", () => {
     const rule = contract.rules.find((r) => r.startsWith("SHOULD:"));
     expect(rule).not.toContain("system prompt");
     expect(rule).toContain("[filtered]");
+  });
+
+  // ── Specificity-scored ordering ───────────────────────────
+
+  it("ranks task+user scoped rules above global rules by specificity", async () => {
+    // Global rule (specificity = 0)
+    await store.createRule("global-rule", "Global formatting rule", "should");
+    await activateRule("global-rule");
+
+    // Task-scoped rule (specificity = 4)
+    await store.createRule("task-rule", "Reference lookup formatting", "should", "reference_lookup");
+    await activateRule("task-rule");
+
+    // User-scoped rule (specificity = 3)
+    await store.createRule("user-rule", "User preference", "should", undefined, "alice");
+    await activateRule("user-rule");
+
+    // Task + user scoped rule (specificity = 7)
+    await store.createRule("both-rule", "Alice reference lookup pref", "should", "reference_lookup", "alice");
+    await activateRule("both-rule");
+
+    const aliceGov: GovernanceContext = { userId: "alice", role: "ensign", tenantId: "alice", modelFamily: "test", procedureMode: "chat" };
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx, knownOfficerNames: ["Khan"], behaviorStore: store });
+
+    const { contract } = await runner.prepare("Tell me about Khan", aliceGov);
+
+    // Extract behavioral rules (MUST/SHOULD/STYLE prefixed)
+    const behavioral = contract.rules.filter((r) => /^(?:MUST|SHOULD|STYLE):/.test(r));
+
+    // Both-scoped should appear first, then task, then user, then global
+    const bothIdx = behavioral.findIndex((r) => r.includes("Alice reference lookup pref"));
+    const taskIdx = behavioral.findIndex((r) => r.includes("Reference lookup formatting"));
+    const userIdx = behavioral.findIndex((r) => r.includes("User preference"));
+    const globalIdx = behavioral.findIndex((r) => r.includes("Global formatting rule"));
+
+    expect(bothIdx).toBeGreaterThanOrEqual(0);
+    expect(taskIdx).toBeGreaterThanOrEqual(0);
+    expect(userIdx).toBeGreaterThanOrEqual(0);
+    expect(globalIdx).toBeGreaterThanOrEqual(0);
+
+    // Specificity ordering: both(7) < task(4) < user(3) < global(0)
+    expect(bothIdx).toBeLessThan(taskIdx);
+    expect(taskIdx).toBeLessThan(userIdx);
+    expect(userIdx).toBeLessThan(globalIdx);
+  });
+
+  it("uses severity as tie-breaker when specificity is equal", async () => {
+    // Two global rules, different severity — both specificity = 0
+    await store.createRule("style-rule", "Style formatting hint", "style");
+    await activateRule("style-rule");
+
+    await store.createRule("must-rule", "Critical constraint", "must");
+    await activateRule("must-rule");
+
+    const rules = await store.getRules("strategy_general");
+    const mustIdx = rules.findIndex((r) => r.id === "must-rule");
+    const styleIdx = rules.findIndex((r) => r.id === "style-rule");
+
+    expect(mustIdx).toBeGreaterThanOrEqual(0);
+    expect(styleIdx).toBeGreaterThanOrEqual(0);
+    expect(mustIdx).toBeLessThan(styleIdx);
+  });
+
+  it("exposes specificity score on rules from getRules", async () => {
+    await store.createRule("scoped-rule", "Task-specific rule", "should", "fleet_query");
+    await activateRule("scoped-rule");
+
+    await store.createRule("unscoped-rule", "Global rule", "should");
+    await activateRule("unscoped-rule");
+
+    const rules = await store.getRules("fleet_query");
+    const scoped = rules.find((r) => r.id === "scoped-rule");
+    const unscoped = rules.find((r) => r.id === "unscoped-rule");
+
+    expect(scoped?.specificity).toBe(4); // taskType match = 4
+    expect(unscoped?.specificity).toBe(0); // global = 0
+  });
+
+  it("includes specificity in receipt behavioralRulesApplied", async () => {
+    await store.createRule("receipt-spec-rule", "Rule for receipt test", "should", "strategy_general");
+    await activateRule("receipt-spec-rule");
+
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx, behaviorStore: store });
+    const { contract, gatedContext } = await runner.prepare("How do armadas work?");
+    const result = await runner.validate(
+      "Here's a thoughtful response.",
+      contract,
+      gatedContext,
+      "session-spec",
+      Date.now(),
+    );
+
+    const entry = result.receipt.behavioralRulesApplied.find((r) => r.id === "receipt-spec-rule");
+    expect(entry).toBeDefined();
+    expect(entry!.specificity).toBe(4); // taskType scoped
   });
 });
 

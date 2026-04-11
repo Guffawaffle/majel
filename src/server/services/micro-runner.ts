@@ -64,7 +64,7 @@ export interface MicroRunnerReceipt {
     source: string;
     importedAt: string;
   }>;
-  behavioralRulesApplied: string[];
+  behavioralRulesApplied: Array<{ id: string; specificity: number }>;
   validationResult: "pass" | "fail" | "repaired";
   validationDetails: string[];
   repairAttempted: boolean;
@@ -677,9 +677,9 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       const result = validateResponse(response, contract, gatedContext);
       const durationMs = Date.now() - startTime;
 
-      // Collect which behavioral rules contributed
+      // Collect which behavioral rules contributed (with specificity scores)
       const behavioralRulesApplied = config.behaviorStore
-        ? (await config.behaviorStore.getRules(contract.taskType, governance?.userId)).map((r) => r.id)
+        ? (await config.behaviorStore.getRules(contract.taskType, governance?.userId)).map((r) => ({ id: r.id, specificity: r.specificity ?? 0 }))
         : [];
 
       const receipt: MicroRunnerReceipt = {

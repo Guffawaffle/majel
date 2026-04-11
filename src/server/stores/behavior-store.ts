@@ -38,6 +38,11 @@ export interface BehaviorRule {
   observationCount: number;
   /** Enforcement level */
   severity: RuleSeverity;
+  /**
+   * Computed specificity score (higher = more targeted).
+   * Present when returned from getRules(); absent on create/getRule.
+   */
+  specificity?: number;
   /** ISO timestamp of creation */
   createdAt: string;
   /** ISO timestamp of last update */
@@ -57,6 +62,18 @@ export const PRIOR_BETA = 5;
 
 /** Maximum rules per user to prevent volume-based pollution attacks */
 export const MAX_RULES_PER_USER = 50;
+
+/**
+ * Specificity scoring weights for rule scope dimensions.
+ * More-targeted rules rank higher than broad rules,
+ * regardless of confidence. Adapted from LexSona methodology.
+ */
+export const SPECIFICITY_WEIGHTS = {
+  /** Rule targets a specific task type (vs. null = all tasks) */
+  taskType: 4,
+  /** Rule targets a specific user (vs. null = global) */
+  userId: 3,
+} as const;
 
 export interface BehaviorStore {
   /**
@@ -152,12 +169,19 @@ const SQL = {
   getById: `SELECT * FROM behavior_rules WHERE id = $1`,
   listAll: `SELECT * FROM behavior_rules ORDER BY (alpha / (alpha + beta)) DESC`,
   getByTaskType: `
-    SELECT * FROM behavior_rules
+    SELECT *,
+      (CASE WHEN task_type IS NOT NULL THEN ${SPECIFICITY_WEIGHTS.taskType} ELSE 0 END
+       + CASE WHEN user_id IS NOT NULL THEN ${SPECIFICITY_WEIGHTS.userId} ELSE 0 END
+      ) AS specificity
+    FROM behavior_rules
     WHERE (task_type IS NULL OR task_type = $1)
       AND (user_id IS NULL OR user_id = $2)
       AND observation_count >= $3
       AND (alpha / (alpha + beta)) >= $4
-    ORDER BY (alpha / (alpha + beta)) DESC
+    ORDER BY specificity DESC,
+             CASE severity WHEN 'must' THEN 0 WHEN 'should' THEN 1 ELSE 2 END,
+             (alpha / (alpha + beta)) DESC,
+             id
   `,
   update: `
     UPDATE behavior_rules
@@ -209,6 +233,7 @@ export async function createBehaviorStore(adminPool: Pool, runtimePool?: Pool): 
       beta: row.beta as number,
       observationCount: row.observation_count as number,
       severity: row.severity as RuleSeverity,
+      ...(row.specificity != null ? { specificity: Number(row.specificity) } : {}),
       createdAt: row.created_at as string,
       updatedAt: row.updated_at as string,
     };
