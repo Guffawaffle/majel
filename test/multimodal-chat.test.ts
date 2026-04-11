@@ -59,7 +59,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.answer).toBe("Image received, Admiral.");
-    expect(mockChat).toHaveBeenCalledWith("Hello Aria", "default", undefined, expect.any(String), expect.any(String), undefined, "fleet", false);
+    expect(mockChat).toHaveBeenCalledWith("Hello Aria", "default", undefined, expect.any(String), expect.any(String), undefined, "fleet", false, "admiral");
   });
 
   it("accepts a message with a valid image attachment", async () => {
@@ -81,6 +81,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
       undefined,
       "fleet",
       false,
+      "admiral",
     );
   });
 
@@ -204,6 +205,7 @@ describe("POST /api/chat — image validation (ADR-008)", () => {
       undefined,
       "fleet",
       false,
+      "admiral",
     );
   });
 });

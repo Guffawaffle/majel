@@ -174,7 +174,7 @@ async function executeChatRun(
 
     const chatMessage = await buildChatMessage(appState, userId, message);
     const bulkDetected = classifierSignals.bulkDetected;
-    const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled, toolMode, bulkDetected);
+    const result = await appState.geminiEngine.chat(chatMessage, sessionId, imagePart, userId, requestId, options?.isCancelled, toolMode, bulkDetected, userRole);
     const answer = typeof result === "string" ? result : result.text;
     const proposals = typeof result === "string" ? undefined : result.proposals;
     const proposalIds = proposals?.map((p) => p.id) ?? [];

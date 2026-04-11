@@ -739,6 +739,7 @@ describe("createMicroRunner", () => {
 
       expect(result.receipt.sessionId).toBe("session-123");
       expect(result.receipt.taskType).toBe("reference_lookup");
+      expect(result.receipt.governanceContext).toBeNull();
       expect(result.receipt.contextManifest).toContain("T2 reference(Khan)");
       expect(result.receipt.contextKeysInjected).toContain("t1:roster");
       expect(result.receipt.contextKeysInjected).toContain("t2:officerLookup");

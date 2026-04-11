@@ -17,7 +17,7 @@ import type {
   Message,
 } from "@anthropic-ai/sdk/resources/messages/messages";
 import { log } from "../../logger.js";
-import { type MicroRunner, VALIDATION_DISCLAIMER } from "../micro-runner.js";
+import { type MicroRunner, type GovernanceContext, VALIDATION_DISCLAIMER } from "../micro-runner.js";
 import {
   type ToolEnv,
   type ToolContextFactory,
@@ -519,7 +519,7 @@ export function createClaudeEngine(
   // ─── ChatEngine implementation ──────────────────────────────
 
   return {
-    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, _isCancelled?: () => boolean, _toolMode?: import("../gemini/tool-mode.js").ToolMode): Promise<ChatResult> {
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, _isCancelled?: () => boolean, _toolMode?: import("../gemini/tool-mode.js").ToolMode, _bulkDetected?: boolean, userRole?: string): Promise<ChatResult> {
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       return withSessionLock(sessionKey, async () => {
         const session = getSession(sessionKey);
@@ -533,7 +533,14 @@ export function createClaudeEngine(
         // ── MicroRunner pipeline (optional) ──────────────────
         if (microRunner) {
           const startTime = Date.now();
-          const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message, effectiveUserId);
+          const governance: GovernanceContext = {
+            userId: effectiveUserId,
+            role: userRole ?? "ensign",
+            tenantId: effectiveUserId,
+            modelFamily: currentModelId,
+            procedureMode: "chat",
+          };
+          const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message, governance);
 
           const augmentedContent = buildUserContent(augmentedMessage, image);
           session.messages.push({ role: "user", content: augmentedContent });
@@ -556,7 +563,7 @@ export function createClaudeEngine(
           // Validate response against contract
           let finalText = responseText;
           const validation = await microRunner.validate(
-            finalText, contract, gatedContext, sessionKey, startTime, message, effectiveUserId,
+            finalText, contract, gatedContext, sessionKey, startTime, message, governance,
           );
           const receipt = validation.receipt;
 
@@ -580,7 +587,7 @@ export function createClaudeEngine(
             receipt.repairAttempted = true;
 
             const revalidation = await microRunner.validate(
-              finalText, contract, gatedContext, sessionKey, startTime, message, effectiveUserId,
+              finalText, contract, gatedContext, sessionKey, startTime, message, governance,
             );
             receipt.validationResult = revalidation.receipt.validationResult === "pass" ? "repaired" : "fail";
             receipt.validationDetails = revalidation.receipt.validationDetails;

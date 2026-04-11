@@ -80,7 +80,7 @@ describe("EngineManager", () => {
   it("routes chat to Gemini when a Gemini model is active", async () => {
     const manager = createEngineManager({ geminiEngine: gemini, claudeEngine: claude });
     await manager.chat("hello", "s1");
-    expect(gemini.chat).toHaveBeenCalledWith("hello", "s1", undefined, undefined, undefined);
+    expect(gemini.chat).toHaveBeenCalledWith("hello", "s1", undefined, undefined, undefined, undefined, undefined, undefined, undefined);
     expect(claude.chat).not.toHaveBeenCalled();
     manager.close();
   });

@@ -21,7 +21,7 @@ import {
   type Content,
 } from "@google/genai";
 import { log } from "../../logger.js";
-import { type MicroRunner, VALIDATION_DISCLAIMER, extractConversationalAnswer } from "../micro-runner.js";
+import { type MicroRunner, type GovernanceContext, VALIDATION_DISCLAIMER, extractConversationalAnswer } from "../micro-runner.js";
 import {
   type ToolEnv,
   type ToolContextFactory,
@@ -1008,7 +1008,7 @@ export function createGeminiEngine(
   }
 
   return {
-    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean, toolMode?: ToolMode, bulkDetected?: boolean): Promise<ChatResult> {
+    async chat(message: string, sessionId = "default", image?: ImagePart, userId?: string, requestId?: string, isCancelled?: () => boolean, toolMode?: ToolMode, bulkDetected?: boolean, userRole?: string): Promise<ChatResult> {
       // #85: Namespace session keys by userId to prevent cross-user session leakage
       const sessionKey = userId ? `${userId}:${sessionId}` : sessionId;
       return withSessionLock(sessionKey, async () => {
@@ -1043,7 +1043,14 @@ export function createGeminiEngine(
       // ── MicroRunner pipeline (optional) ──────────────────
       if (microRunner) {
         const startTime = Date.now();
-        const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message, effectiveUserId);
+        const governance: GovernanceContext = {
+          userId: effectiveUserId,
+          role: userRole ?? "ensign",
+          tenantId: effectiveUserId,
+          modelFamily: currentModelId,
+          procedureMode: isBulkGated ? "bulk" : "chat",
+        };
+        const { contract, gatedContext, augmentedMessage } = await microRunner.prepare(message, governance);
 
         // Send augmented message — bulk-gated mode strips mutation tools (ADR-049),
         // toolless mode uses a temporary chat without tool declarations
@@ -1115,7 +1122,7 @@ export function createGeminiEngine(
 
         // Validate response against contract
         const validation = await microRunner.validate(
-          responseText, contract, gatedContext, sessionKey, startTime, message, effectiveUserId,
+          responseText, contract, gatedContext, sessionKey, startTime, message, governance,
         );
         const receipt = validation.receipt;
 
@@ -1134,7 +1141,7 @@ export function createGeminiEngine(
 
           // Re-validate the repaired response
           const revalidation = await microRunner.validate(
-            responseText, contract, gatedContext, sessionKey, startTime, message, effectiveUserId,
+            responseText, contract, gatedContext, sessionKey, startTime, message, governance,
           );
           receipt.validationResult = revalidation.receipt.validationResult === "pass" ? "repaired" : "fail";
           receipt.validationDetails = revalidation.receipt.validationDetails;

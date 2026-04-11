@@ -56,6 +56,7 @@ export interface MicroRunnerReceipt {
   timestamp: string;
   sessionId: string;
   taskType: TaskType;
+  governanceContext: GovernanceContext | null;
   contextManifest: string;
   contextKeysInjected: string[];
   t2Provenance: Array<{
@@ -110,6 +111,27 @@ export const UNIVERSAL_INVARIANTS: readonly string[] = [
   "no unqualified patch or version claims",
   "no roster or data claims for entities not in context",
 ];
+
+// ─── Governance Context ─────────────────────────────────────
+
+/**
+ * Per-request governance context threaded through the MicroRunner pipeline.
+ * Captures who is making the request, which model is serving it, and what
+ * execution mode is active. Used for scoped rule retrieval, receipt audit,
+ * and future per-model/per-tenant policy decisions.
+ */
+export interface GovernanceContext {
+  /** Authenticated user ID (or "local" for unauthenticated access) */
+  userId: string;
+  /** User role for budget/access scoping */
+  role: string;
+  /** Reserved for multi-tenant scoping; currently matches userId */
+  tenantId: string;
+  /** Gemini model identifier serving this request */
+  modelFamily: string;
+  /** Execution procedure: normal chat, bulk-gated paste, or repair pass */
+  procedureMode: "chat" | "bulk" | "repair";
+}
 
 // ─── PromptCompiler ─────────────────────────────────────────
 
@@ -536,9 +558,9 @@ export interface MicroRunner {
    *
    * Returns the compiled contract, gated context, and an augmented message
    * ready to send to the model.
-   * When userId is provided, behavioral rules are scoped to that user.
+   * When governance context is provided, behavioral rules are scoped accordingly.
    */
-  prepare(message: string, userId?: string): Promise<{
+  prepare(message: string, governance?: GovernanceContext): Promise<{
     contract: TaskContract;
     gatedContext: GatedContext;
     augmentedMessage: string;
@@ -555,7 +577,7 @@ export interface MicroRunner {
     sessionId: string,
     startTime: number,
     originalMessage?: string,
-    userId?: string,
+    governance?: GovernanceContext,
   ): Promise<{
     validatedResponse: string;
     needsRepair: boolean;
@@ -609,12 +631,12 @@ function sanitizeRuleText(text: string): string {
 
 export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
   return {
-    async prepare(message: string, userId?: string) {
+    async prepare(message: string, governance?: GovernanceContext) {
       const contract = compileTask(message, config.contextSources, config.knownOfficerNames);
 
       // Phase 2: Inject active behavioral rules into the contract
       if (config.behaviorStore) {
-        const activeRules = await config.behaviorStore.getRules(contract.taskType, userId);
+        const activeRules = await config.behaviorStore.getRules(contract.taskType, governance?.userId);
         for (const rule of activeRules) {
           // Validate severity — reject unknown values
           if (!VALID_SEVERITIES.has(rule.severity)) continue;
@@ -650,20 +672,21 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       sessionId: string,
       startTime: number,
       originalMessage?: string,
-      userId?: string,
+      governance?: GovernanceContext,
     ) {
       const result = validateResponse(response, contract, gatedContext);
       const durationMs = Date.now() - startTime;
 
       // Collect which behavioral rules contributed
       const behavioralRulesApplied = config.behaviorStore
-        ? (await config.behaviorStore.getRules(contract.taskType, userId)).map((r) => r.id)
+        ? (await config.behaviorStore.getRules(contract.taskType, governance?.userId)).map((r) => r.id)
         : [];
 
       const receipt: MicroRunnerReceipt = {
         timestamp: new Date().toISOString(),
         sessionId,
         taskType: contract.taskType,
+        governanceContext: governance ?? null,
         contextManifest: contract.contextManifest,
         contextKeysInjected: gatedContext.keysInjected,
         t2Provenance: gatedContext.t2Provenance,
@@ -700,6 +723,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
     finalize(receipt: MicroRunnerReceipt): void {
       log.gemini.debug({
         taskType: receipt.taskType,
+        governanceContext: receipt.governanceContext,
         contextManifest: receipt.contextManifest,
         keysInjected: receipt.contextKeysInjected,
         t2Provenance: receipt.t2Provenance,

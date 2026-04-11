@@ -12,6 +12,7 @@ import { log } from "../logger.js";
 import { MODEL_REGISTRY_MAP } from "./gemini/model-registry.js";
 import type { ChatEngine } from "./engine.js";
 import type { ImagePart, ChatResult } from "./gemini/index.js";
+import type { ToolMode } from "./gemini/tool-mode.js";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -53,8 +54,12 @@ export function createEngineManager(opts: EngineManagerOptions): ChatEngine {
     image?: ImagePart,
     userId?: string,
     requestId?: string,
+    isCancelled?: () => boolean,
+    toolMode?: ToolMode,
+    bulkDetected?: boolean,
+    userRole?: string,
   ): Promise<ChatResult> {
-    return activeEngine().chat(message, sessionId, image, userId, requestId);
+    return activeEngine().chat(message, sessionId, image, userId, requestId, isCancelled, toolMode, bulkDetected, userRole);
   }
 
   function getHistory(sessionId?: string): Array<{ role: string; text: string }> {

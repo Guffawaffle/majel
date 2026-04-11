@@ -14,7 +14,7 @@ import {
   PRIOR_BETA,
   MAX_RULES_PER_USER,
 } from "../src/server/stores/behavior-store.js";
-import { createMicroRunner, UNIVERSAL_INVARIANTS, type ContextSources } from "../src/server/services/micro-runner.js";
+import { createMicroRunner, UNIVERSAL_INVARIANTS, type ContextSources, type GovernanceContext } from "../src/server/services/micro-runner.js";
 
 // ─── Test Helpers ───────────────────────────────────────────
 
@@ -483,12 +483,14 @@ describe("MicroRunner + BehaviorStore integration", () => {
     const runner = createMicroRunner({ contextSources: ctx, behaviorStore: store });
 
     // Alice should see her rule, not Bob's
-    const aliceResult = await runner.prepare("Tell me about mining", "alice");
+    const aliceGov: GovernanceContext = { userId: "alice", role: "ensign", tenantId: "alice", modelFamily: "test", procedureMode: "chat" };
+    const aliceResult = await runner.prepare("Tell me about mining", aliceGov);
     expect(aliceResult.contract.rules.some((r) => r.includes("Alice likes tables"))).toBe(true);
     expect(aliceResult.contract.rules.some((r) => r.includes("Bob likes bullets"))).toBe(false);
 
     // Bob should see his rule, not Alice's
-    const bobResult = await runner.prepare("Tell me about mining", "bob");
+    const bobGov: GovernanceContext = { userId: "bob", role: "ensign", tenantId: "bob", modelFamily: "test", procedureMode: "chat" };
+    const bobResult = await runner.prepare("Tell me about mining", bobGov);
     expect(bobResult.contract.rules.some((r) => r.includes("Bob likes bullets"))).toBe(true);
     expect(bobResult.contract.rules.some((r) => r.includes("Alice likes tables"))).toBe(false);
   });
