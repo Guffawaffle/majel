@@ -1165,6 +1165,10 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
           type: Type.STRING,
           description: "The ship reference ID (e.g. 'cdn:ship:697653604')",
         },
+        instance_id: {
+          type: Type.STRING,
+          description: "Instance identifier. Omit for the primary instance. Pass 'new' to create an additional instance.",
+        },
         ownership_state: {
           type: Type.STRING,
           description: "Ownership state: 'owned', 'unowned', or 'unknown'",
@@ -1253,6 +1257,10 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         officer_id: {
           type: Type.STRING,
           description: "The officer reference ID (e.g. 'cdn:officer:988947581')",
+        },
+        instance_id: {
+          type: Type.STRING,
+          description: "Instance identifier. Omit for the primary instance. Pass 'new' to create an additional instance.",
         },
         ownership_state: {
           type: Type.STRING,

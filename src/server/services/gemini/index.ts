@@ -12,6 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { nanoid } from "nanoid";
 import {
   GoogleGenAI,
   type Chat,
@@ -799,19 +800,37 @@ export function createGeminiEngine(
 
           // ── Trust tier gate for mutation tools ──────────────
           if (isMutationTool(toolName)) {
-            // Detect overlay creation vs update (ADR-049 Slice 2)
+            // Detect overlay creation vs update (ADR-049 Slice 2, ADR-051 Slice 1)
             let isCreate: boolean | undefined;
             if (toolName === "set_officer_overlay" && scopedContext.deps.overlayStore) {
               const refId = typeof args.officer_id === "string" ? args.officer_id : undefined;
               if (refId) {
-                const existing = await scopedContext.deps.overlayStore.getOfficerOverlay(refId);
-                isCreate = existing === null;
+                // Resolve instance_id: "new" → generated ID (ADR-051)
+                let instanceId = typeof args.instance_id === "string" ? args.instance_id : undefined;
+                if (instanceId === "new") {
+                  instanceId = `inst_${nanoid()}`;
+                  args.instance_id = instanceId;
+                  isCreate = true;
+                } else {
+                  const effective = instanceId ?? "primary";
+                  const existing = await scopedContext.deps.overlayStore.getOfficerOverlay(refId, effective);
+                  isCreate = existing === null;
+                }
               }
             } else if (toolName === "set_ship_overlay" && scopedContext.deps.overlayStore) {
               const refId = typeof args.ship_id === "string" ? args.ship_id : undefined;
               if (refId) {
-                const existing = await scopedContext.deps.overlayStore.getShipOverlay(refId);
-                isCreate = existing === null;
+                // Resolve instance_id: "new" → generated ID (ADR-051)
+                let instanceId = typeof args.instance_id === "string" ? args.instance_id : undefined;
+                if (instanceId === "new") {
+                  instanceId = `inst_${nanoid()}`;
+                  args.instance_id = instanceId;
+                  isCreate = true;
+                } else {
+                  const effective = instanceId ?? "primary";
+                  const existing = await scopedContext.deps.overlayStore.getShipOverlay(refId, effective);
+                  isCreate = existing === null;
+                }
               }
             }
 

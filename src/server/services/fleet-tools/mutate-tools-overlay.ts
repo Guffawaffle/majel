@@ -37,6 +37,7 @@ export async function setShipOverlayTool(
   }
 
   const input: SetShipOverlayInput = { refId: shipId };
+  if (args.instance_id != null) input.instanceId = str(args, "instance_id");
   if (args.ownership_state != null) input.ownershipState = args.ownership_state as OwnershipState;
   if (args.tier != null) input.tier = Number(args.tier);
   if (args.level != null) input.level = Number(args.level);
@@ -50,6 +51,7 @@ export async function setShipOverlayTool(
     tool: "set_ship_overlay",
     updated: true,
     shipId,
+    instanceId: overlay.instanceId,
     overlay: {
       ownershipState: overlay.ownershipState,
       tier: overlay.tier,
@@ -86,6 +88,7 @@ export async function setOfficerOverlayTool(
   }
 
   const input: SetOfficerOverlayInput = { refId: officerId };
+  if (args.instance_id != null) input.instanceId = str(args, "instance_id");
   if (args.ownership_state != null) input.ownershipState = args.ownership_state as OwnershipState;
   if (args.level != null) input.level = Number(args.level);
   if (args.rank != null) input.rank = str(args, "rank");
@@ -99,6 +102,7 @@ export async function setOfficerOverlayTool(
     tool: "set_officer_overlay",
     updated: true,
     officerId,
+    instanceId: overlay.instanceId,
     overlay: {
       ownershipState: overlay.ownershipState,
       level: overlay.level,
