@@ -3,6 +3,7 @@ import type { ReceiptSourceType } from "../../stores/receipt-store.js";
 
 export interface SyncOverlayOfficerInput {
   refId: string;
+  instanceId?: string;
   level?: number | null;
   rank?: string | null;
   power?: number | null;
@@ -12,6 +13,7 @@ export interface SyncOverlayOfficerInput {
 
 export interface SyncOverlayShipInput {
   refId: string;
+  instanceId?: string;
   tier?: number | null;
   level?: number | null;
   power?: number | null;

@@ -370,8 +370,10 @@ export async function syncOverlayTool(
     ctx.deps.overlayStore.listOfficerOverlays(),
     ctx.deps.overlayStore.listShipOverlays(),
   ]);
-  const officerMap = new Map(officerOverlays.map((row) => [row.refId, row]));
-  const shipMap = new Map(shipOverlays.map((row) => [row.refId, row]));
+  const officerMap = new Map(officerOverlays.map((row) => [`${row.refId}:${row.instanceId}`, row]));
+  const shipMap = new Map(shipOverlays.map((row) => [`${row.refId}:${row.instanceId}`, row]));
+  const matchedOfficerKeys = new Set<string>();
+  const matchedShipKeys = new Set<string>();
 
   const manualUpdates = manualUpdateTexts(args);
   const manualParsed = await parseManualOverlayUpdates(manualUpdates, ctx, warnings);
@@ -380,10 +382,11 @@ export async function syncOverlayTool(
   const ships = [...(payload.ships ?? []), ...manualParsed.ships];
   const docks = payload.docks ?? [];
 
-  const officerChanges: Array<{ refId: string; changedFields: string[] }> = [];
-  const shipChanges: Array<{ refId: string; changedFields: string[] }> = [];
+  const officerChanges: Array<{ refId: string; instanceId: string; changedFields: string[] }> = [];
+  const shipChanges: Array<{ refId: string; instanceId: string; changedFields: string[] }> = [];
   const officerReceiptChanges: Array<{
     refId: string;
+    instanceId: string;
     changedFields: string[];
     before: {
       ownershipState: OwnershipState;
@@ -395,6 +398,7 @@ export async function syncOverlayTool(
   }> = [];
   const shipReceiptChanges: Array<{
     refId: string;
+    instanceId: string;
     changedFields: string[];
     before: {
       ownershipState: OwnershipState;
@@ -420,6 +424,7 @@ export async function syncOverlayTool(
       continue;
     }
     const refId = normalizeOfficerRefId(entry.refId);
+    const instanceId = typeof entry.instanceId === "string" && entry.instanceId ? entry.instanceId : "primary";
 
     if (ctx.deps.referenceStore) {
       const exists = await ctx.deps.referenceStore.getOfficer(refId);
@@ -429,7 +434,7 @@ export async function syncOverlayTool(
       }
     }
 
-    const patch: SetOfficerOverlayInput = { refId };
+    const patch: SetOfficerOverlayInput = { refId, instanceId };
     const ownershipState = ownershipFromOwnedFlag(entry.owned);
     if (ownershipState) patch.ownershipState = ownershipState;
     if (entry.level !== undefined) patch.level = entry.level;
@@ -439,11 +444,13 @@ export async function syncOverlayTool(
       warnings.push(`Officer tier ignored for ${refId}; officer overlay does not track tier.`);
     }
 
-    const existing = officerMap.get(refId) ?? null;
+    const compositeKey = `${refId}:${instanceId}`;
+    matchedOfficerKeys.add(compositeKey);
+    const existing = officerMap.get(compositeKey) ?? null;
     const changedFields = changedOfficerFields(existing, patch);
     if (changedFields.length === 0) continue;
-    officerChanges.push({ refId, changedFields });
-    officerReceiptChanges.push({ refId, changedFields, before: existing, after: patch });
+    officerChanges.push({ refId, instanceId, changedFields });
+    officerReceiptChanges.push({ refId, instanceId, changedFields, before: existing, after: patch });
 
     if (!dryRun) {
       await ctx.deps.overlayStore.setOfficerOverlay(patch);
@@ -456,6 +463,7 @@ export async function syncOverlayTool(
       continue;
     }
     const refId = normalizeShipRefId(entry.refId);
+    const instanceId = typeof entry.instanceId === "string" && entry.instanceId ? entry.instanceId : "primary";
 
     if (ctx.deps.referenceStore) {
       const exists = await ctx.deps.referenceStore.getShip(refId);
@@ -465,18 +473,20 @@ export async function syncOverlayTool(
       }
     }
 
-    const patch: SetShipOverlayInput = { refId };
+    const patch: SetShipOverlayInput = { refId, instanceId };
     const ownershipState = ownershipFromOwnedFlag(entry.owned);
     if (ownershipState) patch.ownershipState = ownershipState;
     if (entry.tier !== undefined) patch.tier = entry.tier;
     if (entry.level !== undefined) patch.level = entry.level;
     if (entry.power !== undefined) patch.power = entry.power;
 
-    const existing = shipMap.get(refId) ?? null;
+    const compositeKey = `${refId}:${instanceId}`;
+    matchedShipKeys.add(compositeKey);
+    const existing = shipMap.get(compositeKey) ?? null;
     const changedFields = changedShipFields(existing, patch);
     if (changedFields.length === 0) continue;
-    shipChanges.push({ refId, changedFields });
-    shipReceiptChanges.push({ refId, changedFields, before: existing, after: patch });
+    shipChanges.push({ refId, instanceId, changedFields });
+    shipReceiptChanges.push({ refId, instanceId, changedFields, before: existing, after: patch });
 
     if (!dryRun) {
       await ctx.deps.overlayStore.setShipOverlay(patch);
@@ -595,12 +605,14 @@ export async function syncOverlayTool(
           ...officerReceiptChanges.map((change) => ({
             entity: "officer",
             refId: change.refId,
+            instanceId: change.instanceId,
             changedFields: change.changedFields,
             after: change.after,
           })),
           ...shipReceiptChanges.map((change) => ({
             entity: "ship",
             refId: change.refId,
+            instanceId: change.instanceId,
             changedFields: change.changedFields,
             after: change.after,
           })),
@@ -618,6 +630,7 @@ export async function syncOverlayTool(
           ...officerReceiptChanges.map((change) => ({
             entity: "officer",
             refId: change.refId,
+            instanceId: change.instanceId,
             revert: change.before
               ? {
                   ownershipState: change.before.ownershipState,
@@ -630,6 +643,7 @@ export async function syncOverlayTool(
           ...shipReceiptChanges.map((change) => ({
             entity: "ship",
             refId: change.refId,
+            instanceId: change.instanceId,
             revert: change.before
               ? {
                   ownershipState: change.before.ownershipState,
@@ -650,6 +664,9 @@ export async function syncOverlayTool(
     receiptId = receipt.id;
   }
 
+  const unmatchedOfficerInstances = [...officerMap.keys()].filter((key) => !matchedOfficerKeys.has(key));
+  const unmatchedShipInstances = [...shipMap.keys()].filter((key) => !matchedShipKeys.has(key));
+
   return {
     tool: "sync_overlay",
     dryRun,
@@ -669,6 +686,7 @@ export async function syncOverlayTool(
         changed: officerChanges.length,
         unchanged: Math.max(0, officers.length - officerChanges.length - skippedUnknownOfficerRefs),
         skippedUnknownRefs: skippedUnknownOfficerRefs,
+        unmatchedInstances: unmatchedOfficerInstances.length,
         applied: dryRun ? 0 : officerChanges.length,
       },
       ships: {
@@ -677,6 +695,7 @@ export async function syncOverlayTool(
         changed: shipChanges.length,
         unchanged: Math.max(0, ships.length - shipChanges.length - skippedUnknownShipRefs),
         skippedUnknownRefs: skippedUnknownShipRefs,
+        unmatchedInstances: unmatchedShipInstances.length,
         applied: dryRun ? 0 : shipChanges.length,
       },
       docks: {

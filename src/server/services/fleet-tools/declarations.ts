@@ -1042,6 +1042,10 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
                     type: Type.STRING,
                     description: "Officer reference ID (e.g. 'cdn:officer:776602621'). Raw numeric IDs are also accepted.",
                   },
+                  instanceId: {
+                    type: Type.STRING,
+                    description: "Instance ID (e.g. 'primary' or 'inst_abc123'). Defaults to 'primary' if omitted.",
+                  },
                   level: {
                     type: Type.NUMBER,
                     description: "Current level.",
@@ -1070,6 +1074,10 @@ export const FLEET_TOOL_DECLARATIONS: FunctionDeclaration[] = [
                   refId: {
                     type: Type.STRING,
                     description: "Ship reference ID (e.g. 'cdn:ship:987654321').",
+                  },
+                  instanceId: {
+                    type: Type.STRING,
+                    description: "Instance ID (e.g. 'primary' or 'inst_abc123'). Defaults to 'primary' if omitted.",
                   },
                   tier: {
                     type: Type.NUMBER,
