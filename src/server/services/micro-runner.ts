@@ -11,6 +11,7 @@
  * See PROMPT_GUIDE.md for the authority ladder this enforces at runtime.
  */
 
+import { createHash } from "node:crypto";
 import { log } from "../logger.js";
 import type { BehaviorStore } from "../stores/behavior-store.js";
 import { sanitizeForModel } from "./gemini/sanitize.js";
@@ -50,6 +51,7 @@ export interface TaskContract {
 export interface ValidationResult {
   passed: boolean;
   violations: string[];
+  invariantOutcomes: Array<{ name: string; result: "pass" | "fail" | "skipped" }>;
 }
 
 export interface MicroRunnerReceipt {
@@ -57,6 +59,11 @@ export interface MicroRunnerReceipt {
   sessionId: string;
   taskType: TaskType;
   governanceContext: GovernanceContext | null;
+  governanceMode: "shadow" | "enforce";
+  constraintHash: string;
+  invariantOutcomes: Array<{ name: string; result: "pass" | "fail" | "skipped" }>;
+  wouldBlock: boolean;
+  wouldBlockReasons: string[];
   contextManifest: string;
   contextKeysInjected: string[];
   t2Provenance: Array<{
@@ -262,6 +269,19 @@ export function applyContextBudget(
       truncated,
     },
   };
+}
+
+/**
+ * Compute a deterministic hash of the active constraint set.
+ * Hash inputs: sorted invariant names + sorted rule IDs.
+ * No timestamps or request-specific data — same constraints → same hash.
+ */
+export function computeConstraintHash(
+  invariants: readonly string[],
+  ruleIds: string[],
+): string {
+  const sorted = [...invariants].sort().concat([...ruleIds].sort());
+  return createHash("sha256").update(sorted.join("|")).digest("hex").slice(0, 16);
 }
 
 // ─── PromptCompiler ─────────────────────────────────────────
@@ -531,6 +551,7 @@ export function validateResponse(
   _gatedContext: GatedContext,
 ): ValidationResult {
   const violations: string[] = [];
+  const invariantOutcomes: ValidationResult["invariantOutcomes"] = [];
 
   // ── Tier 1: Universal invariants (all task types) ─────────
 
@@ -540,6 +561,9 @@ export function validateResponse(
     violations.push(
       `System diagnostic claims detected (model cannot inspect runtime state): ${diagnosticMatches.join(", ")}`,
     );
+    invariantOutcomes.push({ name: "no fabricated system diagnostics", result: "fail" });
+  } else {
+    invariantOutcomes.push({ name: "no fabricated system diagnostics", result: "pass" });
   }
 
   // Invariant: no unqualified patch/version claims
@@ -550,18 +574,31 @@ export function validateResponse(
       violations.push(
         `Patch/version claims without uncertainty signal: ${patchMatches.join(", ")}`,
       );
+      invariantOutcomes.push({ name: "no unqualified patch or version claims", result: "fail" });
+    } else {
+      invariantOutcomes.push({ name: "no unqualified patch or version claims", result: "pass" });
     }
+  } else {
+    invariantOutcomes.push({ name: "no unqualified patch or version claims", result: "pass" });
   }
 
   // Invariant: no entity claims citing injected data for entities not in context
   if (contract.requiredTiers.t2_referencePack.length > 0) {
     const knownLower = new Set(contract.requiredTiers.t2_referencePack.map(n => n.toLowerCase()));
+    let entityViolationFound = false;
     for (const match of response.matchAll(ROSTER_ENTITY_PREFIX)) {
       const entityName = match[1];
       if (entityName && !knownLower.has(entityName.toLowerCase())) {
         violations.push(`Entity "${entityName}" cited as injected data but not in context`);
+        entityViolationFound = true;
       }
     }
+    invariantOutcomes.push({
+      name: "no roster or data claims for entities not in context",
+      result: entityViolationFound ? "fail" : "pass",
+    });
+  } else {
+    invariantOutcomes.push({ name: "no roster or data claims for entities not in context", result: "skipped" });
   }
 
   // ── Tier 2: Task-specific rules ───────────────────────────
@@ -596,6 +633,7 @@ export function validateResponse(
   return {
     passed: violations.length === 0,
     violations,
+    invariantOutcomes,
   };
 }
 
@@ -682,6 +720,8 @@ export interface MicroRunnerConfig {
   knownOfficerNames?: string[];
   /** Optional behavioral rules store (ADR-014 Phase 2). */
   behaviorStore?: BehaviorStore;
+  /** Governance enforcement mode. Defaults to "enforce" (block + repair on violation). Set to "shadow" for observation-only telemetry. */
+  governanceMode?: "shadow" | "enforce";
 }
 
 export interface MicroRunner {
@@ -815,6 +855,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       originalMessage?: string,
       governance?: GovernanceContext,
     ) {
+      const mode = config.governanceMode ?? "enforce";
       const result = validateResponse(response, contract, gatedContext);
       const durationMs = Date.now() - startTime;
 
@@ -823,11 +864,24 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
         ? (await config.behaviorStore.getRules(contract.taskType, governance?.userId)).map((r) => ({ id: r.id, specificity: r.specificity ?? 0 }))
         : [];
 
+      // Tier 5: Compute deterministic constraint hash
+      const ruleIds = behavioralRulesApplied.map((r) => r.id);
+      const constraintHash = computeConstraintHash(UNIVERSAL_INVARIANTS, ruleIds);
+
+      // Tier 5: Shadow-mode analysis — always compute, even when passing
+      const wouldBlock = !result.passed;
+      const wouldBlockReasons = result.violations.slice();
+
       const receipt: MicroRunnerReceipt = {
         timestamp: new Date().toISOString(),
         sessionId,
         taskType: contract.taskType,
         governanceContext: governance ?? null,
+        governanceMode: mode,
+        constraintHash,
+        invariantOutcomes: result.invariantOutcomes,
+        wouldBlock,
+        wouldBlockReasons,
         contextManifest: contract.contextManifest,
         contextKeysInjected: gatedContext.keysInjected,
         t2Provenance: gatedContext.t2Provenance,
@@ -839,10 +893,29 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
         durationMs,
       };
 
+      // Shadow mode: log violations but do NOT trigger repair
+      if (mode === "shadow") {
+        if (wouldBlock) {
+          log.gemini.info({
+            mode: "shadow",
+            constraintHash,
+            wouldBlockReasons,
+            taskType: contract.taskType,
+            invariantOutcomes: result.invariantOutcomes,
+          }, "microrunner:shadow-violation");
+        }
+        return {
+          validatedResponse: response,
+          needsRepair: false,
+          repairPrompt: null,
+          receipt,
+        };
+      }
+
+      // Enforce mode: current behavior — block + repair on failure
       if (!result.passed) {
-        // Build repair prompt for the caller to re-send
         const repairPrompt = buildRepairPrompt(
-          originalMessage ?? response, // prefer original user question over model response
+          originalMessage ?? response,
           result.violations,
           contract,
         );
@@ -866,6 +939,10 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       log.gemini.debug({
         taskType: receipt.taskType,
         governanceContext: receipt.governanceContext,
+        governanceMode: receipt.governanceMode,
+        constraintHash: receipt.constraintHash,
+        invariantOutcomes: receipt.invariantOutcomes,
+        wouldBlock: receipt.wouldBlock,
         contextManifest: receipt.contextManifest,
         keysInjected: receipt.contextKeysInjected,
         t2Provenance: receipt.t2Provenance,

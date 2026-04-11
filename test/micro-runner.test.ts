@@ -19,6 +19,7 @@ import {
   estimateTokens,
   resolveContextBudget,
   applyContextBudget,
+  computeConstraintHash,
   VALIDATION_DISCLAIMER,
   UNIVERSAL_INVARIANTS,
   type ContextSources,
@@ -744,6 +745,12 @@ describe("createMicroRunner", () => {
       expect(result.receipt.sessionId).toBe("session-123");
       expect(result.receipt.taskType).toBe("reference_lookup");
       expect(result.receipt.governanceContext).toBeNull();
+      expect(result.receipt.governanceMode).toBe("enforce");
+      expect(result.receipt.constraintHash).toMatch(/^[a-f0-9]{16}$/);
+      expect(result.receipt.invariantOutcomes).toBeInstanceOf(Array);
+      expect(result.receipt.invariantOutcomes.length).toBeGreaterThan(0);
+      expect(result.receipt.wouldBlock).toBe(false);
+      expect(result.receipt.wouldBlockReasons).toEqual([]);
       expect(result.receipt.contextBudget).toBeNull();
       expect(result.receipt.contextManifest).toContain("T2 reference(Khan)");
       expect(result.receipt.contextKeysInjected).toContain("t1:roster");
@@ -889,5 +896,162 @@ describe("Context budget in pipeline", () => {
 
     const { gatedContext } = await runner.prepare("Fix this", governance);
     expect(gatedContext.contextBudget!.limit).toBe(Math.floor(1_048_576 * 0.5));
+  });
+});
+
+// ─── Shadow-Mode Telemetry (Tier 5) ─────────────────────────
+
+describe("computeConstraintHash", () => {
+  it("produces a deterministic 16-char hex hash", () => {
+    const hash = computeConstraintHash(UNIVERSAL_INVARIANTS, ["rule-1", "rule-2"]);
+    expect(hash).toMatch(/^[a-f0-9]{16}$/);
+  });
+
+  it("is stable across calls with same inputs", () => {
+    const h1 = computeConstraintHash(UNIVERSAL_INVARIANTS, ["a", "b"]);
+    const h2 = computeConstraintHash(UNIVERSAL_INVARIANTS, ["a", "b"]);
+    expect(h1).toBe(h2);
+  });
+
+  it("is order-independent (sorts inputs)", () => {
+    const h1 = computeConstraintHash(UNIVERSAL_INVARIANTS, ["b", "a"]);
+    const h2 = computeConstraintHash(UNIVERSAL_INVARIANTS, ["a", "b"]);
+    expect(h1).toBe(h2);
+  });
+
+  it("changes when rules differ", () => {
+    const h1 = computeConstraintHash(UNIVERSAL_INVARIANTS, ["rule-1"]);
+    const h2 = computeConstraintHash(UNIVERSAL_INVARIANTS, ["rule-2"]);
+    expect(h1).not.toBe(h2);
+  });
+});
+
+describe("validateResponse invariantOutcomes", () => {
+  it("includes per-invariant outcomes on passing response", () => {
+    const contract = compileTask("How do armadas work?", makeContextSources());
+    const gated = gateContext(contract, makeContextSources());
+    const result = validateResponse("Armadas are cooperative fleet battles...", contract, gated);
+
+    expect(result.invariantOutcomes).toBeInstanceOf(Array);
+    expect(result.invariantOutcomes.length).toBeGreaterThanOrEqual(3);
+    expect(result.invariantOutcomes.every((o) => o.result === "pass" || o.result === "skipped")).toBe(true);
+  });
+
+  it("marks failing invariant with result=fail", () => {
+    const contract = compileTask("How do armadas work?", makeContextSources());
+    const gated = gateContext(contract, makeContextSources());
+    const result = validateResponse("memory frames is 42 and health status shows 100", contract, gated);
+
+    const diagnostic = result.invariantOutcomes.find((o) => o.name === "no fabricated system diagnostics");
+    expect(diagnostic).toBeDefined();
+    expect(diagnostic!.result).toBe("fail");
+  });
+
+  it("marks entity invariant as skipped when no t2 reference pack", () => {
+    const contract = compileTask("How do armadas work?", makeContextSources());
+    const gated = gateContext(contract, makeContextSources());
+    const result = validateResponse("All good", contract, gated);
+
+    const entity = result.invariantOutcomes.find((o) => o.name.includes("roster or data claims"));
+    expect(entity).toBeDefined();
+    expect(entity!.result).toBe("skipped");
+  });
+});
+
+describe("Shadow-mode governance", () => {
+  it("defaults to enforce mode", async () => {
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx });
+    const { contract, gatedContext } = await runner.prepare("Hello");
+    const result = await runner.validate("Hi.", contract, gatedContext, "s1", Date.now());
+    expect(result.receipt.governanceMode).toBe("enforce");
+  });
+
+  it("shadow mode logs violations but does not repair", async () => {
+    const ctx = makeContextSources({ hasRoster: true });
+    const runner = createMicroRunner({
+      contextSources: ctx,
+      knownOfficerNames: ["Khan"],
+      governanceMode: "shadow",
+    });
+    const { contract, gatedContext } = await runner.prepare("Tell me about Khan");
+
+    const result = await runner.validate(
+      "Khan has level 40 with power 1.2M and does +25% damage.",
+      contract, gatedContext, "shadow-session", Date.now(),
+    );
+
+    // Shadow mode: violations detected but response NOT blocked
+    expect(result.needsRepair).toBe(false);
+    expect(result.repairPrompt).toBeNull();
+    expect(result.receipt.governanceMode).toBe("shadow");
+    expect(result.receipt.wouldBlock).toBe(true);
+    expect(result.receipt.wouldBlockReasons.length).toBeGreaterThan(0);
+    expect(result.receipt.validationResult).toBe("fail");
+  });
+
+  it("enforce mode triggers repair on violation", async () => {
+    const ctx = makeContextSources({ hasRoster: true });
+    const runner = createMicroRunner({
+      contextSources: ctx,
+      knownOfficerNames: ["Khan"],
+      governanceMode: "enforce",
+    });
+    const { contract, gatedContext } = await runner.prepare("Tell me about Khan");
+
+    const result = await runner.validate(
+      "Khan has level 40 with power 1.2M and does +25% damage.",
+      contract, gatedContext, "enforce-session", Date.now(),
+    );
+
+    expect(result.needsRepair).toBe(true);
+    expect(result.repairPrompt).toBeTruthy();
+    expect(result.receipt.governanceMode).toBe("enforce");
+    expect(result.receipt.wouldBlock).toBe(true);
+  });
+
+  it("shadow mode still passes clean responses through", async () => {
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx, governanceMode: "shadow" });
+    const { contract, gatedContext } = await runner.prepare("How do armadas work?");
+
+    const result = await runner.validate(
+      "Armadas are cooperative fleet battles.",
+      contract, gatedContext, "clean-session", Date.now(),
+    );
+
+    expect(result.needsRepair).toBe(false);
+    expect(result.receipt.wouldBlock).toBe(false);
+    expect(result.receipt.wouldBlockReasons).toEqual([]);
+    expect(result.receipt.governanceMode).toBe("shadow");
+  });
+
+  it("constraint hash is included in receipt", async () => {
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx });
+    const { contract, gatedContext } = await runner.prepare("Hello");
+
+    const result = await runner.validate(
+      "Hi there.", contract, gatedContext, "hash-session", Date.now(),
+    );
+
+    expect(result.receipt.constraintHash).toMatch(/^[a-f0-9]{16}$/);
+  });
+
+  it("invariant outcomes are included in receipt", async () => {
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx });
+    const { contract, gatedContext } = await runner.prepare("Hello");
+
+    const result = await runner.validate(
+      "Hi there.", contract, gatedContext, "inv-session", Date.now(),
+    );
+
+    expect(result.receipt.invariantOutcomes).toBeInstanceOf(Array);
+    expect(result.receipt.invariantOutcomes.length).toBeGreaterThanOrEqual(3);
+    for (const outcome of result.receipt.invariantOutcomes) {
+      expect(["pass", "fail", "skipped"]).toContain(outcome.result);
+      expect(outcome.name).toBeTruthy();
+    }
   });
 });
