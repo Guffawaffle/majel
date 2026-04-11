@@ -16,11 +16,15 @@ import {
   buildRepairPrompt,
   createMicroRunner,
   extractConversationalAnswer,
+  estimateTokens,
+  resolveContextBudget,
+  applyContextBudget,
   VALIDATION_DISCLAIMER,
   UNIVERSAL_INVARIANTS,
   type ContextSources,
   type TaskContract,
   type GatedContext,
+  type GovernanceContext,
   type ReferenceEntry,
 } from "../src/server/services/micro-runner.js";
 
@@ -740,6 +744,7 @@ describe("createMicroRunner", () => {
       expect(result.receipt.sessionId).toBe("session-123");
       expect(result.receipt.taskType).toBe("reference_lookup");
       expect(result.receipt.governanceContext).toBeNull();
+      expect(result.receipt.contextBudget).toBeNull();
       expect(result.receipt.contextManifest).toContain("T2 reference(Khan)");
       expect(result.receipt.contextKeysInjected).toContain("t1:roster");
       expect(result.receipt.contextKeysInjected).toContain("t2:officerLookup");
@@ -747,5 +752,142 @@ describe("createMicroRunner", () => {
       expect(result.receipt.durationMs).toBeGreaterThanOrEqual(0);
       expect(result.receipt.timestamp).toBeTruthy();
     });
+  });
+});
+
+// ─── Context Budget Policy (Tier 4) ─────────────────────────
+
+describe("estimateTokens", () => {
+  it("estimates ~1 token per 4 characters", () => {
+    expect(estimateTokens("")).toBe(0);
+    expect(estimateTokens("abcd")).toBe(1);
+    expect(estimateTokens("abcde")).toBe(2); // ceil(5/4)
+    expect(estimateTokens("a".repeat(100))).toBe(25);
+  });
+});
+
+describe("resolveContextBudget", () => {
+  it("returns full context window for chat mode", () => {
+    const policy = resolveContextBudget("gemini-2.5-flash", "chat");
+    expect(policy.maxContextTokens).toBe(1_048_576);
+    expect(policy.truncationOrder).toContain("behavioralRules");
+  });
+
+  it("applies 0.5x multiplier for repair mode", () => {
+    const policy = resolveContextBudget("gemini-2.5-flash", "repair");
+    expect(policy.maxContextTokens).toBe(Math.floor(1_048_576 * 0.5));
+  });
+
+  it("applies 0.8x multiplier for bulk mode", () => {
+    const policy = resolveContextBudget("gemini-2.5-pro", "bulk");
+    expect(policy.maxContextTokens).toBe(Math.floor(1_048_576 * 0.8));
+  });
+
+  it("uses prefix matching for preview models", () => {
+    const policy = resolveContextBudget("gemini-3-pro-preview", "chat");
+    expect(policy.maxContextTokens).toBe(1_048_576);
+  });
+
+  it("uses Claude context window for Claude models", () => {
+    const policy = resolveContextBudget("claude-sonnet-4-6", "chat");
+    expect(policy.maxContextTokens).toBe(200_000);
+  });
+
+  it("falls back to conservative budget for unknown models", () => {
+    const policy = resolveContextBudget("unknown-model-99", "chat");
+    expect(policy.maxContextTokens).toBe(32_000);
+  });
+});
+
+describe("applyContextBudget", () => {
+  it("passes through when under budget", () => {
+    const policy = { maxContextTokens: 1000, truncationOrder: ["behavioralRules"] as const };
+    const message = "Short message";
+    const { message: result, budget } = applyContextBudget(message, policy);
+    expect(result).toBe(message);
+    expect(budget.truncated).toEqual([]);
+    expect(budget.estimated).toBe(estimateTokens(message));
+  });
+
+  it("truncates behavioral rules block when over budget", () => {
+    const rulesBlock = `[BEHAVIORAL RULES]\n${"MUST: some rule\n".repeat(100)}[END BEHAVIORAL RULES]`;
+    const userMessage = "What crew for the Enterprise?";
+    const message = `${rulesBlock}\n\n${userMessage}`;
+    // Set a budget smaller than the full message but enough for just the user question
+    const policy = { maxContextTokens: 20, truncationOrder: ["behavioralRules"] as const };
+    const { message: result, budget } = applyContextBudget(message, policy);
+    expect(result).not.toContain("[BEHAVIORAL RULES]");
+    expect(result).toContain("What crew for the Enterprise?");
+    expect(budget.truncated).toEqual(["behavioralRules"]);
+  });
+
+  it("does not truncate when rules fit within budget", () => {
+    const rulesBlock = "[BEHAVIORAL RULES]\nMUST: be nice\n[END BEHAVIORAL RULES]";
+    const message = `${rulesBlock}\n\nHello`;
+    const policy = { maxContextTokens: 100_000, truncationOrder: ["behavioralRules"] as const };
+    const { budget } = applyContextBudget(message, policy);
+    expect(budget.truncated).toEqual([]);
+  });
+
+  it("gracefully handles budget exceeded after all possible truncations", () => {
+    // User message alone exceeds budget — nothing more to truncate
+    const longMessage = "a".repeat(400); // 100 tokens
+    const policy = { maxContextTokens: 10, truncationOrder: ["behavioralRules"] as const };
+    const { message: result, budget } = applyContextBudget(longMessage, policy);
+    // Message is returned as-is; truncated list is empty (no blocks to remove)
+    expect(result).toBe(longMessage);
+    expect(budget.truncated).toEqual([]);
+    expect(budget.estimated).toBeGreaterThan(policy.maxContextTokens);
+  });
+});
+
+describe("Context budget in pipeline", () => {
+  it("populates contextBudget on receipt when governance is provided", async () => {
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx });
+    const governance: GovernanceContext = {
+      userId: "test-user",
+      role: "ensign",
+      tenantId: "test-user",
+      modelFamily: "gemini-2.5-flash",
+      procedureMode: "chat",
+    };
+
+    const { contract, gatedContext } = await runner.prepare("Hello", governance);
+    expect(gatedContext.contextBudget).toBeDefined();
+    expect(gatedContext.contextBudget!.limit).toBe(1_048_576);
+    expect(gatedContext.contextBudget!.truncated).toEqual([]);
+
+    const result = await runner.validate(
+      "Hi there!", contract, gatedContext, "sess-1", Date.now(), undefined, governance,
+    );
+    expect(result.receipt.contextBudget).not.toBeNull();
+    expect(result.receipt.contextBudget!.limit).toBe(1_048_576);
+  });
+
+  it("receipt has null contextBudget when no governance provided", async () => {
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx });
+    const { contract, gatedContext } = await runner.prepare("Hello");
+
+    const result = await runner.validate(
+      "Response", contract, gatedContext, "sess-2", Date.now(),
+    );
+    expect(result.receipt.contextBudget).toBeNull();
+  });
+
+  it("applies tighter budget for repair procedure mode", async () => {
+    const ctx = makeContextSources();
+    const runner = createMicroRunner({ contextSources: ctx });
+    const governance: GovernanceContext = {
+      userId: "test-user",
+      role: "ensign",
+      tenantId: "test-user",
+      modelFamily: "gemini-2.5-flash",
+      procedureMode: "repair",
+    };
+
+    const { gatedContext } = await runner.prepare("Fix this", governance);
+    expect(gatedContext.contextBudget!.limit).toBe(Math.floor(1_048_576 * 0.5));
   });
 });

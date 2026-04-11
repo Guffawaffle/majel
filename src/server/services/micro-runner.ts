@@ -65,6 +65,7 @@ export interface MicroRunnerReceipt {
     importedAt: string;
   }>;
   behavioralRulesApplied: Array<{ id: string; specificity: number }>;
+  contextBudget: ContextBudgetResult | null;
   validationResult: "pass" | "fail" | "repaired";
   validationDetails: string[];
   repairAttempted: boolean;
@@ -131,6 +132,136 @@ export interface GovernanceContext {
   modelFamily: string;
   /** Execution procedure: normal chat, bulk-gated paste, or repair pass */
   procedureMode: "chat" | "bulk" | "repair";
+}
+
+// ─── Context Budget Policy ──────────────────────────────────
+
+/**
+ * Per-model context budget policy. Determines how much context the
+ * MicroRunner may inject and which blocks to drop first when over budget.
+ */
+export interface ContextBudgetPolicy {
+  /** Maximum input context tokens for MicroRunner-injected content */
+  maxContextTokens: number;
+  /** Context blocks to drop, in priority order (first = dropped first) */
+  truncationOrder: readonly string[];
+}
+
+/** Snapshot of budget enforcement for a single request. */
+export interface ContextBudgetResult {
+  /** Budget limit (tokens) that was applied */
+  limit: number;
+  /** Estimated token count of the augmented message */
+  estimated: number;
+  /** Context block names that were truncated to fit */
+  truncated: string[];
+}
+
+/** Default truncation order: drop least-critical context blocks first */
+const DEFAULT_TRUNCATION_ORDER = [
+  "behavioralRules",
+  "t2Reference",
+  "t1Roster",
+  "t1FleetConfig",
+] as const;
+
+/**
+ * Per-model context window sizes (tokens).
+ * Keys are matched as prefixes against GovernanceContext.modelFamily.
+ */
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  "gemini-2.5-flash-lite": 1_048_576,
+  "gemini-2.5-flash": 1_048_576,
+  "gemini-3-flash": 1_048_576,
+  "gemini-2.5-pro": 1_048_576,
+  "gemini-3-pro": 1_048_576,
+  "claude-haiku": 200_000,
+  "claude-sonnet": 200_000,
+};
+
+/** Conservative fallback for unknown models */
+const FALLBACK_CONTEXT_WINDOW = 32_000;
+
+/** Procedure mode multipliers — tighter budgets for non-primary operations */
+const PROCEDURE_MODE_MULTIPLIERS: Record<GovernanceContext["procedureMode"], number> = {
+  chat: 1.0,
+  bulk: 0.8,
+  repair: 0.5,
+};
+
+/**
+ * Character-based token estimation heuristic (v1).
+ * ~4 characters ≈ 1 token for English text. Errs on the side of overestimating.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Resolve the context budget policy for a given model and procedure mode.
+ * Uses prefix matching against MODEL_CONTEXT_WINDOWS, with procedure mode
+ * multiplier applied to tighten budgets for repair passes.
+ */
+export function resolveContextBudget(
+  modelFamily: string,
+  procedureMode: GovernanceContext["procedureMode"],
+): ContextBudgetPolicy {
+  // Longest-prefix-match for defensive model resolution
+  let contextWindow = FALLBACK_CONTEXT_WINDOW;
+  let longestMatch = "";
+  for (const [prefix, tokens] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
+    if (modelFamily.startsWith(prefix) && prefix.length > longestMatch.length) {
+      longestMatch = prefix;
+      contextWindow = tokens;
+    }
+  }
+  const multiplier = PROCEDURE_MODE_MULTIPLIERS[procedureMode];
+  return {
+    maxContextTokens: Math.floor(contextWindow * multiplier),
+    truncationOrder: DEFAULT_TRUNCATION_ORDER,
+  };
+}
+
+/**
+ * Enforce a context budget on the augmented message.
+ * Removes context blocks in truncation-priority order until the estimated
+ * token count fits within the budget.
+ */
+export function applyContextBudget(
+  augmentedMessage: string,
+  policy: ContextBudgetPolicy,
+): { message: string; budget: ContextBudgetResult } {
+  const initialEstimate = estimateTokens(augmentedMessage);
+  if (initialEstimate <= policy.maxContextTokens) {
+    return {
+      message: augmentedMessage,
+      budget: { limit: policy.maxContextTokens, estimated: initialEstimate, truncated: [] },
+    };
+  }
+
+  const truncated: string[] = [];
+  let current = augmentedMessage;
+
+  for (const block of policy.truncationOrder) {
+    if (estimateTokens(current) <= policy.maxContextTokens) break;
+
+    if (block === "behavioralRules") {
+      const before = current;
+      current = current.replace(/\[BEHAVIORAL RULES\][\s\S]*?\[END BEHAVIORAL RULES\]\n*/g, "");
+      if (current !== before) truncated.push("behavioralRules");
+    }
+    // Future context blocks (t2Reference, t1Roster, t1FleetConfig)
+    // will have their own markers and removal logic here.
+  }
+
+  return {
+    message: current.trim(),
+    budget: {
+      limit: policy.maxContextTokens,
+      estimated: estimateTokens(current.trim()),
+      truncated,
+    },
+  };
 }
 
 // ─── PromptCompiler ─────────────────────────────────────────
@@ -317,6 +448,8 @@ export interface GatedContext {
   keysInjected: string[];
   /** T2 provenance entries (for receipt) */
   t2Provenance: MicroRunnerReceipt["t2Provenance"];
+  /** Context budget enforcement result (populated by prepare()) */
+  contextBudget?: ContextBudgetResult;
 }
 
 /**
@@ -662,6 +795,14 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
 
       const augmentedMessage = buildAugmentedMessage(message, gated);
 
+      // Tier 4: Enforce context budget based on model family & procedure mode
+      if (governance) {
+        const policy = resolveContextBudget(governance.modelFamily, governance.procedureMode);
+        const { message: budgeted, budget } = applyContextBudget(augmentedMessage, policy);
+        gated.contextBudget = budget;
+        return { contract, gatedContext: gated, augmentedMessage: budgeted };
+      }
+
       return { contract, gatedContext: gated, augmentedMessage };
     },
 
@@ -691,6 +832,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
         contextKeysInjected: gatedContext.keysInjected,
         t2Provenance: gatedContext.t2Provenance,
         behavioralRulesApplied,
+        contextBudget: gatedContext.contextBudget ?? null,
         validationResult: result.passed ? "pass" : "fail",
         validationDetails: result.violations,
         repairAttempted: false,
@@ -728,6 +870,7 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
         keysInjected: receipt.contextKeysInjected,
         t2Provenance: receipt.t2Provenance,
         behavioralRules: receipt.behavioralRulesApplied,
+        contextBudget: receipt.contextBudget,
         validation: receipt.validationResult,
         violations: receipt.validationDetails,
         repairAttempted: receipt.repairAttempted,
