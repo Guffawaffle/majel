@@ -35,6 +35,11 @@ export type RequestIdentity = Readonly<{
  * Global/reference stores accept this — agnostic to caller context.
  */
 export interface QueryExecutor {
+  /**
+   * Generic default is `any` to match pg library convention (`pg.QueryResultRow = any`).
+   * Call sites cast rows via `as T[]`; switching to `Record<string, unknown>` would require
+   * updating every store to use `db.query<SpecificType>(sql)` — tracked separately.
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   query<T extends pg.QueryResultRow = any>(
     text: string,
@@ -81,6 +86,7 @@ export class DbScope implements QueryExecutor {
     this.client = client;
   }
 
+  /** See QueryExecutor — same `any` default rationale (pg convention, cast-at-callsite). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async query<T extends pg.QueryResultRow = any>(
     text: string,

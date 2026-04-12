@@ -81,8 +81,10 @@ const HTTP_METHODS = [
  */
 export function createSafeRouter(): Router {
   const router = Router();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const r = router as any;
+  const r = router as unknown as Record<
+    (typeof HTTP_METHODS)[number],
+    (...args: unknown[]) => unknown
+  >;
 
   for (const method of HTTP_METHODS) {
     const original = r[method].bind(router);
