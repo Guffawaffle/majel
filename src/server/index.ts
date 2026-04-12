@@ -540,8 +540,8 @@ async function boot(): Promise<void> {
     {
       name: "governance-stores",
       fn: async () => {
-        state.governanceRuleStore = await createGovernanceRuleStore(pool);
-        state.trustGapStore = await createTrustGapStore(pool);
+        state.governanceRuleStore = await createGovernanceRuleStore(adminPool, pool);
+        state.trustGapStore = await createTrustGapStore(adminPool, pool);
         const rules = await state.governanceRuleStore.listRules();
         log.boot.info({ governanceRules: rules.length }, "governance stores online (Phase R1 shadow)");
       },

@@ -158,8 +158,9 @@ function computeSpecificity(rule: GovernanceRule, ctx: GovernanceContext, taskTy
 
 // ─── Factory ────────────────────────────────────────────────
 
-export async function createGovernanceRuleStore(pool: Pool): Promise<GovernanceRuleStore> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createGovernanceRuleStore(adminPool: Pool, runtimePool?: Pool): Promise<GovernanceRuleStore> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   return {
     async getMatchingRules(ctx: GovernanceContext, taskType: TaskType): Promise<ScoredGovernanceRule[]> {

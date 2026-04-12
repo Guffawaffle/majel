@@ -88,8 +88,9 @@ export interface TrustGapStore {
 
 // ─── Factory ────────────────────────────────────────────────
 
-export async function createTrustGapStore(pool: Pool): Promise<TrustGapStore> {
-  await initSchema(pool, SCHEMA_STATEMENTS);
+export async function createTrustGapStore(adminPool: Pool, runtimePool?: Pool): Promise<TrustGapStore> {
+  await initSchema(adminPool, SCHEMA_STATEMENTS);
+  const pool = runtimePool ?? adminPool;
 
   return {
     async recordGap(event: TrustGapEvent, ruleStore: GovernanceRuleStore): Promise<void> {
