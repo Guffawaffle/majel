@@ -161,6 +161,11 @@ const commandName = positionalArgs[0] === "majel" ? positionalArgs[1] : position
 // ─── Router ─────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  // Emit machine-readable banner for non-TTY consumers (agents, CI pipes)
+  if (commandName && !process.stderr.isTTY) {
+    process.stderr.write(`[ax] command=${commandName} mode=synchronous pid=${process.pid}\n`);
+  }
+
   // Help
   if (!commandName || commandName === "help" || commandName === "--help" || commandName === "-h") {
     const cmds = Object.values(COMMANDS).map(c => ({ name: c.name, description: c.description }));
