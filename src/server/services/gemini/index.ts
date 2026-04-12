@@ -11,86 +11,49 @@
  * See docs/PROMPT_GUIDE.md for tuning strategy.
  */
 
-import { createHash } from "node:crypto";
-import { nanoid } from "nanoid";
 import {
   GoogleGenAI,
   type Chat,
   type Part,
-  type FunctionCall,
   type GenerateContentConfig,
   type Content,
 } from "@google/genai";
 import { log } from "../../logger.js";
 import { type MicroRunner, type GovernanceContext, VALIDATION_DISCLAIMER, extractConversationalAnswer } from "../micro-runner.js";
 import {
-  type ToolEnv,
   type ToolContextFactory,
   FLEET_TOOL_DECLARATIONS,
-  executeFleetTool,
 } from "../fleet-tools/index.js";
-import { getTrustLevel, isMutationTool } from "../fleet-tools/trust.js";
+import { isMutationTool } from "../fleet-tools/trust.js";
 import type { ProposalStoreFactory } from "../../stores/proposal-store.js";
-import type { BatchItem } from "../../stores/proposal-store.js";
 import type { UserSettingsStore } from "../../stores/user-settings-store.js";
 import { MODEL_REGISTRY, MODEL_REGISTRY_MAP, resolveModelId } from "./model-registry.js";
 import { buildSystemPrompt, SAFETY_SETTINGS } from "./system-prompt.js";
-import { sanitizeForModel } from "./sanitize.js";
-import { canonicalStringify } from "../../util/canonical-json.js";
 import type { ChatEngine } from "../engine.js";
 import type { ToolMode } from "./tool-mode.js";
 import { countStructuredLines } from "./tool-mode.js";
+import { ContextCacheManager } from "./context-cache.js";
+import {
+  handleFunctionCalls,
+  extractResponseDiagnostics,
+  type ToolDispatchDeps,
+} from "./tool-dispatch.js";
+import type {
+  FleetConfig,
+  ImagePart,
+  ProposalSummary,
+  AttemptInfo,
+  HandoffCard,
+  ChatResult,
+  TokenUsageCallback,
+  SessionState,
+} from "./types.js";
 
 // ─── Retry helper for transient Gemini API errors ─────────────
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1000;
-
-/** Extract diagnostic info from a Gemini response for logging when the response is empty. */
-function extractResponseDiagnostics(result: unknown): Record<string, unknown> | null {
-  const r = result as {
-    candidates?: Array<{ finishReason?: string; safetyRatings?: unknown[]; content?: { parts?: Array<{ functionCall?: unknown }> } }>;
-    promptFeedback?: { blockReason?: string; blockReasonMessage?: string };
-  };
-  const candidate = r?.candidates?.[0];
-  const diag: Record<string, unknown> = {};
-  if (candidate?.finishReason) diag.finishReason = candidate.finishReason;
-  if (candidate?.safetyRatings) diag.safetyRatings = candidate.safetyRatings;
-  if (candidate?.finishReason === "MALFORMED_FUNCTION_CALL" && candidate?.content?.parts) {
-    const malformedCalls = candidate.content.parts
-      .filter((p) => p.functionCall != null)
-      .map((p) => p.functionCall);
-    if (malformedCalls.length > 0) diag.malformedFunctionCalls = malformedCalls;
-  }
-  if (r?.promptFeedback?.blockReason) {
-    diag.blockReason = r.promptFeedback.blockReason;
-    if (r.promptFeedback.blockReasonMessage) diag.blockReasonMessage = r.promptFeedback.blockReasonMessage;
-  }
-  if (!r?.candidates?.length) diag.noCandidates = true;
-  return Object.keys(diag).length > 0 ? diag : null;
-}
-
-/** Build an AttemptInfo record from a Gemini response for telemetry. */
-function buildAttemptInfo(
-  attempt: number,
-  mode: ToolMode,
-  result: unknown,
-  retryReason?: string,
-): AttemptInfo {
-  const diag = extractResponseDiagnostics(result);
-  const usage = (result as { usageMetadata?: Record<string, number> }).usageMetadata;
-  return {
-    attempt,
-    toolMode: mode,
-    ...(retryReason ? { retryReason } : {}),
-    ...(typeof diag?.finishReason === "string" ? { finishReason: diag.finishReason as string } : {}),
-    ...(usage?.promptTokenCount != null ? { promptTokenCount: usage.promptTokenCount } : {}),
-    ...(usage?.candidatesTokenCount != null ? { candidatesTokenCount: usage.candidatesTokenCount } : {}),
-    ...(usage?.totalTokenCount != null ? { totalTokenCount: usage.totalTokenCount } : {}),
-    ...(usage?.thoughtsTokenCount != null ? { thoughtsTokenCount: usage.thoughtsTokenCount } : {}),
-  };
-}
 
 async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
   let lastErr: unknown;
@@ -126,100 +89,23 @@ export {
 export type { IntentMode, IntentConfig } from "./system-prompt.js";
 export { type ToolMode, type ClassifierSignals, classifyToolMode, classifyToolModeVerbose, countStructuredLines } from "./tool-mode.js";
 
-// ─── Engine Types ─────────────────────────────────────────────
-
-/**
- * Fleet configuration context for the system prompt.
- * These values come from the settings store and tell the model
- * about the Admiral's current game state.
- */
-export interface FleetConfig {
-  opsLevel: number;
-  drydockCount: number;
-  shipHangarSlots: number;
-}
-
-/**
- * Image attachment for multimodal chat (ADR-008 Phase A).
- * Maps directly to the Gemini SDK's inlineData Part format.
- */
-export interface ImagePart {
-  inlineData: {
-    data: string;       // base64-encoded image data
-    mimeType: string;   // image/png, image/jpeg, image/webp
-  };
-}
-
-/**
- * Summary of a staged mutation proposal returned alongside chat text.
- * The frontend renders these as inline approval cards.
- */
-export interface ProposalSummary {
-  id: string;
-  batchItems: Array<{ tool: string; preview: string }>;
-  expiresAt: string;
-}
-
-/**
- * Per-attempt execution metadata for observability.
- * Emitted as part of ChatResult so the chat route can include it in
- * operation events and traces.
- */
-export interface AttemptInfo {
-  attempt: number;
-  toolMode: ToolMode;
-  finishReason?: string;
-  retryReason?: string;
-  promptTokenCount?: number;
-  candidatesTokenCount?: number;
-  totalTokenCount?: number;
-  thoughtsTokenCount?: number;
-}
-
-/**
- * Structured handoff card for bulk-detected requests (ADR-049 §6).
- * Appended server-side when the bulk-commit gate fires — the model's prose
- * provides analysis; the handoff card provides the action.
- */
-export interface HandoffCard {
-  type: "sync_handoff";
-  target: "start_sync";
-  route: "/start/import";
-  summary: string;
-  detectedEntityCount?: number;
-}
-
-/**
- * Structured return from GeminiEngine.chat().
- * `text` is the model's response; `proposals` contains any staged
- * mutations that need Admiral approval before being applied.
- */
-export interface ChatResult {
-  text: string;
-  proposals: ProposalSummary[];
-  /** Names of tools that were auto-executed (not staged as proposals). */
-  executedTools?: string[];
-  /** Diagnostic info from the Gemini response (only set on empty/blocked responses). */
-  diagnostics?: Record<string, unknown>;
-  /** Tool mode used for this call. */
-  toolMode?: ToolMode;
-  /** Per-attempt execution metadata for observability. */
-  attempts?: AttemptInfo[];
-  /** Structured handoff when bulk-commit gate fires (ADR-049). */
-  handoff?: HandoffCard;
-}
+// Re-export types from types.ts (preserve existing import paths for consumers)
+export type {
+  FleetConfig,
+  ImagePart,
+  ProposalSummary,
+  AttemptInfo,
+  HandoffCard,
+  ChatResult,
+  TokenUsageCallback,
+  SessionState,
+} from "./types.js";
 
 /**
  * @deprecated Use ChatEngine from ../engine.ts for provider-neutral typing.
  * Retained for backward compatibility — GeminiEngine is identical to ChatEngine.
  */
 export type GeminiEngine = ChatEngine;
-
-/** Callback for recording token usage (ADR-048 Phase A, #236). */
-export type TokenUsageCallback = (
-  userId: string, modelId: string, operation: string,
-  inputTokens: number, outputTokens: number,
-) => void;
 
 // ─── Constants ────────────────────────────────────────────────
 
@@ -231,14 +117,6 @@ const SESSION_MAX_TURNS = 50;
 const SUMMARIZE_AFTER_TURNS = 20;
 /** Cleanup interval: every 5 minutes */
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
-
-interface SessionState {
-  chat: Chat;
-  history: Array<{ role: string; text: string }>;
-  /** Compressed context from summarized older turns (#244) */
-  summary: string | null;
-  lastAccess: number;
-}
 
 // ─── Engine Implementation ────────────────────────────────────
 
@@ -284,65 +162,15 @@ export function createGeminiEngine(
     : undefined;
 
   // ── Context caching (#240) ────────────────────────────────────
-  // Cache the static system instruction to reduce per-request input token cost.
-  // When cached, Gemini charges ~75% less for the cached portion.
-  const CACHE_TTL = "3600s"; // 1 hour — matches session cleanup cycle
-  let cachedContentName: string | null = null;
-
-  async function createContextCache(): Promise<string | null> {
-    try {
-      const cached = await ai.caches.create({
-        model: currentModelId,
-        config: {
-          systemInstruction,
-          ...(tools ? { tools } : {}),
-          ttl: CACHE_TTL,
-          displayName: `majel-system-${currentModelId}`,
-        },
-      });
-      if (cached.name) {
-        log.gemini.info({
-          cacheName: cached.name,
-          model: currentModelId,
-          tokenCount: cached.usageMetadata?.totalTokenCount,
-        }, "context_cache:created");
-        return cached.name;
-      }
-      return null;
-    } catch (err) {
-      log.gemini.warn({
-        err: err instanceof Error ? err.message : String(err),
-        model: currentModelId,
-      }, "context_cache:create_failed — falling back to inline systemInstruction");
-      return null;
-    }
-  }
-
-  async function deleteContextCache(): Promise<void> {
-    if (!cachedContentName) return;
-    const name = cachedContentName;
-    cachedContentName = null;
-    try {
-      await ai.caches.delete({ name });
-      log.gemini.debug({ cacheName: name }, "context_cache:deleted");
-    } catch {
-      // Best-effort cleanup — cache will expire via TTL anyway
-    }
-  }
-
-  /** Detect a stale/expired context cache error from the Gemini API (403). */
-  function isCacheExpiredError(err: unknown): boolean {
-    const msg = err instanceof Error ? err.message : String(err);
-    return msg.includes("CachedContent not found");
-  }
+  const cacheManager = new ContextCacheManager(ai, log.gemini);
 
   /**
    * Invalidate the stale context cache and fall back to inline systemInstruction.
    * Rebuilds chatConfig and recreates a session's Chat to use the new config.
    */
   function handleCacheExpiry(session: SessionState): void {
-    log.gemini.warn({ cacheName: cachedContentName }, "context_cache:expired — falling back to inline systemInstruction");
-    cachedContentName = null;
+    log.gemini.warn({ cacheName: cacheManager.name }, "context_cache:expired — falling back to inline systemInstruction");
+    cacheManager.name = null;
     chatConfig = buildChatConfig();
     session.chat = createChat(toSdkHistory(session.history, session.summary));
   }
@@ -378,7 +206,7 @@ export function createGeminiEngine(
     try {
       return await withRetry(doSend, label);
     } catch (err) {
-      if (isCacheExpiredError(err)) {
+      if (ContextCacheManager.isExpiredError(err)) {
         handleCacheExpiry(session);
         return withRetry(
           () => {
@@ -475,9 +303,9 @@ export function createGeminiEngine(
   function buildChatConfig(): GenerateContentConfig {
     // When a context cache is active, use it instead of inline systemInstruction.
     // The cache already contains the system prompt + tool declarations.
-    if (cachedContentName) {
+    if (cacheManager.name) {
       return {
-        cachedContent: cachedContentName,
+        cachedContent: cacheManager.name,
         safetySettings: SAFETY_SETTINGS,
         automaticFunctionCalling: { disable: true },
         maxOutputTokens: 4096,
@@ -519,11 +347,8 @@ export function createGeminiEngine(
 
   // Attempt to create context cache at engine init (async, non-blocking).
   // If it fails, buildChatConfig() falls back to inline systemInstruction.
-  void createContextCache().then((name) => {
-    if (name) {
-      cachedContentName = name;
-      chatConfig = buildChatConfig();
-    }
+  void cacheManager.create(currentModelId, systemInstruction, tools).then(() => {
+    chatConfig = buildChatConfig();
   });
 
   /**
@@ -675,360 +500,35 @@ export function createGeminiEngine(
     cleanupTimer.unref();
   }
 
-  /** Max rounds of function calling before forcing a text response */
-  const MAX_TOOL_ROUNDS = 5;
-  /** Per-call timeout for sendMessage inside the tool loop (#233) */
-  const TOOL_CALL_TIMEOUT_MS = 30_000;
-
-  const MAX_FIELD_LENGTH = 500;
-
-  /**
-   * Deep-sanitize tool response objects before feeding them to the model.
-   * Uses sanitizeForModel() (ADR-040) to strip prompt-injection markers.
-   * Strips null/undefined/empty-array values to reduce token noise (#261).
-   */
-  function sanitizeToolResponse(obj: unknown): unknown {
-    if (typeof obj === "string") {
-      let s = sanitizeForModel(obj);
-      if (s.length > MAX_FIELD_LENGTH) s = s.slice(0, MAX_FIELD_LENGTH) + "…";
-      return s;
-    }
-    if (Array.isArray(obj)) {
-      const mapped = obj.map(sanitizeToolResponse);
-      return mapped;
-    }
-    if (obj === null || obj === undefined) return undefined;
-    if (obj && typeof obj === "object") {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        if (v === null || v === undefined) continue;
-        const sanitized = sanitizeToolResponse(v);
-        if (Array.isArray(sanitized) && sanitized.length === 0) continue;
-        if (sanitized === undefined) continue;
-        out[k] = sanitized;
-      }
-      return out;
-    }
-    return obj; // numbers, booleans
-  }
-
-  /**
-   * Handle the function call loop: execute tool calls, send responses back,
-   * repeat until Gemini produces a text response.
-   *
-   * Trust-aware (#93): checks each mutation tool against the trust tier system.
-   * - auto:    Execute immediately
-   * - approve: Stage into a batched proposal for Admiral approval
-   * - block:   Reject with error — tool must be explicitly unlocked in settings
-   *
-   * Returns ChatResult with text + any staged proposals.
-   */
-  const MAX_MUTATIONS_PER_CHAT = 5;
-
-  /** Generate a human-readable preview string for a mutation tool call. */
-  function generatePreview(toolName: string, args: Record<string, unknown>): string {
-    /** Sanitize + truncate a single arg value for preview interpolation. */
-    const s = (v: unknown): string => {
-      const raw = String(v ?? "?");
-      const clean = sanitizeForModel(raw);
-      return clean.length > 100 ? clean.slice(0, 100) + "…" : clean;
+  // ─── Tool dispatch deps (injected into extracted handleFunctionCalls) ────
+  function getToolDispatchDeps(): ToolDispatchDeps {
+    return {
+      sendWithCacheRetry: sendWithCacheRetry as ToolDispatchDeps["sendWithCacheRetry"],
+      proposalStoreFactory,
+      onTokenUsage,
+      currentModelId,
     };
-
-    switch (toolName) {
-      case "create_bridge_core":
-        return `Create bridge core "${s(args.name)}" — Captain: ${s(args.captain)}, Bridge: ${s(args.bridge_1)} + ${s(args.bridge_2)}`;
-      case "create_loadout":
-        return `Create loadout "${s(args.name)}" for ship ${s(args.ship_id)}`;
-      case "create_variant":
-        return `Create variant "${s(args.name)}" on loadout ${s(args.loadout_id)}`;
-      case "assign_dock":
-        return `Assign dock ${s(args.dock_number)} → loadout ${s(args.loadout_id ?? args.variant_id)}`;
-      case "update_dock":
-        return `Update dock plan item ${s(args.plan_item_id)}`;
-      case "remove_dock_assignment":
-        return `Clear dock ${s(args.dock_number)} assignment`;
-      case "set_reservation":
-        return args.reserved_for
-          ? `Reserve officer ${s(args.officer_id)} for ${s(args.reserved_for)}`
-          : `Clear reservation for officer ${s(args.officer_id)}`;
-      case "set_officer_overlay":
-        return `Add officer ${s(args.officer_id)} to your fleet`;
-      case "set_ship_overlay":
-        return `Add ship ${s(args.ship_id)} to your fleet`;
-      case "sync_overlay":
-        return "Sync overlay data from game export";
-      case "sync_research":
-        return "Sync research tree snapshot";
-      default:
-        return `${toolName}(${Object.keys(args).join(", ")})`;
-    }
   }
 
-  async function handleFunctionCalls(
-    session: SessionState,
-    initialFunctionCalls: FunctionCall[],
-    sessionId: string,
-    scopedContext: ToolEnv,
-    userId: string,
-    requestId?: string,
-    isCancelled?: () => boolean,
-  ): Promise<ChatResult> {
-    let functionCalls = initialFunctionCalls;
-    let round = 0;
-    let mutationCount = 0;
-    const pendingBatch: BatchItem[] = [];
-    const proposals: ProposalSummary[] = [];
-    const executedTools: string[] = [];
-
-    while (functionCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
-      // Check cancellation at the top of each round (#232)
-      if (isCancelled?.()) {
-        log.gemini.info({ requestId, sessionId, round }, "tool:cancelled");
-        if (pendingBatch.length > 0) {
-          await createBatchProposal(pendingBatch, userId, proposals);
-        }
-        return { text: "I was interrupted before finishing. Here's what I had so far.", proposals, executedTools };
-      }
-
-      round++;
-      log.gemini.debug({
-        requestId,
-        sessionId,
-        round,
-        calls: functionCalls.map((fc) => fc.name),
-      }, "tool:round");
-
-      // Execute all function calls in parallel
-      const responses = await Promise.all(
-        functionCalls.map(async (fc) => {
-          const toolName = fc.name!;
-          const args = fc.args as Record<string, unknown>;
-
-          // ── Trust tier gate for mutation tools ──────────────
-          if (isMutationTool(toolName)) {
-            // Detect overlay creation vs update (ADR-049 Slice 2, ADR-051 Slice 1)
-            let isCreate: boolean | undefined;
-            if (toolName === "set_officer_overlay" && scopedContext.deps.overlayStore) {
-              const refId = typeof args.officer_id === "string" ? args.officer_id : undefined;
-              if (refId) {
-                // Resolve instance_id: "new" → generated ID (ADR-051)
-                let instanceId = typeof args.instance_id === "string" ? args.instance_id : undefined;
-                if (instanceId === "new") {
-                  instanceId = `inst_${nanoid()}`;
-                  args.instance_id = instanceId;
-                  isCreate = true;
-                } else {
-                  const effective = instanceId ?? "primary";
-                  const existing = await scopedContext.deps.overlayStore.getOfficerOverlay(refId, effective);
-                  isCreate = existing === null;
-                }
-              }
-            } else if (toolName === "set_ship_overlay" && scopedContext.deps.overlayStore) {
-              const refId = typeof args.ship_id === "string" ? args.ship_id : undefined;
-              if (refId) {
-                // Resolve instance_id: "new" → generated ID (ADR-051)
-                let instanceId = typeof args.instance_id === "string" ? args.instance_id : undefined;
-                if (instanceId === "new") {
-                  instanceId = `inst_${nanoid()}`;
-                  args.instance_id = instanceId;
-                  isCreate = true;
-                } else {
-                  const effective = instanceId ?? "primary";
-                  const existing = await scopedContext.deps.overlayStore.getShipOverlay(refId, effective);
-                  isCreate = existing === null;
-                }
-              }
-            }
-
-            const trustLevel = await getTrustLevel(
-              toolName,
-              userId,
-              scopedContext.deps.userSettingsStore,
-              isCreate,
-            );
-
-            if (trustLevel === "block") {
-              return {
-                functionResponse: {
-                  name: toolName,
-                  response: {
-                    tool: toolName,
-                    blocked: true,
-                    error: `Tool "${toolName}" is blocked. The Admiral must unlock it in fleet settings (fleet.trust) before it can be used.`,
-                  },
-                },
-              } as Part;
-            }
-
-            if (trustLevel === "approve") {
-              mutationCount++;
-              if (mutationCount > MAX_MUTATIONS_PER_CHAT) {
-                return {
-                  functionResponse: {
-                    name: toolName,
-                    response: { error: "Mutation limit reached for this message. Ask the Admiral to confirm before proceeding." },
-                  },
-                } as Part;
-              }
-              // Stage for batched proposal instead of executing
-              const preview = generatePreview(toolName, args);
-              pendingBatch.push({ tool: toolName, args, preview });
-              return {
-                functionResponse: {
-                  name: toolName,
-                  response: {
-                    tool: toolName,
-                    staged: true,
-                    message: `Staged for Admiral approval: ${preview}`,
-                  },
-                },
-              } as Part;
-            }
-
-            // trustLevel === "auto" — fall through to execute
-            mutationCount++;
-            if (mutationCount > MAX_MUTATIONS_PER_CHAT) {
-              return {
-                functionResponse: {
-                  name: toolName,
-                  response: { error: "Mutation limit reached for this message. Ask the Admiral to confirm before proceeding." },
-                },
-              } as Part;
-            }
-          }
-
-          // Execute tool (read-only tools and auto-trust mutations)
-          if (isMutationTool(toolName)) executedTools.push(toolName);
-          const result = await executeFleetTool(toolName, args, scopedContext);
-          // Diagnostic: log tool call args + outcome for tracing (#diag)
-          const resultObj = result as Record<string, unknown>;
-          if (resultObj.error) {
-            log.gemini.warn({ requestId, tool: toolName, args, error: resultObj.error }, "tool:result:error");
-          } else {
-            log.gemini.debug({ requestId, tool: toolName, args, ok: true }, "tool:result:ok");
-          }
-          return {
-            functionResponse: {
-              name: toolName,
-              response: sanitizeToolResponse(result) as Record<string, unknown>,
-            },
-          } as Part;
-        }),
-      );
-
-      // Send function responses back to the model (with per-call timeout #233)
-      // Uses sendWithCacheRetry for cache-expiry resilience (ADR-049 §1a)
-      const result = await sendWithCacheRetry(session, responses, "tool-loop", TOOL_CALL_TIMEOUT_MS);
-      const usageMeta = (result as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
-      if (usageMeta) {
-        log.gemini.info({ requestId, sessionId, round, ...usageMeta }, "token:usage");
-        onTokenUsage?.(userId, currentModelId, "tool_call", usageMeta.promptTokenCount ?? 0, usageMeta.candidatesTokenCount ?? 0);
-      }
-      const nextCalls = result.functionCalls;
-
-      if (nextCalls && nextCalls.length > 0) {
-        functionCalls = nextCalls;
-        continue;
-      }
-
-      // Model produced a text response — create proposal if needed, then return
-      const text = result.text ?? "";
-      if (!text) {
-        const diag = extractResponseDiagnostics(result);
-        log.gemini.warn({ requestId, sessionId, round, diagnostics: diag }, "tool:empty-text");
-      }
-      if (pendingBatch.length > 0) {
-        const proposal = await createBatchProposal(pendingBatch, userId, proposals);
-        if (proposal) {
-          log.gemini.debug({ proposalId: proposal.id, items: pendingBatch.length }, "proposal:created");
-        }
-      }
-      return { text, proposals, executedTools };
-    }
-
-    // Safety: max rounds exceeded — force a text response
-    if (round >= MAX_TOOL_ROUNDS) {
-      log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:max-rounds");
-    }
-
-    // If we get here with no text, ask the model to summarize (with timeout #233)
-    let text = "";
-    try {
-      // Uses sendWithCacheRetry for cache-expiry resilience (ADR-049 §1a)
-      const summaryResult = await sendWithCacheRetry(
-        session,
-        "Please provide a text response summarizing the tool results.",
-        "tool-fallback-summary",
-        TOOL_CALL_TIMEOUT_MS,
-      );
-      const usageMeta = (summaryResult as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
-      if (usageMeta) {
-        log.gemini.info({ requestId, sessionId, round, ...usageMeta }, "token:usage:fallback");
-        onTokenUsage?.(userId, currentModelId, "fallback", usageMeta.promptTokenCount ?? 0, usageMeta.candidatesTokenCount ?? 0);
-      }
-      // Guard: if model still returns function calls instead of text, use hardcoded message (#230)
-      if (summaryResult.functionCalls && summaryResult.functionCalls.length > 0) {
-        log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:fallback-still-has-calls");
-        text = "I used several tools to research your question but ran out of processing rounds. Please try rephrasing or breaking your question into smaller parts.";
-      } else {
-        text = summaryResult.text ?? "";
-      }
-      if (!text) {
-        log.gemini.warn({ requestId, sessionId, rounds: round }, "tool:empty-text:fallback");
-        text = "I processed your request but wasn't able to generate a summary. Please try again.";
-      }
-    } catch (err) {
-      log.gemini.warn({ requestId, sessionId, err: err instanceof Error ? err.message : String(err) }, "tool:fallback-timeout");
-      text = "I used several tools to research your question but the final summary timed out. Please try again.";
-    }
-
-    // Create proposal for any batched items even in the fallback path
-    if (pendingBatch.length > 0) {
-      await createBatchProposal(pendingBatch, userId, proposals);
-    }
-    return { text, proposals, executedTools };
-  }
-
-  /**
-   * Create a batched proposal from accumulated approve-tier mutations.
-   * Returns the proposal summary if created, null if proposal store unavailable.
-   */
-  async function createBatchProposal(
-    batch: BatchItem[],
-    userId: string,
-    proposals: ProposalSummary[],
-  ): Promise<ProposalSummary | null> {
-    if (!proposalStoreFactory || batch.length === 0) return null;
-
-    try {
-      const proposalStore = proposalStoreFactory.forUser(userId);
-      const argsHash = createHash("sha256")
-        .update(canonicalStringify(batch))
-        .digest("hex");
-
-      const proposal = await proposalStore.create({
-        tool: "_batch",
-        argsJson: { batchItems: batch },
-        argsHash,
-        proposalJson: {
-          summary: batch.map((b) => b.preview).join("; "),
-          itemCount: batch.length,
-        },
-        batchItems: batch,
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-      });
-
-      const summary: ProposalSummary = {
-        id: proposal.id,
-        batchItems: batch.map((b) => ({ tool: b.tool, preview: b.preview })),
-        expiresAt: proposal.expiresAt,
-      };
-      proposals.push(summary);
-      return summary;
-    } catch (err) {
-      log.gemini.error({ err: err instanceof Error ? err.message : String(err) }, "proposal:create-failed");
-      return null;
-    }
+  /** Build an AttemptInfo record from a Gemini response for telemetry. */
+  function buildAttemptInfo(
+    attempt: number,
+    mode: ToolMode,
+    result: unknown,
+    retryReason?: string,
+  ): AttemptInfo {
+    const diag = extractResponseDiagnostics(result);
+    const usage = (result as { usageMetadata?: Record<string, number> }).usageMetadata;
+    return {
+      attempt,
+      toolMode: mode,
+      ...(retryReason ? { retryReason } : {}),
+      ...(typeof diag?.finishReason === "string" ? { finishReason: diag.finishReason as string } : {}),
+      ...(usage?.promptTokenCount != null ? { promptTokenCount: usage.promptTokenCount } : {}),
+      ...(usage?.candidatesTokenCount != null ? { candidatesTokenCount: usage.candidatesTokenCount } : {}),
+      ...(usage?.totalTokenCount != null ? { totalTokenCount: usage.totalTokenCount } : {}),
+      ...(usage?.thoughtsTokenCount != null ? { thoughtsTokenCount: usage.thoughtsTokenCount } : {}),
+    };
   }
 
   return {
@@ -1099,7 +599,7 @@ export function createGeminiEngine(
 
         if (functionCalls && functionCalls.length > 0) {
           // Handle function call loop — tool results feed back to model
-          const chatResult = await handleFunctionCalls(session, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
+          const chatResult = await handleFunctionCalls(getToolDispatchDeps(), session, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
           responseText = chatResult.text;
           chatProposals = chatResult.proposals;
         } else {
@@ -1217,7 +717,7 @@ export function createGeminiEngine(
 
       let responseDiagnostics: Record<string, unknown> | undefined;
       if (functionCalls && functionCalls.length > 0) {
-        const chatResult = await handleFunctionCalls(session, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
+        const chatResult = await handleFunctionCalls(getToolDispatchDeps(), session, functionCalls, sessionKey, scopedContext!, effectiveUserId, requestId, isCancelled);
         responseText = chatResult.text;
         chatProposals = chatResult.proposals;
       } else {
@@ -1312,8 +812,7 @@ export function createGeminiEngine(
       currentModelId = modelId;
 
       // Invalidate context cache for the old model and create one for the new model
-      void deleteContextCache().then(() => createContextCache()).then((name) => {
-        cachedContentName = name;
+      void cacheManager.delete().then(() => cacheManager.create(modelId, systemInstruction, tools)).then(() => {
         chatConfig = buildChatConfig();
       });
 
@@ -1337,7 +836,7 @@ export function createGeminiEngine(
       // M2: Clear cleanup timer to prevent leaks in tests
       if (cleanupTimer) clearInterval(cleanupTimer);
       // Clean up context cache (#240)
-      void deleteContextCache();
+      void cacheManager.delete();
       sessions.clear();
       sessionLocks.clear();
       log.gemini.debug("engine:close");
