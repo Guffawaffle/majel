@@ -3,7 +3,7 @@
 
   interface Props {
     /** Badge variant */
-    kind: "rarity" | "class" | "hull" | "faction" | "group" | "target" | "conflict" | "reservation" | "dock";
+    kind: "rarity" | "class" | "hull" | "faction" | "group" | "target" | "conflict" | "reservation" | "dock" | "instance";
     /** Raw value — meaning depends on kind */
     value: string | number | null | undefined;
     /** Optional explicit label (overrides auto-generated) */
@@ -25,6 +25,7 @@
       case "conflict": return "⚠️";
       case "reservation": return value ? "🔒" : "🔓";
       case "dock": return `Dock ${value}`;
+      case "instance": return `#${String(value).replace(/^inst_/, "")}`;
       default: return String(value);
     }
   });
@@ -51,6 +52,8 @@
         return `badge badge-reservation ${value ? "locked" : ""}`;
       case "dock":
         return "badge badge-dock";
+      case "instance":
+        return "badge badge-instance";
       default:
         return "badge";
     }

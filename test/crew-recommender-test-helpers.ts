@@ -6,6 +6,7 @@ export function makeOfficer(input: Partial<CatalogOfficer> & { id: string; name:
   const { id, name, ...rest } = input;
   return {
     id,
+    instanceId: "primary",
     name,
     rarity: null,
     groupName: null,

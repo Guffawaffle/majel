@@ -86,14 +86,15 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
 /** Set a single officer's overlay. Throws on failure. Invalidates related cache. */
 export async function setOfficerOverlay(id: string, overlay: OfficerOverlayPatch): Promise<OfficerOverlayResponse> {
   const path = `/api/catalog/officers/${pathEncode(id)}/overlay`;
+  const instanceSuffix = overlay.instanceId ? `:${overlay.instanceId}` : "";
   return runLockedMutation({
     label: "Update officer overlay",
-    lockKey: `officer-overlay:${id}`,
+    lockKey: `officer-overlay:${id}${instanceSuffix}`,
     mutationKey: "officer-overlay",
     queueOnNetworkError: true,
     replayIntent: {
       label: "Update officer overlay",
-      lockKey: `officer-overlay:${id}`,
+      lockKey: `officer-overlay:${id}${instanceSuffix}`,
       method: "PATCH",
       path,
       body: overlay,
@@ -106,14 +107,15 @@ export async function setOfficerOverlay(id: string, overlay: OfficerOverlayPatch
 /** Set a single ship's overlay. Throws on failure. Invalidates related cache. */
 export async function setShipOverlay(id: string, overlay: ShipOverlayPatch): Promise<ShipOverlayResponse> {
   const path = `/api/catalog/ships/${pathEncode(id)}/overlay`;
+  const instanceSuffix = overlay.instanceId ? `:${overlay.instanceId}` : "";
   return runLockedMutation({
     label: "Update ship overlay",
-    lockKey: `ship-overlay:${id}`,
+    lockKey: `ship-overlay:${id}${instanceSuffix}`,
     mutationKey: "ship-overlay",
     queueOnNetworkError: true,
     replayIntent: {
       label: "Update ship overlay",
-      lockKey: `ship-overlay:${id}`,
+      lockKey: `ship-overlay:${id}${instanceSuffix}`,
       method: "PATCH",
       path,
       body: overlay,

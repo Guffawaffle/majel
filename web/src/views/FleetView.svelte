@@ -288,12 +288,12 @@
   }
 
   function handleNoteChange(item: CatalogOfficer | CatalogShip, value: string) {
-    const key = `${item.id}-note`;
+    const key = `${item.id}-${item.instanceId}-note`;
     item.targetNote = value || null;
     debouncedSave(key, 800, () =>
       isFleetOfficer(item)
-        ? setOfficerOverlay(item.id, { targetNote: value || null })
-        : setShipOverlay(item.id, { targetNote: value || null }),
+        ? setOfficerOverlay(item.id, { instanceId: item.instanceId, targetNote: value || null })
+        : setShipOverlay(item.id, { instanceId: item.instanceId, targetNote: value || null }),
     );
   }
 
@@ -303,9 +303,9 @@
     const next = !item.target;
     try {
       if (isFleetOfficer(item)) {
-        await setOfficerOverlay(item.id, { target: next });
+        await setOfficerOverlay(item.id, { instanceId: item.instanceId, target: next });
       } else {
-        await setShipOverlay(item.id, { target: next });
+        await setShipOverlay(item.id, { instanceId: item.instanceId, target: next });
       }
       item.target = next;
     } catch (err) {
@@ -463,11 +463,14 @@
   <!-- Card Grid Mode -->
   {#if ui.viewMode === "cards"}
     <div class="fleet-grid" role="list">
-      {#each sorted as item (item.id)}
+      {#each sorted as item (`${item.id}-${item.instanceId}`)}
         <div class="fleet-card" class:targeted={item.target} role="listitem">
           <div class="fleet-card-header">
             <span class="fleet-card-name">{item.name}</span>
             <div class="fleet-card-badges">
+              {#if item.instanceId !== "primary"}
+                <Badge kind="instance" value={item.instanceId} />
+              {/if}
               {#if item.rarity}
                 <Badge kind="rarity" value={item.rarity} />
               {/if}
@@ -528,8 +531,8 @@
                   value={item.userLevel ?? ""}
                   oninput={(e) => handleFieldChange(item, "level", (e.target as HTMLInputElement).value)}
                 />
-                {#if saveStatus.get(`${item.id}-level`)}
-                  <span class="fleet-save-indicator fleet-save-{saveStatus.get(`${item.id}-level`)}">{saveStatus.get(`${item.id}-level`)}</span>
+                {#if saveStatus.get(`${item.id}-${item.instanceId}-level`)}
+                  <span class="fleet-save-indicator fleet-save-{saveStatus.get(`${item.id}-${item.instanceId}-level`)}">{saveStatus.get(`${item.id}-${item.instanceId}-level`)}</span>
                 {/if}
               </label>
               <label class="fleet-field">
@@ -661,7 +664,7 @@
         <span class="fleet-col" role="columnheader">Target</span>
         <span class="fleet-col-wide" role="columnheader">Used In</span>
       </div>
-      {#each sorted as item (item.id)}
+      {#each sorted as item (`${item.id}-${item.instanceId}`)}
         <div class="fleet-list-row" class:targeted={item.target} role="row">
           <span class="fleet-col-name">{item.name}</span>
           {#if isOfficer(item)}

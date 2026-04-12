@@ -137,26 +137,42 @@ export function createCatalogRoutes(appState: AppState): Router {
       officers = await refStore.listOfficers({ rarity, groupName: group, officerClass: validOfficerClass });
     }
 
-    const overlayMap = new Map<string, Awaited<ReturnType<NonNullable<typeof overlayStore>["getOfficerOverlay"]>>>();
+    const overlayMultiMap = new Map<string, NonNullable<Awaited<ReturnType<NonNullable<typeof overlayStore>["getOfficerOverlay"]>>>[]>();
     if (overlayStore) {
       const overlays = await overlayStore.listOfficerOverlays();
       for (const ov of overlays) {
-        overlayMap.set(ov.refId, ov);
+        const list = overlayMultiMap.get(ov.refId) ?? [];
+        list.push(ov);
+        overlayMultiMap.set(ov.refId, list);
       }
     }
 
-    let merged = officers.map(officer => {
-      const ov = overlayMap.get(officer.id);
-      return {
+    let merged = officers.flatMap(officer => {
+      const ovList = overlayMultiMap.get(officer.id);
+      if (!ovList || ovList.length === 0) {
+        return [{
+          ...officer,
+          instanceId: "primary",
+          ownershipState: "unowned" as OwnershipState,
+          target: false,
+          userLevel: null as number | null,
+          userRank: null as string | null,
+          userPower: null as number | null,
+          targetNote: null as string | null,
+          targetPriority: null as number | null,
+        }];
+      }
+      return ovList.map(ov => ({
         ...officer,
-        ownershipState: ov?.ownershipState ?? "unowned" as OwnershipState,
-        target: ov?.target ?? false,
-        userLevel: ov?.level ?? null,
-        userRank: ov?.rank ?? null,
-        userPower: ov?.power ?? null,
-        targetNote: ov?.targetNote ?? null,
-        targetPriority: ov?.targetPriority ?? null,
-      };
+        instanceId: ov.instanceId,
+        ownershipState: ov.ownershipState,
+        target: ov.target,
+        userLevel: ov.level,
+        userRank: ov.rank,
+        userPower: ov.power,
+        targetNote: ov.targetNote,
+        targetPriority: ov.targetPriority,
+      }));
     });
 
     const hasOwnershipFilter = ownership && isValidOwnership(ownership);
@@ -255,26 +271,42 @@ export function createCatalogRoutes(appState: AppState): Router {
       ships = await refStore.listShips({ rarity, faction, shipClass, hullType: validHullType, grade: validGrade });
     }
 
-    const overlayMap = new Map<string, Awaited<ReturnType<NonNullable<typeof overlayStore>["getShipOverlay"]>>>();
+    const overlayMultiMap = new Map<string, NonNullable<Awaited<ReturnType<NonNullable<typeof overlayStore>["getShipOverlay"]>>>[]>();
     if (overlayStore) {
       const overlays = await overlayStore.listShipOverlays();
       for (const ov of overlays) {
-        overlayMap.set(ov.refId, ov);
+        const list = overlayMultiMap.get(ov.refId) ?? [];
+        list.push(ov);
+        overlayMultiMap.set(ov.refId, list);
       }
     }
 
-    let merged = ships.map(ship => {
-      const ov = overlayMap.get(ship.id);
-      return {
+    let merged = ships.flatMap(ship => {
+      const ovList = overlayMultiMap.get(ship.id);
+      if (!ovList || ovList.length === 0) {
+        return [{
+          ...ship,
+          instanceId: "primary",
+          ownershipState: "unowned" as OwnershipState,
+          target: false,
+          userTier: null as number | null,
+          userLevel: null as number | null,
+          userPower: null as number | null,
+          targetNote: null as string | null,
+          targetPriority: null as number | null,
+        }];
+      }
+      return ovList.map(ov => ({
         ...ship,
-        ownershipState: ov?.ownershipState ?? "unowned" as OwnershipState,
-        target: ov?.target ?? false,
-        userTier: ov?.tier ?? null,
-        userLevel: ov?.level ?? null,
-        userPower: ov?.power ?? null,
-        targetNote: ov?.targetNote ?? null,
-        targetPriority: ov?.targetPriority ?? null,
-      };
+        instanceId: ov.instanceId,
+        ownershipState: ov.ownershipState,
+        target: ov.target,
+        userTier: ov.tier,
+        userLevel: ov.level,
+        userPower: ov.power,
+        targetNote: ov.targetNote,
+        targetPriority: ov.targetPriority,
+      }));
     });
 
     const hasOwnershipFilter = ownership && isValidOwnership(ownership);
@@ -334,10 +366,16 @@ export function createCatalogRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.NOT_FOUND, `Reference officer not found: ${refId}`, 404);
     }
 
-    const { ownershipState, target, level, rank, power, targetNote, targetPriority } = req.body;
+    const { ownershipState, target, level, rank, power, targetNote, targetPriority, instanceId } = req.body;
 
     if (ownershipState !== undefined && !isValidOwnership(ownershipState)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`, 400);
+    }
+
+    if (instanceId !== undefined) {
+      if (typeof instanceId !== "string" || instanceId.length > 50) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "instanceId must be a string (max 50 chars)", 400);
+      }
     }
 
     if (level !== undefined) {
@@ -363,6 +401,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
     const result = await overlay.setOfficerOverlay({
       refId,
+      ...(instanceId !== undefined && { instanceId }),
       ...(ownershipState !== undefined && { ownershipState }),
       ...(target !== undefined && { target: !!target }),
       ...(level !== undefined && { level }),
@@ -394,10 +433,16 @@ export function createCatalogRoutes(appState: AppState): Router {
       return sendFail(res, ErrorCode.NOT_FOUND, `Reference ship not found: ${refId}`, 404);
     }
 
-    const { ownershipState, target, tier, level, power, targetNote, targetPriority } = req.body;
+    const { ownershipState, target, tier, level, power, targetNote, targetPriority, instanceId } = req.body;
 
     if (ownershipState !== undefined && !isValidOwnership(ownershipState)) {
       return sendFail(res, ErrorCode.INVALID_PARAM, `Invalid ownershipState: ${ownershipState}. Must be one of: ${VALID_OWNERSHIP_STATES.join(", ")}`, 400);
+    }
+
+    if (instanceId !== undefined) {
+      if (typeof instanceId !== "string" || instanceId.length > 50) {
+        return sendFail(res, ErrorCode.INVALID_PARAM, "instanceId must be a string (max 50 chars)", 400);
+      }
     }
 
     if (tier !== undefined) {
@@ -423,6 +468,7 @@ export function createCatalogRoutes(appState: AppState): Router {
 
     const result = await overlay.setShipOverlay({
       refId,
+      ...(instanceId !== undefined && { instanceId }),
       ...(ownershipState !== undefined && { ownershipState }),
       ...(target !== undefined && { target: !!target }),
       ...(tier !== undefined && { tier }),

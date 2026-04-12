@@ -89,7 +89,7 @@ export function applyFleetFieldEdit(
   field: string,
   value: string,
 ): FleetFieldEditResult {
-  const key = `${item.id}-${field}`;
+  const key = `${item.id}-${item.instanceId}-${field}`;
   const numVal = value === "" ? null : Number(value);
 
   if (isFleetOfficer(item)) {
@@ -100,6 +100,7 @@ export function applyFleetFieldEdit(
     return {
       key,
       officerPatch: {
+        instanceId: item.instanceId,
         level: field === "level" ? numVal : undefined,
         rank: field === "rank" ? (value || null) : undefined,
         power: field === "power" ? numVal : undefined,
@@ -114,6 +115,7 @@ export function applyFleetFieldEdit(
   return {
     key,
     shipPatch: {
+      instanceId: item.instanceId,
       tier: field === "tier" ? numVal : undefined,
       level: field === "level" ? numVal : undefined,
       power: field === "power" ? numVal : undefined,

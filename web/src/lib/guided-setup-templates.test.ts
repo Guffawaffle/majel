@@ -5,6 +5,7 @@ import type { CatalogOfficer, CatalogShip } from "./types.js";
 function makeOfficer(id: string, name: string, ownershipState: "unknown" | "owned" | "unowned"): CatalogOfficer {
   return {
     id,
+    instanceId: "primary",
     name,
     rarity: null,
     groupName: null,
@@ -33,6 +34,7 @@ function makeOfficer(id: string, name: string, ownershipState: "unknown" | "owne
 function makeShip(id: string, name: string, ownershipState: "unknown" | "owned" | "unowned"): CatalogShip {
   return {
     id,
+    instanceId: "primary",
     name,
     shipClass: null,
     grade: null,

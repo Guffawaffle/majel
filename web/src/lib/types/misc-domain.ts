@@ -298,6 +298,7 @@ export interface RecallResponse {
 }
 
 export interface OfficerOverlayResponse {
+  instanceId: string;
   ownershipState: OwnershipState;
   target: boolean;
   userLevel: number | null;
@@ -308,6 +309,7 @@ export interface OfficerOverlayResponse {
 }
 
 export interface ShipOverlayResponse {
+  instanceId: string;
   ownershipState: OwnershipState;
   target: boolean;
   userTier: number | null;

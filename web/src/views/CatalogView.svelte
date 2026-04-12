@@ -55,14 +55,32 @@
 
   const items = $derived(activeTab === "officers" ? officers : ships) as (CatalogOfficer | CatalogShip)[];
 
+  // Deduplicate to one card per ref_id (prefer primary instance), track instance counts
+  const instanceCountMap = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const it of items) counts.set(it.id, (counts.get(it.id) ?? 0) + 1);
+    return counts;
+  });
+
+  const dedupedItems = $derived.by(() => {
+    const seen = new Set<string>();
+    const result: (CatalogOfficer | CatalogShip)[] = [];
+    for (const it of items) {
+      if (seen.has(it.id)) continue;
+      seen.add(it.id);
+      result.push(it);
+    }
+    return result;
+  });
+
   const filteredItems = $derived.by(() => {
-    if (!letterFilter) return items;
-    return items.filter((it) => it.name.charAt(0).toUpperCase() === letterFilter);
+    if (!letterFilter) return dedupedItems;
+    return dedupedItems.filter((it) => it.name.charAt(0).toUpperCase() === letterFilter);
   });
 
   const letters = $derived.by(() => {
     const set = new Set<string>();
-    for (const it of items) {
+    for (const it of dedupedItems) {
       const ch = it.name.charAt(0).toUpperCase();
       if (ch >= "A" && ch <= "Z") set.add(ch);
     }
@@ -179,9 +197,9 @@
     const next: OwnershipState = item.ownershipState === "owned" ? "unowned" : "owned";
     try {
       if (activeTab === "officers") {
-        await setOfficerOverlay(item.id, { ownershipState: next });
+        await setOfficerOverlay(item.id, { instanceId: item.instanceId, ownershipState: next });
       } else {
-        await setShipOverlay(item.id, { ownershipState: next });
+        await setShipOverlay(item.id, { instanceId: item.instanceId, ownershipState: next });
       }
       item.ownershipState = next;
       counts = await fetchCatalogCounts();
@@ -195,9 +213,9 @@
     const next = !item.target;
     try {
       if (activeTab === "officers") {
-        await setOfficerOverlay(item.id, { target: next });
+        await setOfficerOverlay(item.id, { instanceId: item.instanceId, target: next });
       } else {
-        await setShipOverlay(item.id, { target: next });
+        await setShipOverlay(item.id, { instanceId: item.instanceId, target: next });
       }
       item.target = next;
       counts = await fetchCatalogCounts();
@@ -435,6 +453,7 @@
   <!-- Grid -->
   <div class="cat-grid" role="list">
     {#each filteredItems as item (item.id)}
+      {@const instanceCount = instanceCountMap.get(item.id) ?? 1}
       <div
         class="cat-card"
         class:owned={item.ownershipState === "owned"}
@@ -464,6 +483,9 @@
             {/if}
             {#if item.target}
               <Badge kind="target" value="target" />
+            {/if}
+            {#if instanceCount > 1}
+              <Badge kind="instance" value={`×${instanceCount}`} label={`×${instanceCount}`} />
             {/if}
           </div>
         </div>

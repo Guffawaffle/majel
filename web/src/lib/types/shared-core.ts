@@ -166,6 +166,7 @@ export type OwnershipState = "unknown" | "owned" | "unowned";
 
 export interface CatalogOfficer {
   id: string;
+  instanceId: string;
   name: string;
   rarity: string | null;
   groupName: string | null;
@@ -192,6 +193,7 @@ export interface CatalogOfficer {
 
 export interface CatalogShip {
   id: string;
+  instanceId: string;
   name: string;
   shipClass: string | null;
   grade: number | null;
@@ -225,6 +227,7 @@ export interface CatalogCounts {
 }
 
 export interface OfficerOverlayPatch {
+  instanceId?: string;
   ownershipState?: OwnershipState;
   target?: boolean;
   level?: number | null;
@@ -235,6 +238,7 @@ export interface OfficerOverlayPatch {
 }
 
 export interface ShipOverlayPatch {
+  instanceId?: string;
   ownershipState?: OwnershipState;
   target?: boolean;
   tier?: number | null;
