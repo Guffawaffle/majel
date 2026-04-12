@@ -569,6 +569,59 @@ describe("PostgresFrameStore — Pagination", () => {
     expect(result.frames).toHaveLength(2);
     expect(result.page.hasMore).toBe(false);
   });
+
+  it("offset pagination skips the specified number of frames", async () => {
+    const frames = Array.from({ length: 5 }, (_, i) =>
+      makeFrame({ timestamp: new Date(2024, 0, i + 1).toISOString() }),
+    );
+    await store.saveFrames(frames);
+
+    // Without offset: get all 5 (newest first)
+    const all = await store.listFrames({ limit: 10 });
+    expect(all.frames).toHaveLength(5);
+
+    // With offset=2: skip 2 newest, get remaining 3
+    const page = await store.listFrames({ limit: 10, offset: 2 });
+    expect(page.frames).toHaveLength(3);
+    expect(page.frames[0].id).toBe(all.frames[2].id);
+  });
+
+  it("offset + limit work together for page windows", async () => {
+    const frames = Array.from({ length: 6 }, (_, i) =>
+      makeFrame({ timestamp: new Date(2024, 0, i + 1).toISOString() }),
+    );
+    await store.saveFrames(frames);
+
+    const page1 = await store.listFrames({ limit: 2, offset: 0 });
+    const page2 = await store.listFrames({ limit: 2, offset: 2 });
+    const page3 = await store.listFrames({ limit: 2, offset: 4 });
+
+    expect(page1.frames).toHaveLength(2);
+    expect(page2.frames).toHaveLength(2);
+    expect(page3.frames).toHaveLength(2);
+
+    // No overlap across pages
+    const allIds = [...page1.frames, ...page2.frames, ...page3.frames].map((f) => f.id);
+    expect(new Set(allIds).size).toBe(6);
+  });
+
+  it("cursor takes precedence over offset", async () => {
+    const frames = Array.from({ length: 5 }, (_, i) =>
+      makeFrame({ timestamp: new Date(2024, 0, i + 1).toISOString() }),
+    );
+    await store.saveFrames(frames);
+
+    const page1 = await store.listFrames({ limit: 2 });
+    // Pass both cursor and offset — cursor should win
+    const page2 = await store.listFrames({ limit: 2, cursor: page1.page.nextCursor!, offset: 0 });
+    expect(page2.frames).toHaveLength(2);
+    expect(page2.frames[0].id).toBe(page1.frames[1].id === frames[3].id ? frames[2].id : page2.frames[0].id);
+    // Key assertion: page2 should NOT overlap with page1 (cursor used, not offset=0)
+    const p1Ids = new Set(page1.frames.map((f) => f.id));
+    for (const f of page2.frames) {
+      expect(p1Ids.has(f.id)).toBe(false);
+    }
+  });
 });
 
 // ─── RLS Isolation (Critical) ───────────────────────────────────

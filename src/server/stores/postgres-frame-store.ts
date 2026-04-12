@@ -390,10 +390,8 @@ export class PostgresFrameStore implements FrameStore {
           params.push(cursor.ts, cursor.id);
           paramIdx += 2;
         }
-      } else if (options?.offset) {
-        // TODO: Offset pagination not yet implemented (cursor-based preferred).
-        // Callers passing offset will silently get unfiltered results.
       }
+      // Note: offset pagination is applied via SQL OFFSET clause below
 
       // userId filter (belt-and-suspenders)
       if (options?.userId) {
@@ -406,8 +404,14 @@ export class PostgresFrameStore implements FrameStore {
         conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
       // Fetch limit + 1 to detect hasMore
-      const sql = `SELECT ${SELECT_COLS} FROM lex_frames ${where} ORDER BY timestamp DESC, id DESC LIMIT $${paramIdx}`;
+      const offsetClause = (!options?.cursor && options?.offset !== undefined && options.offset > 0)
+        ? ` OFFSET $${paramIdx + 1}`
+        : "";
+      const sql = `SELECT ${SELECT_COLS} FROM lex_frames ${where} ORDER BY timestamp DESC, id DESC LIMIT $${paramIdx}${offsetClause}`;
       params.push(limit + 1);
+      if (offsetClause) {
+        params.push(options!.offset);
+      }
 
       const { rows } = await client.query(sql, params);
       const hasMore = rows.length > limit;
