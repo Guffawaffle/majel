@@ -40,6 +40,8 @@ import { createSessionStore } from "./sessions.js";
 import { createCrewStoreFactory } from "./stores/crew-store.js";
 import { createReceiptStoreFactory } from "./stores/receipt-store.js";
 import { createBehaviorStore } from "./stores/behavior-store.js";
+import { createGovernanceRuleStore } from "./services/governance/rule-store.js";
+import { createTrustGapStore } from "./services/governance/trust-gap.js";
 import { createReferenceStore } from "./stores/reference-store.js";
 import {
   getCdnVersion,
@@ -167,6 +169,8 @@ const state: AppState = {
   effectStore: null,
   tokenLedgerStore: null,
   tokenBudgetStore: null,
+  governanceRuleStore: null,
+  trustGapStore: null,
   startupComplete: false,
   config: bootstrapConfigSync(), // Initialize with bootstrap config
 };
@@ -531,6 +535,15 @@ async function boot(): Promise<void> {
         state.behaviorStore = await createBehaviorStore(adminPool, pool);
         const behaviorCounts = await state.behaviorStore.counts();
         log.boot.info({ rules: behaviorCounts.total, active: behaviorCounts.active }, "behavior store online");
+      },
+    },
+    {
+      name: "governance-stores",
+      fn: async () => {
+        state.governanceRuleStore = await createGovernanceRuleStore(pool);
+        state.trustGapStore = await createTrustGapStore(pool);
+        const rules = await state.governanceRuleStore.listRules();
+        log.boot.info({ governanceRules: rules.length }, "governance stores online (Phase R1 shadow)");
       },
     },
     {
@@ -908,6 +921,8 @@ async function shutdown(): Promise<void> {
   state.crewStore?.close();
   state.receiptStore?.close();
   state.behaviorStore?.close();
+  state.governanceRuleStore?.close();
+  state.trustGapStore?.close();
   state.overlayStore?.close();
   state.inviteStore?.close();
   state.userStore?.close();

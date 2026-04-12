@@ -15,6 +15,10 @@ import { createHash } from "node:crypto";
 import { log } from "../logger.js";
 import type { BehaviorStore } from "../stores/behavior-store.js";
 import { sanitizeForModel } from "./gemini/sanitize.js";
+import type { GovernanceRuleStore } from "./governance/rule-store.js";
+import type { TrustGapStore } from "./governance/trust-gap.js";
+import type { DerivedConstraintSet, TrustGapEvent, AgentTrustProfile } from "./governance/types.js";
+import { deriveConstraints } from "./governance/derive.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -73,6 +77,10 @@ export interface MicroRunnerReceipt {
   }>;
   behavioralRulesApplied: Array<{ id: string; specificity: number }>;
   contextBudget: ContextBudgetResult | null;
+  /** Derived governance constraint set (Phase R1: shadow telemetry) */
+  derivedConstraints: DerivedConstraintSet | null;
+  /** Trust-gap events emitted during this request */
+  trustGapEvents: TrustGapEvent[];
   validationResult: "pass" | "fail" | "repaired";
   validationDetails: string[];
   repairAttempted: boolean;
@@ -722,6 +730,10 @@ export interface MicroRunnerConfig {
   behaviorStore?: BehaviorStore;
   /** Governance enforcement mode. Defaults to "enforce" (block + repair on violation). Set to "shadow" for observation-only telemetry. */
   governanceMode?: "shadow" | "enforce";
+  /** Governance rule store for specificity-scored constraint derivation (Phase R1). */
+  governanceRuleStore?: GovernanceRuleStore;
+  /** Trust-gap event store for pattern learning (Phase R1). */
+  trustGapStore?: TrustGapStore;
 }
 
 export interface MicroRunner {
@@ -868,6 +880,48 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
       const ruleIds = behavioralRulesApplied.map((r) => r.id);
       const constraintHash = computeConstraintHash(UNIVERSAL_INVARIANTS, ruleIds);
 
+      // ── Governance: derive constraints (Phase R1 shadow) ──
+      let derivedConstraints: DerivedConstraintSet | null = null;
+      if (config.governanceRuleStore && governance) {
+        try {
+          const scoredRules = await config.governanceRuleStore.getMatchingRules(governance, contract.taskType);
+          // Optionally retrieve trust profile for calibration
+          let trustProfile: AgentTrustProfile | undefined;
+          if (config.trustGapStore) {
+            trustProfile = (await config.trustGapStore.getProfile(governance.modelFamily, contract.taskType)) ?? undefined;
+          }
+          derivedConstraints = deriveConstraints(scoredRules, governance, contract.taskType, trustProfile);
+          log.gemini.debug({
+            inputHash: derivedConstraints.inputHash,
+            constraintCount: derivedConstraints.constraints.length,
+            rulesConsidered: derivedConstraints.metadata.rulesConsidered,
+            rulesFiltered: derivedConstraints.metadata.rulesFiltered,
+            trustAdjustment: derivedConstraints.metadata.trustAdjustment,
+          }, "governance:constraints-derived");
+        } catch (err) {
+          log.gemini.warn({ err }, "governance:derivation-failed");
+        }
+      }
+
+      // ── Governance: emit trust-gap events from violations ──
+      const trustGapEvents: TrustGapEvent[] = [];
+      if (result.violations.length > 0 && governance) {
+        const now = new Date().toISOString();
+        for (const outcome of result.invariantOutcomes) {
+          if (outcome.result === "fail") {
+            trustGapEvents.push({
+              modelFamily: governance.modelFamily,
+              taskType: contract.taskType,
+              ruleCategory: outcome.name,
+              violation: outcome.name,
+              caughtBy: mode === "shadow" ? "shadow" : "runtime",
+              sessionId,
+              timestamp: now,
+            });
+          }
+        }
+      }
+
       // Tier 5: Shadow-mode analysis — always compute, even when passing
       const wouldBlock = !result.passed;
       const wouldBlockReasons = result.violations.slice();
@@ -887,6 +941,8 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
         t2Provenance: gatedContext.t2Provenance,
         behavioralRulesApplied,
         contextBudget: gatedContext.contextBudget ?? null,
+        derivedConstraints,
+        trustGapEvents,
         validationResult: result.passed ? "pass" : "fail",
         validationDetails: result.violations,
         repairAttempted: false,
@@ -948,11 +1004,28 @@ export function createMicroRunner(config: MicroRunnerConfig): MicroRunner {
         t2Provenance: receipt.t2Provenance,
         behavioralRules: receipt.behavioralRulesApplied,
         contextBudget: receipt.contextBudget,
+        derivedConstraints: receipt.derivedConstraints ? {
+          inputHash: receipt.derivedConstraints.inputHash,
+          count: receipt.derivedConstraints.constraints.length,
+          trustAdjustment: receipt.derivedConstraints.metadata.trustAdjustment,
+        } : null,
+        trustGapCount: receipt.trustGapEvents.length,
         validation: receipt.validationResult,
         violations: receipt.validationDetails,
         repairAttempted: receipt.repairAttempted,
         durationMs: receipt.durationMs,
       }, "microrunner:receipt");
+
+      // Persist trust-gap events asynchronously (fire-and-forget)
+      if (receipt.trustGapEvents.length > 0 && config.trustGapStore && config.governanceRuleStore) {
+        const store = config.trustGapStore;
+        const ruleStore = config.governanceRuleStore;
+        Promise.all(
+          receipt.trustGapEvents.map((event) => store.recordGap(event, ruleStore)),
+        ).catch((err) => {
+          log.gemini.warn({ err }, "governance:trust-gap-persist-failed");
+        });
+      }
     },
   };
 }

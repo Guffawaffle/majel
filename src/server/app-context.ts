@@ -34,6 +34,8 @@ import type { ToolContextFactory } from "./services/fleet-tools/index.js";
 import type { AppConfig } from "./config.js";
 import type { Pool } from "./db.js";
 import { createMicroRunner, type MicroRunner, type ContextSources, type ReferenceEntry } from "./services/micro-runner.js";
+import type { GovernanceRuleStore } from "./services/governance/rule-store.js";
+import type { TrustGapStore } from "./services/governance/trust-gap.js";
 
 function toIntentMode(value: string): IntentMode {
   return value === "+" || value === "-" || value === "off" ? value : "-";
@@ -100,6 +102,10 @@ export interface AppState {
   tokenLedgerStore: TokenLedgerStore | null;
   /** ADR-048 Phase B: Per-user budget overrides + enforcement. */
   tokenBudgetStore: TokenBudgetStore | null;
+  /** Runtime governance: specificity-scored constraint rules (Phase R1 shadow). */
+  governanceRuleStore: GovernanceRuleStore | null;
+  /** Runtime governance: trust-gap pattern learning (Phase R1 shadow). */
+  trustGapStore: TrustGapStore | null;
   startupComplete: boolean;
   config: AppConfig;
 }
@@ -245,5 +251,11 @@ export async function buildMicroRunnerFromState(appState: AppState): Promise<Mic
       : undefined,
   };
 
-  return createMicroRunner({ contextSources, knownOfficerNames, behaviorStore: appState.behaviorStore ?? undefined });
+  return createMicroRunner({
+    contextSources,
+    knownOfficerNames,
+    behaviorStore: appState.behaviorStore ?? undefined,
+    governanceRuleStore: appState.governanceRuleStore ?? undefined,
+    trustGapStore: appState.trustGapStore ?? undefined,
+  });
 }
