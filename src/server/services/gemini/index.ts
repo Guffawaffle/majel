@@ -50,13 +50,19 @@ const BASE_DELAY_MS = 1000;
 /** Extract diagnostic info from a Gemini response for logging when the response is empty. */
 function extractResponseDiagnostics(result: unknown): Record<string, unknown> | null {
   const r = result as {
-    candidates?: Array<{ finishReason?: string; safetyRatings?: unknown[] }>;
+    candidates?: Array<{ finishReason?: string; safetyRatings?: unknown[]; content?: { parts?: Array<{ functionCall?: unknown }> } }>;
     promptFeedback?: { blockReason?: string; blockReasonMessage?: string };
   };
   const candidate = r?.candidates?.[0];
   const diag: Record<string, unknown> = {};
   if (candidate?.finishReason) diag.finishReason = candidate.finishReason;
   if (candidate?.safetyRatings) diag.safetyRatings = candidate.safetyRatings;
+  if (candidate?.finishReason === "MALFORMED_FUNCTION_CALL" && candidate?.content?.parts) {
+    const malformedCalls = candidate.content.parts
+      .filter((p) => p.functionCall != null)
+      .map((p) => p.functionCall);
+    if (malformedCalls.length > 0) diag.malformedFunctionCalls = malformedCalls;
+  }
   if (r?.promptFeedback?.blockReason) {
     diag.blockReason = r.promptFeedback.blockReason;
     if (r.promptFeedback.blockReasonMessage) diag.blockReasonMessage = r.promptFeedback.blockReasonMessage;
